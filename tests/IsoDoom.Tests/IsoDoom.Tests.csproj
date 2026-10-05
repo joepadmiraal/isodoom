@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests for the plain .NET libraries (Wad, Map, Sim). No Godot reference.
+       Run with `dotnet test` from the repo root. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>IsoDoom.Tests</RootNamespace>
+  </PropertyGroup>
+  <!-- xunit.v3 runs on Microsoft.Testing.Platform; global.json opts
+       `dotnet test` into it (the VSTest bridge is gone on the .NET 10 SDK).
+       Licenses: xunit.v3 Apache-2.0, Mono.Cecil MIT (both GPL-2.0+ compatible). -->
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
+    <ProjectReference Include="../../src/Map/IsoDoom.Map.csproj" />
+    <ProjectReference Include="../../src/Sim/IsoDoom.Sim.csproj" />
+  </ItemGroup>
+</Project>

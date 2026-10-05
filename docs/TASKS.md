@@ -10,7 +10,7 @@ Legend: `[ ]` todo, `[x]` done.
 
 - [x] **T0.1 Toolchain + Godot project.** Install, or document how to install, the latest stable Godot 4.x .NET build and the .NET SDK it requires, on Linux. Create the Godot C# project with the folder layout from SPEC §4.1. Split `Sim` and `Wad`/`Map` into plain .NET class libraries (`net10.0`, no Godot reference) referenced by the Godot project, so the sim's purity is enforced by the compiler. Record the pinned versions in SPEC §12.
   *Done when:* the project opens in Godot, runs an empty main scene, and `dotnet build` succeeds from the CLI.
-- [ ] **T0.2 Test setup.** Add an xUnit test project for the plain libraries, with a helper that locates `wads/DOOM1.WAD` and skips a test when the file is absent. Add a test that scans the `Sim` assembly and fails if it uses `float`, `double`, `System.Random` or `DateTime` (SPEC §6.1).
+- [x] **T0.2 Test setup.** Add an xUnit test project for the plain libraries, with a helper that locates `wads/DOOM1.WAD` and skips a test when the file is absent. Add a test that scans the `Sim` assembly and fails if it uses `float`, `double`, `System.Random` or `DateTime` (SPEC §6.1).
   *Done when:* `dotnet test` runs green and the purity test fails when a float is temporarily introduced in `Sim`.
 - [ ] **T0.3 CI + commands.** Add a GitHub Actions workflow that runs build and tests, plus a headless Godot export for Linux x86_64. Add a `## Commands` section to `AGENTS.md` listing build, test, run and export.
   *Done when:* CI is green on a pushed branch.
