@@ -44,9 +44,14 @@ Legend: `[ ]` todo, `[x]` done.
   *Done:* `Sprites.R_InitSprites` (r_things.c) indexes the sprites named in info.c's `sprnames` (`SpriteNames`), and PWADs replace IWAD sprites per frame/rotation slot; see SPEC §12.
 - [ ] **T1.5a Full-IWAD sprite check.** With a registered/Ultimate Doom or Doom II IWAD (environment variable, as in T1.4a), check that `Sprites.R_InitSprites` indexes all 138 `sprnames` without errors (Doom II has every sprite, so this also checks the ported name table) and that every frame lump decodes. SPEC §5.2.
   *Done when:* the full-IWAD tests pass (skipping without the IWAD).
-- [ ] **T1.6 Godot WAD viewer scene.** Upload index textures as R8, add a palette shader using `PLAYPAL` and `COLORMAP`, and build a debug scene for browsing textures, flats, sprites and UI graphics, with a light-level slider.
+- [x] **T1.6 Godot WAD viewer scene.** Upload index textures as R8, add a palette shader using `PLAYPAL` and `COLORMAP`, and build a debug scene for browsing textures, flats, sprites and UI graphics, with a light-level slider.
   *Done when:* every graphic in `DOOM1.WAD` can be browsed with correct colours.
   *Note (from T1.5):* browse sprites through `Sprites` (sprite → frame → rotation) so mirrored rotations show flipped, as the renderer will draw them.
+  *Done:* `scenes/WadViewer.tscn` (opened by the main scene for now) browses wall textures, flats, sprites (sprite → frame → rotation, all 8 rotations side by side, mirrored ones flipped), wall patches, the 320 other patch-format graphics and the palette tables, uploaded as RG8 index textures and coloured by `shaders/palette.gdshader` (PLAYPAL + COLORMAP), with light, invulnerability, PLAYPAL and zoom controls. `godot -- --viewer-check` walks all 1276 views; with a real renderer it reads every drawn pixel back and compares it with the CPU palette conversion under three lighting settings (all match on DOOM1.WAD). See SPEC §12.
+- [ ] **T1.6a Lump list in the viewer.** SPEC §11 M1 also says "lists lumps": add a lump directory view to the WAD viewer (name, size, file, namespace, and what the lump is: graphic, map, sound, music, …), jumping to the graphic view for graphics.
+  *Done when:* every lump of `DOOM1.WAD` is listed, and selecting a graphic lump shows it.
+- [ ] **T1.6b Viewer check in CI.** `--viewer-check` needs a WAD, so CI can't run it against DOOM1. Run it headlessly in CI against a small synthetic IWAD (built by a test helper or a script; PLAYPAL, COLORMAP, PNAMES/TEXTURE1, a few patches, flats and sprites), or against Freedoom if its BSD licence and download size are acceptable.
+  *Done when:* CI runs the viewer check and fails on a broken upload.
 
 ## M2 — Static level render
 

@@ -80,6 +80,50 @@ public static class Patch
         return new IndexedImage(width, height, leftOffset, topOffset, pixels, opaque);
     }
 
+    /// <summary>
+    /// A strict structural check for "is this lump a patch?", for finding the
+    /// graphics among the global lumps (<see cref="GraphicLumps"/>), which
+    /// have no marker namespace. Stricter than <see cref="Decode"/>: the size
+    /// must be 1..4096 on each side, every column offset must point past the
+    /// offset table and inside the lump, and every column's posts must end
+    /// with a 0xFF terminator inside the lump, with no post starting below
+    /// the patch height. Never throws.
+    /// </summary>
+    public static bool IsPatch(ReadOnlySpan<byte> lump)
+    {
+        if (lump.Length < HeaderSize)
+            return false;
+        int width = BinaryPrimitives.ReadInt16LittleEndian(lump);
+        int height = BinaryPrimitives.ReadInt16LittleEndian(lump[2..]);
+        if (width <= 0 || height <= 0 || width > 4096 || height > 4096)
+            return false;
+        int tableEnd = HeaderSize + 4 * width;
+        if (tableEnd > lump.Length)
+            return false;
+
+        for (int x = 0; x < width; x++)
+        {
+            int ofs = BinaryPrimitives.ReadInt32LittleEndian(lump[(HeaderSize + 4 * x)..]);
+            if (ofs < tableEnd || ofs >= lump.Length)
+                return false;
+            while (true)
+            {
+                if (ofs >= lump.Length)
+                    return false;
+                int topDelta = lump[ofs];
+                if (topDelta == 0xFF)
+                    break;
+                if (topDelta >= height || ofs + 1 >= lump.Length)
+                    return false;
+                int length = lump[ofs + 1];
+                ofs += 3 + length + 1;
+                if (ofs > lump.Length)
+                    return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>Decodes the last lump called <paramref name="name"/> (any namespace) as a patch.</summary>
     public static IndexedImage Load(WadArchive wad, string name)
     {
