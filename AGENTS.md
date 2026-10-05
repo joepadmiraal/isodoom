@@ -12,6 +12,16 @@ Each session completes **one task** from `TASKS.md`:
 4. When you make a design decision the spec doesn't cover, add it to the decisions log in `SPEC.md` §12.
 5. Commit on a branch named after the task (e.g. `t1.2-wad-reader`).
 
+## Commands
+
+Run from the repo root. Versions are pinned in `SPEC.md` §12; the .NET SDK comes from `global.json`.
+
+- **Build:** `dotnet build IsoDoom.sln`
+- **Test:** `dotnet test`. Tests that need `wads/DOOM1.WAD` skip themselves without it (as in CI); set `ISODOOM_DOOM1_WAD=/path/to/DOOM1.WAD` to use a WAD elsewhere.
+- **Run:** `godot` opens the editor (F5 runs the main scene). `godot --headless --quit-after 60` runs the main scene headlessly for 60 frames; drop `--headless` for a window. On a fresh checkout, run `godot --headless --import` first.
+- **Export (Linux x86_64):** `mkdir -p export/linux && godot --headless --export-release "Linux" export/linux/IsoDoom.x86_64`. Needs the 4.7.2 .NET export templates in `~/.local/share/godot/export_templates/4.7.2.stable.mono/` (build the dev container with `INSTALL_EXPORT_TEMPLATES=true`, or see `.github/workflows/ci.yml`). Smoke test: `export/linux/IsoDoom.x86_64 --headless --quit-after 60`.
+- **CI:** `.github/workflows/ci.yml` runs build + test, then the export and smoke test, and uploads `export/linux/` as the `IsoDoom-linux-x86_64` artifact.
+
 ## Invariants
 
 - **`Sim/` is deterministic** (so lockstep co-op is possible later):

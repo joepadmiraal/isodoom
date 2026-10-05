@@ -1,0 +1,145 @@
+# CI: build + test the .NET solution, then export the Godot project for
+# Linux x86_64 headlessly and upload the build. Toolchain versions are pinned
+# in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
+# IsoDoom.csproj; the .NET SDK comes from global.json).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash  # bash -eo pipefail
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "stable"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore IsoDoom.sln
+
+      - name: Build
+        run: dotnet build IsoDoom.sln --no-restore --configuration Debug
+
+      # DOOM1.WAD is not in the repo, so WAD tests report as skipped here.
+      - name: Test
+        run: dotnet test --no-build --configuration Debug
+
+  export-linux:
+    name: Export Linux x86_64
+    needs: build-test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-export-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: nuget-export-${{ runner.os }}-
+
+      # Editor + Linux x86_64 export templates for the pinned Godot .NET build.
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}.mono
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-x86_64
+
+      - name: Download Godot and export templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          tag="${GODOT_VERSION}-${GODOT_RELEASE}"
+          base="https://github.com/godotengine/godot/releases/download/${tag}"
+          name="Godot_v${tag}_mono_linux_x86_64"
+          tpz="Godot_v${tag}_mono_export_templates.tpz"
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          for f in "${name}.zip" "$tpz" SHA512-SUMS.txt; do
+            curl -fsSL --retry 3 -o "$f" "$base/$f"
+          done
+          grep -F -e "  ${name}.zip" -e "  ${tpz}" SHA512-SUMS.txt > sums.txt
+          test "$(wc -l < sums.txt)" -eq 2
+          sha512sum -c sums.txt
+          unzip -q "${name}.zip"
+          rm -rf ~/godot
+          mv "${name}" ~/godot
+          dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}.mono
+          mkdir -p "$dest"
+          # Keep only what a Linux x86_64 export needs (the full set is ~1.2 GB).
+          unzip -q "$tpz" -d templates
+          for f in version.txt linux_release.x86_64 linux_debug.x86_64; do
+            mv "templates/templates/$f" "$dest/"
+          done
+          cd /
+          rm -rf "$tmp"
+
+      - name: Put godot on PATH
+        run: |
+          mkdir -p ~/.local/bin
+          ln -sf ~/godot/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_mono_linux.x86_64 ~/.local/bin/godot
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Godot version
+        run: godot --headless --version
+
+      # A fresh checkout has no .godot/ cache: import first so the export sees
+      # every resource, then export (Godot runs `dotnet publish` itself).
+      - name: Import
+        run: godot --headless --import
+
+      - name: Export
+        run: |
+          mkdir -p export/linux
+          godot --headless --export-release "Linux" export/linux/IsoDoom.x86_64
+          test -x export/linux/IsoDoom.x86_64
+          ls -la export/linux
+
+      - name: Smoke-test the exported build
+        run: |
+          timeout 120 export/linux/IsoDoom.x86_64 --headless --quit-after 60 2>&1 | tee smoke.log
+          grep -q "IsoDoom started" smoke.log
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: IsoDoom-linux-x86_64
+          path: export/linux/
+          if-no-files-found: error
+          retention-days: 14

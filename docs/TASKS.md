@@ -14,6 +14,7 @@ Legend: `[ ]` todo, `[x]` done.
   *Done when:* `dotnet test` runs green and the purity test fails when a float is temporarily introduced in `Sim`.
 - [ ] **T0.3 CI + commands.** Add a GitHub Actions workflow that runs build and tests, plus a headless Godot export for Linux x86_64. Add a `## Commands` section to `AGENTS.md` listing build, test, run and export.
   *Done when:* CI is green on a pushed branch.
+  *Status:* workflow, export preset and `## Commands` added (branch `t0.3-ci`); build, test, headless export and the exported-binary smoke test pass locally, and `actionlint` is clean. Not ticked: the repo has no remote yet, so CI has not run. Tick after the first push shows a green run.
 - [ ] **T0.4 Interactive editor check.** Open the project in the Godot editor with a real display (Wayland/X11 passthrough in the dev container) and run the main scene with F5; T0.1 only verified this headlessly. Fix any GPU/display issues in `.devcontainer/`.
   *Done when:* the editor opens without errors and the main scene runs in a window with the Forward+ renderer.
 
