@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Map lump parsing, BSP, blockmap, reject, sector polygons. No Godot reference. -->
+  <PropertyGroup>
+    <RootNamespace>IsoDoom.Map</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Wad/IsoDoom.Wad.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Deterministic game simulation (SPEC §6.1). Pure C#: no Godot reference,
+       no float/double, no System.Random, no wall-clock time. -->
+  <PropertyGroup>
+    <RootNamespace>IsoDoom.Sim</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Map/IsoDoom.Map.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,14 +1,19 @@
-# Game data (never commit WADs)
-wads/
-doom_20230531/
+# Game data (never commit WADs). Only the .gdignore markers (which stop
+# Godot importing these folders) are tracked.
+wads/*
+!wads/.gdignore
+doom_20230531/*
+!doom_20230531/.gdignore
 *.wad
 *.WAD
 
 # Godot
 .godot/
 export/
+*.translation
 
 # .NET
 bin/
 obj/
 *.user
+.vs/

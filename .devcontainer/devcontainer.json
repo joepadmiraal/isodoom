@@ -52,7 +52,9 @@
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
 
-  "postCreateCommand": "sudo chown vscode:vscode /home/vscode/.nuget/packages /home/vscode/.claude && godot --version && dotnet --info | head -n 5",
+  // ~/.nuget itself is created by Docker as root (parent of the volume mount);
+  // NuGet must be able to write ~/.nuget/NuGet/NuGet.Config there.
+  "postCreateCommand": "sudo chown vscode:vscode /home/vscode/.nuget /home/vscode/.nuget/packages /home/vscode/.claude && godot --version && dotnet --info | head -n 5",
 
   "customizations": {
     "vscode": {

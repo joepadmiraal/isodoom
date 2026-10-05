@@ -1,0 +1,17 @@
+<Project>
+  <!-- Shared settings for the plain .NET class libraries under src/
+       (Wad, Map, Sim). These must never reference Godot. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <!-- Godot's export configurations reach these projects when the Godot
+       project is built on its own (not via IsoDoom.sln). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'ExportRelease'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- WAD reader, lump directory, IWAD detection (SPEC §5.1). No Godot reference. -->
+  <PropertyGroup>
+    <RootNamespace>IsoDoom.Wad</RootNamespace>
+  </PropertyGroup>
+</Project>
