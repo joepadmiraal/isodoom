@@ -28,8 +28,10 @@ Legend: `[ ]` todo, `[x]` done.
   *Done when:* `DOOM1.WAD` is detected as shareware, and the other modes are covered by synthetic test WADs.
 - [ ] **T1.2a Modified-game checks and IWAD variants.** Vanilla `D_DoomMain` (d_main.c) refuses PWADs with the shareware IWAD ("You cannot -file with the shareware version. Register!") and checks that a registered IWAD holds the episode 2-3 lumps. Decide whether to port the shareware refusal as vanilla behaviour (with a tweak flag to allow PWADs, SPEC §6.3) or drop it, and wire the check into the loading path from T1.1a. Also detect Chocolate Doom's `gamevariant` (Freedoom via the `FREEDOOM` lump, FreeDM via `FREEDM`, BFG Edition via `DMENUPIC`) on top of `IwadInfo`. SPEC §2.
   *Done when:* tests on synthetic WADs cover the chosen PWAD policy and each variant.
-- [ ] **T1.3 Palette, colormap and graphics decoders.** Decode `PLAYPAL`, `COLORMAP`, and patch-format graphics (column posts) into 8-bit index buffers plus offsets. Decode flats. SPEC §5.2.
+- [x] **T1.3 Palette, colormap and graphics decoders.** Decode `PLAYPAL`, `COLORMAP`, and patch-format graphics (column posts) into 8-bit index buffers plus offsets. Decode flats. SPEC §5.2.
   *Done when:* unit tests pass on known lump sizes and offsets, and a debug export of `TITLEPIC` and `TROOA1` to PNG looks right.
+- [ ] **T1.3a Tall patches (PWAD graphics).** `Patch.Decode` places posts at their absolute `topdelta`, as vanilla does, so patches taller than 254 pixels can't be expressed. Many PWADs use the DeePsea "tall patch" convention (a `topdelta` not greater than the previous post's is relative to it), which Chocolate Doom ignores but most source ports support. Decide whether to support it (it changes nothing for IWAD graphics) and log the choice in SPEC §12.
+  *Done when:* a synthetic tall-patch test decodes to the chosen layout.
 - [ ] **T1.4 Wall texture composition.** Parse `PNAMES` and `TEXTURE1` (and `TEXTURE2` when present) and composite patches into textures, including vanilla quirks such as patches that run past the texture's edges.
   *Done when:* `STARTAN3`, `DOOR3` and the masked `MIDGRATE` are visually checked in a PNG export.
 - [ ] **T1.5 Sprite indexing.** Group sprite lumps into sprite, frame and rotation sets, including mirrored pairs (`TROOA2A8`) and rotation 0. SPEC §5.2, §7.5.
