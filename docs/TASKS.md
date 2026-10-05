@@ -32,8 +32,12 @@ Legend: `[ ]` todo, `[x]` done.
   *Done when:* unit tests pass on known lump sizes and offsets, and a debug export of `TITLEPIC` and `TROOA1` to PNG looks right.
 - [ ] **T1.3a Tall patches (PWAD graphics).** `Patch.Decode` places posts at their absolute `topdelta`, as vanilla does, so patches taller than 254 pixels can't be expressed. Many PWADs use the DeePsea "tall patch" convention (a `topdelta` not greater than the previous post's is relative to it), which Chocolate Doom ignores but most source ports support. Decide whether to support it (it changes nothing for IWAD graphics) and log the choice in SPEC §12.
   *Done when:* a synthetic tall-patch test decodes to the chosen layout.
-- [ ] **T1.4 Wall texture composition.** Parse `PNAMES` and `TEXTURE1` (and `TEXTURE2` when present) and composite patches into textures, including vanilla quirks such as patches that run past the texture's edges.
+  *Note (from T1.4):* `Textures.DrawColumnInCache` walks the raw patch posts with absolute `topdelta` too; if tall patches are supported, change it to match.
+- [x] **T1.4 Wall texture composition.** Parse `PNAMES` and `TEXTURE1` (and `TEXTURE2` when present) and composite patches into textures, including vanilla quirks such as patches that run past the texture's edges.
   *Done when:* `STARTAN3`, `DOOR3` and the masked `MIDGRATE` are visually checked in a PNG export.
+  *Note:* `MIDGRATE` is not in the shareware WAD (it is a registered/Doom II texture), so the shareware masked grates `BRNSMALC` and `BRNBIGC` were checked instead; see T1.4a.
+- [ ] **T1.4a Full-IWAD texture check.** With a registered/Ultimate Doom or Doom II IWAD (not in the repo; point a test at it with an environment variable like `ISODOOM_DOOM1_WAD`), check that every texture in TEXTURE1/TEXTURE2 composites, and visually check `MIDGRATE` and a few multi-patch masked midtextures in the `Doom1TextureTests.ExportDebugPngs`-style export. SPEC §5.2.
+  *Done when:* the full-IWAD tests pass (skipping without the IWAD) and `MIDGRATE` shows transparent holes and no seams.
 - [ ] **T1.5 Sprite indexing.** Group sprite lumps into sprite, frame and rotation sets, including mirrored pairs (`TROOA2A8`) and rotation 0. SPEC §5.2, §7.5.
   *Done when:* tests on `TROO`, `PLAY` and `BAR1` assert the frame and rotation counts and the flip flags.
   *Note (from T1.1):* `WadArchive` merges the sprite namespace by whole lump name only. Chocolate Doom's w_merge.c also lets a PWAD sprite replace a single frame/rotation of an IWAD lump (e.g. a PWAD `TROOA2` drops the `A2` half of the IWAD's `TROOA2A8`). Handle that here, when frames are indexed.
@@ -47,6 +51,7 @@ Legend: `[ ]` todo, `[x]` done.
 - [ ] **T2.2 Subsector polygons.** Build convex subsector polygons by clipping against the BSP partition lines, then group them per sector. SPEC §7.2.
   *Done when:* for every map in E1, the polygon area per sector matches the sector area within tolerance, and there are no gaps in a debug 2D render.
 - **T2.3 onward:** break these down when M1 is nearly done (wall mesh, floor mesh, per-sector height data, palette lighting, free-fly camera).
+  *Note (from T1.4):* for the wall mesh, vanilla tiles textures horizontally by `texturewidthmask` (the largest power of two not above the width) and vertically by 128 (`R_DrawColumn`'s `& 127`), so a texture whose height is not 128 (`DOOR3` is 72 tall) shows "tutti-frutti" garbage or a wrong wrap when a wall is taller than it. Decide whether to reproduce that or tile by the real size, and log it in SPEC §12. Also decide how solid (one-sided) walls treat the transparent pixels of a composite (`Textures.R_GenerateComposite` keeps holes; vanilla draws garbage there).
 
 ## M3 to M10
 

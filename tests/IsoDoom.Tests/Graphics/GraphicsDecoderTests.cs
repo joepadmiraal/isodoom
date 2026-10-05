@@ -11,7 +11,7 @@ namespace IsoDoom.Tests.Graphics;
 public class GraphicsDecoderTests
 {
     /// <summary>Builds a patch lump: header, column offsets, then each column's posts (topdelta, pixels).</summary>
-    private static byte[] BuildPatch(int width, int height, int left, int top, params (int TopDelta, byte[] Pixels)[][] columns)
+    internal static byte[] BuildPatch(int width, int height, int left, int top, params (int TopDelta, byte[] Pixels)[][] columns)
     {
         List<byte> body = new();
         int[] offsets = new int[width];
