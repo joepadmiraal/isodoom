@@ -24,8 +24,10 @@ Legend: `[ ]` todo, `[x]` done.
   *Done when:* tests against `DOOM1.WAD` assert the lump count, the `IWAD` type, and that `E1M1`, `PLAYPAL` and `TROOA1` are found.
 - [ ] **T1.1a IWAD location.** Find the IWAD through a configurable path, the game folder and common install locations (Steam/GOG), with a file picker as the fallback, and load PWADs given on the command line (`-file`) through `WadArchive`. SPEC §5.1.
   *Done when:* the game starts with `DOOM1.WAD` from each search location in turn, and shows the picker when none is found.
-- [ ] **T1.2 IWAD identification.** Detect shareware, registered, Ultimate, Doom II and Final Doom from the lumps present, as vanilla `IdentifyVersion` does. SPEC §2.
+- [x] **T1.2 IWAD identification.** Detect shareware, registered, Ultimate, Doom II and Final Doom from the lumps present, as vanilla `IdentifyVersion` does. SPEC §2.
   *Done when:* `DOOM1.WAD` is detected as shareware, and the other modes are covered by synthetic test WADs.
+- [ ] **T1.2a Modified-game checks and IWAD variants.** Vanilla `D_DoomMain` (d_main.c) refuses PWADs with the shareware IWAD ("You cannot -file with the shareware version. Register!") and checks that a registered IWAD holds the episode 2-3 lumps. Decide whether to port the shareware refusal as vanilla behaviour (with a tweak flag to allow PWADs, SPEC §6.3) or drop it, and wire the check into the loading path from T1.1a. Also detect Chocolate Doom's `gamevariant` (Freedoom via the `FREEDOOM` lump, FreeDM via `FREEDM`, BFG Edition via `DMENUPIC`) on top of `IwadInfo`. SPEC §2.
+  *Done when:* tests on synthetic WADs cover the chosen PWAD policy and each variant.
 - [ ] **T1.3 Palette, colormap and graphics decoders.** Decode `PLAYPAL`, `COLORMAP`, and patch-format graphics (column posts) into 8-bit index buffers plus offsets. Decode flats. SPEC §5.2.
   *Done when:* unit tests pass on known lump sizes and offsets, and a debug export of `TITLEPIC` and `TROOA1` to PNG looks right.
 - [ ] **T1.4 Wall texture composition.** Parse `PNAMES` and `TEXTURE1` (and `TEXTURE2` when present) and composite patches into textures, including vanilla quirks such as patches that run past the texture's edges.
