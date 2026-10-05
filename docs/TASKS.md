@@ -20,8 +20,10 @@ Legend: `[ ]` todo, `[x]` done.
 
 ## M1 — WAD viewer
 
-- [ ] **T1.1 WAD reader.** Parse the header and lump directory; look lumps up by name; handle namespace markers (`S_`, `F_`, `P_` and their `SS_`/`FF_` variants); merge PWADs over the IWAD. SPEC §5.1.
+- [x] **T1.1 WAD reader.** Parse the header and lump directory; look lumps up by name; handle namespace markers (`S_`, `F_`, `P_` and their `SS_`/`FF_` variants); merge PWADs over the IWAD. SPEC §5.1.
   *Done when:* tests against `DOOM1.WAD` assert the lump count, the `IWAD` type, and that `E1M1`, `PLAYPAL` and `TROOA1` are found.
+- [ ] **T1.1a IWAD location.** Find the IWAD through a configurable path, the game folder and common install locations (Steam/GOG), with a file picker as the fallback, and load PWADs given on the command line (`-file`) through `WadArchive`. SPEC §5.1.
+  *Done when:* the game starts with `DOOM1.WAD` from each search location in turn, and shows the picker when none is found.
 - [ ] **T1.2 IWAD identification.** Detect shareware, registered, Ultimate, Doom II and Final Doom from the lumps present, as vanilla `IdentifyVersion` does. SPEC §2.
   *Done when:* `DOOM1.WAD` is detected as shareware, and the other modes are covered by synthetic test WADs.
 - [ ] **T1.3 Palette, colormap and graphics decoders.** Decode `PLAYPAL`, `COLORMAP`, and patch-format graphics (column posts) into 8-bit index buffers plus offsets. Decode flats. SPEC §5.2.
@@ -30,6 +32,7 @@ Legend: `[ ]` todo, `[x]` done.
   *Done when:* `STARTAN3`, `DOOR3` and the masked `MIDGRATE` are visually checked in a PNG export.
 - [ ] **T1.5 Sprite indexing.** Group sprite lumps into sprite, frame and rotation sets, including mirrored pairs (`TROOA2A8`) and rotation 0. SPEC §5.2, §7.5.
   *Done when:* tests on `TROO`, `PLAY` and `BAR1` assert the frame and rotation counts and the flip flags.
+  *Note (from T1.1):* `WadArchive` merges the sprite namespace by whole lump name only. Chocolate Doom's w_merge.c also lets a PWAD sprite replace a single frame/rotation of an IWAD lump (e.g. a PWAD `TROOA2` drops the `A2` half of the IWAD's `TROOA2A8`). Handle that here, when frames are indexed.
 - [ ] **T1.6 Godot WAD viewer scene.** Upload index textures as R8, add a palette shader using `PLAYPAL` and `COLORMAP`, and build a debug scene for browsing textures, flats, sprites and UI graphics, with a light-level slider.
   *Done when:* every graphic in `DOOM1.WAD` can be browsed with correct colours.
 
