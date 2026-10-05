@@ -1,0 +1,70 @@
+// Dev container for IsoDoom (Godot 4 + C#/.NET 10) on a Linux host.
+// The Godot editor and game run inside the container and draw on the host's
+// display: Wayland and X11 sockets, the GPU (/dev/dri) and the PulseAudio
+// socket are passed through.
+{
+  "name": "IsoDoom (Godot 4 + .NET 10)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "GODOT_VERSION": "4.7.2",
+      "GODOT_RELEASE": "stable",
+      "INSTALL_EXPORT_TEMPLATES": "false"
+    }
+  },
+  "features": {
+    // Claude Code CLI (installed via npm, so it needs Node).
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+
+  "runArgs": [
+    // GPU for Vulkan/GL rendering (Mesa: Intel/AMD).
+    "--device=/dev/dri",
+    // Host GIDs of the `video` and `render` groups, so the container user can
+    // open /dev/dri/*. Check yours with `getent group video render`.
+    "--group-add=44",
+    "--group-add=990"
+  ],
+
+  "mounts": [
+    // Wayland
+    "source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=/tmp/runtime-vscode/${localEnv:WAYLAND_DISPLAY},type=bind",
+    // X11 / XWayland fallback (may need `xhost +si:localuser:$USER` on the host)
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind",
+    // Audio (PipeWire's PulseAudio socket)
+    "source=${localEnv:XDG_RUNTIME_DIR}/pulse/native,target=/tmp/runtime-vscode/pulse/native,type=bind",
+    // Keep NuGet packages across container rebuilds
+    "source=isodoom-nuget,target=/home/vscode/.nuget/packages,type=volume",
+    // Keep Claude Code login, settings and history across container rebuilds
+    "source=isodoom-claude-config,target=/home/vscode/.claude,type=volume"
+  ],
+
+  "containerEnv": {
+    "XDG_RUNTIME_DIR": "/tmp/runtime-vscode",
+    "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "PULSE_SERVER": "unix:/tmp/runtime-vscode/pulse/native",
+    "GODOT": "/usr/local/bin/godot",
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+
+  "postCreateCommand": "sudo chown vscode:vscode /home/vscode/.nuget/packages /home/vscode/.claude && godot --version && dotnet --info | head -n 5",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.csdevkit",
+        "geequlim.godot-tools",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "godotTools.editorPath.godot4": "/usr/local/bin/godot"
+      }
+    }
+  }
+}

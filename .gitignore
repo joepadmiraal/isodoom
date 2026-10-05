@@ -1,0 +1,14 @@
+# Game data (never commit WADs)
+wads/
+doom_20230531/
+*.wad
+*.WAD
+
+# Godot
+.godot/
+export/
+
+# .NET
+bin/
+obj/
+*.user
