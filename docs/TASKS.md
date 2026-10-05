@@ -38,11 +38,15 @@ Legend: `[ ]` todo, `[x]` done.
   *Note:* `MIDGRATE` is not in the shareware WAD (it is a registered/Doom II texture), so the shareware masked grates `BRNSMALC` and `BRNBIGC` were checked instead; see T1.4a.
 - [ ] **T1.4a Full-IWAD texture check.** With a registered/Ultimate Doom or Doom II IWAD (not in the repo; point a test at it with an environment variable like `ISODOOM_DOOM1_WAD`), check that every texture in TEXTURE1/TEXTURE2 composites, and visually check `MIDGRATE` and a few multi-patch masked midtextures in the `Doom1TextureTests.ExportDebugPngs`-style export. SPEC §5.2.
   *Done when:* the full-IWAD tests pass (skipping without the IWAD) and `MIDGRATE` shows transparent holes and no seams.
-- [ ] **T1.5 Sprite indexing.** Group sprite lumps into sprite, frame and rotation sets, including mirrored pairs (`TROOA2A8`) and rotation 0. SPEC §5.2, §7.5.
+- [x] **T1.5 Sprite indexing.** Group sprite lumps into sprite, frame and rotation sets, including mirrored pairs (`TROOA2A8`) and rotation 0. SPEC §5.2, §7.5.
   *Done when:* tests on `TROO`, `PLAY` and `BAR1` assert the frame and rotation counts and the flip flags.
   *Note (from T1.1):* `WadArchive` merges the sprite namespace by whole lump name only. Chocolate Doom's w_merge.c also lets a PWAD sprite replace a single frame/rotation of an IWAD lump (e.g. a PWAD `TROOA2` drops the `A2` half of the IWAD's `TROOA2A8`). Handle that here, when frames are indexed.
+  *Done:* `Sprites.R_InitSprites` (r_things.c) indexes the sprites named in info.c's `sprnames` (`SpriteNames`), and PWADs replace IWAD sprites per frame/rotation slot; see SPEC §12.
+- [ ] **T1.5a Full-IWAD sprite check.** With a registered/Ultimate Doom or Doom II IWAD (environment variable, as in T1.4a), check that `Sprites.R_InitSprites` indexes all 138 `sprnames` without errors (Doom II has every sprite, so this also checks the ported name table) and that every frame lump decodes. SPEC §5.2.
+  *Done when:* the full-IWAD tests pass (skipping without the IWAD).
 - [ ] **T1.6 Godot WAD viewer scene.** Upload index textures as R8, add a palette shader using `PLAYPAL` and `COLORMAP`, and build a debug scene for browsing textures, flats, sprites and UI graphics, with a light-level slider.
   *Done when:* every graphic in `DOOM1.WAD` can be browsed with correct colours.
+  *Note (from T1.5):* browse sprites through `Sprites` (sprite → frame → rotation) so mirrored rotations show flipped, as the renderer will draw them.
 
 ## M2 — Static level render
 
