@@ -23,7 +23,8 @@
 // clamped to 0-15, as r_segs.c / r_plane.c. The distance (fixed_t, clamped to
 // MAX_DISTANCE units) depends on `light_mode` (IsoDoom.Map.LightDiminishing):
 // 0 none (`light_reference`, map units), 1 player (horizontal distance from
-// `light_origin`, map x/y), 2 camera (view-space depth). Only the
+// `light_origin`, map x/y, at least `light_near`: T3.7), 2 camera (view-space
+// depth). Only the
 // distance is float; the rest is integer, so the CPU can match it exactly.
 //
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
@@ -90,6 +91,8 @@ uniform sampler2D light_tables : filter_nearest, repeat_disable;
 uniform int light_mode = 1;
 uniform vec2 light_origin = vec2(0.0);
 uniform float light_reference = 256.0;
+// The shortest distance Player mode uses (T3.7; IsoDoom.Map.LightTables.DefaultNearDistance).
+uniform float light_near = 80.0;
 // r_main.c centerx (viewwidth / 2): the projection of the wall scale.
 uniform int light_centerx = 160;
 // p_user.c / r_main.c extralight (the muzzle flash: 0-2).
@@ -172,7 +175,7 @@ int light_colormap() {
 	if (colormap_override >= 0) {
 		return colormap_override;
 	}
-	float d = light_mode == 0 ? light_reference : light_mode == 1 ? length(v_map - light_origin) : v_depth;
+	float d = light_mode == 0 ? light_reference : light_mode == 1 ? max(length(v_map - light_origin), light_near) : v_depth;
 	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
 	int lightnum = clamp(v_lightnum, 0, LIGHTLEVELS - 1);
 	if (v_kind == 0) {

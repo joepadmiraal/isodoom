@@ -22,8 +22,10 @@ public enum LightDiminishing
     /// Default: the horizontal (map x/y) distance from the player, as if the
     /// player's eye looked at every point straight on, so light falls off in
     /// a radius around the player and doesn't change as the camera moves or
-    /// the player turns. Until M3/M4 the player is the free-fly camera's pivot
-    /// (or player 1's start under the overview camera).
+    /// the player turns; distances below a minimum (<see cref="LightTables.DefaultNearDistance"/>
+    /// unless set, T3.7) count as that minimum. Until M4 the player is the
+    /// placeholder under the game camera, the free-fly camera's pivot, or
+    /// player 1's start under the overview camera.
     /// </summary>
     Player,
 
@@ -62,10 +64,22 @@ public sealed class LightTables
 
     /// <summary>
     /// The reference distance of <see cref="LightDiminishing.None"/> (map
-    /// units): about how far the isometric camera's view reaches from the
-    /// player to the screen's edge in the short direction.
+    /// units; T3.7): the middle of the pool of light
+    /// <see cref="LightDiminishing.Player"/> draws around the player, so a
+    /// sector looks about as it does near the player in that mode (256, the
+    /// screen edge's distance, made every sector a step or two duller).
     /// </summary>
-    public const int DefaultReferenceDistance = 256;
+    public const int DefaultReferenceDistance = 128;
+
+    /// <summary>
+    /// The shortest distance <see cref="LightDiminishing.Player"/> feeds the
+    /// tables (map units; T3.7): about the nearest floor vanilla's view shows
+    /// (79 units ahead at eye height 41), so the floor around the player,
+    /// which vanilla never draws, isn't a full-bright disc. Walls and sprites
+    /// (the player's own too) take the same floor, so walls and floors at a
+    /// distance still match (both tables give about <c>startmap - 1280 / d</c>).
+    /// </summary>
+    public const int DefaultNearDistance = 80;
 
     /// <summary>
     /// The longest distance worth telling apart (map units, a power of two):

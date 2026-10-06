@@ -100,6 +100,7 @@ public sealed class LevelMesh
     public LightDiminishing LightMode { get; private set; } = LightDiminishing.Player;
     public Vector2 LightOrigin { get; private set; }
     public float LightReference { get; private set; } = LightTables.DefaultReferenceDistance;
+    public float LightNear { get; private set; } = LightTables.DefaultNearDistance;
     public int ExtraLight { get; private set; }
 
     /// <summary>The texture atlas; slot <c>i</c>'s rectangle is <c>Atlas.Rects[i]</c>.</summary>
@@ -239,6 +240,16 @@ public sealed class LevelMesh
         SetParameter("light_reference", mapUnits);
     }
 
+    /// <summary>
+    /// The shortest distance <see cref="LightDiminishing.Player"/> feeds the
+    /// tables, in map units (T3.7; 0 uses them down to the player's position).
+    /// </summary>
+    public void SetLightNear(float mapUnits)
+    {
+        LightNear = mapUnits;
+        SetParameter("light_near", mapUnits);
+    }
+
     /// <summary>r_main.c <c>extralight</c> (the player's weapon flash, 0–2), added to every light number.</summary>
     public void SetExtraLight(int extralight)
     {
@@ -358,6 +369,7 @@ public sealed class LevelMesh
         SetLightDiminishing(LightDiminishing.Player);
         SetLightOrigin(Vector2.Zero);
         SetLightReference(LightTables.DefaultReferenceDistance);
+        SetLightNear(LightTables.DefaultNearDistance);
         SetExtraLight(0);
         SetWallTiling(WallTextureTiling.Vanilla);
         SetCutaway(Cutaway);

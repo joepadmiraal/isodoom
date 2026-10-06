@@ -89,6 +89,9 @@ public partial class LevelCheck : Godot.Node
     private (int R, int G, int B) _background;
     private readonly SortedSet<int> _lightLevels = new(), _contrasts = new(), _colormaps = new();
     private long _lightSkipped;
+
+    /// <summary>Pixels compared whose colormap Player mode's shortest distance (T3.7) changed.</summary>
+    private long _nearCompared;
     private long _maskedOpaque, _maskedClear;
     private IsoCamera? _isoProbe;
     private int _cursorPoints, _cursorInFront;
@@ -788,7 +791,10 @@ public partial class LevelCheck : Godot.Node
 
         GD.Print($"Level check: {map}: light compared at sector light levels {string.Join(" ", _lightLevels)} (>> 4), "
             + $"wall contrasts {string.Join(" ", _contrasts)}, colormaps {string.Join(" ", _colormaps)}; "
-            + $"{_lightSkipped} pixels skipped within {LightMargin} units of a light table step");
+            + $"{_lightSkipped} pixels skipped within {LightMargin} units of a light table step, "
+            + $"{_nearCompared} compared closer to the player than the shortest distance ({m.LightNear}) that it changes");
+        if (_nearCompared == 0)
+            Fail($"{map}: no pixel compared where player light's shortest distance changes the colormap");
         if (_lightLevels.Count < 2)
             Fail($"{map}: fewer than two light levels compared");
         if (!_contrasts.Contains(-1) || !_contrasts.Contains(1))
@@ -1410,17 +1416,21 @@ public partial class LevelCheck : Godot.Node
             LightDiminishing.Camera => depth,
             _ => Math.Sqrt((x - m.LightOrigin.X) * (x - m.LightOrigin.X) + (y - m.LightOrigin.Y) * (y - m.LightOrigin.Y)),
         };
-        int At(double units)
+        // Player mode's shortest distance (T3.7) applies after the margin, so the disc inside it is compared.
+        double near = m.LightMode == LightDiminishing.Player ? m.LightNear : 0;
+        int At(double units, double shortest)
         {
-            int dist = (int)(Math.Clamp(units, 0, LightTables.MaxDistanceUnits) * 65536.0); // the shader's conversion
+            int dist = (int)(Math.Clamp(Math.Max(units, shortest), 0, LightTables.MaxDistanceUnits) * 65536.0); // the shader's conversion
             return wall ? m.Lights.WallColormap(lightlevel, m.ExtraLight, contrast, dist) : m.Lights.PlaneColormap(lightlevel, m.ExtraLight, dist);
         }
-        int colormap = At(d);
-        if (m.LightMode != LightDiminishing.None && (At(d - LightMargin) != colormap || At(d + LightMargin) != colormap))
+        int colormap = At(d, near);
+        if (m.LightMode != LightDiminishing.None && (At(d - LightMargin, near) != colormap || At(d + LightMargin, near) != colormap))
         {
             _lightSkipped++;
             return -1;
         }
+        if (near > 0 && d < near - LightMargin && At(d, 0) != colormap)
+            _nearCompared++;
         _lightLevels.Add(lightlevel >> LightTables.LIGHTSEGSHIFT);
         if (wall && !sprite)
             _contrasts.Add(contrast);

@@ -40,7 +40,7 @@
 // full-bright frames, else scalelight[(sector light >> 4) + extralight]
 // [scale] with no fake contrast, the scale from the distance the walls use
 // (`light_mode`: 0 the reference, 1 the horizontal distance from
-// `light_origin` to the thing, 2 the thing's view depth). The CPU reference is
+// `light_origin` to the thing, at least `light_near`, 2 the thing's view depth). The CPU reference is
 // IsoDoom.Map.LightTables.WallColormap with contrast 0. The level shader's
 // shared uniforms (palette, tables, light settings, sector data) are set on
 // this material by IsoDoom.Render.LevelMesh too.
@@ -72,6 +72,7 @@ uniform sampler2D light_tables : filter_nearest, repeat_disable;
 uniform int light_mode = 1;
 uniform vec2 light_origin = vec2(0.0);
 uniform float light_reference = 256.0;
+uniform float light_near = 80.0;
 uniform int light_centerx = 160;
 uniform int extralight = 0;
 // Readability options (T3.6, IsoDoom.Render.SpriteSettings).
@@ -100,7 +101,7 @@ int sprite_colormap(int flags, int sector, vec3 foot_world, mat4 view) {
 	int lightnum = clamp((light >> LIGHTSEGSHIFT) + extralight, 0, LIGHTLEVELS - 1);
 	vec2 map_xy = vec2(foot_world.x, -foot_world.z) * MAP_UNITS_PER_METRE;
 	float d = light_mode == 0 ? light_reference
-		: light_mode == 1 ? length(map_xy - light_origin)
+		: light_mode == 1 ? max(length(map_xy - light_origin), light_near)
 		: -(view * vec4(foot_world, 1.0)).z * MAP_UNITS_PER_METRE;
 	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
 	int scale = dist <= 0 ? MAXLIGHTSCALE - 1 : min((light_centerx << 20) / dist, MAXLIGHTSCALE - 1);

@@ -49,7 +49,10 @@ namespace IsoDoom.Game;
 /// actors; default off), <c>--level-sprite-outline=off|INDEX</c> (a one-texel
 /// outline in palette index INDEX; default off);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
-/// default player); <c>--level-light-origin=X,Y</c> (the player position light
+/// default player); <c>--level-light-near=UNITS</c> (the shortest distance the
+/// player mode uses, T3.7; default 80, 0 for the tables down to the player);
+/// <c>--level-light-reference=UNITS</c> (the distance of the none mode; default 128);
+/// <c>--level-light-origin=X,Y</c> (the player position light
 /// diminishing uses, in map units; by default the free-fly camera's pivot, or
 /// player 1's start under the overview camera);
 /// <c>--level-background=RRGGBB</c> (the void's colour, default black; a
@@ -644,7 +647,7 @@ public partial class LevelScene : Node3D
             {
                 LightDiminishing.None => $"light: none (fixed distance {Mesh.LightReference:F0})\n",
                 LightDiminishing.Camera => "light: camera depth\n",
-                _ => $"light: player distance from ({o.X:F0}, {o.Y:F0})\n",
+                _ => $"light: player distance from ({o.X:F0}, {o.Y:F0}), at least {Mesh.LightNear:F0}\n",
             });
         }
         text.Append(_status);
@@ -764,6 +767,10 @@ public partial class LevelScene : Node3D
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
+        if (WadLocator.GetUserArg("--level-light-near") is string near)
+            mesh.SetLightNear(Math.Max(0, ParseFloat(near, "--level-light-near")));
+        if (WadLocator.GetUserArg("--level-light-reference") is string reference)
+            mesh.SetLightReference(Math.Max(0, ParseFloat(reference, "--level-light-reference")));
         mesh.SetSprites(SpriteOptions);
 
         Chunks = new MeshInstance3D?[mesh.SectorMeshes.Length];
