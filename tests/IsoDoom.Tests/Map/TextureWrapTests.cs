@@ -65,4 +65,20 @@ public class TextureWrapTests
         Assert.Equal((63, 1), TextureWrap.FlatTexel(-1, -(1 << FRACBITS) - 1));
         Assert.Equal((32, 32), TextureWrap.FlatTexel(96 << FRACBITS, -(32 << FRACBITS)));
     }
+
+    [Fact]
+    public void MaskedMiddlesWrapColumnsButDrawRowsOnce()
+    {
+        // T3.1: 72 x 64. Columns as solid walls (width mask in vanilla), rows 0-63 only, no tutti-frutti.
+        Assert.Equal((0, 0), TextureWrap.MaskedTexel(64, 0, 72, 64, WallTextureTiling.Vanilla));
+        Assert.Equal((64, 0), TextureWrap.MaskedTexel(64, 0, 72, 64, WallTextureTiling.TextureSize));
+        Assert.Equal((63, 63), TextureWrap.MaskedTexel(-1, 63, 72, 64, WallTextureTiling.Vanilla));
+        Assert.Equal((71, 63), TextureWrap.MaskedTexel(-1, 63, 72, 64, WallTextureTiling.TextureSize));
+        foreach (WallTextureTiling tiling in new[] { WallTextureTiling.Vanilla, WallTextureTiling.TextureSize })
+        {
+            Assert.Null(TextureWrap.MaskedTexel(5, 64, 72, 64, tiling));
+            Assert.Null(TextureWrap.MaskedTexel(5, -1, 72, 64, tiling));
+            Assert.Null(TextureWrap.MaskedTexel(5, 128, 72, 64, tiling));
+        }
+    }
 }

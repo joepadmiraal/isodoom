@@ -56,6 +56,22 @@ public static class TextureWrap
     }
 
     /// <summary>
+    /// The texel (column, row) of a masked middle texture of the given size
+    /// (SPEC §7.2, T3.1), or null where it draws nothing: columns wrap as
+    /// <see cref="WallTexel"/>'s (vanilla's <c>R_GetColumn</c> applies the
+    /// width mask to masked columns too), but rows don't repeat: the texture
+    /// is drawn once, rows 0 to <paramref name="height"/> − 1 (r_segs.c
+    /// <c>R_RenderMaskedSegRange</c>, r_things.c <c>R_DrawMaskedColumn</c>).
+    /// Whether the texel is drawn is the texture's opacity mask.
+    /// </summary>
+    public static (int Column, int Row)? MaskedTexel(int column, int row, int width, int height, WallTextureTiling tiling)
+    {
+        if (row < 0 || row >= height)
+            return null;
+        return (tiling == WallTextureTiling.TextureSize ? Mod(column, width) : column & TextureWidthMask(width), row);
+    }
+
+    /// <summary>
     /// The texel (column, row) of a flat at map position (<paramref name="x"/>,
     /// <paramref name="y"/>) (fixed_t): r_draw.c <c>R_DrawSpan</c> with
     /// r_plane.c's <c>xfrac = x</c>, <c>yfrac = −y</c>, so flats are aligned

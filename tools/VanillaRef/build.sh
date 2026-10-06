@@ -19,4 +19,6 @@ cd doomgeneric
 sed -e 's/doomgeneric_xlib.o/doomgeneric_dump.o/' -e 's/-lX11//' -e 's/^CC=clang.*/CC=cc/' \
     -e 's/-DSNDSERV/-DSNDSERV -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -w/' Makefile > Makefile.dump
 make -s -f Makefile.dump -j"$(nproc)" >/dev/null
+# compare.sh rebuilds when the patch or dump.c changed since (T3.1: masked middles).
+cat "$here/ref.patch" "$here/dump.c" | sha256sum > "$dir/ref.stamp"
 echo "$dir/doomgeneric/doomgeneric"

@@ -459,7 +459,7 @@ public partial class LevelScene : Node3D
         FrameCamera();
         if (FreeFly is not null)
             JumpToStart();
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");

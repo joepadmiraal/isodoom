@@ -14,7 +14,11 @@ images=""
 if [ "${1:-}" = "--images" ]; then images=--images; shift; fi
 if [ "${1:-}" = "--" ]; then shift; fi
 ref=${VANILLA_REF:-$HOME/.cache/isodoom/vanilla-ref}/doomgeneric/doomgeneric
-[ -x "$ref" ] || ref=$("$here/build.sh" "$(dirname "$(dirname "$ref")")")
+refdir=$(dirname "$(dirname "$ref")")
+# Build, or rebuild when ref.patch or dump.c changed since the last build.
+if [ ! -x "$ref" ] || [ "$(cat "$here/ref.patch" "$here/dump.c" | sha256sum)" != "$(cat "$refdir/ref.stamp" 2>/dev/null)" ]; then
+    ref=$("$here/build.sh" "$refdir")
+fi
 if [[ $map =~ ^E([1-9])M([1-9])$ ]]; then warp=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")
 elif [[ $map =~ ^MAP([0-9][0-9])$ ]]; then warp=("$((10#${BASH_REMATCH[1]}))")
 else echo "unknown map $map" >&2; exit 1; fi

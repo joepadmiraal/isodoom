@@ -10,13 +10,18 @@ namespace IsoDoom.Render;
 /// <summary>
 /// The level's GPU side (SPEC §7.2, T2.5): per-sector <see cref="ArrayMesh"/>
 /// chunks built from <see cref="FloorTriangles"/> (T2.4) and
-/// <see cref="WallSections"/> (T2.3), and the one material that draws them
-/// all with <c>shaders/level.gdshader</c>.
+/// <see cref="WallSections"/> (T2.3), and the two materials that draw them
+/// all: <c>shaders/level.gdshader</c> (floors and solid walls) and
+/// <c>shaders/level_masked.gdshader</c> (masked middles, T3.1).
 /// <list type="bullet">
 /// <item><b>Chunks:</b> sector <c>s</c>'s mesh holds its floor triangles and
 /// the solid wall sections of the sides facing into it (their front sector is
-/// <c>s</c>). Masked middles are left for M3 and sections with texture 0
-/// (<c>-</c>) are not drawn. Vertices hold map x/y and plane references, not
+/// <c>s</c>) in one surface with <see cref="Material"/>, and those sides'
+/// masked middles in a second surface with <see cref="MaskedMaterial"/>
+/// (alpha scissor; each surface only when it has something). Sections with
+/// texture 0 (<c>-</c>) are not drawn. Every wall quad is one piece of its
+/// side (<see cref="WallPieces"/>: per seg, on the floor's corners, vanilla's
+/// seg offsets). Vertices hold map x/y and plane references, not
 /// heights: the vertex shader places them from the per-sector data texture.</item>
 /// <item><b>Textures:</b> every wall texture and flat the level uses goes into
 /// one RG8 index atlas (<see cref="TextureAtlas"/>); a texture slot's atlas
@@ -40,6 +45,9 @@ public sealed class LevelMesh
 {
     public const string ShaderPath = "res://shaders/level.gdshader";
 
+    /// <summary>The masked middles' variant of the level shader (T3.1).</summary>
+    public const string MaskedShaderPath = "res://shaders/level_masked.gdshader";
+
     /// <summary>Map units per Godot metre (SPEC §7.1).</summary>
     public const float MapUnitsPerMetre = 32f;
 
@@ -47,7 +55,7 @@ public sealed class LevelMesh
     public const int DataWidth = 256;
 
     /// <summary>Vertex kinds (<c>CUSTOM0.x</c>).</summary>
-    public const int KindFloor = 0, KindWall = 1;
+    public const int KindFloor = 0, KindWall = 1, KindMasked = 2;
 
     /// <summary>Half the height range of a chunk's culling box, in metres (any fixed_t height fits).</summary>
     private const float HeightRange = 32768f / MapUnitsPerMetre;
@@ -99,15 +107,22 @@ public sealed class LevelMesh
     /// <summary>The chunk of each sector (null when the sector has no floor and no wall).</summary>
     public ArrayMesh?[] SectorMeshes { get; private set; } = Array.Empty<ArrayMesh?>();
 
-    /// <summary>The material every chunk uses.</summary>
+    /// <summary>The material of every chunk's floor and solid walls (its first surface).</summary>
     public ShaderMaterial Material { get; private set; } = null!;
+
+    /// <summary>The material of the masked middles (a chunk's last surface, when it has any; T3.1). Its parameters follow <see cref="Material"/>'s.</summary>
+    public ShaderMaterial MaskedMaterial { get; private set; } = null!;
+
+    /// <summary>Both materials, for setting a shader parameter on each.</summary>
+    public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial };
 
     public ImageTexture AtlasTexture { get; private set; } = null!;
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
-    /// <summary>Number of wall quads in the meshes (one per <see cref="WallPiece"/> of each drawn section), and of floor triangles.</summary>
+    /// <summary>Number of solid wall quads in the meshes (one per <see cref="WallPiece"/> of each drawn section), of masked middle quads, and of floor triangles.</summary>
     public int WallQuads { get; private set; }
+    public int MaskedQuads { get; private set; }
     public int FloorTriangleCount { get; private set; }
 
     /// <summary>The level's bounds in Godot space at its load-time heights.</summary>
@@ -161,15 +176,18 @@ public sealed class LevelMesh
         return mesh;
     }
 
-    /// <summary>Whether the meshes draw <paramref name="s"/>: solid sections with a texture (masked middles come in M3).</summary>
-    public static bool IsDrawn(WallSection s) => s.Kind != WallSectionKind.MaskedMiddle && s.Texture != 0;
+    /// <summary>Whether the meshes draw <paramref name="s"/>: every section with a texture (<see cref="IsMasked"/> ones in the masked pass).</summary>
+    public static bool IsDrawn(WallSection s) => s.Texture != 0;
+
+    /// <summary>Whether <paramref name="s"/> is drawn by <see cref="MaskedMaterial"/> (a masked middle, T3.1).</summary>
+    public static bool IsMasked(WallSection s) => s.Kind == WallSectionKind.MaskedMiddle;
 
     /// <summary>A map position (fixed_t x, y) and height (map units) in Godot space.</summary>
     public static Vector3 ToGodot(int x, int y, float height) =>
         new((float)(x / 65536.0 / MapUnitsPerMetre), height / MapUnitsPerMetre, (float)(-y / 65536.0 / MapUnitsPerMetre));
 
     /// <summary>Selects the wall tiling (<see cref="WallTextureTiling"/>).</summary>
-    public void SetWallTiling(WallTextureTiling tiling) => Material.SetShaderParameter("wall_tiling", (int)tiling);
+    public void SetWallTiling(WallTextureTiling tiling) => SetParameter("wall_tiling", (int)tiling);
 
     /// <summary>
     /// Forces one COLORMAP row everywhere (0–33), or -1 for the sector lights:
@@ -179,7 +197,7 @@ public sealed class LevelMesh
     public void SetColormapOverride(int map)
     {
         ColormapOverride = map;
-        Material.SetShaderParameter("colormap_override", map);
+        SetParameter("colormap_override", map);
     }
 
     /// <summary>The forced COLORMAP row (<see cref="SetColormapOverride"/>), -1 for none.</summary>
@@ -189,32 +207,32 @@ public sealed class LevelMesh
     public void SetLightDiminishing(LightDiminishing mode)
     {
         LightMode = mode;
-        Material.SetShaderParameter("light_mode", (int)mode);
+        SetParameter("light_mode", (int)mode);
     }
 
     /// <summary>The player position for <see cref="LightDiminishing.Player"/>, in map units (x, y).</summary>
     public void SetLightOrigin(Vector2 mapUnits)
     {
         LightOrigin = mapUnits;
-        Material.SetShaderParameter("light_origin", mapUnits);
+        SetParameter("light_origin", mapUnits);
     }
 
     /// <summary>The distance of <see cref="LightDiminishing.None"/>, in map units.</summary>
     public void SetLightReference(float mapUnits)
     {
         LightReference = mapUnits;
-        Material.SetShaderParameter("light_reference", mapUnits);
+        SetParameter("light_reference", mapUnits);
     }
 
     /// <summary>r_main.c <c>extralight</c> (the player's weapon flash, 0–2), added to every light number.</summary>
     public void SetExtraLight(int extralight)
     {
         ExtraLight = extralight;
-        Material.SetShaderParameter("extralight", extralight);
+        SetParameter("extralight", extralight);
     }
 
     /// <summary>Selects the PLAYPAL palette.</summary>
-    public void SetPalette(int palette) => Material.SetShaderParameter("palette_index", palette);
+    public void SetPalette(int palette) => SetParameter("palette_index", palette);
 
     /// <summary>
     /// Copies every sector's current floor and ceiling height and light level
@@ -232,6 +250,13 @@ public sealed class LevelMesh
 
     /// <summary>The <c>texture_info</c> texel of texture slot <paramref name="slot"/> as uploaded: atlas x, y, width, height.</summary>
     public Color TextureInfo(int slot) => _infoImage.GetPixel(slot % DataWidth, slot / DataWidth);
+
+    /// <summary>Sets a shader parameter on both materials.</summary>
+    private void SetParameter(string name, Variant value)
+    {
+        Material.SetShaderParameter(name, value);
+        MaskedMaterial.SetShaderParameter(name, value);
+    }
 
     private void WriteSector(Sector s) =>
         _sectorImage.SetPixel(s.Index % DataWidth, s.Index / DataWidth,
@@ -256,15 +281,16 @@ public sealed class LevelMesh
         SectorDataTexture = ImageTexture.CreateFromImage(_sectorImage);
 
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
-        Material.SetShaderParameter("atlas", AtlasTexture);
-        Material.SetShaderParameter("texture_info", TextureInfoTexture);
-        Material.SetShaderParameter("sector_data", SectorDataTexture);
-        Material.SetShaderParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
-        Material.SetShaderParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
+        MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
+        SetParameter("atlas", AtlasTexture);
+        SetParameter("texture_info", TextureInfoTexture);
+        SetParameter("sector_data", SectorDataTexture);
+        SetParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
+        SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
         LightTablesTexture = ImageTexture.CreateFromImage(
             Image.CreateFromData(LightTables.TableWidth, LightTables.TableHeight, false, Image.Format.R8, Lights.ToBytes()));
-        Material.SetShaderParameter("light_tables", LightTablesTexture);
-        Material.SetShaderParameter("light_centerx", Lights.CenterX);
+        SetParameter("light_tables", LightTablesTexture);
+        SetParameter("light_centerx", Lights.CenterX);
         SetPalette(0);
         SetColormapOverride(-1);
         SetLightDiminishing(LightDiminishing.Player);
@@ -302,6 +328,7 @@ public sealed class LevelMesh
     private void BuildChunks()
     {
         var chunks = new Chunk?[Level.Sectors.Length];
+        var maskedChunks = new Chunk?[Level.Sectors.Length];
         Chunk ChunkOf(int sector) => chunks[sector] ??= new Chunk();
 
         foreach (SectorFloor floor in Floors.BySector)
@@ -323,8 +350,9 @@ public sealed class LevelMesh
         {
             if (!IsDrawn(s))
                 continue;
-            Chunk c = ChunkOf(s.FrontSector.Index);
-            var c0 = new Vector4(KindWall, TextureSlot(s.Texture), s.FrontSector.Index, s.BackSector?.Index ?? -1);
+            bool masked = IsMasked(s);
+            Chunk c = masked ? maskedChunks[s.FrontSector.Index] ??= new Chunk() : ChunkOf(s.FrontSector.Index);
+            var c0 = new Vector4(masked ? KindMasked : KindWall, TextureSlot(s.Texture), s.FrontSector.Index, s.BackSector?.Index ?? -1);
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
             foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
             {
@@ -339,7 +367,10 @@ public sealed class LevelMesh
                 // Seen from the front sector (on the side's right), V1 is on the left:
                 // V1b, V1t, V2t is clockwise on screen, Godot's front face.
                 c.Indices.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
-                WallQuads++;
+                if (masked)
+                    MaskedQuads++;
+                else
+                    WallQuads++;
             }
         }
 
@@ -351,34 +382,39 @@ public sealed class LevelMesh
         Aabb? bounds = null;
         for (int s = 0; s < chunks.Length; s++)
         {
-            Chunk? c = chunks[s];
-            if (c is null)
+            if (chunks[s] is null && maskedChunks[s] is null)
                 continue;
-            var arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = c.Vertices.ToArray();
-            arrays[(int)Mesh.ArrayType.TexUV] = c.Uv.ToArray();
-            arrays[(int)Mesh.ArrayType.Custom0] = c.Custom0.ToArray();
-            arrays[(int)Mesh.ArrayType.Custom1] = c.Custom1.ToArray();
-            arrays[(int)Mesh.ArrayType.Custom2] = c.Custom2.ToArray();
-            arrays[(int)Mesh.ArrayType.Index] = c.Indices.ToArray();
             var mesh = new ArrayMesh();
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, flags: custom);
-            mesh.SurfaceSetMaterial(0, Material);
+            Vector3? min = null, max = null;
+            foreach ((Chunk? c, ShaderMaterial material) in new[] { (chunks[s], Material), (maskedChunks[s], MaskedMaterial) })
+            {
+                if (c is null)
+                    continue;
+                var arrays = new Godot.Collections.Array();
+                arrays.Resize((int)Mesh.ArrayType.Max);
+                arrays[(int)Mesh.ArrayType.Vertex] = c.Vertices.ToArray();
+                arrays[(int)Mesh.ArrayType.TexUV] = c.Uv.ToArray();
+                arrays[(int)Mesh.ArrayType.Custom0] = c.Custom0.ToArray();
+                arrays[(int)Mesh.ArrayType.Custom1] = c.Custom1.ToArray();
+                arrays[(int)Mesh.ArrayType.Custom2] = c.Custom2.ToArray();
+                arrays[(int)Mesh.ArrayType.Index] = c.Indices.ToArray();
+                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, flags: custom);
+                mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
+                foreach (Vector3 v in c.Vertices)
+                {
+                    min = min?.Min(v) ?? v;
+                    max = max?.Max(v) ?? v;
+                }
+            }
 
             // The shader moves vertices vertically, so cull with the full height range.
-            Vector3 min = c.Vertices[0], max = c.Vertices[0];
-            foreach (Vector3 v in c.Vertices)
-            {
-                min = min.Min(v);
-                max = max.Max(v);
-            }
-            mesh.CustomAabb = new Aabb(new Vector3(min.X, -HeightRange, min.Z), new Vector3(max.X - min.X, 2 * HeightRange, max.Z - min.Z));
+            (Vector3 lo, Vector3 hi) = (min!.Value, max!.Value);
+            mesh.CustomAabb = new Aabb(new Vector3(lo.X, -HeightRange, lo.Z), new Vector3(hi.X - lo.X, 2 * HeightRange, hi.Z - lo.Z));
             SectorMeshes[s] = mesh;
 
             Sector sector = Level.Sectors[s];
-            var box = new Aabb(new Vector3(min.X, sector.FloorHeight / 65536f / MapUnitsPerMetre, min.Z),
-                new Vector3(max.X - min.X, Math.Max(0, sector.CeilingHeight - sector.FloorHeight) / 65536f / MapUnitsPerMetre, max.Z - min.Z));
+            var box = new Aabb(new Vector3(lo.X, sector.FloorHeight / 65536f / MapUnitsPerMetre, lo.Z),
+                new Vector3(hi.X - lo.X, Math.Max(0, sector.CeilingHeight - sector.FloorHeight) / 65536f / MapUnitsPerMetre, hi.Z - lo.Z));
             bounds = bounds is Aabb b ? b.Merge(box) : box;
         }
         Bounds = bounds ?? new Aabb();

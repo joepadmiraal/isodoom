@@ -21,7 +21,9 @@ namespace IsoDoom.Game;
 /// texture slot must name its texture and point (through <c>texture_info</c>)
 /// at an atlas rectangle holding exactly its composite, every floor's slot
 /// exactly its flat; every chunk's vertex arrays must hold the sector's floor
-/// triangles and its wall quads in order, with the right positions, texture
+/// triangles and its wall quads in order (masked middles in a second surface
+/// with the masked material, whose parameters must equal the level
+/// material's; T3.1), with the right positions, texture
 /// columns, slots and sector ids, and the plane references in the attributes,
 /// evaluated as the vertex shader does from the uploaded data texels, must
 /// give <see cref="WallSection.Span"/> and the texture anchor. The atlas,
@@ -39,7 +41,8 @@ namespace IsoDoom.Game;
 /// the whole map; the void must show the background, a colour in no palette);
 /// side-on (orthographic, perpendicular) onto every drawn axis-aligned wall
 /// section, in vanilla tiling and again in texture-size tiling where the two
-/// differ; and for the moved sector an oblique view of its floor before and
+/// differ (masked middles over their whole opening: opaque texels drawn once,
+/// holes and the rows above and below the texture showing the background); and for the moved sector an oblique view of its floor before and
 /// after the move (the expected texels must change and the drawn ones follow)
 /// and side-on views of every wall that uses its planes. Light (T2.8): all of
 /// it with the default player-distance mapping from player 1's start; the
@@ -74,6 +77,7 @@ public partial class LevelCheck : Godot.Node
     private (int R, int G, int B) _background;
     private readonly SortedSet<int> _lightLevels = new(), _contrasts = new(), _colormaps = new();
     private long _lightSkipped;
+    private long _maskedOpaque, _maskedClear;
 
     public LevelCheck(LevelScene scene) => _scene = scene;
 
@@ -265,6 +269,15 @@ public partial class LevelCheck : Godot.Node
             || m.Material.GetShaderParameter("texture_info").As<Texture2D>() != m.TextureInfoTexture
             || m.Material.GetShaderParameter("sector_data").As<Texture2D>() != m.SectorDataTexture)
             Fail($"{map}: the material doesn't bind the level's atlas and data textures");
+        // The masked middles' material (T3.1) gets every parameter the level material has.
+        foreach (Godot.Collections.Dictionary parameter in m.Material.Shader.GetShaderUniformList())
+        {
+            string name = parameter["name"].AsString();
+            Variant a = m.Material.GetShaderParameter(name), b = m.MaskedMaterial.GetShaderParameter(name);
+            if (a.VariantType != b.VariantType || a.ToString() != b.ToString()
+                || (a.VariantType == Variant.Type.Object && a.AsGodotObject() != b.AsGodotObject()))
+                Fail($"{map}: the masked material's {name} ({b}) differs from the level material's ({a})");
+        }
         return used.Length;
     }
 
@@ -292,16 +305,20 @@ public partial class LevelCheck : Godot.Node
     /// <summary>
     /// Each sector chunk's vertex arrays against its floor triangles and wall
     /// sections, with the plane references evaluated from the uploaded data
-    /// texels as the vertex shader does. Returns (sections, vertices) checked.
+    /// texels as the vertex shader does. A chunk has a first surface with
+    /// <see cref="LevelMesh.Material"/> (floor, then solid wall quads) when it
+    /// has either, and a last one with <see cref="LevelMesh.MaskedMaterial"/>
+    /// (masked middle quads, T3.1) when it has any. Returns (sections, vertices) checked.
     /// </summary>
     private (int Sections, int Vertices) CheckChunks(LevelMesh m, string map)
     {
         Level level = m.Level;
         var walls = new List<WallSection>?[level.Sectors.Length];
+        var maskedWalls = new List<WallSection>?[level.Sectors.Length];
         foreach (WallSection s in m.Walls.Sections)
         {
             if (LevelMesh.IsDrawn(s))
-                (walls[s.FrontSector.Index] ??= new List<WallSection>()).Add(s);
+                ((LevelMesh.IsMasked(s) ? maskedWalls : walls)[s.FrontSector.Index] ??= new List<WallSection>()).Add(s);
         }
         var floors = new SectorFloor?[level.Sectors.Length];
         foreach (SectorFloor f in m.Floors.BySector)
@@ -310,144 +327,186 @@ public partial class LevelCheck : Godot.Node
         var sideSegs = new List<Seg>?[level.Lines.Length * 2];
         foreach (Seg seg in level.Segs)
             (sideSegs[seg.LineDef.Index * 2 + seg.Side] ??= new List<Seg>()).Add(seg);
-        int sectionCount = 0, vertexCount = 0, quads = 0;
+        int sectionCount = 0, vertexCount = 0, quads = 0, maskedQuads = 0;
         for (int sector = 0; sector < level.Sectors.Length; sector++)
         {
             string what = $"{map}: sector {sector}";
             SectorFloor? floor = floors[sector] is { TriangleCount: > 0 } f ? f : null;
             List<WallSection> sectorWalls = walls[sector] ?? new List<WallSection>();
+            List<WallSection> sectorMasked = maskedWalls[sector] ?? new List<WallSection>();
             int floorVertices = floor?.Vertices.Count ?? 0;
-            int quadCount = 0;
-            foreach (WallSection s in sectorWalls)
-                quadCount += m.Pieces.Of(s.Line, s.Side).Count;
-            int expectedVertices = floorVertices + 4 * quadCount;
+            int QuadCount(List<WallSection> list)
+            {
+                int n = 0;
+                foreach (WallSection s in list)
+                    n += m.Pieces.Of(s.Line, s.Side).Count;
+                return n;
+            }
+            int solidVertices = floorVertices + 4 * QuadCount(sectorWalls);
+            int maskedVertices = 4 * QuadCount(sectorMasked);
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
-            if (expectedVertices == 0)
+            if (solidVertices + maskedVertices == 0)
             {
                 if (mesh is not null)
                     Fail($"{what}: has a chunk but no floor or wall");
                 continue;
             }
-            if (mesh is null || mesh.GetSurfaceCount() != 1)
+            int surfaces = (solidVertices > 0 ? 1 : 0) + (maskedVertices > 0 ? 1 : 0);
+            if (mesh is null || mesh.GetSurfaceCount() != surfaces)
             {
-                Fail($"{what}: no chunk (or not one surface)");
+                Fail($"{what}: no chunk (or not {surfaces} surface(s))");
                 continue;
             }
-            if (mesh.SurfaceGetMaterial(0) != m.Material)
-                Fail($"{what}: the chunk doesn't use the level material");
             if (_scene.Chunks.Length <= sector || _scene.Chunks[sector]?.Mesh != mesh)
                 Fail($"{what}: the chunk is not in the scene");
 
-            Godot.Collections.Array arrays = mesh.SurfaceGetArrays(0);
-            Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
-            Vector2[] uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
-            float[] c0 = arrays[(int)Mesh.ArrayType.Custom0].AsFloat32Array();
-            float[] c1 = arrays[(int)Mesh.ArrayType.Custom1].AsFloat32Array();
-            float[] c2 = arrays[(int)Mesh.ArrayType.Custom2].AsFloat32Array();
-            int[] idx = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
-            int expectedIndices = (floor?.Indices.Count ?? 0) + 6 * quadCount;
-            if (pos.Length != expectedVertices || uv.Length != expectedVertices || c0.Length != 4 * expectedVertices
-                || c1.Length != 4 * expectedVertices || c2.Length != 4 * expectedVertices || idx.Length != expectedIndices)
+            int surface = 0;
+            if (solidVertices > 0)
             {
-                Fail($"{what}: {pos.Length} vertices / {idx.Length} indices, expected {expectedVertices} / {expectedIndices}");
-                continue;
+                if (mesh.SurfaceGetMaterial(surface) != m.Material)
+                    Fail($"{what}: the chunk's first surface doesn't use the level material");
+                quads += CheckSurface(m, mesh, surface++, sector, floor, sectorWalls, sideSegs, what, ref sectionCount, ref vertexCount);
             }
-            vertexCount += expectedVertices;
-
-            // Floor: its corners, the flat's slot, the triangle list.
-            if (floor is not null)
+            if (maskedVertices > 0)
             {
-                int flatSlot = m.FlatSlot(level.Sectors[sector].FloorPic);
-                for (int i = 0; i < floorVertices; i++)
-                {
-                    PolygonVertex v = floor.Vertices[i];
-                    if (!Near(pos[i], LevelMesh.ToGodot(v.X, v.Y, 0)) || !Near(uv[i], new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)))
-                        || !Custom(c0, i, LevelMesh.KindFloor, flatSlot, sector, -1))
-                    {
-                        Fail($"{what}: floor vertex {i} differs");
-                        break;
-                    }
-                }
-                for (int i = 0; i < floor.Indices.Count; i++)
-                {
-                    if (idx[i] != floor.Indices[i])
-                    {
-                        Fail($"{what}: floor index {i} is {idx[i]}, expected {floor.Indices[i]}");
-                        break;
-                    }
-                }
+                if (mesh.SurfaceGetMaterial(surface) != m.MaskedMaterial)
+                    Fail($"{what}: the chunk's masked surface doesn't use the masked material");
+                maskedQuads += CheckSurface(m, mesh, surface, sector, null, sectorMasked, sideSegs, $"{what} (masked)", ref sectionCount, ref vertexCount);
             }
-
-            // Walls: one quad per piece of each drawn section's side (T2.9), A bottom, A top, B top, B bottom.
-            int quad = 0;
-            for (int q = 0; q < sectorWalls.Count; q++)
-            {
-                WallSection s = sectorWalls[q];
-                string sw = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind}";
-                sectionCount++;
-                IReadOnlyList<WallPiece> pieces = m.Pieces.Of(s.Line, s.Side);
-                CheckPieces(s, sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
-                foreach (WallPiece piece in pieces)
-                {
-                    int contrast = piece.Contrast;
-                    int b = floorVertices + 4 * quad, bi = (floor?.Indices.Count ?? 0) + 6 * quad;
-                    quad++;
-                    Vector3 p1 = LevelMesh.ToGodot(piece.A.X, piece.A.Y, 0), p2 = LevelMesh.ToGodot(piece.B.X, piece.B.Y, 0);
-                    Vector3[] corners = { p1, p1, p2, p2 };
-                    double ua = (s.TextureOffset + (long)piece.ColumnA) / 65536.0, ub = (s.TextureOffset + (long)piece.ColumnB) / 65536.0;
-                    double[] us = { ua, ua, ub, ub };
-                    float[] vs = { 0, 1, 1, 0 };
-                    for (int k = 0; k < 4; k++)
-                    {
-                        if (!Near(pos[b + k], corners[k]))
-                            Fail($"{sw}: corner {k} at {pos[b + k]}, expected {corners[k]}");
-                        if (Math.Abs(uv[b + k].X - us[k]) > 1e-3 || uv[b + k].Y != vs[k])
-                            Fail($"{sw}: corner {k} texture coordinate {uv[b + k]}, expected ({us[k]}, {vs[k]})");
-                        if (!Custom(c0, b + k, LevelMesh.KindWall, m.TextureSlot(s.Texture), sector, s.BackSector?.Index ?? -1))
-                            Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected wall, slot {m.TextureSlot(s.Texture)}, {sector}, {s.BackSector?.Index ?? -1}");
-                        if (c2[(b + k) * 4 + 2] != contrast)
-                            Fail($"{sw}: corner {k}: fake contrast {c2[(b + k) * 4 + 2]}, expected {contrast}");
-                    }
-                    int[] quadIndices = { b, b + 1, b + 2, b, b + 2, b + 3 };
-                    for (int k = 0; k < 6; k++)
-                    {
-                        if (idx[bi + k] != quadIndices[k])
-                        {
-                            Fail($"{sw}: quad indices differ");
-                            break;
-                        }
-                    }
-
-                    // The vertex shader's evaluation of the plane references, from the uploaded data texels.
-                    for (int k = 0; k < 4; k++)
-                    {
-                        int front = (int)c0[(b + k) * 4 + 2], back = (int)c0[(b + k) * 4 + 3];
-                        if (front < 0 || front >= level.Sectors.Length || back >= level.Sectors.Length)
-                        {
-                            Fail($"{sw}: corner {k}: sector ids {front}, {back} out of range");
-                            break;
-                        }
-                        Color fd = m.SectorData(front), bd = back >= 0 ? m.SectorData(back) : fd;
-                        float bottom = Math.Max(PlaneHeight((int)c1[(b + k) * 4], fd, bd) + c1[(b + k) * 4 + 1], fd.R);
-                        float top = Math.Min(PlaneHeight((int)c1[(b + k) * 4 + 2], fd, bd) + c1[(b + k) * 4 + 3], fd.G);
-                        top = Math.Max(top, bottom);
-                        float textureTop = PlaneHeight((int)c2[(b + k) * 4], fd, bd) + c2[(b + k) * 4 + 1];
-                        (int sb, int st) = s.Span();
-                        float eb = (float)(sb / 65536.0), et = (float)(Math.Max(st, sb) / 65536.0);
-                        float ett = (float)(s.TextureTop.Evaluate(s.FrontSector, s.BackSector) / 65536.0);
-                        if (Math.Abs(bottom - eb) > 1e-3 || Math.Abs(top - et) > 1e-3 || Math.Abs(textureTop - ett) > 1e-3)
-                        {
-                            Fail($"{sw}: corner {k}: the attributes give span {bottom}..{top}, row 0 at {textureTop}; expected {eb}..{et}, row 0 at {ett}");
-                            break;
-                        }
-                    }
-                }
-            }
-            quads += quad;
         }
         if (quads != m.WallQuads)
-            Fail($"{map}: {m.WallQuads} wall quads, {quads} expected ({sectionCount} drawn sections)");
+            Fail($"{map}: {m.WallQuads} wall quads, {quads} expected");
+        if (maskedQuads != m.MaskedQuads)
+            Fail($"{map}: {m.MaskedQuads} masked middle quads, {maskedQuads} expected");
         return (sectionCount, vertexCount);
+    }
+
+    /// <summary>
+    /// One surface of a chunk: <paramref name="floor"/>'s triangles (if any),
+    /// then one quad per piece of each of <paramref name="sectionsOfSurface"/>
+    /// (T2.9), A bottom, A top, B top, B bottom. Returns the wall quads checked.
+    /// </summary>
+    private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<WallSection> sectionsOfSurface,
+        List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
+    {
+        Level level = m.Level;
+        int floorVertices = floor?.Vertices.Count ?? 0;
+        int quadCount = 0;
+        foreach (WallSection s in sectionsOfSurface)
+            quadCount += m.Pieces.Of(s.Line, s.Side).Count;
+        int expectedVertices = floorVertices + 4 * quadCount;
+        Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
+        Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        Vector2[] uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        float[] c0 = arrays[(int)Mesh.ArrayType.Custom0].AsFloat32Array();
+        float[] c1 = arrays[(int)Mesh.ArrayType.Custom1].AsFloat32Array();
+        float[] c2 = arrays[(int)Mesh.ArrayType.Custom2].AsFloat32Array();
+        int[] idx = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        int expectedIndices = (floor?.Indices.Count ?? 0) + 6 * quadCount;
+        if (pos.Length != expectedVertices || uv.Length != expectedVertices || c0.Length != 4 * expectedVertices
+            || c1.Length != 4 * expectedVertices || c2.Length != 4 * expectedVertices || idx.Length != expectedIndices)
+        {
+            Fail($"{what}: {pos.Length} vertices / {idx.Length} indices, expected {expectedVertices} / {expectedIndices}");
+            return 0;
+        }
+        vertexCount += expectedVertices;
+
+        // Floor: its corners, the flat's slot, the triangle list.
+        if (floor is not null)
+        {
+            int flatSlot = m.FlatSlot(level.Sectors[sector].FloorPic);
+            for (int i = 0; i < floorVertices; i++)
+            {
+                PolygonVertex v = floor.Vertices[i];
+                if (!Near(pos[i], LevelMesh.ToGodot(v.X, v.Y, 0)) || !Near(uv[i], new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)))
+                    || !Custom(c0, i, LevelMesh.KindFloor, flatSlot, sector, -1))
+                {
+                    Fail($"{what}: floor vertex {i} differs");
+                    break;
+                }
+            }
+            for (int i = 0; i < floor.Indices.Count; i++)
+            {
+                if (idx[i] != floor.Indices[i])
+                {
+                    Fail($"{what}: floor index {i} is {idx[i]}, expected {floor.Indices[i]}");
+                    break;
+                }
+            }
+        }
+
+        // Walls: one quad per piece of each drawn section's side (T2.9), A bottom, A top, B top, B bottom.
+        int quad = 0;
+        foreach (WallSection s in sectionsOfSurface)
+        {
+            string sw = $"{level.Name}: line {s.Line.Index} side {s.Side} {s.Kind}";
+            int kind = LevelMesh.IsMasked(s) ? LevelMesh.KindMasked : LevelMesh.KindWall;
+            sectionCount++;
+            IReadOnlyList<WallPiece> pieces = m.Pieces.Of(s.Line, s.Side);
+            CheckPieces(s, sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
+            foreach (WallPiece piece in pieces)
+            {
+                int contrast = piece.Contrast;
+                int b = floorVertices + 4 * quad, bi = (floor?.Indices.Count ?? 0) + 6 * quad;
+                quad++;
+                Vector3 p1 = LevelMesh.ToGodot(piece.A.X, piece.A.Y, 0), p2 = LevelMesh.ToGodot(piece.B.X, piece.B.Y, 0);
+                Vector3[] corners = { p1, p1, p2, p2 };
+                double ua = (s.TextureOffset + (long)piece.ColumnA) / 65536.0, ub = (s.TextureOffset + (long)piece.ColumnB) / 65536.0;
+                double[] us = { ua, ua, ub, ub };
+                float[] vs = { 0, 1, 1, 0 };
+                for (int k = 0; k < 4; k++)
+                {
+                    if (!Near(pos[b + k], corners[k]))
+                        Fail($"{sw}: corner {k} at {pos[b + k]}, expected {corners[k]}");
+                    if (Math.Abs(uv[b + k].X - us[k]) > 1e-3 || uv[b + k].Y != vs[k])
+                        Fail($"{sw}: corner {k} texture coordinate {uv[b + k]}, expected ({us[k]}, {vs[k]})");
+                    if (!Custom(c0, b + k, kind, m.TextureSlot(s.Texture), sector, s.BackSector?.Index ?? -1))
+                        Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected {kind}, slot {m.TextureSlot(s.Texture)}, {sector}, {s.BackSector?.Index ?? -1}");
+                    if (c2[(b + k) * 4 + 2] != contrast)
+                        Fail($"{sw}: corner {k}: fake contrast {c2[(b + k) * 4 + 2]}, expected {contrast}");
+                }
+                int[] quadIndices = { b, b + 1, b + 2, b, b + 2, b + 3 };
+                for (int k = 0; k < 6; k++)
+                {
+                    if (idx[bi + k] != quadIndices[k])
+                    {
+                        Fail($"{sw}: quad indices differ");
+                        break;
+                    }
+                }
+
+                // The vertex shader's evaluation of the plane references, from the uploaded data texels
+                // (and, for a masked middle, the texture height from texture_info).
+                for (int k = 0; k < 4; k++)
+                {
+                    int front = (int)c0[(b + k) * 4 + 2], back = (int)c0[(b + k) * 4 + 3];
+                    if (front < 0 || front >= level.Sectors.Length || back >= level.Sectors.Length)
+                    {
+                        Fail($"{sw}: corner {k}: sector ids {front}, {back} out of range");
+                        break;
+                    }
+                    Color fd = m.SectorData(front), bd = back >= 0 ? m.SectorData(back) : fd;
+                    float bottom = Math.Max(PlaneHeight((int)c1[(b + k) * 4], fd, bd) + c1[(b + k) * 4 + 1], fd.R);
+                    float top = Math.Min(PlaneHeight((int)c1[(b + k) * 4 + 2], fd, bd) + c1[(b + k) * 4 + 3], fd.G);
+                    float textureTop = PlaneHeight((int)c2[(b + k) * 4], fd, bd) + c2[(b + k) * 4 + 1];
+                    if ((int)c0[(b + k) * 4] == LevelMesh.KindMasked)
+                    {
+                        top = Math.Min(top, textureTop);
+                        bottom = Math.Max(bottom, textureTop - m.TextureInfo((int)c0[(b + k) * 4 + 1]).A);
+                    }
+                    top = Math.Max(top, bottom);
+                    (int sb, int st) = s.Span();
+                    float eb = (float)(sb / 65536.0), et = (float)(Math.Max(st, sb) / 65536.0);
+                    float ett = (float)(s.TextureTop.Evaluate(s.FrontSector, s.BackSector) / 65536.0);
+                    if (Math.Abs(bottom - eb) > 1e-3 || Math.Abs(top - et) > 1e-3 || Math.Abs(textureTop - ett) > 1e-3)
+                    {
+                        Fail($"{sw}: corner {k}: the attributes give span {bottom}..{top}, row 0 at {textureTop}; expected {eb}..{et}, row 0 at {ett}");
+                        break;
+                    }
+                }
+            }
+        }
+        return quad;
     }
 
     /// <summary>
@@ -605,21 +664,30 @@ public partial class LevelCheck : Godot.Node
         m.SetColormapOverride(-1);
 
         var sizeTiling = new List<WallSection>();
-        int walls = 0, wallPixels = 0;
+        int walls = 0, wallPixels = 0, maskedWalls = 0, maskedCandidates = 0;
         foreach (WallSection s in m.Walls.Sections)
         {
             if (!LevelMesh.IsDrawn(s) || !IsSideOnCheckable(s))
                 continue;
+            if (LevelMesh.IsMasked(s))
+                maskedCandidates++;
             (int n, bool differs) = await CheckWall(m, s, WallTextureTiling.Vanilla, map);
             if (n > 0)
+            {
                 walls++;
+                if (LevelMesh.IsMasked(s))
+                    maskedWalls++;
+            }
             wallPixels += n;
             if (differs)
                 sizeTiling.Add(s);
         }
-        GD.Print($"Level check: {map}: {walls} wall sections side-on (vanilla tiling), {wallPixels} drawn pixels compared");
+        GD.Print($"Level check: {map}: {walls} wall sections side-on (vanilla tiling; {maskedWalls} of {maskedCandidates} axis-aligned masked middles: "
+            + $"{_maskedOpaque} opaque texels, {_maskedClear} clear pixels in their openings), {wallPixels} drawn pixels compared");
         if (walls == 0)
             Fail($"{map}: no wall section could be checked side-on");
+        if (maskedCandidates > 0 && (maskedWalls == 0 || _maskedOpaque == 0 || _maskedClear == 0))
+            Fail($"{map}: the masked middles must be compared side-on, with both opaque texels and clear pixels");
 
         m.SetWallTiling(WallTextureTiling.TextureSize);
         wallPixels = 0;
@@ -882,12 +950,23 @@ public partial class LevelCheck : Godot.Node
     /// compares its drawn span, away from its edges and from the spans of the
     /// side's other sections, with the CPU texel lookup. Returns the pixels
     /// compared and whether the two tilings give different texels there.
+    /// A masked middle (T3.1) is compared over its whole opening: within its
+    /// span (the texture's rows, drawn once) its opaque texels must show and
+    /// its clear ones the background (nothing else lies within the view's
+    /// depth range, and the other side's quad faces away), and the opening's
+    /// rows above and below the texture must show the background.
     /// </summary>
     private async Task<(int Pixels, bool TilingsDiffer)> CheckWall(LevelMesh m, WallSection s, WallTextureTiling tiling, string map)
     {
+        bool masked = LevelMesh.IsMasked(s);
         (int sb, int st) = s.Span();
-        int bottom = sb >> Fixed.FRACBITS, top = st >> Fixed.FRACBITS;
-        if (((sb | st) & (Fixed.FRACUNIT - 1)) != 0 || top - bottom <= 2 * EdgeMargin)
+        // The rows compared: the span, or a masked middle's whole opening.
+        (int cb, int ct) = masked
+            ? (Math.Max(s.Bottom.Evaluate(s.FrontSector, s.BackSector), s.FrontSector.FloorHeight),
+                Math.Min(s.Top.Evaluate(s.FrontSector, s.BackSector), s.FrontSector.CeilingHeight))
+            : (sb, st);
+        int bottom = cb >> Fixed.FRACBITS, top = ct >> Fixed.FRACBITS;
+        if (((cb | ct | sb | st) & (Fixed.FRACUNIT - 1)) != 0 || top - bottom <= 2 * EdgeMargin)
             return (0, false);
         Vector2I size = ViewSize();
         int w = size.X, h = size.Y;
@@ -906,7 +985,7 @@ public partial class LevelCheck : Godot.Node
         var others = new List<(int Bottom, int Top)>();
         foreach (WallSection o in m.Walls.Sections)
         {
-            if (o != s && o.Line == s.Line && o.Side == s.Side && LevelMesh.IsDrawn(o))
+            if (o != s && o.Line == s.Line && o.Side == s.Side && LevelMesh.IsDrawn(o) && !LevelMesh.IsMasked(o))
             {
                 (int ob, int ot) = o.Span();
                 if (ot > ob)
@@ -942,8 +1021,12 @@ public partial class LevelCheck : Godot.Node
         for (int py = 0; py < h; py++)
         {
             int zFixed = ((zt - py) << Fixed.FRACBITS) - Fixed.FRACUNIT / 2;
-            if (zFixed < sb + (EdgeMargin << Fixed.FRACBITS) || zFixed > st - (EdgeMargin << Fixed.FRACBITS))
+            if (zFixed < cb + (EdgeMargin << Fixed.FRACBITS) || zFixed > ct - (EdgeMargin << Fixed.FRACBITS))
                 continue;
+            // A masked middle: away from its span's edges; inside the span or clear (the opening around it).
+            if (masked && sb < st && Math.Min(Math.Abs((long)zFixed - sb), Math.Abs((long)zFixed - st)) < EdgeMargin << Fixed.FRACBITS)
+                continue;
+            bool inSpan = zFixed > sb && zFixed < st;
             bool overlapped = false;
             foreach ((int ob, int ot) in others)
                 overlapped |= zFixed > ob - (EdgeMargin << Fixed.FRACBITS) && zFixed < ot + (EdgeMargin << Fixed.FRACBITS);
@@ -957,26 +1040,50 @@ public partial class LevelCheck : Godot.Node
                     continue;
                 // The piece under the pixel centre, away from its ends (where a seg's column can jump).
                 double dPixel = d + 0.5, column = double.NaN;
-                foreach ((double from, double to, long cf, long ct) in spans)
+                foreach ((double from, double to, long cf, long cto) in spans)
                 {
                     if (dPixel >= from + EdgeMargin && dPixel <= to - EdgeMargin)
-                        column = (cf + (ct - cf) * (dPixel - from) / (to - from)) / 65536.0;
+                        column = (cf + (cto - cf) * (dPixel - from) / (to - from)) / 65536.0;
                 }
                 // Not on one piece, or within 1/64 of a texel edge (a seg starting off a whole unit).
                 if (double.IsNaN(column) || Math.Abs(column - Math.Round(column)) < 1.0 / 64)
                     continue;
                 int col = (int)Math.Floor(column);
-                (int tc, int tr) = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, tiling);
-                var other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height,
-                    tiling == WallTextureTiling.Vanilla ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
-                differ |= other != (tc, tr) && tex[other.Column, other.Row] != tex[tc, tr];
+                WallTextureTiling otherTiling = tiling == WallTextureTiling.Vanilla ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla;
+                int p = (py * w + px) * 4;
+                (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
+                int tc, tr;
+                if (masked)
+                {
+                    (int Column, int Row)? texel = inSpan ? TextureWrap.MaskedTexel(col, row, tex.Width, tex.Height, tiling) : null;
+                    (int Column, int Row)? otherTexel = inSpan ? TextureWrap.MaskedTexel(col, row, tex.Width, tex.Height, otherTiling) : null;
+                    if (texel is { } a && otherTexel is { } o && a != o
+                        && (tex.IsOpaque(a.Column, a.Row) != tex.IsOpaque(o.Column, o.Row) || tex[a.Column, a.Row] != tex[o.Column, o.Row]))
+                        differ = true;
+                    if (texel is not { } t || !tex.IsOpaque(t.Column, t.Row))
+                    {
+                        // Clear: a hole in the texture, or the opening above or below it.
+                        compared++;
+                        _maskedClear++;
+                        if (!NearBackground(got) && bad++ == 0)
+                            first = $"d {d + 0.5}, z {zFixed / 65536.0} ({(texel is null ? "outside the texture" : $"clear texel {texel}")}): drew {got}, expected the background {_background}";
+                        continue;
+                    }
+                    (tc, tr) = t;
+                }
+                else
+                {
+                    (tc, tr) = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, tiling);
+                    var other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, otherTiling);
+                    differ |= other != (tc, tr) && tex[other.Column, other.Row] != tex[tc, tr];
+                }
                 int map0 = ExpectedColormap(m, true, light, contrast, v1x + dirX * (d + 0.5), v1y + dirY * (d + 0.5), 0.5);
                 if (map0 < 0)
                     continue;
                 (int R, int G, int B) expected = Shade(tex[tc, tr], map0);
-                int p = (py * w + px) * 4;
-                (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
                 compared++;
+                if (masked)
+                    _maskedOpaque++;
                 if (got != expected && bad++ == 0)
                     first = $"d {d + 0.5}, z {zFixed / 65536.0} (texel {tc},{tr}): drew {got}, expected {expected}";
             }
@@ -1276,6 +1383,11 @@ public partial class LevelCheck : Godot.Node
         }
         throw new InvalidOperationException("No background colour is free of the palette.");
     }
+
+    /// <summary>Whether a drawn pixel shows the background (within <see cref="BackgroundTolerance"/>).</summary>
+    private bool NearBackground((int R, int G, int B) got) =>
+        Math.Abs(got.R - _background.R) <= BackgroundTolerance && Math.Abs(got.G - _background.G) <= BackgroundTolerance
+        && Math.Abs(got.B - _background.B) <= BackgroundTolerance;
 
     private void Fail(string message)
     {

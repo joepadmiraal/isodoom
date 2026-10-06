@@ -4,8 +4,8 @@
 // standing still at eye level, with the sector lights as the map lump has
 // them (no light specials) and, with $DUMP_STATIC set, no animated textures
 // or scrolling walls, and writes $OUTDIR/vN.ppm: vanilla's full-screen
-// 320x200 view in palette 0, without sprites, masked middles, ceilings or
-// sky; pixels that draw nothing (ceilings, sky) are cyan (0, 255, 255), a
+// 320x200 view in palette 0, with masked middles (T3.1) but without sprites,
+// ceilings or sky; pixels that draw nothing (ceilings, sky) are cyan (0, 255, 255), a
 // colour in no PLAYPAL; and $OUTDIR/vN.z, the eye height (viewz, map units:
 // the player stands on the highest floor within its radius, so near a step
 // that is not the floor at the point). Built by build.sh against doomgeneric
