@@ -1,16 +1,107 @@
+diff --git a/doomgeneric/d_main.c b/doomgeneric/d_main.c
+index 9012e5f..42c574f 100644
+--- a/doomgeneric/d_main.c
++++ b/doomgeneric/d_main.c
+@@ -1571,7 +1571,8 @@ void D_DoomMain (void)
+ 	};
+ 	int i;
+ 	
+-	if ( gamemode == shareware)
++	extern int dump_nospecials; // IsoDoom reference (T4.8): the synthetic map as -file
++	if ( gamemode == shareware && !dump_nospecials)
+ 	    I_Error(DEH_String("\nYou cannot -file with the shareware "
+ 			       "version. Register!"));
+ 
+diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
+index 9954d78..9f682c8 100644
+--- a/doomgeneric/g_game.c
++++ b/doomgeneric/g_game.c
+@@ -1882,7 +1882,8 @@ G_InitNew
+ 
+     skytexturename = DEH_String(skytexturename);
+ 
+-    skytexture = R_TextureNumForName(skytexturename);
++    { extern int dump_nospecials; // IsoDoom reference (T4.8): the synthetic map has no sky texture
++      skytexture = dump_nospecials && R_CheckTextureNumForName(skytexturename) < 0 ? 0 : R_TextureNumForName(skytexturename); }
+ 
+ 
+     G_DoLoadLevel ();
+@@ -1899,6 +1900,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
+ { 
+     if (*demo_p == DEMOMARKER) 
+     {
++	{ extern int dump_nospecials; if (dump_nospecials) exit(0); } // IsoDoom reference (T4.8): the demo's end
+ 	// end of demo data stream 
+ 	G_CheckDemoStatus (); 
+ 	return; 
+diff --git a/doomgeneric/p_setup.c b/doomgeneric/p_setup.c
+index 00306e8..dd94d9f 100644
+--- a/doomgeneric/p_setup.c
++++ b/doomgeneric/p_setup.c
+@@ -846,8 +846,12 @@ P_SetupLevel
+ //
+ void P_Init (void)
+ {
++    extern int dump_nospecials; // IsoDoom reference (T4.8): no specials (and the synthetic map has none)
++    if (!dump_nospecials)
++    {
+     P_InitSwitchList ();
+     P_InitPicAnims ();
++    }
+     R_InitSprites (sprnames);
+ }
+ 
 diff --git a/doomgeneric/p_spec.c b/doomgeneric/p_spec.c
+index 17446b5..bf73223 100644
 --- a/doomgeneric/p_spec.c
 +++ b/doomgeneric/p_spec.c
-@@ -1092,6 +1092,8 @@ int		levelTimeCount;
+@@ -507,6 +507,7 @@ P_CrossSpecialLine
+     line_t*	line;
+     int		ok;
+ 
++    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials, as the sim of M4
+     line = &lines[linenum];
+     
+     //	Triggers that other things can activate
+@@ -1020,6 +1021,7 @@ void P_PlayerInSpecialSector (player_t* player)
+ {
+     sector_t*	sector;
+ 	
++    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials, as the sim of M4
+     sector = player->mo->subsector->sector;
+ 
+     // Falling, not all the way down yet?
+@@ -1092,6 +1094,9 @@ int		levelTimeCount;
  
  void P_UpdateSpecials (void)
  {
 +    if (getenv("DUMP_STATIC")) return; // IsoDoom reference: no animations or scrolling
++    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials
 +
      anim_t*	anim;
      int		pic;
      int		i;
+@@ -1376,6 +1381,8 @@ void P_SpawnSpecials (void)
+     sector_t*	sector;
+     int		i;
+ 
++    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials, as the sim of M4
++
+     // See if -TIMER was specified.
+ 
+     if (timelimit > 0 && deathmatch)
+diff --git a/doomgeneric/p_tick.c b/doomgeneric/p_tick.c
+index 2289350..00b5cc3 100644
+--- a/doomgeneric/p_tick.c
++++ b/doomgeneric/p_tick.c
+@@ -148,4 +148,5 @@ void P_Ticker (void)
+ 
+     // for par times
+     leveltime++;	
++    { extern void dump_tic(void); dump_tic(); } // IsoDoom reference (T4.8): the per-tic dump
+ }
 diff --git a/doomgeneric/r_main.c b/doomgeneric/r_main.c
+index 22278fe..5c84420 100644
 --- a/doomgeneric/r_main.c
 +++ b/doomgeneric/r_main.c
 @@ -884,7 +884,7 @@ void R_RenderPlayerView (player_t* player)
@@ -23,6 +114,7 @@ diff --git a/doomgeneric/r_main.c b/doomgeneric/r_main.c
      // Check for new console commands.
      NetUpdate ();				
 diff --git a/doomgeneric/r_plane.c b/doomgeneric/r_plane.c
+index ea1611c..6053e51 100644
 --- a/doomgeneric/r_plane.c
 +++ b/doomgeneric/r_plane.c
 @@ -382,6 +382,8 @@ void R_DrawPlanes (void)

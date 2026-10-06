@@ -1,0 +1,8 @@
+# DOOM1.WAD E1M1: as e1m1-staircase, one tic further north, so the player
+# runs up the stairs astride their north edge (a ledge onto the hall, 16 to
+# 96 below), its radius over the drop: z follows the highest floor under it.
+iwad doom1
+50 0 0 0 x21
+0 0 64 0
+50 0 0 0 x100
+0 0 0 0 x10

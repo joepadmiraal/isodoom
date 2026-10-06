@@ -1,0 +1,15 @@
+# DOOM1.WAD E1M1: run west up the stairs as e1m1-staircase, then strafe left
+# (south) off the side of a step into the hall, 56-80 units below: a fall
+# with gravity and the view's squat on landing; then north-east into the
+# stairs' side and along it.
+iwad doom1
+50 0 0 0 x20
+0 0 64 0
+50 0 0 0 x59
+0 -40 0 0 x15
+0 0 0 0 x25
+# turn north, run north-east into the stairs' side: 32 and more up (blocked,
+# sliding along it), until the lowest step, 16 up, takes the player
+0 0 -64 0
+50 40 0 0 x40
+0 0 0 0 x10

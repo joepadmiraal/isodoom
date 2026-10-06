@@ -1,0 +1,9 @@
+# DOOM1.WAD E1M1: run north, turn west (momentum carries the player on
+# north, down into the start room's pit), run west across the pit and out of
+# the room, along the hall, up the 16-unit stairs (8 to 104), up a 24-unit
+# step and down it again (a 24-unit fall) into the west wall.
+iwad doom1
+50 0 0 0 x20
+0 0 64 0
+50 0 0 0 x100
+0 0 0 0 x10

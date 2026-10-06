@@ -1,0 +1,11 @@
+# The synthetic E1M1: face north-east and walk into the barrel at (64, 64),
+# sliding off it, then turn in small steps while walking and strafing, at
+# walk speeds (25, 24) and odd turns.
+iwad synthetic
+skill 4
+0 0 -32 0
+25 0 0 0 x40
+25 24 5 0 x20
+-25 0 -3 0 x15
+0 -24 1 0 x20
+0 0 0 0 x10

@@ -1,0 +1,11 @@
+# DOOM1.WAD E1M1: run north-east down into the start room's pit (two 8-unit
+# steps) and into its east wall, turn north and run along the wall pressed
+# into it (strafing right): along the blocking window line (two-sided,
+# ML_BLOCKING) into the barrel; then back off south-west.
+iwad doom1
+0 0 -32 0
+50 0 0 0 x40
+0 0 32 0
+50 40 0 0 x40
+-50 -40 0 0 x15
+0 0 0 0 x10

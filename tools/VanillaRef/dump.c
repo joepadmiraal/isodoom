@@ -10,6 +10,14 @@
 // the player stands on the highest floor within its radius, so near a step
 // that is not the floor at the point). Built by build.sh against doomgeneric
 // (GPL-2.0).
+//
+// The movement reference (T4.8): with $DUMP_TICS set (and no $VIEWS), it
+// plays a demo (-playdemo) with no sector or line specials (the sim has none
+// before M5) and appends one line per tic to the file $DUMP_TICS, after the
+// tic: leveltime, the ticcmd read (forwardmove, sidemove, angleturn,
+// buttons), player 1's mobj x, y, z, momx, momy, momz, angle (unsigned),
+// viewz, the P_Random index, and the mobj's state (statenum_t) and tics
+// (fixed_t and BAM as integers).
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
@@ -29,6 +37,10 @@ extern byte *I_VideoBuffer;
 static int views[MAX_VIEWS][3], nviews, cur = -1, wait;
 static uint32_t fake_ms;
 int dump_noceil; // read by the patched r_main.c / r_plane.c
+int dump_nospecials; // read by the patched p_spec.c
+static FILE *ticfile;
+extern int prndindex;
+extern boolean nodrawers;
 static byte first[SCREENWIDTH * SCREENHEIGHT];
 
 void DG_Init(void)
@@ -37,6 +49,31 @@ void DG_Init(void)
     for (char *tok = strtok(strdup(v ? v : ""), ";"); tok && nviews < MAX_VIEWS; tok = strtok(NULL, ";"))
         if (sscanf(tok, "%d %d %d", &views[nviews][0], &views[nviews][1], &views[nviews][2]) == 3)
             nviews++;
+    char *t = getenv("DUMP_TICS");
+    if (t && *t)
+    {
+        if (!(ticfile = fopen(t, "w")))
+        {
+            perror(t);
+            exit(1);
+        }
+        dump_nospecials = 1;
+        nodrawers = true; // no rendering: the synthetic map lacks the player's sprites
+    }
+}
+
+// Called by the patched p_tick.c at the end of every P_Ticker.
+void dump_tic(void)
+{
+    if (!ticfile)
+        return;
+    player_t *p = &players[consoleplayer];
+    mobj_t *mo = p->mo;
+    fprintf(ticfile, "%d %d %d %d %d %d %d %d %d %d %d %u %d %d %d %d\n", leveltime,
+            p->cmd.forwardmove, p->cmd.sidemove, p->cmd.angleturn, p->cmd.buttons,
+            mo->x, mo->y, mo->z, mo->momx, mo->momy, mo->momz, mo->angle, p->viewz, prndindex,
+            (int)(mo->state - states), mo->tics);
+    fflush(ticfile);
 }
 
 // The light levels of the map's SECTORS lump (undoes flickering, glowing, ...).

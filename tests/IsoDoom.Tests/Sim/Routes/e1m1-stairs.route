@@ -1,0 +1,5 @@
+# DOOM1.WAD E1M1: from the start, run north down the start room's two
+# steps (-8, -16), across the pit and up its far steps, then north.
+iwad doom1
+50 0 0 0 x70
+0 0 0 0 x10

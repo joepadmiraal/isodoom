@@ -1,0 +1,9 @@
+# The synthetic E1M1: face east, run up the 16-unit step into the east
+# room and into its east wall, turn round and run back down the step (a
+# fall with gravity) into the west wall; then stand.
+iwad synthetic
+0 0 -64 0
+50 0 0 0 x30
+0 0 64 0 x2
+50 0 0 0 x35
+0 0 0 0 x15

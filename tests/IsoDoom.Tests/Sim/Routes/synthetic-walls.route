@@ -1,0 +1,9 @@
+# The synthetic E1M1: run north into the west room's north wall, keep
+# pushing, then strafe right along it (sliding), up the 16-unit step into
+# the east room and into its north-east corner; then back off diagonally.
+iwad synthetic
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x20
+50 40 0 0 x40
+-50 -40 0 0 x12
+0 0 0 0 x10

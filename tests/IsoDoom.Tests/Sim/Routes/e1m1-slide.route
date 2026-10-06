@@ -1,0 +1,11 @@
+# DOOM1.WAD E1M1: from the start, turn west and run into the start room's
+# south-west diagonal wall, sliding along it to the west wall; turn round,
+# run east along the room's south side to its east wall, then strafe left
+# (north) along it, pressed into it, and down into the pit.
+iwad doom1
+0 0 64 0
+50 0 0 0 x40
+0 0 64 0 x2
+50 0 0 0 x50
+50 -40 0 0 x20
+0 0 0 0 x10
