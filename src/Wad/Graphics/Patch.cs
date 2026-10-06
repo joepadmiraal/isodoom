@@ -3,6 +3,23 @@ using System.Buffers.Binary;
 
 namespace IsoDoom.Wad.Graphics;
 
+/// <summary>How a patch post's <c>topdelta</c> is read (see SPEC §12, T1.3a).</summary>
+public enum PatchTopDeltaMode
+{
+    /// <summary>
+    /// The DeePsea "tall patch" convention (as in PrBoom+, ZDoom, Eternity and
+    /// most other source ports): a <c>topdelta</c> not greater than the previous
+    /// post's top is relative to that top, so a column can reach past row 254.
+    /// The first post is always absolute. Identical to <see cref="Vanilla"/> for
+    /// every patch whose posts go strictly downwards, which includes every IWAD
+    /// graphic.
+    /// </summary>
+    Tall,
+
+    /// <summary>Every <c>topdelta</c> is absolute, as in vanilla and Chocolate Doom.</summary>
+    Vanilla,
+}
+
 /// <summary>
 /// Decoder for the patch picture format used by wall patches, sprites and UI
 /// graphics (r_defs.h <c>patch_t</c>/<c>post_t</c>, drawn by v_video.c
@@ -21,13 +38,16 @@ public static class Patch
 
     /// <summary>
     /// Decodes a patch into an <see cref="IndexedImage"/>. Posts are placed at
-    /// their absolute <c>topdelta</c>, as vanilla does (no "tall patch"
-    /// extension). Pixels of a post that run past the patch height are
+    /// their <c>topdelta</c>, read as <paramref name="mode"/> says (by default
+    /// with DeePsea tall-patch support, see <see cref="PatchTopDeltaMode"/>;
+    /// <see cref="PatchTopDeltaMode.Vanilla"/> places every post at its
+    /// absolute <c>topdelta</c>). Pixels of a post that run past the patch height are
     /// dropped (vanilla would draw them below the patch). A header, column
     /// offset or post that runs past the end of the lump throws
     /// <see cref="WadFormatException"/>.
     /// </summary>
-    public static IndexedImage Decode(ReadOnlySpan<byte> lump, string name = "patch")
+    public static IndexedImage Decode(ReadOnlySpan<byte> lump, string name = "patch",
+        PatchTopDeltaMode mode = PatchTopDeltaMode.Tall)
     {
         if (lump.Length < HeaderSize)
             throw new WadFormatException($"{name}: {lump.Length} bytes is too short for a patch header.");
@@ -51,6 +71,7 @@ public static class Patch
                 throw new WadFormatException($"{name}: column {x} offset {ofs} is outside the lump.");
 
             // r_things.c R_DrawMaskedColumn: for ( ; column->topdelta != 0xff ; )
+            int top = -1;
             while (true)
             {
                 if (ofs >= lump.Length)
@@ -64,10 +85,11 @@ public static class Patch
                 int source = ofs + 3; // skip topdelta, length and the pad byte
                 if (source + length > lump.Length)
                     throw new WadFormatException($"{name}: column {x} post runs past the end of the lump.");
+                top = PostTop(topDelta, top, mode);
 
                 for (int i = 0; i < length; i++)
                 {
-                    int y = topDelta + i;
+                    int y = top + i;
                     if (y >= height)
                         break;
                     pixels[y * width + x] = lump[source + i];
@@ -87,9 +109,10 @@ public static class Patch
     /// must be 1..4096 on each side, every column offset must point past the
     /// offset table and inside the lump, and every column's posts must end
     /// with a 0xFF terminator inside the lump, with no post starting below
-    /// the patch height. Never throws.
+    /// the patch height (post tops read as <paramref name="mode"/> says).
+    /// Never throws.
     /// </summary>
-    public static bool IsPatch(ReadOnlySpan<byte> lump)
+    public static bool IsPatch(ReadOnlySpan<byte> lump, PatchTopDeltaMode mode = PatchTopDeltaMode.Tall)
     {
         if (lump.Length < HeaderSize)
             return false;
@@ -106,6 +129,7 @@ public static class Patch
             int ofs = BinaryPrimitives.ReadInt32LittleEndian(lump[(HeaderSize + 4 * x)..]);
             if (ofs < tableEnd || ofs >= lump.Length)
                 return false;
+            int top = -1;
             while (true)
             {
                 if (ofs >= lump.Length)
@@ -113,7 +137,8 @@ public static class Patch
                 int topDelta = lump[ofs];
                 if (topDelta == 0xFF)
                     break;
-                if (topDelta >= height || ofs + 1 >= lump.Length)
+                top = PostTop(topDelta, top, mode);
+                if (top >= height || ofs + 1 >= lump.Length)
                     return false;
                 int length = lump[ofs + 1];
                 ofs += 3 + length + 1;
@@ -123,6 +148,15 @@ public static class Patch
         }
         return true;
     }
+
+    /// <summary>
+    /// The row a post starts at, given its raw <paramref name="topDelta"/> and
+    /// the previous post's top (-1 for a column's first post). Tall patches
+    /// (DeePsea convention, as PrBoom+'s r_patch.c reads them):
+    /// <c>if (topdelta &lt;= top) top += topdelta; else top = topdelta;</c>.
+    /// </summary>
+    internal static int PostTop(int topDelta, int previousTop, PatchTopDeltaMode mode) =>
+        mode == PatchTopDeltaMode.Tall && topDelta <= previousTop ? previousTop + topDelta : topDelta;
 
     /// <summary>Decodes the last lump called <paramref name="name"/> (any namespace) as a patch.</summary>
     public static IndexedImage Load(WadArchive wad, string name)

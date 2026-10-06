@@ -12,9 +12,9 @@ namespace IsoDoom.Tests.Graphics;
 /// <summary>T1.4 PNAMES/TEXTUREx parsing and composition on synthetic WADs (no DOOM1.WAD needed).</summary>
 public class TextureCompositionTests
 {
-    private sealed record Tex(string Name, int Width, int Height, bool Masked, params (int X, int Y, int Patch)[] Patches);
+    internal sealed record Tex(string Name, int Width, int Height, bool Masked, params (int X, int Y, int Patch)[] Patches);
 
-    private static byte[] BuildPNames(params string[] names)
+    internal static byte[] BuildPNames(params string[] names)
     {
         byte[] lump = new byte[4 + 8 * names.Length];
         BinaryPrimitives.WriteInt32LittleEndian(lump, names.Length);
@@ -23,7 +23,7 @@ public class TextureCompositionTests
         return lump;
     }
 
-    private static byte[] BuildTextureLump(params Tex[] textures)
+    internal static byte[] BuildTextureLump(params Tex[] textures)
     {
         List<byte> body = new();
         int dirSize = 4 + 4 * textures.Length;
@@ -68,7 +68,11 @@ public class TextureCompositionTests
         return GraphicsDecoderTests.BuildPatch(width, height, 0, 0, columns);
     }
 
-    private static Textures Load(byte[] pnames, byte[] texture1, byte[]? texture2 = null, params (string Name, byte[] Data)[] patches)
+    private static Textures Load(byte[] pnames, byte[] texture1, byte[]? texture2 = null, params (string Name, byte[] Data)[] patches) =>
+        Load(pnames, texture1, texture2, PatchTopDeltaMode.Tall, patches);
+
+    internal static Textures Load(byte[] pnames, byte[] texture1, byte[]? texture2, PatchTopDeltaMode topDeltaMode,
+        params (string Name, byte[] Data)[] patches)
     {
         WadBuilder b = new WadBuilder(WadType.Iwad).Lump("PNAMES", pnames).Lump("TEXTURE1", texture1);
         if (texture2 != null)
@@ -77,7 +81,7 @@ public class TextureCompositionTests
         foreach ((string name, byte[] data) in patches)
             b.Lump(name, data);
         b.Lump("P_END");
-        return Textures.R_InitTextures(new WadArchive([b.ToWadFile()]));
+        return Textures.R_InitTextures(new WadArchive([b.ToWadFile()]), topDeltaMode);
     }
 
     [Fact]

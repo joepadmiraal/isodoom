@@ -73,15 +73,19 @@ public sealed class Textures
     private readonly IndexedImage?[] _compositeCache;
     private readonly IndexedImage?[] _correctedCache;
 
-    private Textures(WadArchive wad, string[] patchNames, TextureDef[] textures)
+    private Textures(WadArchive wad, string[] patchNames, TextureDef[] textures, PatchTopDeltaMode topDeltaMode)
     {
         _wad = wad;
+        TopDeltaMode = topDeltaMode;
         PatchNames = patchNames;
         _textures = textures;
         _patchWidth = new int?[wad.NumLumps];
         _compositeCache = new IndexedImage?[textures.Length];
         _correctedCache = new IndexedImage?[textures.Length];
     }
+
+    /// <summary>How patch post <c>topdelta</c>s are read when compositing (tall patches by default).</summary>
+    public PatchTopDeltaMode TopDeltaMode { get; }
 
     /// <summary>The <c>PNAMES</c> entries, upper-cased and cut at the first NUL.</summary>
     public IReadOnlyList<string> PatchNames { get; }
@@ -113,8 +117,10 @@ public sealed class Textures
     /// lump of that name, any namespace). A name that resolves to nothing is
     /// only an error when a texture uses it ("Missing patch in texture"), as
     /// in vanilla; shareware's PNAMES lists registered-only patches.
+    /// <paramref name="topDeltaMode"/> says how patch posts are read when
+    /// compositing (see <see cref="PatchTopDeltaMode"/>).
     /// </summary>
-    public static Textures R_InitTextures(WadArchive wad)
+    public static Textures R_InitTextures(WadArchive wad, PatchTopDeltaMode topDeltaMode = PatchTopDeltaMode.Tall)
     {
         string[] names = ParsePNames(wad.W_CacheLumpName("PNAMES").Span);
         int[] patchlookup = new int[names.Length];
@@ -126,7 +132,7 @@ public sealed class Textures
         if (wad.W_CheckNumForName("TEXTURE2") != -1)
             ParseTextureLump(wad.W_CacheLumpName("TEXTURE2").Span, "TEXTURE2", names, patchlookup, textures);
 
-        return new Textures(wad, names, textures.ToArray());
+        return new Textures(wad, names, textures.ToArray(), topDeltaMode);
     }
 
     private static void ParseTextureLump(ReadOnlySpan<byte> maptex, string lumpName, string[] names, int[] patchlookup, List<TextureDef> textures)
@@ -253,11 +259,11 @@ public sealed class Textures
             {
                 int colofs = BinaryPrimitives.ReadInt32LittleEndian(realpatch[(8 + 4 * (x - patch.OriginX))..]);
                 if (mode == TextureCompositeMode.Corrected)
-                    DrawColumnInCache(realpatch, colofs, patch.OriginY, true, pixels, opaque, x, width, height);
+                    DrawColumnInCache(realpatch, colofs, patch.OriginY, true, TopDeltaMode, pixels, opaque, x, width, height);
                 else if (patchcount[x] == 1)
-                    DrawColumnInCache(realpatch, colofs, 0, true, pixels, opaque, x, width, height);
+                    DrawColumnInCache(realpatch, colofs, 0, true, TopDeltaMode, pixels, opaque, x, width, height);
                 else
-                    DrawColumnInCache(realpatch, colofs, patch.OriginY, false, pixels, opaque, x, width, height);
+                    DrawColumnInCache(realpatch, colofs, patch.OriginY, false, TopDeltaMode, pixels, opaque, x, width, height);
             }
         }
 
@@ -282,17 +288,21 @@ public sealed class Textures
     /// r_data.c <c>R_DrawColumnInCache</c>: copies one patch column's posts
     /// into texture column <paramref name="x"/>. With
     /// <paramref name="skipClippedTop"/> false a post starting above row 0
-    /// is shortened but copied from its first pixel, as vanilla does.
+    /// is shortened but copied from its first pixel, as vanilla does. Post
+    /// tops are read as <paramref name="topDeltaMode"/> says (vanilla: the
+    /// absolute <c>topdelta</c>).
     /// </summary>
     private static void DrawColumnInCache(ReadOnlySpan<byte> patch, int ofs, int originy, bool skipClippedTop,
-        byte[] pixels, byte[] opaque, int x, int width, int cacheheight)
+        PatchTopDeltaMode topDeltaMode, byte[] pixels, byte[] opaque, int x, int width, int cacheheight)
     {
         // Patch.Decode has already checked that the column is well formed.
+        int top = -1;
         while (patch[ofs] != 0xFF)
         {
             int source = ofs + 3;
             int count = patch[ofs + 1];
-            int position = originy + patch[ofs];
+            top = Patch.PostTop(patch[ofs], top, topDeltaMode);
+            int position = originy + top;
             int next = ofs + count + 4;
 
             if (position < 0)
@@ -321,7 +331,7 @@ public sealed class Textures
         if (_patchWidth[lump] is int w)
             return w;
         WadLump l = _wad.Lumps[lump];
-        w = Patch.Decode(l.Data.Span, l.Name).Width;
+        w = Patch.Decode(l.Data.Span, l.Name, TopDeltaMode).Width;
         _patchWidth[lump] = w;
         return w;
     }
