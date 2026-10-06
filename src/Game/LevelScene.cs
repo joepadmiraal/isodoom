@@ -520,7 +520,10 @@ public partial class LevelScene : Node3D
     /// <paramref name="height"/> (map units) by <paramref name="speed"/>
     /// units at the end of each tic, as a mover thinker of that tic would
     /// (with <see cref="World.P_ChangeSector"/>, no crushing), until it gets there;
-    /// so the sector moves smoothly on screen, drawn between tics. Doors and lifts come with T5.3/T5.5.
+    /// so the sector moves smoothly on screen, drawn between tics. The sim's
+    /// own movers (doors since T5.3, <c>T_MovePlane</c>; lifts and floors
+    /// with T5.5) move sectors as the game does: this stays for moving any
+    /// sector by hand.
     /// </summary>
     public void MovePlane(int sector, bool ceiling, int height, int speed)
     {

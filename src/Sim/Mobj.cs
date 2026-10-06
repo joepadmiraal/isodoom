@@ -143,6 +143,12 @@ public sealed class sector_t
     public mobj_t? thinglist;
 
     /// <summary>
+    /// thinker_t for reversable actions: the door, floor, lift or ceiling
+    /// moving the sector (vanilla's <c>void*</c>), null when idle (T5.3).
+    /// </summary>
+    public thinker_t? specialdata;
+
+    /// <summary>
     /// The lines with this sector on either side (<c>lines</c>, <c>linecount</c>
     /// is its length), in line order, as <c>P_GroupLines</c> lists them (the
     /// map's <see cref="Sector.Lines"/>).

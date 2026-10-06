@@ -165,8 +165,10 @@ public static class SyntheticIwad
         try
         {
             Level specials = Level.Load(wad, "E1M2");
-            if (specials.Sectors.Length != 1 + SpecialsAlcoves || specials.Sectors[0].Lines.Count != 3 + SpecialsAlcoves)
-                problems.Add($"E1M2 has {specials.Sectors.Length} sectors, its corridor {specials.Sectors[0].Lines.Count} lines; expected {1 + SpecialsAlcoves} and {3 + SpecialsAlcoves}");
+            if (specials.Sectors.Length != SpecialsSectors || specials.Sectors[0].Lines.Count != 3 + SpecialsAlcoves)
+                problems.Add($"E1M2 has {specials.Sectors.Length} sectors, its corridor {specials.Sectors[0].Lines.Count} lines; expected {SpecialsSectors} and {3 + SpecialsAlcoves}");
+            if (specials.Sectors[DoorSector].Lines.Count != 4 || specials.R_PointInSubsector(144 << 16, 196 << 16).Sector.Index != DoorSector)
+                problems.Add("E1M2's door sector is not between its rooms");
             WallSections walls = WallSections.Build(specials, catalog.Textures);
             if (walls.Missing.Count > 0)
                 problems.Add($"E1M2 has missing wall textures: {string.Join(", ", walls.Missing)}");
@@ -753,6 +755,26 @@ public static class SyntheticIwad
     // no sector has; the openings of alcove 0 (line 3, floor 16) and alcove 22
     // (line 25, floor 8) are walk-over lines, a WR lift (88, which monsters
     // trigger too) and a W1 floor (38, players only), both tag 5.
+    //
+    // T5.3, doors: north of the row and apart from it (y = 152..240), room R
+    // (sector 25, x = 0..128), a door (sector 26, x = 128..160, closed: floor
+    // and ceiling 0, tag 6) and room S (sector 27, x = 160..288), floors 0 and
+    // ceilings 128 (the door opens to 124). Lines 76 (R | door) and 77 (S |
+    // door) are DR manual doors (1) facing the rooms; 78-85 the walls (78-80
+    // R's, 81 and 82 the door's tracks, 83-85 S's). Subsectors 25-27; the
+    // root node now splits along y = 144.
+
+    /// <summary>E1M2's sector count: the corridor, the alcoves, and rooms R and S with the door between (T5.3).</summary>
+    public const int SpecialsSectors = 1 + SpecialsAlcoves + 3;
+
+    /// <summary>E1M2's door sector (T5.3), between rooms R (sector 25) and S (27).</summary>
+    public const int DoorSector = SpecialsAlcoves + 2;
+
+    /// <summary>The tag of E1M2's door sector (no line has it: tests give it to one).</summary>
+    public const short DoorTag = 6;
+
+    /// <summary>E1M2's door lines (T5.3): the door's sides facing R (front R) and S (front S), both DR manual doors (1).</summary>
+    public const int DoorLineR = 76, DoorLineS = 77;
 
     /// <summary>The number of alcoves on E1M2 (T5.1).</summary>
     public const int SpecialsAlcoves = 24;
@@ -810,6 +832,25 @@ public static class SyntheticIwad
         for (int j = 1; j < n; j++)
             TwoSided(Mid(j), Top(j), 1 + j, j);      // L52 + j: alcoves j - 1 | j (northwards: alcove j in front)
 
+        // T5.3: a manual door (sector DoorSector) between rooms R (west) and S (east), apart from the rest.
+        int doorV = vertexes.Count / 2;
+        vertexes.AddRange(new short[] { 0, 152, 128, 152, 160, 152, 288, 152, 0, 240, 128, 240, 160, 240, 288, 240 });
+        int a = doorV, b = doorV + 1, c = doorV + 2, e = doorV + 3, a2 = doorV + 4, b2 = doorV + 5, c2 = doorV + 6, e2 = doorV + 7;
+        const int room = DoorSector - 1, door = DoorSector, room2 = DoorSector + 1;
+        void DoorLine(int v1, int v2, int front) =>
+            lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)1, (short)0,
+                (short)Side("PANEL", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", door) });
+        DoorLine(b2, b, room);                 // L76: R | door (southwards: R in front), DR manual door (1)
+        DoorLine(c, c2, room2);                // L77: S | door (northwards: S in front), DR manual door (1)
+        OneSided(b, a, room, "BRICK1");        // L78-L80: R's south, west and north walls
+        OneSided(a, a2, room, "BRICK1");
+        OneSided(a2, b2, room, "BRICK1");
+        OneSided(c, b, door, "BRICK1");        // L81, L82: the door's tracks (south, north)
+        OneSided(b2, c2, door, "BRICK1");
+        OneSided(e, c, room2, "BRICK1");       // L83-L85: S's south, north and east walls
+        OneSided(c2, e2, room2, "BRICK1");
+        OneSided(e2, e, room2, "BRICK1");
+
         var segs = new List<short>();
         var subsectors = new List<short>();
         void Seg(int v1, int v2, int line, int side)
@@ -846,6 +887,22 @@ public static class SyntheticIwad
                 Seg(Top(i + 1), Mid(i + 1), 52 + i + 1, 1);
             Subsector(first);
         }
+        // Subsectors 25-27 (T5.3): rooms R and S and the door between them, each clockwise.
+        Seg(b, a, 78, 0);
+        Seg(a, a2, 79, 0);
+        Seg(a2, b2, 80, 0);
+        Seg(b2, b, 76, 0);
+        Subsector(segs.Count / 6 - 4);
+        Seg(c, b, 81, 0);
+        Seg(b, b2, 76, 1);
+        Seg(b2, c2, 82, 0);
+        Seg(c2, c, 77, 1);
+        Subsector(segs.Count / 6 - 4);
+        Seg(e, c, 83, 0);
+        Seg(c, c2, 77, 0);
+        Seg(c2, e2, 84, 0);
+        Seg(e2, e, 85, 0);
+        Subsector(segs.Count / 6 - 4);
 
         // Nodes: boundary j (northwards at x = 32 j, the east in front) at index n - 1 - j, its back child
         // alcove j - 1, its front child the node of boundary j + 1 (or the last alcove); the root (last)
@@ -870,10 +927,21 @@ public static class SyntheticIwad
             (short)128, (short)0, (short)0, (short)(n * width),
             unchecked((short)0x8000), (short)(n - 2),
         });
+        // T5.3: the door area north of the row; node n along x = 160 (the door west, S east), n + 1 along
+        // x = 128 (R west); the root (n + 2) along y = 144 eastwards, the corridor and alcoves (node n - 1) in front.
+        nodes.AddRange(new short[]
+        {
+            160, 152, 0, 88, 240, 152, 160, 288, 240, 152, 128, 160, unchecked((short)(0x8000 | room2)), unchecked((short)(0x8000 | door)),
+            128, 152, 0, 88, 240, 152, 128, 288, 240, 152, 0, 128, (short)n, unchecked((short)(0x8000 | room)),
+            0, 144, (short)(n * width), 0, 128, -128, 0, (short)(n * width), 240, 152, 0, 288, (short)(n - 1), (short)(n + 1),
+        });
 
         var sectors = new List<byte[]> { Sector(0, 128, "FLOOR1", "FLOOR2", 160) };
         for (int i = 0; i < n; i++)
             sectors.Add(Sector((short)AlcoveFloor(i), (short)AlcoveCeiling(i), i % 2 == 0 ? "FLOOR2" : "LAVA1", "FLOOR1", (short)AlcoveLight(i), (short)AlcoveTag(i)));
+        sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 160));              // 25: room R
+        sectors.Add(Sector(0, 0, "FLOOR2", "FLOOR2", 128, DoorTag));      // 26: the door, closed
+        sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 144));              // 27: room S
 
         var linedefs = new short[lines.Count, 7];
         for (int i = 0; i < lines.Count; i++)

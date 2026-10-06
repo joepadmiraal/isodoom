@@ -12,12 +12,16 @@
 // (GPL-2.0).
 //
 // The movement reference (T4.8): with $DUMP_TICS set (and no $VIEWS), it
-// plays a demo (-playdemo) with no sector or line specials (the sim has none
-// before M5) and appends one line per tic to the file $DUMP_TICS, after the
+// plays a demo (-playdemo) without the specials the sim lacks yet
+// (dump_nospecials in ref.patch: sector specials and animations; line
+// triggers and doors run since T5.2/T5.3) and appends one line per tic to the file $DUMP_TICS, after the
 // tic: leveltime, the ticcmd read (forwardmove, sidemove, angleturn,
 // buttons), player 1's mobj x, y, z, momx, momy, momz, angle (unsigned),
 // viewz, the P_Random index, and the mobj's state (statenum_t) and tics
-// (fixed_t and BAM as integers).
+// (fixed_t and BAM as integers); then (T5.3) the sectors whose floor or
+// ceiling height differs from the map's SECTORS lump, as
+// SECTOR:FLOOR:CEILING (fixed_t) joined by commas in sector order, or - for
+// none.
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
@@ -62,6 +66,8 @@ void DG_Init(void)
     }
 }
 
+static byte *map_sectors(void);
+
 // Called by the patched p_tick.c at the end of every P_Ticker.
 void dump_tic(void)
 {
@@ -69,22 +75,39 @@ void dump_tic(void)
         return;
     player_t *p = &players[consoleplayer];
     mobj_t *mo = p->mo;
-    fprintf(ticfile, "%d %d %d %d %d %d %d %d %d %d %d %u %d %d %d %d\n", leveltime,
+    fprintf(ticfile, "%d %d %d %d %d %d %d %d %d %d %d %u %d %d %d %d ", leveltime,
             p->cmd.forwardmove, p->cmd.sidemove, p->cmd.angleturn, p->cmd.buttons,
             mo->x, mo->y, mo->z, mo->momx, mo->momy, mo->momz, mo->angle, p->viewz, prndindex,
             (int)(mo->state - states), mo->tics);
+    // The moved sectors (T5.3).
+    byte *data = map_sectors();
+    int moved = 0;
+    for (int i = 0; i < numsectors; i++)
+    {
+        fixed_t floor = (short)(data[26 * i] | data[26 * i + 1] << 8) * FRACUNIT;
+        fixed_t ceiling = (short)(data[26 * i + 2] | data[26 * i + 3] << 8) * FRACUNIT;
+        if (sectors[i].floorheight != floor || sectors[i].ceilingheight != ceiling)
+            fprintf(ticfile, "%s%d:%d:%d", moved++ ? "," : "", i, sectors[i].floorheight, sectors[i].ceilingheight);
+    }
+    fprintf(ticfile, "%s\n", moved ? "" : "-");
     fflush(ticfile);
 }
 
-// The light levels of the map's SECTORS lump (undoes flickering, glowing, ...).
-static void reset_lights(void)
+// The map's SECTORS lump.
+static byte *map_sectors(void)
 {
     char name[9];
     if (gamemode == commercial)
         snprintf(name, sizeof name, "MAP%02d", gamemap);
     else
         snprintf(name, sizeof name, "E%dM%d", gameepisode, gamemap);
-    byte *data = W_CacheLumpNum(W_GetNumForName(name) + ML_SECTORS, PU_CACHE);
+    return W_CacheLumpNum(W_GetNumForName(name) + ML_SECTORS, PU_CACHE);
+}
+
+// The light levels of the map's SECTORS lump (undoes flickering, glowing, ...).
+static void reset_lights(void)
+{
+    byte *data = map_sectors();
     for (int i = 0; i < numsectors; i++)
         sectors[i].lightlevel = (short)(data[26 * i + 20] | data[26 * i + 21] << 8);
 }

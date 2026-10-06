@@ -64,6 +64,9 @@ public sealed partial class World
             case think_t.P_MobjThinker:
                 P_MobjThinker((mobj_t)thinker);
                 break;
+            case think_t.T_VerticalDoor:
+                T_VerticalDoor((vldoor_t)thinker);
+                break;
             // think_t.NULL: nothing
         }
     }
@@ -77,6 +80,7 @@ public sealed partial class World
     public void P_Ticker()
     {
         P_StoreInterpolation(); // not vanilla: presentation only (T4.7)
+        sounds.Clear(); // not vanilla: this tic's sound events (T5.3)
 
         for (int i = 0; i < MAXPLAYERS; i++)
         {

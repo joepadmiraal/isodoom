@@ -1,6 +1,8 @@
 // p_spec.h's action types, as the line specials pass them to the EV_
 // functions (T5.2). Names, order and values are vanilla's.
 
+using IsoDoom.Map;
+
 namespace IsoDoom.Sim;
 
 /// <summary>p_spec.h <c>vldoor_e</c>: what a door special does (p_doors.c <c>EV_DoDoor</c>).</summary>
@@ -95,4 +97,47 @@ public static class LightFlash
 
     /// <summary>p_spec.h <c>SLOWDARK</c>.</summary>
     public const int SLOWDARK = 35;
+}
+
+/// <summary>p_spec.h <c>VDOORSPEED</c>, <c>VDOORWAIT</c>: door speed (fixed_t a tic) and the tics it waits open.</summary>
+public static class VDoor
+{
+    /// <summary>p_spec.h <c>VDOORSPEED</c>: 2 units a tic.</summary>
+    public const int VDOORSPEED = Fixed.FRACUNIT * 2;
+
+    /// <summary>p_spec.h <c>VDOORWAIT</c>: 150 tics (about 4 seconds).</summary>
+    public const int VDOORWAIT = 150;
+}
+
+/// <summary>p_spec.h <c>vldoor_t</c>: a door's thinker (p_doors.c, T5.3).</summary>
+public sealed class vldoor_t : thinker_t
+{
+    public vldoor_e type;
+    public sector_t sector = null!;
+
+    /// <summary>fixed_t.</summary>
+    public int topheight;
+
+    /// <summary>fixed_t a tic.</summary>
+    public int speed;
+
+    /// <summary>1 = up, 0 = waiting at top, -1 = down (2 = the initial wait of <see cref="vldoor_e.vld_raiseIn5Mins"/>).</summary>
+    public int direction;
+
+    /// <summary>tics to wait at the top</summary>
+    public int topwait;
+
+    /// <summary>
+    /// (keep in case a door going down is reset)
+    /// when it reaches 0, start going down
+    /// </summary>
+    public int topcountdown;
+}
+
+/// <summary>p_spec.h <c>result_e</c>: what <c>T_MovePlane</c> did (p_floor.c).</summary>
+public enum result_e
+{
+    ok,
+    crushed,
+    pastdest,
 }

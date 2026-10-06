@@ -41,8 +41,8 @@ public class SpecTests
     {
         WadArchive wad = Wad();
         Level map = Level.Load(wad, "E1M2");
-        Assert.Equal(1 + Alcoves, map.Sectors.Length);
-        Assert.Equal(1 + Alcoves, map.Subsectors.Length);
+        Assert.Equal(SyntheticIwad.SpecialsSectors, map.Sectors.Length);
+        Assert.Equal(SyntheticIwad.SpecialsSectors, map.Subsectors.Length);
         SubsectorPolygons polys = SubsectorPolygons.Build(map);
         PolygonChecks.CheckShapes(map, polys);
         FloorTriangles floors = FloorTriangles.Build(map, polys);
@@ -58,6 +58,11 @@ public class SpecTests
             Assert.Equal(32.0 * 128, fromLines[1 + i]);
         }
         Assert.Equal(0, map.R_PointInSubsector(F(400), F(-64)).Sector.Index);
+        // T5.3: rooms R and S and the door between them.
+        Assert.Equal(SyntheticIwad.DoorSector - 1, map.R_PointInSubsector(F(64), F(196)).Sector.Index);
+        Assert.Equal(SyntheticIwad.DoorSector, map.R_PointInSubsector(F(144), F(196)).Sector.Index);
+        Assert.Equal(SyntheticIwad.DoorSector + 1, map.R_PointInSubsector(F(224), F(196)).Sector.Index);
+        Assert.Equal(32.0 * 88, fromLines[SyntheticIwad.DoorSector]);
 
         WallSections walls = WallSections.Build(map, GraphicsCatalog.Load(wad).Textures);
         Assert.Empty(walls.Missing);

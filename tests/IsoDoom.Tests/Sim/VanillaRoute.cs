@@ -32,7 +32,10 @@ namespace IsoDoom.Tests.Sim;
 /// after the tic: <c>leveltime</c>, the <c>ticcmd</c> vanilla read
 /// (<c>forwardmove sidemove angleturn buttons</c>), then player 1's mobj
 /// <c>x y z momx momy momz angle</c>, <c>viewz</c>, the <c>P_Random</c>
-/// index, and the mobj's <c>state</c> and <c>tics</c>. For the synthetic
+/// index, and the mobj's <c>state</c> and <c>tics</c>, then (T5.3) the
+/// <c>sectors</c> whose floor or ceiling height differs from the map's
+/// <c>SECTORS</c> lump, as <c>SECTOR:FLOOR:CEILING</c> (fixed_t) joined by
+/// commas, or <c>-</c> for none (doors, lifts). For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -45,7 +48,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors" };
 
     public string Name { get; }
     public string Path { get; }
@@ -176,18 +179,34 @@ public sealed class VanillaRoute
         return world;
     }
 
-    /// <summary>The sim's state after a tic, as a dump line.</summary>
-    public static string Line(World world)
+    /// <summary>
+    /// The sim's state after a tic, as a dump line; <paramref name="mapHeights"/>
+    /// are the sectors' floor and ceiling heights as the map has them
+    /// (<see cref="MapHeights"/>).
+    /// </summary>
+    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights)
     {
         player_t p = world.players[world.consoleplayer];
         mobj_t mo = p.mo!;
         ticcmd_t c = p.cmd;
-        return string.Join(' ', new long[]
+        string fields = string.Join(' ', new long[]
         {
             world.leveltime, c.forwardmove, c.sidemove, c.angleturn, c.buttons,
             mo.x, mo.y, mo.z, mo.momx, mo.momy, mo.momz, mo.angle, p.viewz, world.random.prndindex, (long)mo.state, mo.tics,
         }.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+        var moved = new List<string>();
+        for (int i = 0; i < world.sectors.Length; i++)
+        {
+            sector_t sec = world.sectors[i];
+            if (sec.floorheight != mapHeights[i].Floor || sec.ceilingheight != mapHeights[i].Ceiling)
+                moved.Add(string.Create(CultureInfo.InvariantCulture, $"{i}:{sec.floorheight}:{sec.ceilingheight}"));
+        }
+        return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved));
     }
+
+    /// <summary>The sectors' floor and ceiling heights (fixed_t) of a world before its first tic: the map's.</summary>
+    public static (int Floor, int Ceiling)[] MapHeights(World world) =>
+        world.sectors.Select(s => (s.floorheight, s.ceilingheight)).ToArray();
 
     /// <summary>
     /// Plays the route in a new world and fails at the first tic whose state
@@ -197,12 +216,13 @@ public sealed class VanillaRoute
     {
         string[] expected = Reference();
         World world = NewWorld();
+        (int, int)[] mapHeights = MapHeights(world);
         Assert.True(expected.Length == Cmds.Count,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
             world.G_Ticker(Cmds[tic]);
-            string actual = Line(world);
+            string actual = Line(world, mapHeights);
             if (actual == expected[tic])
                 continue;
             string[] e = expected[tic].Split(' '), a = actual.Split(' ');

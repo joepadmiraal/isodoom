@@ -19,6 +19,9 @@ public enum think_t
 
     /// <summary>p_mobj.c <c>P_MobjThinker</c> (every <see cref="mobj_t"/>).</summary>
     P_MobjThinker,
+
+    /// <summary>p_doors.c <c>T_VerticalDoor</c> (a <see cref="vldoor_t"/>, T5.3).</summary>
+    T_VerticalDoor,
 }
 
 /// <summary>

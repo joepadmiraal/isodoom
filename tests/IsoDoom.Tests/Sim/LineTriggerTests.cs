@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Tests.Support;
@@ -15,8 +17,10 @@ namespace IsoDoom.Tests.Sim;
 /// on the synthetic specials map (E1M2; see <c>SyntheticIwad.BuildSpecialsMap</c>:
 /// line 0 the corridor's south wall, an SR button; line 1 its west wall, an S1
 /// switch; line 2 its east wall, an S1 switch of no sector; line 3 alcove 0's
-/// opening, a WR lift; line 25 alcove 22's, a W1 floor). The effects are
-/// stubs until T5.3-T5.8, which record their calls in <see cref="World.unported"/>.
+/// opening, a WR lift; line 25 alcove 22's, a W1 floor). The effects not
+/// ported yet are stubs until T5.4-T5.8, which record their calls in
+/// <see cref="World.unported"/>; the doors (T5.3) are checked by the
+/// <see cref="vldoor_t"/> they start in the tagged alcoves 3, 7 and 12.
 /// </summary>
 public class LineTriggerTests
 {
@@ -37,6 +41,24 @@ public class LineTriggerTests
     }
 
     private static mobj_t Player(World world) => world.players[0].mo!;
+
+    /// <summary>The tag-5 alcoves (sectors 4, 8 and 13), which lines 0 and 1 open as doors.</summary>
+    private static readonly int[] Tagged = { 1 + 3, 1 + 7, 1 + 12 };
+
+    /// <summary>
+    /// The type of the doors moving the tag-5 alcoves (every one has the same),
+    /// or null when none moves.
+    /// </summary>
+    private static vldoor_e? TaggedDoors(World world)
+    {
+        var doors = Tagged.Select(s => world.sectors[s].specialdata).ToList();
+        if (doors.All(d => d == null))
+            return null;
+        Assert.All(doors, d => Assert.IsType<vldoor_t>(d));
+        vldoor_e type = ((vldoor_t)doors[0]!).type;
+        Assert.All(doors, d => Assert.Equal(type, ((vldoor_t)d!).type));
+        return type;
+    }
 
     /// <summary>Puts the player at (x, y) facing <paramref name="degrees"/> and presses use once.</summary>
     private static void Use(World world, int x, int y, int degrees)
@@ -115,16 +137,21 @@ public class LineTriggerTests
     {
         World world = Specials();
         Use(world, 40, -64, 180); // west, at line 1
-        Assert.Equal(new[] { "EV_DoDoor(line 1, vld_open)" }, world.unported);
+        Assert.Equal(vldoor_e.vld_open, TaggedDoors(world));
         Assert.Equal(0, world.lines[1].special);
+        // The doors open to the corridor's ceiling less 4, below the alcoves' ceilings: there at once.
+        world.G_Ticker(new ticcmd_t());
+        Assert.Null(TaggedDoors(world));
+        Assert.All(Tagged, s => Assert.Equal(F(124), world.sectors[s].ceilingheight));
+        world.sectors[Tagged[0]].ceilingheight = F(200);
         Use(world, 40, -64, 180);
-        Assert.Single(world.unported);
+        Assert.Null(TaggedDoors(world));
 
         // Line 2's tag (9) has no sector: the door does not start and the switch stays usable.
         Use(world, 740, -64, 0);
         Use(world, 740, -64, 0);
-        Assert.Equal(new[] { "EV_DoDoor(line 1, vld_open)", "EV_DoDoor(line 2, vld_open)", "EV_DoDoor(line 2, vld_open)" }, world.unported);
         Assert.Equal(103, world.lines[2].special);
+        Assert.Empty(world.unported);
     }
 
     [Fact]
@@ -136,13 +163,30 @@ public class LineTriggerTests
         var use = new ticcmd_t { buttons = buttoncode_t.BT_USE };
         var none = new ticcmd_t();
         // A use held from the spawn does nothing (P_SpawnPlayer sets usedown). Pressed and held
-        // for three tics: used once. Released and pressed again: once more.
-        world.G_Ticker(use);
-        Assert.Empty(world.unported);
-        foreach (ticcmd_t cmd in new[] { none, use, use, use, none, use })
+        // for three tics: used once. Released and pressed again once the doors are done: once more.
+        var doors = new HashSet<vldoor_t>(ReferenceEqualityComparer.Instance);
+        void Tic(ticcmd_t cmd)
+        {
             world.G_Ticker(cmd);
-        Assert.Equal(2, world.unported.Count);
-        Assert.All(world.unported, call => Assert.Equal("EV_DoDoor(line 0, vld_normal)", call));
+            foreach (int s in Tagged)
+            {
+                if (world.sectors[s].specialdata is vldoor_t door)
+                    doors.Add(door);
+            }
+        }
+        Tic(use);
+        Assert.Empty(doors);
+        foreach (ticcmd_t cmd in new[] { none, use, use, use })
+            Tic(cmd);
+        Assert.Equal(3, doors.Count);
+        Assert.All(doors, d => Assert.Equal(vldoor_e.vld_normal, d.type));
+        // Up at once (to 124, below the alcoves' ceilings), 150 tics open, down to the floor (2 units a tic).
+        for (int i = 0; i < VDoor.VDOORWAIT + 4; i++)
+            Tic(none);
+        Assert.Null(TaggedDoors(world));
+        Assert.All(Tagged, s => Assert.Equal(world.sectors[s].floorheight, world.sectors[s].ceilingheight));
+        Tic(use);
+        Assert.Equal(6, doors.Count);
         Assert.Equal(63, world.lines[0].special);
     }
 
@@ -152,7 +196,7 @@ public class LineTriggerTests
         World world = Specials();
         world.lines[4].special = 103; // alcove 1's opening, whose front is the alcove
         Use(world, 48, -40, 90);      // from the corridor: its back
-        Assert.Empty(world.unported);
+        Assert.Null(TaggedDoors(world));
         Assert.Equal(103, world.lines[4].special);
         Assert.False(world.usetraceused);
 
@@ -160,7 +204,7 @@ public class LineTriggerTests
         world.lines[51].special = 103; // alcove 0's west wall, facing the alcove
         world.lines[51].tag = 5;
         Use(world, 16, -40, 100);
-        Assert.Empty(world.unported);
+        Assert.Null(TaggedDoors(world));
     }
 
     [Fact]
@@ -170,31 +214,33 @@ public class LineTriggerTests
         // wall) is 24 units away, line 0 (the south wall) 48 but behind the aim.
         World vanilla = Specials();
         Use(vanilla, 24, -80, 100);
-        Assert.Empty(vanilla.unported);
+        Assert.Null(TaggedDoors(vanilla));
 
         var tweaks = new Tweaks { UseFallback = true };
         World world = Specials(tweaks);
         Assert.Same(world.lines[1], world.UseFallbackLine(PlaceAndGet(world, 24, -80, 100)));
         Use(world, 24, -80, 100);
-        Assert.Equal(new[] { "EV_DoDoor(line 1, vld_open)" }, world.unported);
+        Assert.Equal(vldoor_e.vld_open, TaggedDoors(world));
+        Assert.Equal(0, world.lines[1].special);
 
         // Aiming south-east (330°; the trace ends at (79, -112)), the nearer line 1 is behind the
         // player: line 0 is taken.
         world = Specials(tweaks);
         Use(world, 24, -80, 330);
-        Assert.Equal(new[] { "EV_DoDoor(line 0, vld_normal)" }, world.unported);
+        Assert.Equal(vldoor_e.vld_normal, TaggedDoors(world));
 
         // Nothing within USERANGE: at (100, -40) the walls are 88 and 100 units away.
         world = Specials(tweaks);
         Use(world, 100, -40, 90);
-        Assert.Empty(world.unported);
+        Assert.Null(TaggedDoors(world));
         Assert.Null(world.UseFallbackLine(Player(world)));
 
         // A trace that hits its line is not second-guessed: aiming at line 1 from (40, -110) uses it,
         // not line 0 below the player (18 units away against 40).
         world = Specials(tweaks);
         Use(world, 40, -110, 180);
-        Assert.Equal(new[] { "EV_DoDoor(line 1, vld_open)" }, world.unported);
+        Assert.Equal(vldoor_e.vld_open, TaggedDoors(world));
+        Assert.Equal(0, world.lines[1].special);
     }
 
     private static mobj_t PlaceAndGet(World world, int x, int y, int degrees)
@@ -223,13 +269,14 @@ public class LineTriggerTests
         // fallback reaches line 51 (33 units away) across that open line.
         World world = Setup(closeAlcove: false);
         Use(world, 24, -20, 90);
-        Assert.Equal(new[] { "EV_DoDoor(line 51, vld_open)" }, world.unported);
+        Assert.Equal(vldoor_e.vld_open, TaggedDoors(world));
         Assert.Equal(0, world.lines[51].special);
 
         // With the alcove shut (no opening), not through the wall.
         world = Setup(closeAlcove: true);
         Use(world, 24, -20, 90);
-        Assert.Empty(world.unported);
+        Assert.Null(TaggedDoors(world));
+        Assert.Equal(103, world.lines[51].special);
     }
 
     [Fact]
@@ -240,7 +287,9 @@ public class LineTriggerTests
         world.PlaceMobj(Player(world), F(40), F(-64), Deg(90));
         world.G_Ticker(new ticcmd_t()); // releases use (held from the spawn)
         world.G_Ticker(new ticcmd_t { angleturn = unchecked((short)(Deg(180) >> 16)), buttons = buttoncode_t.BT_USE });
-        Assert.Equal(new[] { "EV_DoDoor(line 1, vld_open)" }, world.unported);
+        // The doors started and finished in the tic (the alcoves' ceilings are above where they open to).
+        Assert.Equal(0, world.lines[1].special);
+        Assert.All(Tagged, s => Assert.Equal(F(124), world.sectors[s].ceilingheight));
     }
 
     [Fact]
@@ -259,8 +308,10 @@ public class LineTriggerTests
         {
             "P_SpawnLightFlash(sector 6)",
             $"P_SpawnStrobeFlash(sector 7, {LightFlash.FASTDARK}, 0)",
-            "P_SpawnDoorRaiseIn5Mins(sector 8)",
         }, world.unported);
+        var door = Assert.IsType<vldoor_t>(world.sectors[8].specialdata);
+        Assert.Equal(vldoor_e.vld_raiseIn5Mins, door.type);
+        Assert.Equal(0, world.sectors[8].special);
         Assert.Equal(1, world.numlinespecials);
         Assert.Same(world.lines[27], world.linespeciallist[0]);
 

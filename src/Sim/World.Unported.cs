@@ -3,16 +3,16 @@ using System.Collections.Generic;
 namespace IsoDoom.Sim;
 
 // Stubs for the specials the line triggers and P_SpawnSpecials call that M5's
-// later tasks port (T5.2): doors (p_doors.c, T5.3), floors, lifts, ceilings and
+// later tasks port (T5.2): floors, lifts, ceilings and
 // stairs (p_floor.c, p_plats.c, p_ceilng.c, T5.5), teleports (p_telept.c,
 // T5.6), lights (p_lights.c, T5.7) and exits (g_game.c, T5.8). Each records its
 // call in unported and does nothing else; each task moves its functions to
-// their own file and deletes their stubs here.
+// their own file and deletes their stubs here (doors: World.Doors.cs, T5.3).
 public sealed partial class World
 {
     /// <summary>
     /// Not vanilla: the calls to specials not ported yet, in order, as
-    /// <c>EV_DoDoor(line 3, vld_open)</c> (T5.2), so tests can see which
+    /// <c>EV_DoFloor(line 25, lowerFloorToLowest)</c> (T5.2), so tests can see which
     /// special a trigger ran. Cleared by <see cref="P_SetupLevel"/>; not sim
     /// state (outside the checksum).
     /// </summary>
@@ -28,23 +28,6 @@ public sealed partial class World
         unported.Add(call);
         return P_FindSectorFromLineTag(line, -1) >= 0 ? 1 : 0;
     }
-
-    // ---- p_doors.c (T5.3) ----
-
-    /// <summary>p_doors.c <c>EV_DoDoor</c>: a stub until T5.3.</summary>
-    public int EV_DoDoor(line_t line, vldoor_e type) => TaggedStub($"EV_DoDoor(line {line.Index}, {type})", line);
-
-    /// <summary>p_doors.c <c>EV_DoLockedDoor</c>: a stub until T5.3 (no key check).</summary>
-    public int EV_DoLockedDoor(line_t line, vldoor_e type, mobj_t thing) => TaggedStub($"EV_DoLockedDoor(line {line.Index}, {type})", line);
-
-    /// <summary>p_doors.c <c>EV_VerticalDoor</c>: open a door manually, no tag value: a stub until T5.3.</summary>
-    public void EV_VerticalDoor(line_t line, mobj_t thing) => unported.Add($"EV_VerticalDoor(line {line.Index})");
-
-    /// <summary>p_doors.c <c>P_SpawnDoorCloseIn30</c>: a stub until T5.3.</summary>
-    public void P_SpawnDoorCloseIn30(sector_t sec) => unported.Add($"P_SpawnDoorCloseIn30(sector {sec.Index})");
-
-    /// <summary>p_doors.c <c>P_SpawnDoorRaiseIn5Mins</c>: a stub until T5.3.</summary>
-    public void P_SpawnDoorRaiseIn5Mins(sector_t sec, int secnum) => unported.Add($"P_SpawnDoorRaiseIn5Mins(sector {secnum})");
 
     // ---- p_floor.c, p_plats.c, p_ceilng.c (T5.5) ----
 
