@@ -178,7 +178,8 @@ public partial class LevelCheck
                 Vector3 d = ortho ? forward : position - eye;
                 int rot = frame.Rotate ? Sprites.R_ProjectSpriteRotation(ThingSprites.BamOfMap(d.X, -d.Z), t.angle) : 0;
                 int slot = atlas.SlotOf(frame.Lump[rot]);
-                var custom = new Color(slot, (frame.Flip[rot] ? ThingSprites.FlagFlip : 0) | (t.fullbright ? ThingSprites.FlagFullBright : 0), t.Sector.Index, 0);
+                var custom = new Color(slot, (frame.Flip[rot] ? ThingSprites.FlagFlip : 0) | (t.fullbright ? ThingSprites.FlagFullBright : 0)
+                    | ((Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHOOTABLE) != 0 ? ThingSprites.FlagActor : 0), t.Sector.Index, 0);
                 if (things.CustomData(i) != custom || things.ShownFrames[i].Rot != rot || (CanCapture && things.Multimesh.GetInstanceCustomData(i) != custom))
                     Fail($"{what}, {(ortho ? "orthographic" : "perspective")}: custom data {things.CustomData(i)} ({things.Multimesh.GetInstanceCustomData(i)} on the GPU, "
                         + $"rotation slot {things.ShownFrames[i].Rot}), expected {custom} (slot {rot})");
@@ -291,6 +292,7 @@ public partial class LevelCheck
         }
         await CheckRowsBelowOrigin(m, things, atlas);
         await CheckTiltDepth(m, things, atlas);
+        await CheckThingCutaway(m, things, atlas);
         things.Isolate(null);
         things.Visible = false;
     }

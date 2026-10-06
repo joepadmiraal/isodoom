@@ -43,6 +43,9 @@ namespace IsoDoom.Game;
 /// cursor ground point cuts too; default off),
 /// <c>--level-cutaway-cap=dark|flat|off</c> (T3.4a, <see cref="CutawayCap"/>:
 /// what a cut block shows inside; default dark);
+/// <c>--level-cutaway-things=decor|all|off</c> (T3.4b, <see cref="CutawayThings"/>:
+/// which thing billboards in front of the player the cutaway cuts as walls;
+/// default decor, all but actors);
 /// <c>--level-masked-back=mirror|off</c> (T3.1a, <see cref="MaskedBackFaces"/>:
 /// a masked middle on one side of a line only is drawn from behind too,
 /// mirrored, or as vanilla only from its own side; default mirror);
@@ -79,7 +82,7 @@ namespace IsoDoom.Game;
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
 /// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
-/// cap (dark, flat, off), F1 shows
+/// cap (dark, flat, off), V the things it cuts (decor, all, off), F1 shows
 /// the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
@@ -157,7 +160,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   M masked backs   K cutaway cap   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -339,7 +342,7 @@ public partial class LevelScene : Node3D
         AddChild(_cursorMarker);
     }
 
-    /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c> and <c>--level-cutaway-cursor</c>.</summary>
+    /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c>, <c>--level-cutaway-cursor</c>, <c>--level-cutaway-cap</c> and <c>--level-cutaway-things</c>.</summary>
     private static CutawaySettings ParseCutaway()
     {
         var settings = new CutawaySettings();
@@ -361,8 +364,18 @@ public partial class LevelScene : Node3D
             };
         if (WadLocator.GetUserArg("--level-cutaway-cap") is string cap)
             settings = settings with { Cap = Render.Cutaway.ParseCap(cap) };
+        if (WadLocator.GetUserArg("--level-cutaway-things") is string things)
+            settings = settings with { Things = Render.Cutaway.ParseThings(things) };
         return settings;
     }
+
+    /// <summary>The overlay's name for <see cref="CutawaySettings.Things"/> (as <c>--level-cutaway-things</c> takes it).</summary>
+    private static string ThingsName(CutawayThings things) => things switch
+    {
+        CutawayThings.Decorations => "decor",
+        CutawayThings.All => "all",
+        _ => "off",
+    };
 
     /// <summary>The <c>--level-masked-back</c> option (T3.1a).</summary>
     public static MaskedBackFaces ParseMaskedBacks(string value) => value switch
@@ -512,6 +525,9 @@ public partial class LevelScene : Node3D
                 break;
             case Key.K:
                 Cutaway = Cutaway with { Cap = Cutaway.Cap switch { CutawayCap.Dark => CutawayCap.Flat, CutawayCap.Flat => CutawayCap.Off, _ => CutawayCap.Dark } };
+                break;
+            case Key.V:
+                Cutaway = Cutaway with { Things = Cutaway.Things switch { CutawayThings.Decorations => CutawayThings.All, CutawayThings.All => CutawayThings.Off, _ => CutawayThings.Decorations } };
                 break;
             case Key.T:
                 SpriteOptions = SpriteOptions with { Tilt = SpriteOptions.Tilt >= 1f ? 0.5f : SpriteOptions.Tilt >= 0.5f ? 0f : 1f };
@@ -681,7 +697,7 @@ public partial class LevelScene : Node3D
         if (Iso is { Current: true })
             text.Append(Cutaway.Style == CutawayStyle.Off
                 ? "cutaway: off\n"
-                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}, cap {Cutaway.Cap.ToString().ToLowerInvariant()}\n");
+                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}, cap {Cutaway.Cap.ToString().ToLowerInvariant()}, things {ThingsName(Cutaway.Things)}\n");
         if (Mesh is not null)
         {
             Vector2 o = Mesh.LightOrigin;
@@ -876,10 +892,18 @@ public partial class LevelScene : Node3D
             GD.PushWarning($"Level: {level.Name}: {Things.MissingFrames} thing(s) whose spawn frame the WAD lacks are not drawn");
     }
 
-    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>).</summary>
+    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>) and marked as an actor (<see cref="IsActor"/>, T3.4b).</summary>
     public static ThingSprites.Entry ThingEntry(SpawnedThing t) =>
         new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright,
-            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]));
+            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]), IsActor(Info.mobjinfo[(int)t.Spawn.Type]));
+
+    /// <summary>
+    /// Whether a thing of <paramref name="info"/> is an actor the cutaway keeps
+    /// whole by default (T3.4b, <see cref="CutawayThings.Decorations"/>):
+    /// <c>MF_SHOOTABLE</c> (monsters, barrels, the player), what the player
+    /// must see to shoot.
+    /// </summary>
+    public static bool IsActor(mobjinfo_t info) => (info.flags & mobjflag_t.MF_SHOOTABLE) != 0;
 
     /// <summary>
     /// The blob shadow's radius for a thing of <paramref name="info"/> (T3.6,

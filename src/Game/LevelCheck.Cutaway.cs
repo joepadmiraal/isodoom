@@ -524,4 +524,197 @@ public partial class LevelCheck
         }
         return 2;
     }
+
+    /// <summary>The tallest patch (rows above the origin) the thing cutaway view takes: the shader moves a full-tilt vertex at most 256 units back onto the upright plane (T3.6).</summary>
+    private const int ThingCutMaxTop = 140;
+
+    /// <summary>
+    /// The things the cutaway cuts (T3.4b, real renderer only): the tallest
+    /// thing standing on its floor (at most <see cref="ThingCutMaxTop"/> rows
+    /// above its origin) alone, the level hidden, full tilt with upright depth,
+    /// seen along the game camera's direction at 1 unit per pixel, with a cut
+    /// disc of radius 24 (so its edge crosses the billboard; the default 80 in
+    /// front, so only the plane test keeps it whole) and a cut
+    /// centre 24 units behind it (on its floor, then 64 below it: a thing on a
+    /// raised floor in front of the player) and 24 units in front of it. Each
+    /// drawn pixel of the frame with the cutaway off is classified on the CPU by
+    /// <see cref="Cutaway.HidesThing"/> at its ray's point on the upright quad
+    /// (with <see cref="CutMargin"/> around the cutoff and the disc's edge): cut
+    /// pixels must show the background, the rest draw as with the cutaway off.
+    /// As a decoration it is cut, as an actor only with
+    /// <see cref="CutawayThings.All"/>, never with things off; the dither keeps
+    /// the uncut pixels and clears about half of the cut ones; the cursor centre
+    /// gives the same frame; from the centre in front nothing is cut.
+    /// </summary>
+    private async Task CheckThingCutaway(LevelMesh m, ThingSprites things, SpriteAtlas atlas)
+    {
+        string map = m.Level.Name;
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        var facing = new Vector3(ground.X, ground.Y, 0);
+        things.UpdateRotations(true, -basis.Z, Vector3.Zero);
+
+        int thing = -1, tallest = 0;
+        for (int i = 0; i < things.Entries.Count; i++)
+        {
+            ThingSprites.Entry e = things.Entries[i];
+            ThingSprites.Shown sh = things.ShownFrames[i];
+            if (sh.Slot < 0 || e.MapPosition.Z != m.Level.Sectors[e.Sector].FloorHeight / 65536f)
+                continue;
+            int top = atlas.Images[sh.Slot].TopOffset;
+            if (top > tallest && top <= ThingCutMaxTop)
+            {
+                tallest = top;
+                thing = i;
+            }
+        }
+        if (thing < 0)
+        {
+            Fail($"{map}: thing cutaway: no thing on a floor at most {ThingCutMaxTop} rows tall");
+            return;
+        }
+        ThingSprites.Entry original = things.Entries[thing];
+        Vector3 foot = original.MapPosition;
+        SpriteSettings sprites = m.Sprites;
+        foreach (MeshInstance3D? chunk in _scene.Chunks)
+        {
+            if (chunk is not null)
+                chunk.Visible = false;
+        }
+        things.Isolate(thing);
+        m.SetSprites(sprites with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
+        // Behind it a radius of 24, so the disc's edge crosses the billboard (an imp reaches about 35 units from the anchor
+        // on screen); in front of it the default, so the disc covers the billboard and only the plane test keeps it.
+        var narrow = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Things = CutawayThings.Decorations, Radius = 24 };
+        string name = $"{map}: thing cutaway, thing {thing} ({SpriteName(original)}, {tallest} rows) at ({foot.X:F0}, {foot.Y:F0}, {foot.Z:F0})";
+
+        var behind = new Vector3(foot.X - ground.X * 24, foot.Y - ground.Y * 24, foot.Z);
+        var below = behind with { Z = foot.Z - 64 };
+        var inFront = new Vector3(foot.X + ground.X * 24, foot.Y + ground.Y * 24, foot.Z);
+        foreach ((Vector3 centre, string where, CutawaySettings decor) in new[]
+            { (behind, "centre 24 behind", narrow), (below, "centre 24 behind and 64 below", narrow), (inFront, "centre 24 in front", narrow with { Radius = CutawaySettings.DefaultRadius }) })
+        {
+            string what = $"{name}, {where}";
+            CutView(centre, basis, toCamera);
+            m.SetCutawayCentres(centre, null);
+            things.SetEntry(thing, original with { Actor = false });
+            m.SetCutaway(decor with { Style = CutawayStyle.Off });
+            byte[]? off = await Capture($"{what}, off");
+            if (off is null)
+                break;
+            // The CPU classes of the frame's drawn pixels.
+            Camera3D cam = _scene.Camera;
+            Vector2I size = ViewSize();
+            var classes = new CutPixel[size.X * size.Y];
+            int drawn = 0, cleared = 0, kept = 0, keptAbove = 0;
+            for (int py = 0; py < size.Y; py++)
+            {
+                for (int px = 0; px < size.X; px++)
+                {
+                    int i = py * size.X + px, b = i * 4;
+                    if (NearBackground((off[b], off[b + 1], off[b + 2])))
+                    {
+                        classes[i] = CutPixel.Keep;
+                        continue;
+                    }
+                    drawn++;
+                    var screen = new Vector2(px + 0.5f, py + 0.5f);
+                    Vector3 o = Cutaway.ToMapAxes(cam.ProjectRayOrigin(screen)) * LevelMesh.MapUnitsPerMetre;
+                    Vector3 d = Cutaway.ToMapAxes(cam.ProjectRayNormal(screen)).Normalized();
+                    Vector3 p = o + d * ((foot - o).Dot(facing) / d.Dot(facing));
+                    var a = new Vector3(centre.X, centre.Y, centre.Z + Cutaway.Anchor);
+                    float distance = Cutaway.Distance(p, a, toCamera);
+                    if (Math.Abs(p.Z - (centre.Z + decor.Height)) < CutMargin || Math.Abs(distance - decor.Radius) < CutMargin)
+                    {
+                        classes[i] = CutPixel.Skip;
+                        continue;
+                    }
+                    bool cut = Cutaway.HidesThing(p, foot, facing, false, centre, decor, toCamera);
+                    classes[i] = cut ? CutPixel.Cleared : CutPixel.Keep;
+                    if (cut)
+                        cleared++;
+                    else
+                        kept++;
+                    if (!cut && p.Z > centre.Z + decor.Height)
+                        keptAbove++;
+                }
+            }
+            m.SetCutaway(decor);
+            byte[]? cutFrame = await Capture($"{what}, decoration");
+            m.SetCutawayCentres(null, centre);
+            byte[]? cursor = await Capture($"{what}, decoration, cursor centre");
+            m.SetCutawayCentres(centre, null);
+            m.SetCutaway(decor with { Style = CutawayStyle.Dither });
+            byte[]? dither = await Capture($"{what}, decoration, dither");
+            m.SetCutaway(decor with { Things = CutawayThings.Off });
+            byte[]? thingsOff = await Capture($"{what}, things off");
+            things.SetEntry(thing, original with { Actor = true });
+            m.SetCutaway(decor);
+            byte[]? actor = await Capture($"{what}, actor");
+            m.SetCutaway(decor with { Things = CutawayThings.All });
+            byte[]? actorAll = await Capture($"{what}, actor, all");
+            if (cutFrame is null || cursor is null || dither is null || thingsOff is null || actor is null || actorAll is null)
+                break;
+
+            int ditherCleared = 0;
+            foreach ((byte[] frame, bool cuts, string label) in new[]
+                { (cutFrame, true, "decoration"), (cursor, true, "decoration, cursor centre"), (thingsOff, false, "things off"), (actor, false, "actor"), (actorAll, true, "actor, all") })
+            {
+                int bad = 0;
+                string first = "";
+                for (int i = 0; i < classes.Length; i++)
+                {
+                    int b = i * 4;
+                    (int R, int G, int B) got = (frame[b], frame[b + 1], frame[b + 2]);
+                    bool ok = classes[i] switch
+                    {
+                        CutPixel.Skip => true,
+                        CutPixel.Cleared when cuts => NearBackground(got),
+                        _ => got == (off[b], off[b + 1], off[b + 2]),
+                    };
+                    if (!ok && bad++ == 0)
+                        first = $"pixel ({i % size.X}, {i / size.X}): drew {got}, class {classes[i]}, {(off[b], off[b + 1], off[b + 2])} with the cutaway off";
+                }
+                if (bad > 0)
+                    Fail($"{what}, {label}: {bad} pixel(s) wrong, first at {first}");
+            }
+            int badDither = 0;
+            for (int i = 0; i < classes.Length; i++)
+            {
+                int b = i * 4;
+                (int R, int G, int B) got = (dither[b], dither[b + 1], dither[b + 2]);
+                if (classes[i] == CutPixel.Keep && got != (off[b], off[b + 1], off[b + 2]))
+                    badDither++;
+                else if (classes[i] == CutPixel.Cleared && NearBackground(got))
+                    ditherCleared++;
+            }
+            if (badDither > 0)
+                Fail($"{what}: {badDither} uncut pixel(s) changed with the dither");
+            double share = cleared == 0 ? 0.5 : (double)ditherCleared / cleared;
+            if (share < 0.3 || share > 0.7)
+                Fail($"{what}: the dither cleared {share:P0} of the cut pixels, expected about half");
+            bool front = centre == inFront;
+            if (drawn == 0)
+                Fail($"{what}: nothing drawn");
+            else if (front ? cleared > 0 : cleared < 50)
+                Fail($"{what}: {cleared} pixel(s) classified as cut ({(front ? "none expected in front of the centre" : "at least 50 expected")})");
+            else if (centre == behind && kept - keptAbove < 50)
+                Fail($"{what}: only {kept - keptAbove} pixel(s) kept below the cutoff (at least 50 expected)");
+            else if (centre == below && keptAbove < 50)
+                Fail($"{what}: only {keptAbove} pixel(s) kept outside the disc (at least 50 expected: its edge must cross the billboard)");
+            _pixels += drawn * 6;
+            GD.Print($"Level check: {what}: {drawn} sprite pixels, {cleared} cut, {kept} kept ({keptAbove} above the cutoff); cut as a decoration (also around the cursor) and as an actor with all, "
+                + $"kept as an actor and with things off{(cleared > 0 ? $", dither cleared {share:P0}" : "")}");
+        }
+        things.SetEntry(thing, original);
+        m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
+        m.SetCutawayCentres(null, null);
+        m.SetSprites(sprites);
+        foreach (MeshInstance3D? chunk in _scene.Chunks)
+        {
+            if (chunk is not null)
+                chunk.Visible = true;
+        }
+    }
 }

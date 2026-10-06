@@ -322,7 +322,7 @@ public sealed class LevelMesh
     public Vector3? CutPlayer { get; private set; }
     public Vector3? CutCursor { get; private set; }
 
-    /// <summary>Sets the wall cutaway's style, radius and cutoff height (T3.4, <see cref="IsoDoom.Render.Cutaway"/>).</summary>
+    /// <summary>Sets the wall cutaway's style, radius and cutoff height (T3.4, <see cref="IsoDoom.Render.Cutaway"/>), its cap (T3.4a) and the things it cuts (T3.4b; on <see cref="SpriteMaterial"/>).</summary>
     public void SetCutaway(CutawaySettings settings)
     {
         Cutaway = settings;
@@ -331,6 +331,7 @@ public sealed class LevelMesh
         SetParameter("cut_height", settings.Height);
         SetParameter("cut_anchor", Render.Cutaway.Anchor);
         SetParameter("cut_cap", (int)settings.Cap);
+        SetParameter("cut_things", (int)settings.Things);
     }
 
     /// <summary>

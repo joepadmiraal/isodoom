@@ -118,7 +118,7 @@ public partial class PlayerPlaceholder : Node3D
     }
 
     private ThingSprites.Entry Entry() =>
-        new(new Vector3(MapPosition.X, MapPosition.Y, FloorHeight), ThingSprites.BamOfDegrees(Angle), Sector?.Index ?? 0, SprPlay, 0, false, ShadowRadius);
+        new(new Vector3(MapPosition.X, MapPosition.Y, FloorHeight), ThingSprites.BamOfDegrees(Angle), Sector?.Index ?? 0, SprPlay, 0, false, ShadowRadius, Actor: true);
 
     private void UpdateEntry()
     {

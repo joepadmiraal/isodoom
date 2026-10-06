@@ -32,7 +32,23 @@ public enum CutawayCap
     Dark = 2,
 }
 
-/// <summary>The cutaway's presentation options (T3.4, SPEC §12): style, radius, cutoff height, whether the cursor ground point also cuts, and the cap (T3.4a).</summary>
+/// <summary>
+/// Which thing billboards the cutaway cuts (T3.4b, SPEC §12; a presentation
+/// option). The sprite shader's <c>cut_things</c>.
+/// </summary>
+public enum CutawayThings
+{
+    /// <summary>None: billboards are drawn whole (T3.5).</summary>
+    Off = 0,
+
+    /// <summary>Every thing but actors (<c>MF_SHOOTABLE</c>: monsters, barrels, the player), which must stay visible to be shot (the default).</summary>
+    Decorations = 1,
+
+    /// <summary>Every thing, actors too.</summary>
+    All = 2,
+}
+
+/// <summary>The cutaway's presentation options (T3.4, SPEC §12): style, radius, cutoff height, whether the cursor ground point also cuts, the cap (T3.4a) and the things it cuts (T3.4b).</summary>
 public sealed record CutawaySettings
 {
     /// <summary>Defaults, tuned on E1M1, E1M8 and Doom II MAP15 with the game camera (SPEC §12 T3.4).</summary>
@@ -51,6 +67,9 @@ public sealed record CutawaySettings
 
     /// <summary>What a cut block shows inside (T3.4a).</summary>
     public CutawayCap Cap { get; init; } = CutawayCap.Dark;
+
+    /// <summary>Which thing billboards are cut as walls are (T3.4b).</summary>
+    public CutawayThings Things { get; init; } = CutawayThings.Decorations;
 }
 
 /// <summary>
@@ -137,6 +156,39 @@ public static class Cutaway
         Vector3 axis = camera is Vector3 c ? (c - a).Normalized() : toCamera;
         return Distance(p, a, axis) < settings.Radius;
     }
+
+    /// <summary>
+    /// Whether centre <paramref name="centre"/> cuts point <paramref name="p"/>
+    /// of a thing's billboard standing at <paramref name="foot"/> (T3.4b, the
+    /// sprite shader's <c>cut_thing</c>; orthographic): as
+    /// <see cref="Hides"/> for a wall through the foot whose normal is
+    /// <paramref name="facing"/> (the billboard's horizontal normal towards
+    /// the camera), with the plane test at the foot, so the whole thing is in
+    /// front of the centre or not; <paramref name="p"/> is where the fragment
+    /// writes its depth (on the upright quad with upright tilt depth, T3.6).
+    /// <paramref name="actor"/> things are cut only with
+    /// <see cref="CutawayThings.All"/>.
+    /// </summary>
+    public static bool HidesThing(Vector3 p, Vector3 foot, Vector3 facing, bool actor, Vector3 centre, CutawaySettings settings, Vector3 toCamera)
+    {
+        if (settings.Style == CutawayStyle.Off || settings.Things == CutawayThings.Off || (actor && settings.Things != CutawayThings.All))
+            return false;
+        if (p.Z <= centre.Z + settings.Height)
+            return false;
+        var a = new Vector3(centre.X, centre.Y, centre.Z + Anchor);
+        if ((a - foot).Dot(facing) > -PlaneMargin)
+            return false;
+        return Distance(p, a, toCamera) < settings.Radius;
+    }
+
+    /// <summary>Parses which things the cutaway cuts (<c>decor</c>, <c>all</c>, <c>off</c>).</summary>
+    public static CutawayThings ParseThings(string s) => s switch
+    {
+        "decor" or "decorations" => CutawayThings.Decorations,
+        "all" => CutawayThings.All,
+        "off" => CutawayThings.Off,
+        _ => throw new ArgumentException($"--level-cutaway-things: unknown choice \"{s}\" (decor, all or off)"),
+    };
 
     /// <summary>Distance of <paramref name="p"/> from the line through <paramref name="a"/> along the unit vector <paramref name="axis"/>.</summary>
     public static float Distance(Vector3 p, Vector3 a, Vector3 axis)

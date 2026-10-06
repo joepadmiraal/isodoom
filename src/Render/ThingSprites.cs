@@ -38,7 +38,8 @@ namespace IsoDoom.Render;
 /// <see cref="Entry.ShadowRadius"/>; default off).</item>
 /// </list>
 /// Per-instance custom data: (atlas slot, or −1 to hide; flags: 1 flip, 2
-/// full bright; sector; 0). Positions and frames are set by the owner
+/// full bright, 4 actor (T3.4b: the cutaway keeps it whole unless
+/// <see cref="CutawayThings.All"/>); sector; 0). Positions and frames are set by the owner
 /// (<see cref="SetEntries"/>, <see cref="SetEntry"/>).
 /// </summary>
 public partial class ThingSprites : MultiMeshInstance3D
@@ -49,14 +50,16 @@ public partial class ThingSprites : MultiMeshInstance3D
     public const float PullMargin = 1f;
 
     /// <summary>Custom data flags.</summary>
-    public const int FlagFlip = 1, FlagFullBright = 2;
+    public const int FlagFlip = 1, FlagFullBright = 2, FlagActor = 4;
 
     /// <summary>
     /// One thing: map position (x, y, z in map units), facing (BAM), sector
     /// index (light), sprite (<c>spritenum_t</c>), frame (0 = A), full bright,
-    /// and the radius of its blob shadow in map units (T3.6; 0: none).
+    /// the radius of its blob shadow in map units (T3.6; 0: none), and whether
+    /// it is an actor, which the cutaway cuts only with
+    /// <see cref="CutawayThings.All"/> (T3.4b).
     /// </summary>
-    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0);
+    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false);
 
     public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
 
@@ -308,7 +311,7 @@ public partial class ThingSprites : MultiMeshInstance3D
             return;
         _shown[i] = shown;
         bool hidden = _isolated is int only && only != i;
-        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0);
+        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0);
         _custom[i] = new Color(hidden ? -1 : shown.Slot, flags, e.Sector, 0);
         Multimesh.SetInstanceCustomData(i, _custom[i]);
         Shadows.Multimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));

@@ -4,7 +4,7 @@
 // One MultiMesh instance per thing (IsoDoom.Render.ThingSprites):
 //   instance transform  the thing's position (Godot space; basis identity)
 //   INSTANCE_CUSTOM     atlas slot (-1: draw nothing), flags (1 flip, 2 full
-//                       bright), sector (light), unused
+//                       bright, 4 actor), sector (light), unused
 //   VERTEX              sprite space: x 0 left / 1 right; y 0 bottom row,
 //                       1 the patch origin's height, 2 top row; z 1 for the
 //                       lower quad (the rows below the origin)
@@ -34,6 +34,17 @@
 // Outline (T3.6, `outline` >= 0; default palette index 0): the quad grows by a
 // texel on every side, and transparent texels next to an opaque one (4-way)
 // draw that palette index through the sprite's colormap.
+//
+// Cutaway (T3.4b, IsoDoom.Render.CutawayThings; the CPU reference is
+// IsoDoom.Render.Cutaway.HidesThing): with `cut_things` 1 (decorations: not
+// actors, flag 4) or 2 (all), a fragment is cut as the level shader cuts a
+// wall through the thing's foot facing the camera (the billboard's plane): it
+// is more than `cut_height` above a centre's floor, the centre's anchor is
+// behind that plane (the whole thing is in front of the centre), and it lies
+// within `cut_radius` of the anchor's line towards the camera. The point is
+// where the fragment writes its depth (on the upright quad with upright tilt
+// depth). `cut_mode` 1 discards it, 2 dithers it as walls; the uniforms are
+// the level shader's (set on every material by IsoDoom.Render.LevelMesh).
 //
 // Light: one colormap per instance, as vanilla's per vissprite: the
 // `colormap_override` (vanilla fixedcolormap) if set, else colormap 0 for
@@ -79,11 +90,25 @@ uniform int extralight = 0;
 uniform float tilt = 0.0;
 uniform int tilt_depth = 0;
 uniform int outline = -1;
+// The cutaway (T3.4, T3.4b): the level shader's uniforms, and which things it
+// cuts (0 none, 1 all but actors, 2 all).
+uniform int cut_mode = 0;
+uniform vec4 cut_player = vec4(0.0);
+uniform vec4 cut_cursor = vec4(0.0);
+uniform float cut_radius = 96.0;
+uniform float cut_height = 32.0;
+uniform float cut_anchor = 28.0;
+uniform int cut_things = 0;
+// IsoDoom.Render.Cutaway.PlaneMargin (map units).
+const float CUT_PLANE_MARGIN = 1.0;
 
 varying flat ivec4 v_rect;
 varying flat int v_flip;
 varying flat int v_colormap;
 varying vec2 v_texcoord;
+// Whether the cutaway may cut this thing (T3.4b), and its foot (map units).
+varying flat int v_cuttable;
+varying flat vec3 v_foot;
 
 vec4 data_texel(sampler2D tex, int id) {
 	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
@@ -113,6 +138,8 @@ void vertex() {
 	int flags = int(round(INSTANCE_CUSTOM.y));
 	int sector = int(round(INSTANCE_CUSTOM.z));
 	vec3 foot = MODEL_MATRIX[3].xyz;
+	v_foot = vec3(foot.x, -foot.z, foot.y) * MAP_UNITS_PER_METRE;
+	v_cuttable = cut_mode != 0 && (cut_things == 2 || (cut_things == 1 && (flags & 4) == 0)) ? 1 : 0;
 	if (slot < 0) {
 		// Nothing to draw: a degenerate quad.
 		v_rect = ivec4(0);
@@ -189,11 +216,51 @@ bool opaque_at(int col, int row) {
 	return texelFetch(sprite_atlas, v_rect.xy + ivec2(col, row), 0).g >= 0.5;
 }
 
+// IsoDoom.Render.Cutaway.HidesThing: whether centre c cuts billboard point p
+// (map units); n the billboard's horizontal normal towards the camera.
+bool cut_thing(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
+	if (c.w < 0.5 || p.z <= c.z + cut_height) {
+		return false;
+	}
+	vec3 a = vec3(c.xy, c.z + cut_anchor);
+	if (dot(a - v_foot, n) > -CUT_PLANE_MARGIN) {
+		return false;
+	}
+	vec3 axis = ortho ? to_camera : normalize(cam - a);
+	vec3 d = p - a;
+	return length(d - axis * dot(d, axis)) < cut_radius;
+}
+
+// 4x4 ordered dither threshold (0-1) of a pixel (as the level shader's).
+float bayer4(ivec2 q) {
+	const int m[16] = int[](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+	return (float(m[(q.y & 3) * 4 + (q.x & 3)]) + 0.5) / 16.0;
+}
+
 void fragment() {
 	int w = v_rect.z;
 	int h = v_rect.w;
 	if (w <= 0 || h <= 0) {
 		discard;
+	}
+	if (v_cuttable != 0) {
+		// Godot space (x, height, -y, metres) to map units (x, y, height).
+		vec3 world = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		vec3 p = vec3(world.x, -world.z, world.y) * MAP_UNITS_PER_METRE;
+		vec3 cam = vec3(CAMERA_POSITION_WORLD.x, -CAMERA_POSITION_WORLD.z, CAMERA_POSITION_WORLD.y) * MAP_UNITS_PER_METRE;
+		vec3 back = normalize(INV_VIEW_MATRIX[2].xyz);
+		vec3 to_camera = vec3(back.x, -back.z, back.y);
+		bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
+		// The billboard's normal: the camera's right axis, flattened, turned up (as the vertex shader).
+		vec3 right = vec3(INV_VIEW_MATRIX[0].x, 0.0, INV_VIEW_MATRIX[0].z);
+		right = dot(right, right) > 1e-8 ? normalize(right) : vec3(1.0, 0.0, 0.0);
+		vec3 facing = cross(right, vec3(0.0, 1.0, 0.0));
+		vec3 n = vec3(facing.x, -facing.z, facing.y);
+		if (cut_thing(p, n, cut_player, ortho, to_camera, cam) || cut_thing(p, n, cut_cursor, ortho, to_camera, cam)) {
+			if (cut_mode == 1 || bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
+				discard;
+			}
+		}
 	}
 	int col = int(floor(v_texcoord.x));
 	int row = int(floor(v_texcoord.y));
