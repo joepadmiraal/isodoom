@@ -45,3 +45,23 @@ public enum GameMission
     /// <summary>Not identified.</summary>
     none,
 }
+
+/// <summary>
+/// Which release of an IWAD it is, on top of <see cref="GameMode"/> and
+/// <see cref="GameMission"/> (Chocolate Doom d_mode.h: <c>GameVariant_t</c>;
+/// not in vanilla).
+/// </summary>
+public enum GameVariant
+{
+    /// <summary>An original id Software IWAD.</summary>
+    vanilla,
+
+    /// <summary>Freedoom: Phase 1 or 2 (has a <c>FREEDOOM</c> lump).</summary>
+    freedoom,
+
+    /// <summary>FreeDM, Freedoom's deathmatch IWAD (has <c>FREEDOOM</c> and <c>FREEDM</c> lumps).</summary>
+    freedm,
+
+    /// <summary>The Doom 3 BFG Edition IWADs (have a <c>DMENUPIC</c> lump).</summary>
+    bfgedition,
+}

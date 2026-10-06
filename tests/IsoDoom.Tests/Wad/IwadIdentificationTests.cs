@@ -17,6 +17,50 @@ public class IwadIdentificationTests
         Assert.Equal(GameMode.shareware, info.GameMode);
         Assert.Equal(GameMission.doom, info.GameMission);
         Assert.Equal("DOOM Shareware", info.Description);
+        Assert.Equal(GameVariant.vanilla, info.GameVariant);
+    }
+
+    [Fact]
+    public void Doom2IsDoom2()
+    {
+        IwadInfo info = IwadIdentification.D_IdentifyVersion(WadArchive.Open(TestWads.RequireDoom2()));
+        Assert.Equal(new IwadInfo(GameMode.commercial, GameMission.doom2, GameVariant.vanilla), info);
+        Assert.Equal("DOOM 2: Hell on Earth", info.Description);
+    }
+
+    [Theory]
+    [InlineData(GameVariant.vanilla, "MAP01")]
+    [InlineData(GameVariant.freedoom, "MAP01", "FREEDOOM")]
+    [InlineData(GameVariant.freedm, "MAP01", "FREEDOOM", "FREEDM")]
+    [InlineData(GameVariant.freedm, "MAP01", "FREEDM", "FREEDOOM")]
+    [InlineData(GameVariant.vanilla, "MAP01", "FREEDM")] // FREEDM alone is not FreeDM
+    [InlineData(GameVariant.bfgedition, "MAP01", "DMENUPIC")]
+    [InlineData(GameVariant.freedoom, "MAP01", "DMENUPIC", "FREEDOOM")] // FREEDOOM wins over DMENUPIC
+    [InlineData(GameVariant.bfgedition, "E1M1", "E3M1", "E4M1", "DMENUPIC")]
+    public void IdentifiesVariantFromLumps(GameVariant variant, params string[] lumps)
+    {
+        Assert.Equal(variant, IwadIdentification.D_IdentifyVersion(Iwad(lumps).ToWadFile()).GameVariant);
+    }
+
+    [Fact]
+    public void PwadsDoNotChangeTheVariant()
+    {
+        WadArchive archive = new(new[]
+        {
+            Iwad("MAP01").ToWadFile("doom2.wad"),
+            new WadBuilder().Markers("FREEDOOM", "DMENUPIC").ToWadFile("mod.wad"),
+        });
+        Assert.Equal(GameVariant.vanilla, IwadIdentification.D_IdentifyVersion(archive).GameVariant);
+    }
+
+    [Fact]
+    public void VariantDescriptions()
+    {
+        Assert.Equal("Freedoom: Phase 1", new IwadInfo(GameMode.retail, GameMission.doom, GameVariant.freedoom).Description);
+        Assert.Equal("Freedoom: Phase 2", new IwadInfo(GameMode.commercial, GameMission.doom2, GameVariant.freedoom).Description);
+        Assert.Equal("FreeDM", new IwadInfo(GameMode.commercial, GameMission.doom2, GameVariant.freedm).Description);
+        Assert.Equal("The Ultimate DOOM (BFG Edition)", new IwadInfo(GameMode.retail, GameMission.doom, GameVariant.bfgedition).Description);
+        Assert.Equal("DOOM 2: Hell on Earth (BFG Edition)", new IwadInfo(GameMode.commercial, GameMission.doom2, GameVariant.bfgedition).Description);
     }
 
     [Theory]

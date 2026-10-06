@@ -42,6 +42,52 @@ public static class TestWads
         return Doom1Path!;
     }
 
+    /// <summary>Environment variable that overrides the DOOM2.WAD path (an absent path forces a skip).</summary>
+    public const string Doom2EnvVar = "ISODOOM_DOOM2_WAD";
+
+    private static readonly Lazy<string?> Doom2 = new(FindDoom2);
+
+    /// <summary>
+    /// Full path of a DOOM II IWAD: <see cref="Doom2EnvVar"/> when set, else
+    /// <c>wads/DOOM2.WAD</c> or <c>wads/doom2.wad</c>; null when absent.
+    /// </summary>
+    public static string? Doom2Path => Doom2.Value;
+
+    /// <summary>
+    /// Returns the path of a DOOM II IWAD (any version; no MD5 check, so tests
+    /// must only assert what every release has), or skips the calling test.
+    /// </summary>
+    public static string RequireDoom2()
+    {
+        if (Doom2Path is null)
+        {
+            string? overridePath = Environment.GetEnvironmentVariable(Doom2EnvVar);
+            Assert.Skip(!string.IsNullOrEmpty(overridePath)
+                ? $"DOOM2.WAD not found at {Path.GetFullPath(overridePath)} (from {Doom2EnvVar})."
+                : $"DOOM2.WAD not found in wads/ (or set {Doom2EnvVar}); put a DOOM II IWAD there to run this test.");
+        }
+        return Doom2Path!;
+    }
+
+    private static string? FindDoom2()
+    {
+        string? overridePath = Environment.GetEnvironmentVariable(Doom2EnvVar);
+        if (!string.IsNullOrEmpty(overridePath))
+        {
+            string full = Path.GetFullPath(overridePath);
+            return File.Exists(full) ? full : null;
+        }
+        if (RepoRoot is null)
+            return null;
+        foreach (string name in new[] { "DOOM2.WAD", "doom2.wad" })
+        {
+            string path = Path.Combine(RepoRoot, "wads", name);
+            if (File.Exists(path))
+                return path;
+        }
+        return null;
+    }
+
     private static string? FindDoom1()
     {
         string? overridePath = Environment.GetEnvironmentVariable(Doom1EnvVar);

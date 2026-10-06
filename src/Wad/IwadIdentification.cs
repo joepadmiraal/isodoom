@@ -4,10 +4,18 @@ using System.Collections.Generic;
 namespace IsoDoom.Wad;
 
 /// <summary>The identified game of an IWAD.</summary>
-public sealed record IwadInfo(GameMode GameMode, GameMission GameMission)
+public sealed record IwadInfo(GameMode GameMode, GameMission GameMission, GameVariant GameVariant = GameVariant.vanilla)
 {
     /// <summary>A human-readable name for the identified game.</summary>
-    public string Description => (GameMode, GameMission) switch
+    public string Description => GameVariant switch
+    {
+        GameVariant.freedm => "FreeDM",
+        GameVariant.freedoom => GameMode == GameMode.commercial ? "Freedoom: Phase 2" : "Freedoom: Phase 1",
+        GameVariant.bfgedition => $"{BaseDescription} (BFG Edition)",
+        _ => BaseDescription,
+    };
+
+    private string BaseDescription => (GameMode, GameMission) switch
     {
         (GameMode.shareware, _) => "DOOM Shareware",
         (GameMode.registered, _) => "DOOM Registered",
@@ -18,7 +26,7 @@ public sealed record IwadInfo(GameMode GameMode, GameMission GameMission)
         _ => "Unknown",
     };
 
-    public override string ToString() => $"{Description} ({GameMode}, {GameMission})";
+    public override string ToString() => $"{Description} ({GameMode}, {GameMission}, {GameVariant})";
 }
 
 /// <summary>
@@ -32,6 +40,12 @@ public sealed record IwadInfo(GameMode GameMode, GameMission GameMission)
 /// Chocolate Doom tells TNT and Plutonia apart from DOOM II by file name; here
 /// the mission comes from lumps unique to each IWAD (the <c>REDTNT2</c> and
 /// <c>CAMO1</c> patches), so a renamed file is still identified.
+/// </para>
+/// <para>
+/// The <see cref="GameVariant"/> follows Chocolate Doom's <c>D_DoomMain</c>
+/// (d_main.c, "Check which IWAD variant we are using"): a <c>FREEDOOM</c>
+/// lump means Freedoom, or FreeDM if there is also a <c>FREEDM</c> lump;
+/// otherwise a <c>DMENUPIC</c> lump means the BFG Edition.
 /// </para>
 /// </summary>
 public static class IwadIdentification
@@ -89,6 +103,13 @@ public static class IwadIdentification
                 gamemission = GameMission.pack_plut;
         }
 
-        return new IwadInfo(gamemode, gamemission);
+        // Check which IWAD variant we are using. (Chocolate Doom d_main.c: D_DoomMain)
+        GameVariant gamevariant = GameVariant.vanilla;
+        if (names.Contains("FREEDOOM"))
+            gamevariant = names.Contains("FREEDM") ? GameVariant.freedm : GameVariant.freedoom;
+        else if (names.Contains("DMENUPIC"))
+            gamevariant = GameVariant.bfgedition;
+
+        return new IwadInfo(gamemode, gamemission, gamevariant);
     }
 }

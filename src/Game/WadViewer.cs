@@ -121,9 +121,10 @@ public partial class WadViewer : Control
         {
             var archive = WadArchive.Open(path, [.. pwads]);
             info = IwadIdentification.D_IdentifyVersion(archive);
+            ModifiedGame.D_CheckModifiedGame(archive, info);
             catalog = GraphicsCatalog.Load(archive);
         }
-        catch (Exception e) when (e is WadFormatException or IOException or UnauthorizedAccessException or KeyNotFoundException)
+        catch (Exception e) when (e is WadFormatException or ModifiedGameException or IOException or UnauthorizedAccessException or KeyNotFoundException)
         {
             ShowError($"Could not load {path}: {e.Message}");
             return false;
