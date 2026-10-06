@@ -38,6 +38,10 @@ namespace IsoDoom.Render;
 /// <see cref="SetLightDiminishing"/>, <see cref="SetLightOrigin"/>,
 /// <see cref="SetLightReference"/>, <see cref="SetExtraLight"/>,
 /// <see cref="SetColormapOverride"/>).</item>
+/// <item><b>Masked middles from behind</b> (T3.1a): a masked middle on
+/// one side of a line only also gets a back-face quad in the back sector's
+/// chunk (<see cref="KindMaskedBack"/>), drawn or collapsed by
+/// <see cref="SetMaskedBackFaces"/> (<see cref="MaskedBackFaces"/>).</item>
 /// <item><b>Cutaway</b> (T3.4): walls hiding the player (and optionally the
 /// cursor ground point) are cut above a height in both materials
 /// (<see cref="Render.Cutaway"/>, <see cref="SetCutaway"/>,
@@ -58,8 +62,12 @@ public sealed class LevelMesh
     /// <summary>Texels per row of the sector and texture-info data textures (the shader's <c>SECTOR_DATA_WIDTH</c>).</summary>
     public const int DataWidth = 256;
 
-    /// <summary>Vertex kinds (<c>CUSTOM0.x</c>).</summary>
-    public const int KindFloor = 0, KindWall = 1, KindMasked = 2;
+    /// <summary>
+    /// Vertex kinds (<c>CUSTOM0.x</c>). <see cref="KindMaskedBack"/> (T3.1a) is
+    /// the back face of a one-sided masked middle: drawn as a masked middle from
+    /// the other side, or collapsed by the vertex shader (<see cref="MaskedBackFaces"/>).
+    /// </summary>
+    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3;
 
     /// <summary>Half the height range of a chunk's culling box, in metres (any fixed_t height fits).</summary>
     private const float HeightRange = 32768f / MapUnitsPerMetre;
@@ -68,6 +76,7 @@ public sealed class LevelMesh
     private Image _infoImage = null!;
     private readonly int[] _textureSlot; // texture number → slot, -1 if unused
     private readonly Dictionary<string, int> _flatSlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<(int Line, int Side)> _maskedSides = new();
 
     private LevelMesh(Level level, WallSections walls, FloorTriangles floors, Textures textures, int[] textureSlot, List<string> slotNames,
         TextureAtlas atlas, Image sectorImage)
@@ -76,6 +85,11 @@ public sealed class LevelMesh
         Walls = walls;
         Floors = floors;
         Pieces = WallPieces.Build(level, floors);
+        foreach (WallSection s in walls.Sections)
+        {
+            if (IsDrawn(s) && IsMasked(s))
+                _maskedSides.Add((s.Line.Index, s.Side));
+        }
         Textures = textures;
         _textureSlot = textureSlot;
         SlotNames = slotNames;
@@ -139,6 +153,9 @@ public sealed class LevelMesh
     /// <summary>Number of solid wall quads in the meshes (one per <see cref="WallPiece"/> of each drawn section), of masked middle quads, and of floor triangles.</summary>
     public int WallQuads { get; private set; }
     public int MaskedQuads { get; private set; }
+
+    /// <summary>Number of back-face quads of one-sided masked middles (<see cref="HasBackFace"/>, T3.1a), drawn or not as <see cref="MaskedBacks"/> says.</summary>
+    public int MaskedBackQuads { get; private set; }
     public int FloorTriangleCount { get; private set; }
 
     /// <summary>The level's bounds in Godot space at its load-time heights.</summary>
@@ -197,6 +214,38 @@ public sealed class LevelMesh
 
     /// <summary>Whether <paramref name="s"/> is drawn by <see cref="MaskedMaterial"/> (a masked middle, T3.1).</summary>
     public static bool IsMasked(WallSection s) => s.Kind == WallSectionKind.MaskedMiddle;
+
+    /// <summary>
+    /// Whether <paramref name="s"/> gets a back-face quad (T3.1a): a drawn
+    /// masked middle of a two-sided line whose other side has none, so vanilla
+    /// shows it from one side only.
+    /// </summary>
+    public bool HasBackFace(WallSection s) =>
+        IsDrawn(s) && IsMasked(s) && s.BackSector is not null && !_maskedSides.Contains((s.Line.Index, s.Side ^ 1));
+
+    /// <summary>
+    /// A plane reference seen from the other side of the line (front ↔ back;
+    /// the higher floor and lower ceiling stay): a back face's
+    /// <c>CUSTOM1</c>/<c>CUSTOM2</c> planes with its sectors swapped (T3.1a).
+    /// </summary>
+    public static WallPlane OtherSide(WallPlane plane) => plane switch
+    {
+        WallPlane.FrontFloor => WallPlane.BackFloor,
+        WallPlane.FrontCeiling => WallPlane.BackCeiling,
+        WallPlane.BackFloor => WallPlane.FrontFloor,
+        WallPlane.BackCeiling => WallPlane.FrontCeiling,
+        _ => plane,
+    };
+
+    /// <summary>Whether one-sided masked middles are drawn from behind as well (<see cref="MaskedBackFaces"/>, T3.1a), as last set.</summary>
+    public MaskedBackFaces MaskedBacks { get; private set; } = MaskedBackFaces.Mirrored;
+
+    /// <summary>Selects whether one-sided masked middles are drawn from behind (T3.1a).</summary>
+    public void SetMaskedBackFaces(MaskedBackFaces mode)
+    {
+        MaskedBacks = mode;
+        SetParameter("masked_backs", (int)mode);
+    }
 
     /// <summary>A map position (fixed_t x, y) and height (map units) in Godot space.</summary>
     public static Vector3 ToGodot(int x, int y, float height) =>
@@ -372,6 +421,7 @@ public sealed class LevelMesh
         SetLightNear(LightTables.DefaultNearDistance);
         SetExtraLight(0);
         SetWallTiling(WallTextureTiling.Vanilla);
+        SetMaskedBackFaces(MaskedBacks);
         SetCutaway(Cutaway);
         SetSprites(Sprites);
         SetCutawayCentres(null, null);
@@ -449,6 +499,29 @@ public sealed class LevelMesh
                 else
                     WallQuads++;
             }
+
+            // T3.1a: the back face, in the back sector's chunk with the sectors swapped (so it takes
+            // the back sector's light, the viewer's side as vanilla's seg), the same corners and
+            // columns (so the texture shows mirrored, as the quad's other face), the other winding.
+            if (!HasBackFace(s))
+                continue;
+            Sector back = s.BackSector!;
+            Chunk bc = maskedChunks[back.Index] ??= new Chunk();
+            var b0 = new Vector4(KindMaskedBack, TextureSlot(s.Texture), back.Index, s.FrontSector.Index);
+            var b1 = new Vector4((int)OtherSide(s.Bottom.Plane), Units(s.Bottom.Offset), (int)OtherSide(s.Top.Plane), Units(s.Top.Offset));
+            foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
+            {
+                var c2 = new Vector4((int)OtherSide(s.TextureTop.Plane), Units(s.TextureTop.Offset), piece.Contrast, PieceAngle(piece));
+                (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
+                Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
+                int first = bc.Vertices.Count;
+                bc.Add(p1, new Vector2(u1, 0), b0, b1, c2);
+                bc.Add(p1, new Vector2(u1, 1), b0, b1, c2);
+                bc.Add(p2, new Vector2(u2, 1), b0, b1, c2);
+                bc.Add(p2, new Vector2(u2, 0), b0, b1, c2);
+                bc.Indices.AddRange(BackFaceIndices(first));
+                MaskedBackQuads++;
+            }
         }
 
         const Mesh.ArrayFormat custom =
@@ -497,6 +570,9 @@ public sealed class LevelMesh
         Bounds = bounds ?? new Aabb();
     }
 
+    /// <summary>A back-face quad's indices (T3.1a): the front quad's triangles (A bottom, A top, B top, B bottom from <paramref name="first"/>) wound the other way.</summary>
+    public static int[] BackFaceIndices(int first) => new[] { first, first + 2, first + 1, first, first + 3, first + 2 };
+
     /// <summary>
     /// The direction of a wall piece from its end A to B, radians (map space,
     /// counterclockwise from +x): the shader's <c>CUSTOM2.w</c>, from which the
@@ -508,4 +584,17 @@ public sealed class LevelMesh
 
     /// <summary>The texture column (map units, float) of a section's piece end: the sidedef's <c>textureoffset</c> plus the piece's column (<see cref="WallPiece"/>).</summary>
     public static float Column(WallSection s, int pieceColumn) => (float)(((long)s.TextureOffset + pieceColumn) / 65536.0);
+}
+
+/// <summary>
+/// Whether a masked middle on one side of a line only (vanilla draws it from
+/// that side alone; SPEC §12 T3.1a) is drawn from behind as well.
+/// </summary>
+public enum MaskedBackFaces
+{
+    /// <summary>Vanilla: invisible from behind (with the fixed camera, for good when its side faces away).</summary>
+    Off,
+
+    /// <summary>The default: from behind too, as the quad's other face (the texture mirrored), lit by the sector on that side.</summary>
+    Mirrored,
 }

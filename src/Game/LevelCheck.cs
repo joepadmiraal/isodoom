@@ -92,7 +92,7 @@ public partial class LevelCheck : Godot.Node
 
     /// <summary>Pixels compared whose colormap Player mode's shortest distance (T3.7) changed.</summary>
     private long _nearCompared;
-    private long _maskedOpaque, _maskedClear;
+    private long _maskedOpaque, _maskedClear, _maskedBackOpaque, _maskedBackClear;
     private IsoCamera? _isoProbe;
     private int _cursorPoints, _cursorInFront;
 
@@ -389,17 +389,25 @@ public partial class LevelCheck : Godot.Node
     /// texels as the vertex shader does. A chunk has a first surface with
     /// <see cref="LevelMesh.Material"/> (floor, then solid wall quads) when it
     /// has either, and a last one with <see cref="LevelMesh.MaskedMaterial"/>
-    /// (masked middle quads, T3.1) when it has any. Returns (sections, vertices) checked.
+    /// (masked middle quads, T3.1, and the back faces of one-sided ones whose
+    /// back sector it is, T3.1a, in section order) when it has any. Returns
+    /// (sections, vertices) checked.
     /// </summary>
     private (int Sections, int Vertices) CheckChunks(LevelMesh m, string map)
     {
         Level level = m.Level;
-        var walls = new List<WallSection>?[level.Sectors.Length];
-        var maskedWalls = new List<WallSection>?[level.Sectors.Length];
+        var walls = new List<(WallSection, bool)>?[level.Sectors.Length];
+        var maskedWalls = new List<(WallSection, bool)>?[level.Sectors.Length];
+        int backFaces = 0;
         foreach (WallSection s in m.Walls.Sections)
         {
             if (LevelMesh.IsDrawn(s))
-                ((LevelMesh.IsMasked(s) ? maskedWalls : walls)[s.FrontSector.Index] ??= new List<WallSection>()).Add(s);
+                ((LevelMesh.IsMasked(s) ? maskedWalls : walls)[s.FrontSector.Index] ??= new List<(WallSection, bool)>()).Add((s, false));
+            if (m.HasBackFace(s))
+            {
+                (maskedWalls[s.BackSector!.Index] ??= new List<(WallSection, bool)>()).Add((s, true));
+                backFaces += m.Pieces.Of(s.Line, s.Side).Count;
+            }
         }
         var floors = new SectorFloor?[level.Sectors.Length];
         foreach (SectorFloor f in m.Floors.BySector)
@@ -413,13 +421,13 @@ public partial class LevelCheck : Godot.Node
         {
             string what = $"{map}: sector {sector}";
             SectorFloor? floor = floors[sector] is { TriangleCount: > 0 } f ? f : null;
-            List<WallSection> sectorWalls = walls[sector] ?? new List<WallSection>();
-            List<WallSection> sectorMasked = maskedWalls[sector] ?? new List<WallSection>();
+            List<(WallSection, bool)> sectorWalls = walls[sector] ?? new List<(WallSection, bool)>();
+            List<(WallSection, bool)> sectorMasked = maskedWalls[sector] ?? new List<(WallSection, bool)>();
             int floorVertices = floor?.Vertices.Count ?? 0;
-            int QuadCount(List<WallSection> list)
+            int QuadCount(List<(WallSection, bool)> list)
             {
                 int n = 0;
-                foreach (WallSection s in list)
+                foreach ((WallSection s, _) in list)
                     n += m.Pieces.Of(s.Line, s.Side).Count;
                 return n;
             }
@@ -457,23 +465,26 @@ public partial class LevelCheck : Godot.Node
         }
         if (quads != m.WallQuads)
             Fail($"{map}: {m.WallQuads} wall quads, {quads} expected");
-        if (maskedQuads != m.MaskedQuads)
-            Fail($"{map}: {m.MaskedQuads} masked middle quads, {maskedQuads} expected");
+        if (maskedQuads != m.MaskedQuads + m.MaskedBackQuads || backFaces != m.MaskedBackQuads)
+            Fail($"{map}: {m.MaskedQuads} masked middle quads and {m.MaskedBackQuads} back faces, {maskedQuads - backFaces} and {backFaces} expected");
         return (sectionCount, vertexCount);
     }
 
     /// <summary>
     /// One surface of a chunk: <paramref name="floor"/>'s triangles (if any),
     /// then one quad per piece of each of <paramref name="sectionsOfSurface"/>
-    /// (T2.9), A bottom, A top, B top, B bottom. Returns the wall quads checked.
+    /// (T2.9), A bottom, A top, B top, B bottom; a back face (T3.1a) has the
+    /// same corners and columns, its sectors and plane references swapped
+    /// (<see cref="LevelMesh.OtherSide"/>) and the other winding. Returns the
+    /// wall quads checked.
     /// </summary>
-    private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<WallSection> sectionsOfSurface,
+    private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
         List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
     {
         Level level = m.Level;
         int floorVertices = floor?.Vertices.Count ?? 0;
         int quadCount = 0;
-        foreach (WallSection s in sectionsOfSurface)
+        foreach ((WallSection s, _) in sectionsOfSurface)
             quadCount += m.Pieces.Of(s.Line, s.Side).Count;
         int expectedVertices = floorVertices + 4 * quadCount;
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
@@ -518,13 +529,20 @@ public partial class LevelCheck : Godot.Node
 
         // Walls: one quad per piece of each drawn section's side (T2.9), A bottom, A top, B top, B bottom.
         int quad = 0;
-        foreach (WallSection s in sectionsOfSurface)
+        foreach ((WallSection s, bool backFace) in sectionsOfSurface)
         {
-            string sw = $"{level.Name}: line {s.Line.Index} side {s.Side} {s.Kind}";
-            int kind = LevelMesh.IsMasked(s) ? LevelMesh.KindMasked : LevelMesh.KindWall;
-            sectionCount++;
+            string sw = $"{level.Name}: line {s.Line.Index} side {s.Side} {s.Kind}{(backFace ? " (back face)" : "")}";
+            int kind = backFace ? LevelMesh.KindMaskedBack : LevelMesh.IsMasked(s) ? LevelMesh.KindMasked : LevelMesh.KindWall;
+            int ownSector = backFace ? s.BackSector!.Index : s.FrontSector.Index;
+            int otherSector = backFace ? s.FrontSector.Index : s.BackSector?.Index ?? -1;
+            if (ownSector != sector)
+                Fail($"{sw}: in sector {sector}'s chunk, expected {ownSector}'s");
             IReadOnlyList<WallPiece> pieces = m.Pieces.Of(s.Line, s.Side);
-            CheckPieces(s, sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
+            if (!backFace)
+            {
+                sectionCount++;
+                CheckPieces(s, sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
+            }
             foreach (WallPiece piece in pieces)
             {
                 int contrast = piece.Contrast;
@@ -541,14 +559,19 @@ public partial class LevelCheck : Godot.Node
                         Fail($"{sw}: corner {k} at {pos[b + k]}, expected {corners[k]}");
                     if (Math.Abs(uv[b + k].X - us[k]) > 1e-3 || uv[b + k].Y != vs[k])
                         Fail($"{sw}: corner {k} texture coordinate {uv[b + k]}, expected ({us[k]}, {vs[k]})");
-                    if (!Custom(c0, b + k, kind, m.TextureSlot(s.Texture), sector, s.BackSector?.Index ?? -1))
-                        Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected {kind}, slot {m.TextureSlot(s.Texture)}, {sector}, {s.BackSector?.Index ?? -1}");
+                    if (!Custom(c0, b + k, kind, m.TextureSlot(s.Texture), ownSector, otherSector))
+                        Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected {kind}, slot {m.TextureSlot(s.Texture)}, {ownSector}, {otherSector}");
+                    WallPlane Plane(WallPlane p) => backFace ? LevelMesh.OtherSide(p) : p;
+                    if ((int)c1[(b + k) * 4] != (int)Plane(s.Bottom.Plane) || (int)c1[(b + k) * 4 + 2] != (int)Plane(s.Top.Plane)
+                        || (int)c2[(b + k) * 4] != (int)Plane(s.TextureTop.Plane))
+                        Fail($"{sw}: corner {k}: plane references {(WallPlane)(int)c1[(b + k) * 4]}, {(WallPlane)(int)c1[(b + k) * 4 + 2]}, {(WallPlane)(int)c2[(b + k) * 4]}"
+                            + $", expected {Plane(s.Bottom.Plane)}, {Plane(s.Top.Plane)}, {Plane(s.TextureTop.Plane)}");
                     if (c2[(b + k) * 4 + 2] != contrast)
                         Fail($"{sw}: corner {k}: fake contrast {c2[(b + k) * 4 + 2]}, expected {contrast}");
                     if (c2[(b + k) * 4 + 3] != LevelMesh.PieceAngle(piece))
                         Fail($"{sw}: corner {k}: direction {c2[(b + k) * 4 + 3]}, expected {LevelMesh.PieceAngle(piece)} (T3.4)");
                 }
-                int[] quadIndices = { b, b + 1, b + 2, b, b + 2, b + 3 };
+                int[] quadIndices = backFace ? LevelMesh.BackFaceIndices(b) : new[] { b, b + 1, b + 2, b, b + 2, b + 3 };
                 for (int k = 0; k < 6; k++)
                 {
                     if (idx[bi + k] != quadIndices[k])
@@ -572,7 +595,7 @@ public partial class LevelCheck : Godot.Node
                     float bottom = Math.Max(PlaneHeight((int)c1[(b + k) * 4], fd, bd) + c1[(b + k) * 4 + 1], fd.R);
                     float top = Math.Min(PlaneHeight((int)c1[(b + k) * 4 + 2], fd, bd) + c1[(b + k) * 4 + 3], fd.G);
                     float textureTop = PlaneHeight((int)c2[(b + k) * 4], fd, bd) + c2[(b + k) * 4 + 1];
-                    if ((int)c0[(b + k) * 4] == LevelMesh.KindMasked)
+                    if ((int)c0[(b + k) * 4] is LevelMesh.KindMasked or LevelMesh.KindMaskedBack)
                     {
                         top = Math.Min(top, textureTop);
                         bottom = Math.Max(bottom, textureTop - m.TextureInfo((int)c0[(b + k) * 4 + 1]).A);
@@ -774,6 +797,28 @@ public partial class LevelCheck : Godot.Node
             Fail($"{map}: no wall section could be checked side-on");
         if (maskedCandidates > 0 && (maskedWalls == 0 || _maskedOpaque == 0 || _maskedClear == 0))
             Fail($"{map}: the masked middles must be compared side-on, with both opaque texels and clear pixels");
+
+        // T3.1a: the one-sided masked middles from behind, with their back faces drawn (mirrored) and off (vanilla).
+        int backCandidates = 0, backWalls = 0, backOffWalls = 0;
+        long opaqueBefore = _maskedBackOpaque;
+        MaskedBackFaces oldBacks = m.MaskedBacks;
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            if (!m.HasBackFace(s) || !IsSideOnCheckable(s))
+                continue;
+            backCandidates++;
+            m.SetMaskedBackFaces(MaskedBackFaces.Mirrored);
+            if ((await CheckWall(m, s, WallTextureTiling.Vanilla, map, behind: true)).Pixels > 0)
+                backWalls++;
+            m.SetMaskedBackFaces(MaskedBackFaces.Off);
+            if ((await CheckWall(m, s, WallTextureTiling.Vanilla, map, behind: true)).Pixels > 0)
+                backOffWalls++;
+        }
+        m.SetMaskedBackFaces(oldBacks);
+        GD.Print($"Level check: {map}: {m.MaskedBackQuads} back-face quads of one-sided masked middles; {backWalls} of {backCandidates} axis-aligned ones "
+            + $"compared from behind mirrored ({_maskedBackOpaque - opaqueBefore} opaque texels), {backOffWalls} with the back faces off");
+        if (backCandidates > 0 && (backWalls == 0 || backOffWalls == 0 || _maskedBackOpaque == opaqueBefore))
+            Fail($"{map}: the one-sided masked middles must be compared from behind, with opaque texels drawn mirrored and the background with the back faces off");
 
         m.SetWallTiling(WallTextureTiling.TextureSize);
         wallPixels = 0;
@@ -1050,10 +1095,16 @@ public partial class LevelCheck : Godot.Node
     /// its clear ones the background (nothing else lies within the view's
     /// depth range, and the other side's quad faces away), and the opening's
     /// rows above and below the texture must show the background.
+    /// With <paramref name="behind"/> (T3.1a: a masked middle with a back face,
+    /// <see cref="LevelMesh.HasBackFace"/>) it is viewed from its back sector
+    /// instead: with <see cref="MaskedBackFaces.Mirrored"/> the same texels
+    /// at the same map points (so mirrored on screen) lit by the back sector,
+    /// with <see cref="MaskedBackFaces.Off"/> the background over the whole opening.
     /// </summary>
-    private async Task<(int Pixels, bool TilingsDiffer)> CheckWall(LevelMesh m, WallSection s, WallTextureTiling tiling, string map)
+    private async Task<(int Pixels, bool TilingsDiffer)> CheckWall(LevelMesh m, WallSection s, WallTextureTiling tiling, string map, bool behind = false)
     {
         bool masked = LevelMesh.IsMasked(s);
+        bool allClear = behind && m.MaskedBacks == MaskedBackFaces.Off;
         (int sb, int st) = s.Span();
         // The rows compared: the span, or a masked middle's whole opening.
         (int cb, int ct) = masked
@@ -1072,15 +1123,19 @@ public partial class LevelCheck : Godot.Node
         int zt = (int)Math.Ceiling((bottom + top) / 2.0 + h / 2.0); // z of the top pixel edge
         double dc = dl + w / 2.0, zc = zt - h / 2.0;
         double v1x = s.V1.X / 65536.0, v1y = s.V1.Y / 65536.0;
-        // Screen right = V1 → V2, screen up = +height, looking at the wall from 0.5 units in front.
-        var basis = new Basis(new Vector3(dirX, 0, -dirY), new Vector3(0, 1, 0), new Vector3(nX, 0, -nY));
-        Ortho(basis, new Vector3((float)(v1x + dirX * dc + nX * 0.5), (float)(v1y + dirY * dc + nY * 0.5), (float)zc), 0.1f, 1.5f);
+        // Screen right = V1 → V2, screen up = +height, looking at the wall from 0.5 units in front;
+        // from behind, screen right = V2 → V1 (d counts from V2 on screen) from 0.5 units behind.
+        int sign = behind ? -1 : 1;
+        double dcLine = behind ? len - dc : dc; // the view centre's distance from V1
+        var basis = new Basis(new Vector3(sign * dirX, 0, -sign * dirY), new Vector3(0, 1, 0), new Vector3(sign * nX, 0, -sign * nY));
+        Ortho(basis, new Vector3((float)(v1x + dirX * dcLine + sign * nX * 0.5), (float)(v1y + dirY * dcLine + sign * nY * 0.5), (float)zc), 0.1f, 1.5f);
 
-        // The side's other drawn sections may overlap this one's span: leave those rows out.
+        // The viewed side's other drawn sections may overlap this one's span: leave those rows out.
+        int viewedSide = behind ? s.Side ^ 1 : s.Side;
         var others = new List<(int Bottom, int Top)>();
         foreach (WallSection o in m.Walls.Sections)
         {
-            if (o != s && o.Line == s.Line && o.Side == s.Side && LevelMesh.IsDrawn(o) && !LevelMesh.IsMasked(o))
+            if (o != s && o.Line == s.Line && o.Side == viewedSide && LevelMesh.IsDrawn(o) && !LevelMesh.IsMasked(o))
             {
                 (int ob, int ot) = o.Span();
                 if (ot > ob)
@@ -1088,13 +1143,14 @@ public partial class LevelCheck : Godot.Node
             }
         }
 
-        string what = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({Textures.TextureDefs[s.Texture].Name}, {tiling} tiling)";
+        string what = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({Textures.TextureDefs[s.Texture].Name}, {tiling} tiling)"
+            + (behind ? $", from behind ({m.MaskedBacks})" : "");
         byte[]? frame = await Capture(what);
         if (frame is null)
             return (0, false);
         IndexedImage tex = Composite(s.Texture);
         int textureTop = s.TextureTop.Evaluate(s.FrontSector, s.BackSector);
-        int light = s.FrontSector.LightLevel;
+        int light = (behind ? s.BackSector! : s.FrontSector).LightLevel;
         int contrast = LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y); // axis-aligned: every seg has it
         // The pieces along the side (T2.9: per seg, vanilla's seg offsets) as distances from V1, columns
         // interpolated between their ends as the GPU does; connector pairs stand across the floor.
@@ -1130,11 +1186,13 @@ public partial class LevelCheck : Godot.Node
             int row = (int)(((long)textureTop - zFixed) >> Fixed.FRACBITS);
             for (int px = 0; px < w; px++)
             {
-                int d = dl + px; // pixel centre at d + 0.5
+                // The pixel centre's distance from V1 (from V2 on screen when behind).
+                double dPixel = behind ? len - (dl + px + 0.5) : dl + px + 0.5;
+                int d = (int)Math.Floor(dPixel);
                 if (d < EdgeMargin || d + 1 > len - EdgeMargin)
                     continue;
                 // The piece under the pixel centre, away from its ends (where a seg's column can jump).
-                double dPixel = d + 0.5, column = double.NaN;
+                double column = double.NaN;
                 foreach ((double from, double to, long cf, long cto) in spans)
                 {
                     if (dPixel >= from + EdgeMargin && dPixel <= to - EdgeMargin)
@@ -1155,13 +1213,16 @@ public partial class LevelCheck : Godot.Node
                     if (texel is { } a && otherTexel is { } o && a != o
                         && (tex.IsOpaque(a.Column, a.Row) != tex.IsOpaque(o.Column, o.Row) || tex[a.Column, a.Row] != tex[o.Column, o.Row]))
                         differ = true;
-                    if (texel is not { } t || !tex.IsOpaque(t.Column, t.Row))
+                    if (allClear || texel is not { } t || !tex.IsOpaque(t.Column, t.Row))
                     {
-                        // Clear: a hole in the texture, or the opening above or below it.
+                        // Clear: a hole in the texture, or the opening above or below it (or all of it, from behind with the back faces off).
                         compared++;
-                        _maskedClear++;
+                        if (behind)
+                            _maskedBackClear++;
+                        else
+                            _maskedClear++;
                         if (!NearBackground(got) && bad++ == 0)
-                            first = $"d {d + 0.5}, z {zFixed / 65536.0} ({(texel is null ? "outside the texture" : $"clear texel {texel}")}): drew {got}, expected the background {_background}";
+                            first = $"d {dPixel}, z {zFixed / 65536.0} ({(allClear ? "back faces off" : texel is null ? "outside the texture" : $"clear texel {texel}")}): drew {got}, expected the background {_background}";
                         continue;
                     }
                     (tc, tr) = t;
@@ -1172,15 +1233,17 @@ public partial class LevelCheck : Godot.Node
                     var other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, otherTiling);
                     differ |= other != (tc, tr) && tex[other.Column, other.Row] != tex[tc, tr];
                 }
-                int map0 = ExpectedColormap(m, true, light, contrast, v1x + dirX * (d + 0.5), v1y + dirY * (d + 0.5), 0.5);
+                int map0 = ExpectedColormap(m, true, light, contrast, v1x + dirX * dPixel, v1y + dirY * dPixel, 0.5);
                 if (map0 < 0)
                     continue;
                 (int R, int G, int B) expected = Shade(tex[tc, tr], map0);
                 compared++;
-                if (masked)
+                if (behind)
+                    _maskedBackOpaque++;
+                else if (masked)
                     _maskedOpaque++;
                 if (got != expected && bad++ == 0)
-                    first = $"d {d + 0.5}, z {zFixed / 65536.0} (texel {tc},{tr}): drew {got}, expected {expected}";
+                    first = $"d {dPixel}, z {zFixed / 65536.0} (texel {tc},{tr}): drew {got}, expected {expected}";
             }
         }
         if (bad > 0)

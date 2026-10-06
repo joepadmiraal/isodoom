@@ -29,7 +29,8 @@
 //
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
-//   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle), texture slot, front sector, back sector (-1: none)
+//   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face), texture slot,
+//              front sector, back sector (-1: none)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   walls:     UV.x = texture column (textureoffset + distance from V1), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
@@ -46,6 +47,11 @@
 // texture top as WallSection.Span (drawn once: no vertical tiling; the height
 // is the slot's texture_info height) and lit as the other walls, with the fake
 // contrast. Columns wrap as solid walls' (TextureWrap.MaskedTexel).
+// Kind 3 (T3.1a) is the back face of a masked middle on one side of a line
+// only (the same corners and columns, wound the other way, with its sectors
+// and plane references swapped, so it is lit from the other side): drawn as a
+// masked middle when `masked_backs` is 1, collapsed to nothing when it is 0
+// (vanilla, which draws a masked middle only from its own side).
 //
 // Cutaway (SPEC §7.3, §12 T3.4; the CPU reference is IsoDoom.Render.Cutaway):
 // a fragment at map point p is cut when, for a cut centre c (`cut_player`,
@@ -99,6 +105,8 @@ uniform int light_centerx = 160;
 uniform int extralight = 0;
 // IsoDoom.Map.WallTextureTiling: 0 vanilla (width mask, & 127, tutti-frutti), 1 texture size.
 uniform int wall_tiling = 0;
+// IsoDoom.Render.MaskedBackFaces (T3.1a): 0 off (vanilla), 1 mirrored.
+uniform int masked_backs = 1;
 // The cutaway (T3.4): 0 off, 1 cut, 2 dither.
 uniform int cut_mode = 0;
 // Cut centres, map units (x, y, floor height, w = 1 active).
@@ -135,6 +143,10 @@ float plane_height(int plane, vec4 front, vec4 back) {
 
 void vertex() {
 	int kind = int(CUSTOM0.x);
+	bool back_face = kind == 3;
+	if (back_face) {
+		kind = 2;
+	}
 	int front_id = int(CUSTOM0.z);
 	int back_id = int(CUSTOM0.w);
 	vec4 front = data_texel(sector_data, front_id);
@@ -160,6 +172,9 @@ void vertex() {
 			bottom = max(bottom, texture_top - float(rect.w));
 		}
 		top = max(top, bottom);
+		if (back_face && masked_backs == 0) {
+			top = bottom;
+		}
 		z = UV.y > 0.5 ? top : bottom;
 		v_texcoord = vec2(UV.x, texture_top - z);
 	}

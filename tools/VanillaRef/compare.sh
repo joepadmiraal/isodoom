@@ -32,5 +32,5 @@ IFS=';' read -ra list <<< "$views"
 for i in "${!list[@]}"; do script="$script; view ${list[$i]} $(cat "$dir/v$i.z"); shot $dir/o$i.png"; done
 (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
     godot --fixed-fps 60 --resolution 1280x800 -- -iwad "$iwad" --level "$map" --level-camera=fly --level-light=camera \
-    --level-background=00ff00 --level-things=off "$@" --level-script="$script" >/dev/null 2>&1)
+    --level-background=00ff00 --level-things=off --level-masked-back=off "$@" --level-script="$script" >/dev/null 2>&1)
 python3 "$here/compare.py" "$dir" "$iwad" $images

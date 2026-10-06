@@ -59,6 +59,9 @@ public partial class LevelCheck
                     continue;
                 Vector2 dir = (b - a) / len;
                 quads.Add(new CutQuad(a, dir, len, new Vector3(dir.Y, -dir.X, 0), sb / 65536f, st / 65536f, LevelMesh.IsMasked(s), s));
+                // T3.1a: a one-sided masked middle's back face, seen from the other side.
+                if (m.HasBackFace(s) && m.MaskedBacks == MaskedBackFaces.Mirrored)
+                    quads.Add(new CutQuad(b, -dir, len, new Vector3(-dir.Y, dir.X, 0), sb / 65536f, st / 65536f, true, s));
             }
         }
         var heights = new SortedSet<int>();

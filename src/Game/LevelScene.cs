@@ -41,6 +41,9 @@ namespace IsoDoom.Game;
 /// (default 80), <c>--level-cutaway-height=UNITS</c> (the cutoff above the
 /// player's floor, default 32), <c>--level-cutaway-cursor=on|off</c> (the
 /// cursor ground point cuts too; default off);
+/// <c>--level-masked-back=mirror|off</c> (T3.1a, <see cref="MaskedBackFaces"/>:
+/// a masked middle on one side of a line only is drawn from behind too,
+/// mirrored, or as vanilla only from its own side; default mirror);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
 /// <c>--level-things=on|off</c> (T3.8: off hides the billboards and the
 /// placeholder, as vanilla's reference renders draw no sprites; default on);
@@ -72,7 +75,8 @@ namespace IsoDoom.Game;
 /// free-fly camera) at player 1's start, Page
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
-/// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), F1 shows
+/// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), M
+/// the one-sided masked middles from behind (mirrored, off), F1 shows
 /// the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
@@ -85,6 +89,9 @@ public partial class LevelScene : Node3D
     private bool _showHelp;
     private readonly List<MeshInstance3D> _chunks = new();
     private LightDiminishing _lightMode = LightDiminishing.Player;
+
+    /// <summary>Whether one-sided masked middles are drawn from behind (T3.1a, <c>--level-masked-back</c>, key M); applied to every level.</summary>
+    public MaskedBackFaces MaskedBacks { get; private set; } = MaskedBackFaces.Mirrored;
 
     /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
     public CutawaySettings Cutaway { get; set; } = new();
@@ -147,7 +154,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   M masked backs   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -229,6 +236,8 @@ public partial class LevelScene : Node3D
                 };
             Cutaway = ParseCutaway();
             SpriteOptions = ParseSprites();
+            if (WadLocator.GetUserArg("--level-masked-back") is string backs)
+                MaskedBacks = ParseMaskedBacks(backs);
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
@@ -349,6 +358,14 @@ public partial class LevelScene : Node3D
             };
         return settings;
     }
+
+    /// <summary>The <c>--level-masked-back</c> option (T3.1a).</summary>
+    public static MaskedBackFaces ParseMaskedBacks(string value) => value switch
+    {
+        "mirror" or "mirrored" or "on" => MaskedBackFaces.Mirrored,
+        "off" or "vanilla" => MaskedBackFaces.Off,
+        _ => throw new ArgumentException($"--level-masked-back: \"{value}\" (mirror or off)"),
+    };
 
     /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6).</summary>
     private static SpriteSettings ParseSprites()
@@ -493,6 +510,10 @@ public partial class LevelScene : Node3D
                 break;
             case Key.G:
                 SpriteOptions = SpriteOptions with { Shadow = (SpriteShadowStyle)(((int)SpriteOptions.Shadow + 1) % 3) };
+                break;
+            case Key.M:
+                MaskedBacks = MaskedBacks == MaskedBackFaces.Mirrored ? MaskedBackFaces.Off : MaskedBackFaces.Mirrored;
+                Mesh?.SetMaskedBackFaces(MaskedBacks);
                 break;
             case Key.F1:
                 _showHelp = !_showHelp;
@@ -663,6 +684,8 @@ public partial class LevelScene : Node3D
                 _ => $"light: player distance from ({o.X:F0}, {o.Y:F0}), at least {Mesh.LightNear:F0}\n",
             });
         }
+        if (Mesh is { MaskedBacks: MaskedBackFaces.Off })
+            text.Append("masked middles: one side only, as vanilla (M)\n");
         text.Append(_status);
         text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
         return text.ToString();
@@ -780,6 +803,7 @@ public partial class LevelScene : Node3D
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
+        mesh.SetMaskedBackFaces(MaskedBacks);
         if (WadLocator.GetUserArg("--level-light-near") is string near)
             mesh.SetLightNear(Math.Max(0, ParseFloat(near, "--level-light-near")));
         if (WadLocator.GetUserArg("--level-light-reference") is string reference)
@@ -807,7 +831,7 @@ public partial class LevelScene : Node3D
         if (FreeFly is not null)
             JumpToStart();
         PlaceholderToStart();
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked, {SpawnedThings.Length} things, "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {SpawnedThings.Length} things, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");

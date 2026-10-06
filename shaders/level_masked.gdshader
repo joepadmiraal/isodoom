@@ -4,7 +4,8 @@
 // and the rest are written to the depth buffer like solid walls, so sprites
 // and anything else sort against them by depth. Only this variant has the
 // mask (MASKED_PASS); both variants cut walls away (T3.4).
-// One face per sidedef, as vanilla (cull_back; see SPEC §12 T3.1).
+// One face per sidedef, as vanilla (cull_back; see SPEC §12 T3.1), plus a
+// back-face quad for a masked middle on one side only (kind 3, T3.1a).
 shader_type spatial;
 render_mode unshaded, cull_back, depth_draw_opaque, shadows_disabled, fog_disabled;
 
