@@ -18,9 +18,9 @@ namespace IsoDoom.Tests.Sim;
 /// line 0 the corridor's south wall, an SR button; line 1 its west wall, an S1
 /// switch; line 2 its east wall, an S1 switch of no sector; line 3 alcove 0's
 /// opening, a WR lift; line 25 alcove 22's, a W1 floor). The effects not
-/// ported yet are stubs until T5.4-T5.8, which record their calls in
-/// <see cref="World.unported"/>; the doors (T5.3) are checked by the
-/// <see cref="vldoor_t"/> they start in the tagged alcoves 3, 7 and 12.
+/// ported yet are stubs until T5.6-T5.8, which record their calls in
+/// <see cref="World.unported"/>; the doors (T5.3), lifts and floors (T5.5)
+/// are checked by the thinkers they start in the tagged alcoves 3, 7 and 12.
 /// </summary>
 public class LineTriggerTests
 {
@@ -81,6 +81,22 @@ public class LineTriggerTests
         Assert.Equal(0, world.totalsecret);
     }
 
+    /// <summary>The thinkers of type <typeparamref name="T"/> moving the tag-5 alcoves (none or all three).</summary>
+    private static T[] TaggedMovers<T>(World world) where T : thinker_t
+    {
+        var movers = Tagged.Select(s => world.sectors[s].specialdata).OfType<T>().ToArray();
+        Assert.True(movers.Length is 0 or 3, $"{movers.Length} of the tagged alcoves move");
+        return movers;
+    }
+
+    /// <summary>Runs tics with no input until no tagged alcove moves (at most <paramref name="max"/>).</summary>
+    private static void RunUntilIdle(World world, int max = 1000)
+    {
+        for (int i = 0; i < max && Tagged.Any(s => world.sectors[s].specialdata != null); i++)
+            world.G_Ticker(new ticcmd_t());
+        Assert.All(Tagged, s => Assert.Null(world.sectors[s].specialdata));
+    }
+
     [Fact]
     public void AW1LineFiresOnceForThePlayer()
     {
@@ -89,12 +105,15 @@ public class LineTriggerTests
         world.PlaceMobj(mo, F(720), F(-40));
         // Into alcove 22 (floor 8) across line 25: the box touches the line, the centre crosses it.
         Assert.True(world.P_TryMove(mo, F(720), F(10)));
-        Assert.Equal(new[] { "EV_DoFloor(line 25, lowerFloorToLowest)" }, world.unported);
+        Assert.All(TaggedMovers<floormove_t>(world), f => Assert.Equal(floor_e.lowerFloorToLowest, f.type));
+        Assert.Equal(3, TaggedMovers<floormove_t>(world).Length);
         Assert.Equal(0, world.lines[25].special);
+        RunUntilIdle(world);
         // Back out and in again: the line has no special left.
         Assert.True(world.P_TryMove(mo, F(720), F(-10)));
         Assert.True(world.P_TryMove(mo, F(720), F(10)));
-        Assert.Single(world.unported);
+        Assert.Empty(TaggedMovers<thinker_t>(world));
+        Assert.Empty(world.unported);
     }
 
     [Fact]
@@ -104,11 +123,16 @@ public class LineTriggerTests
         mobj_t mo = Player(world);
         world.PlaceMobj(mo, F(16), F(-40));
         Assert.True(world.P_TryMove(mo, F(16), F(10)));  // in (from the back side)
+        Assert.Equal(3, TaggedMovers<plat_t>(world).Length);
+        RunUntilIdle(world);
         Assert.True(world.P_TryMove(mo, F(16), F(-10))); // out (from the front)
+        Assert.Equal(3, TaggedMovers<plat_t>(world).Length);
+        RunUntilIdle(world);
         Assert.True(world.P_TryMove(mo, F(16), F(10)));  // in
+        Assert.Equal(3, TaggedMovers<plat_t>(world).Length);
+        RunUntilIdle(world);
         Assert.True(world.P_TryMove(mo, F(16), F(12)));  // no crossing
-        Assert.Equal(3, world.unported.Count);
-        Assert.All(world.unported, call => Assert.Equal("EV_DoPlat(line 3, downWaitUpStay, 0)", call));
+        Assert.Empty(TaggedMovers<plat_t>(world));
         Assert.Equal(88, world.lines[3].special);
     }
 
@@ -119,17 +143,18 @@ public class LineTriggerTests
         // A lost soul (radius 16, so it fits the 32-unit alcoves) into alcove 0: the WR lift (88) is a monster line.
         mobj_t skull = world.P_SpawnMobj(F(16), F(-40), World.ONFLOORZ, mobjtype_t.MT_SKULL);
         Assert.True(world.P_TryMove(skull, F(16), F(10)));
-        Assert.Equal(new[] { "EV_DoPlat(line 3, downWaitUpStay, 0)" }, world.unported);
+        Assert.Equal(3, TaggedMovers<plat_t>(world).Length);
+        RunUntilIdle(world);
         // Into alcove 22: the W1 floor (38) is the player's only, and stays.
         skull = world.P_SpawnMobj(F(720), F(-40), World.ONFLOORZ, mobjtype_t.MT_SKULL);
         Assert.True(world.P_TryMove(skull, F(720), F(10)));
-        Assert.Single(world.unported);
+        Assert.Empty(TaggedMovers<thinker_t>(world));
         Assert.Equal(38, world.lines[25].special);
         // An imp's fireball across the lift line triggers nothing.
         world = Specials();
         mobj_t shot = world.P_SpawnMobj(F(16), F(-40), F(32), mobjtype_t.MT_TROOPSHOT);
         Assert.True(world.P_TryMove(shot, F(16), F(4)));
-        Assert.Empty(world.unported);
+        Assert.Empty(TaggedMovers<thinker_t>(world));
     }
 
     [Fact]

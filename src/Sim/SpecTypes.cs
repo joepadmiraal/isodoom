@@ -175,3 +175,138 @@ public sealed class button_t
         soundorg = null;
     }
 }
+
+/// <summary>p_spec.h <c>plat_e</c>: a lift's state (p_plats.c, T5.5).</summary>
+public enum plat_e
+{
+    up,
+    down,
+    waiting,
+    in_stasis,
+}
+
+/// <summary>p_spec.h lift constants (p_plats.c, T5.5).</summary>
+public static class Plat
+{
+    /// <summary>p_spec.h <c>PLATWAIT</c>: seconds a lift waits (× <see cref="TICRATE"/>).</summary>
+    public const int PLATWAIT = 3;
+
+    /// <summary>p_spec.h <c>PLATSPEED</c>: 1 unit a tic.</summary>
+    public const int PLATSPEED = Fixed.FRACUNIT;
+
+    /// <summary>p_spec.h <c>MAXPLATS</c>: the size of <c>activeplats</c> (a 31st active lift is an error, as vanilla).</summary>
+    public const int MAXPLATS = 30;
+
+    /// <summary>doomdef.h <c>TICRATE</c>.</summary>
+    public const int TICRATE = 35;
+}
+
+/// <summary>
+/// p_spec.h <c>plat_t</c>: a lift's thinker (p_plats.c <c>EV_DoPlat</c>, T5.5).
+/// Field order is vanilla's; <see cref="wait"/> is where a door's
+/// <c>direction</c> lies (<c>EV_VerticalDoor</c> on a lift, SPEC §12 T5.5).
+/// </summary>
+public sealed class plat_t : thinker_t
+{
+    public sector_t sector = null!;
+
+    /// <summary>fixed_t a tic.</summary>
+    public int speed;
+
+    /// <summary>fixed_t.</summary>
+    public int low;
+
+    /// <summary>fixed_t.</summary>
+    public int high;
+
+    public int wait;
+    public int count;
+    public plat_e status;
+    public plat_e oldstatus;
+    public bool crush;
+    public int tag;
+    public plattype_e type;
+}
+
+/// <summary>p_spec.h <c>FLOORSPEED</c>: 1 unit a tic (p_floor.c, T5.5).</summary>
+public static class FloorMove
+{
+    /// <summary>p_spec.h <c>FLOORSPEED</c>.</summary>
+    public const int FLOORSPEED = Fixed.FRACUNIT;
+}
+
+/// <summary>
+/// p_spec.h <c>floormove_t</c>: a moving floor's thinker (p_floor.c
+/// <c>EV_DoFloor</c>, <c>EV_BuildStairs</c>, p_spec.c <c>EV_DoDonut</c>; T5.5).
+/// <see cref="texture"/> is a flat name (the sim keeps names); null is
+/// vanilla's flat -1 that <c>EV_VerticalDoor</c> can write there (SPEC §12
+/// T5.5), which then leaves the floor's flat as it is.
+/// </summary>
+public sealed class floormove_t : thinker_t
+{
+    public floor_e type;
+    public bool crush;
+    public sector_t sector = null!;
+
+    /// <summary>1 up, -1 down.</summary>
+    public int direction;
+
+    public int newspecial;
+    public string? texture;
+
+    /// <summary>fixed_t.</summary>
+    public int floordestheight;
+
+    /// <summary>fixed_t a tic.</summary>
+    public int speed;
+
+    /// <summary>
+    /// Not vanilla: the door direction <c>EV_VerticalDoor</c> last wrote over
+    /// <see cref="texture"/> (and its padding), 0 for none (SPEC §12 T5.5).
+    /// </summary>
+    public int doordirection;
+}
+
+/// <summary>p_spec.h ceiling constants (p_ceilng.c, T5.5).</summary>
+public static class CeilingMove
+{
+    /// <summary>p_spec.h <c>CEILSPEED</c>: 1 unit a tic.</summary>
+    public const int CEILSPEED = Fixed.FRACUNIT;
+
+    /// <summary>p_spec.h <c>CEILWAIT</c> (unused, as in vanilla).</summary>
+    public const int CEILWAIT = 150;
+
+    /// <summary>p_spec.h <c>MAXCEILINGS</c>: the size of <c>activeceilings</c> (a 31st is not listed, as vanilla).</summary>
+    public const int MAXCEILINGS = 30;
+}
+
+/// <summary>
+/// p_spec.h <c>ceiling_t</c>: a moving ceiling's thinker (p_ceilng.c
+/// <c>EV_DoCeiling</c>, T5.5). <see cref="crush"/> is vanilla's
+/// <c>boolean</c> (an int: <c>EV_VerticalDoor</c> on a ceiling writes a
+/// door's direction, -1 or 1, there; nonzero crushes; SPEC §12 T5.5).
+/// </summary>
+public sealed class ceiling_t : thinker_t
+{
+    public ceiling_e type;
+    public sector_t sector = null!;
+
+    /// <summary>fixed_t.</summary>
+    public int bottomheight;
+
+    /// <summary>fixed_t.</summary>
+    public int topheight;
+
+    /// <summary>fixed_t a tic.</summary>
+    public int speed;
+
+    public int crush;
+
+    /// <summary>1 = up, 0 = waiting, -1 = down</summary>
+    public int direction;
+
+    /// <summary>ID</summary>
+    public int tag;
+
+    public int olddirection;
+}

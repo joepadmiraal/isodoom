@@ -1241,7 +1241,7 @@ public partial class LevelScene : Node3D
     {
         try
         {
-            var world = new World(new SpawnSettings(GameMode, Skill), Tweaks);
+            var world = new World(new SpawnSettings(GameMode, Skill), Tweaks) { textures = Textures };
             world.G_DoLoadLevel(level);
             World = world;
             _unportedPrinted = world.unported.Count; // the level's start (P_SpawnSpecials) is not news

@@ -9,6 +9,7 @@ using IsoDoom.Sim;
 using IsoDoom.Tests.Support;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
+using IsoDoom.Wad.Graphics;
 using Xunit;
 
 namespace IsoDoom.Tests.Sim;
@@ -177,7 +178,10 @@ public sealed class VanillaRoute
             "testmap" => new WadArchive(new[] { WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad") }),
             _ => WadArchive.Open(TestWads.RequireDoom1()),
         };
-        var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: true), Tweaks.Vanilla);
+        var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: true), Tweaks.Vanilla)
+        {
+            textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
+        };
         world.G_DoLoadLevel(Level.Load(wad, Iwad == "testmap" ? "E1M1" : Map));
         return world;
     }

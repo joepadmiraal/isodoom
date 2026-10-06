@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Writes vanilla reference routes (T5.5): steers the sim with ticcmds
+       to waypoints and records them as a .route (tests/IsoDoom.Tests/Sim/Routes,
+       VanillaRoute). See Program.cs for the command line. A dev tool: plain
+       .NET, no Godot reference; never ships with the game. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>IsoDoom.Tools.RouteGen</RootNamespace>
+  </PropertyGroup>
+  <!-- The route test maps (T4.8a) and what builds them, shared with the tests. -->
+  <ItemGroup>
+    <Compile Include="../../tests/IsoDoom.Tests/Support/TestMap.cs" Link="TestMaps/TestMap.cs" />
+    <Compile Include="../../tests/IsoDoom.Tests/Support/WadBuilder.cs" Link="TestMaps/WadBuilder.cs" />
+    <Compile Include="../../tests/IsoDoom.Tests/Sim/RouteTestMaps.cs" Link="TestMaps/RouteTestMaps.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
+    <ProjectReference Include="../../src/Map/IsoDoom.Map.csproj" />
+    <ProjectReference Include="../../src/Sim/IsoDoom.Sim.csproj" />
+    <ProjectReference Include="../SyntheticIwad/IsoDoom.SyntheticIwad.csproj" />
+  </ItemGroup>
+</Project>

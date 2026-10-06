@@ -67,6 +67,15 @@ public sealed partial class World
             case think_t.T_VerticalDoor:
                 T_VerticalDoor((vldoor_t)thinker);
                 break;
+            case think_t.T_MoveFloor:
+                T_MoveFloor((floormove_t)thinker);
+                break;
+            case think_t.T_PlatRaise:
+                T_PlatRaise((plat_t)thinker);
+                break;
+            case think_t.T_MoveCeiling:
+                T_MoveCeiling((ceiling_t)thinker);
+                break;
             // think_t.NULL: nothing
         }
     }

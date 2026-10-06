@@ -29,8 +29,8 @@ public sealed class TestMap
     public readonly record struct Room(int Width, int Floor, int Ceiling);
 
     private readonly List<(int X, int Y)> _vertexes = new();
-    private readonly List<(int V1, int V2, int Flags, int Special, int Front, int Back)> _lines = new();
-    private readonly List<(int Floor, int Ceiling, string CeilingPic)> _sectors = new();
+    private readonly List<(int V1, int V2, int Flags, int Special, int Front, int Back, int Tag)> _lines = new();
+    private readonly List<(int Floor, int Ceiling, string CeilingPic, string FloorPic, int Tag)> _sectors = new();
     private readonly List<(int V1, int V2, int Line, int Side)> _segs = new();
     private readonly List<(int Count, int First)> _subsectors = new();
     private readonly List<short> _nodes = new();
@@ -67,7 +67,7 @@ public sealed class TestMap
         int Top(int i) => n + 1 + i;
 
         foreach (Room r in rooms)
-            map._sectors.Add((r.Floor, r.Ceiling, Flat));
+            map._sectors.Add((r.Floor, r.Ceiling, Flat, Flat, 0));
 
         var south = new int[n];
         var north = new int[n];
@@ -125,7 +125,7 @@ public sealed class TestMap
     public static TestMap Polygon(int floor, int ceiling, params (int X, int Y)[] corners)
     {
         var map = new TestMap();
-        map._sectors.Add((floor, ceiling, Flat));
+        map._sectors.Add((floor, ceiling, Flat, Flat, 0));
         foreach (var c in corners)
             map._vertexes.Add(c);
         for (int i = 0; i < corners.Length; i++)
@@ -139,7 +139,7 @@ public sealed class TestMap
 
     private int AddLine(int v1, int v2, int flags, int front, int back)
     {
-        _lines.Add((v1, v2, flags, 0, front, back));
+        _lines.Add((v1, v2, flags, 0, front, back, 0));
         return _lines.Count - 1;
     }
 
@@ -148,6 +148,28 @@ public sealed class TestMap
     {
         var l = _lines[line];
         _lines[line] = l with { Special = special };
+        return this;
+    }
+
+    /// <summary>Sets a line's special and tag (T5.5).</summary>
+    public TestMap Special(int line, int special, int tag)
+    {
+        var l = _lines[line];
+        _lines[line] = l with { Special = special, Tag = tag };
+        return this;
+    }
+
+    /// <summary>Sets a sector's tag (T5.5).</summary>
+    public TestMap SectorTag(int sector, int tag)
+    {
+        _sectors[sector] = _sectors[sector] with { Tag = tag };
+        return this;
+    }
+
+    /// <summary>Sets a sector's floor flat (T5.5; a name every IWAD has, as <see cref="Flat"/>).</summary>
+    public TestMap FloorPic(int sector, string pic)
+    {
+        _sectors[sector] = _sectors[sector] with { FloorPic = pic };
         return this;
     }
 
@@ -191,7 +213,7 @@ public sealed class TestMap
                 left = sides.Count;
                 sides.Add((l.Back, 0));
             }
-            linedefs.AddRange(new[] { (short)l.V1, (short)l.V2, (short)l.Flags, (short)l.Special, (short)0, (short)right, (short)left });
+            linedefs.AddRange(new[] { (short)l.V1, (short)l.V2, (short)l.Flags, (short)l.Special, (short)l.Tag, (short)right, (short)left });
         }
 
         byte[] sidedefs = new byte[30 * sides.Count];
@@ -209,9 +231,10 @@ public sealed class TestMap
             Span<byte> sec = sectors.AsSpan(26 * i, 26);
             BinaryPrimitives.WriteInt16LittleEndian(sec, (short)_sectors[i].Floor);
             BinaryPrimitives.WriteInt16LittleEndian(sec[2..], (short)_sectors[i].Ceiling);
-            Encoding.ASCII.GetBytes(Flat, sec[4..]);
+            Encoding.ASCII.GetBytes(_sectors[i].FloorPic, sec[4..]);
             Encoding.ASCII.GetBytes(_sectors[i].CeilingPic, sec[12..]);
             BinaryPrimitives.WriteInt16LittleEndian(sec[20..], 160);
+            BinaryPrimitives.WriteInt16LittleEndian(sec[24..], (short)_sectors[i].Tag);
         }
 
         var vertexes = new List<short>();

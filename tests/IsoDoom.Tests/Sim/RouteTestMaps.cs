@@ -34,7 +34,39 @@ public static class RouteTestMaps
         // the player's box touches up to 15 of them, past vanilla's 8 (spechit overrun;
         // SpecialLinesAreCollected). Facing east at (50, 128).
         ["spechit"] = Spechit,
+        // T5.5: lifts. West to east: a ledge U (floor 64), the lift L (tag 1, 64), the start room S
+        // (0) and a perpetual lift P (tag 5, 0) between S and a room Q (48). L | U (boundary 1) is a
+        // WR lift line (88), S | L (boundary 2) an SR lift switch (62, used from S), P | S
+        // (boundary 3) a W1 perpetual lift (53). The player in S facing east.
+        ["lifts"] = Lifts,
+        // T5.5: stairs and a crusher. West to east: a crusher room C (tag 3, floor 128, out of
+        // reach), a room E (32, another flat: the stairs stop there), four steps (0, the last tag
+        // 2), a room B and the start room A (0). A | B (boundary 7) is a W1 build-stairs line (8):
+        // the steps rise to 32, 24, 16 and 8 westwards; step 1 | E (boundary 2) a W1 fast crusher
+        // (6). The player in A facing west.
+        ["stairs"] = Stairs,
     };
+
+    private static TestMap Lifts()
+    {
+        TestMap map = TestMap.Strip(0, 0, 256,
+            new TestMap.Room(192, 64, 192), new TestMap.Room(64, 64, 192), new TestMap.Room(256, 0, 192),
+            new TestMap.Room(64, 0, 192), new TestMap.Room(128, 48, 192));
+        map.SectorTag(1, 1).SectorTag(3, 5);
+        map.Special(map.Boundaries[1], 88, 1).Special(map.Boundaries[2], 62, 1).Special(map.Boundaries[3], 53, 5);
+        return map.Player(448, 128);
+    }
+
+    private static TestMap Stairs()
+    {
+        TestMap map = TestMap.Strip(0, 0, 256,
+            new TestMap.Room(128, 128, 256), new TestMap.Room(128, 32, 256),
+            new TestMap.Room(64, 0, 256), new TestMap.Room(64, 0, 256), new TestMap.Room(64, 0, 256), new TestMap.Room(64, 0, 256),
+            new TestMap.Room(64, 0, 256), new TestMap.Room(192, 0, 256));
+        map.SectorTag(0, 3).SectorTag(5, 2).FloorPic(1, "FLOOR5_2");
+        map.Special(map.Boundaries[7], 8, 2).Special(map.Boundaries[2], 6, 3);
+        return map.Player(672, 128, 180);
+    }
 
     private static TestMap Spechit()
     {

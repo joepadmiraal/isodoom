@@ -278,8 +278,9 @@ public sealed partial class World
     /// the open-and-stay ones (31-34, 118) clear the line's special.
     /// <para>
     /// The sector's <see cref="sector_t.specialdata"/> can be another special
-    /// than a door (a lift or a floor: T5.5); vanilla then reads and writes
-    /// the door's direction in that thinker's memory (SPEC §12 T5.3).
+    /// than a door (a lift, a floor or a ceiling); vanilla then reads and
+    /// writes the door's direction in that thinker's memory
+    /// (<see cref="DoorDirection"/>, SPEC §12 T5.3, T5.5).
     /// </para>
     /// </summary>
     public void EV_VerticalDoor(line_t line, mobj_t thing)
@@ -333,8 +334,6 @@ public sealed partial class World
 
         // if the sector has an active thinker, use it
         sector_t sec = sides[line.sidenum[side ^ 1]].sector;
-        vldoor_t door;
-
         if (sec.specialdata != null)
         {
             switch (line.special)
@@ -344,18 +343,21 @@ public sealed partial class World
                 case 27:
                 case 28:
                 case 117:
-                    // Only doors exist yet; a lift or floor here is T5.5's (SPEC §12 T5.3).
-                    door = (vldoor_t)sec.specialdata;
-                    if (door.direction == -1)
+                    if (DoorDirection(sec.specialdata) == -1)
                     {
-                        door.direction = 1; // go back up
+                        SetDoorDirection(sec.specialdata, 1); // go back up
                     }
                     else
                     {
                         if (thing.player == null)
                             return; // JDC: bad guys never close doors
 
-                        door.direction = -1; // start going down immediately
+                        // When is a door not a door? In Vanilla,
+                        // door->direction is set, even though "specialdata"
+                        // might not actually point at a door (Chocolate Doom:
+                        // a lift's wait is set to -1 instead; anything else
+                        // gets the direction written anyway).
+                        SetDoorDirection(sec.specialdata, -1); // start going down immediately
                     }
                     return;
             }
@@ -380,7 +382,7 @@ public sealed partial class World
         }
 
         // new door thinker
-        door = new vldoor_t();
+        var door = new vldoor_t();
         P_AddThinker(door);
         sec.specialdata = door;
         door.function = think_t.T_VerticalDoor;
@@ -468,5 +470,53 @@ public sealed partial class World
         door.topheight -= 4 * Fixed.FRACUNIT;
         door.topwait = VDoor.VDOORWAIT;
         door.topcountdown = 5 * 60 * 35;
+    }
+
+    /// <summary>
+    /// Not vanilla: <c>((vldoor_t *)thinker)-&gt;direction</c> as vanilla reads
+    /// it from whatever <see cref="sector_t.specialdata"/> points at (32-bit
+    /// layouts, offset 32): a door's direction, a lift's
+    /// <see cref="plat_t.wait"/>, a ceiling's <see cref="ceiling_t.crush"/>;
+    /// a floor's flat number (a short, then two bytes of padding from
+    /// <c>Z_Malloc</c>) is taken as never -1 (0) until
+    /// <see cref="SetDoorDirection"/> writes there (<see cref="floormove_t.doordirection"/>, SPEC §12 T5.5).
+    /// </summary>
+    private static int DoorDirection(thinker_t thinker) => thinker switch
+    {
+        vldoor_t door => door.direction,
+        plat_t plat => plat.wait,
+        ceiling_t ceiling => ceiling.crush,
+        floormove_t floor => floor.doordirection,
+        _ => throw new System.InvalidOperationException($"specialdata is a {thinker.GetType().Name}"),
+    };
+
+    /// <summary>
+    /// Not vanilla: <c>door-&gt;direction = direction</c> on whatever
+    /// <see cref="sector_t.specialdata"/> points at, as Chocolate Doom's
+    /// <c>EV_VerticalDoor</c> (see <see cref="DoorDirection"/>): a lift's
+    /// <see cref="plat_t.wait"/> (-1: it then waits for ever at its next
+    /// stop), a ceiling's <see cref="ceiling_t.crush"/> (nonzero: it
+    /// crushes), a floor's flat (flat number -1, invalid, or 1, which the
+    /// sim cannot name: <see cref="floormove_t.texture"/> becomes null, so
+    /// a floor that changes its flat when done keeps it instead).
+    /// </summary>
+    private static void SetDoorDirection(thinker_t thinker, int direction)
+    {
+        switch (thinker)
+        {
+            case vldoor_t door:
+                door.direction = direction;
+                break;
+            case plat_t plat:
+                plat.wait = direction;
+                break;
+            case ceiling_t ceiling:
+                ceiling.crush = direction;
+                break;
+            case floormove_t floor:
+                floor.doordirection = direction;
+                floor.texture = null;
+                break;
+        }
     }
 }

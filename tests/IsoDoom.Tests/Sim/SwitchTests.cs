@@ -287,6 +287,30 @@ public class SwitchTests
     }
 
     [Fact]
+    public void LiftAndFloorSwitchesTurnWhenTheirSpecialStarts()
+    {
+        // T5.5: line 1 (SW1BRCOM, tag 5: alcoves 3, 7 and 12) as an SR lift (62) and an S1 floor (20).
+        World world = Specials();
+        world.lines[1].special = 62;
+        UseLine1(world);
+        Assert.Equal("SW2BRCOM", Front(world, 1).midtexture);
+        Assert.IsType<plat_t>(world.sectors[1 + 3].specialdata);
+        Run(world, 35);
+        Assert.Equal("SW1BRCOM", Front(world, 1).midtexture);
+        // The lifts still move: nothing starts and the button stays off.
+        UseLine1(world);
+        Assert.Equal("SW1BRCOM", Front(world, 1).midtexture);
+        Assert.Equal(0, ActiveButtons(world));
+
+        world = Specials();
+        world.lines[1].special = 20;
+        UseLine1(world);
+        Assert.Equal("SW2BRCOM", Front(world, 1).midtexture);
+        Assert.Equal(0, world.lines[1].special);
+        Assert.Equal(plattype_e.raiseToNearestAndChange, Assert.IsType<plat_t>(world.sectors[1 + 3].specialdata).type);
+    }
+
+    [Fact]
     public void MoreThanMaxButtonsIsAnError()
     {
         World world = Specials();

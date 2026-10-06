@@ -7,6 +7,7 @@ namespace IsoDoom.Sim;
 // walk-over line triggers (P_CrossSpecialLine) and the level's specials
 // (P_SpawnSpecials, P_UpdateSpecials; T5.2). The use triggers are in
 // World.Switch.cs (p_switch.c), the effects not ported yet in World.Unported.cs.
+// EV_DoDonut (p_spec.c's, T5.5) is here too.
 public sealed partial class World
 {
     /// <summary>
@@ -750,8 +751,8 @@ public sealed partial class World
     /// stubs (<see cref="unported"/>); secrets (9) count into
     /// <see cref="totalsecret"/>. Line effects: the scrolling walls (48),
     /// at most <see cref="MAXLINEANIMS"/> as Chocolate Doom (vanilla
-    /// overruns). The buttons are cleared (T5.4); the active ceilings and
-    /// lifts by T5.5.
+    /// overruns). The active ceilings and lifts (T5.5) and the buttons (T5.4)
+    /// are cleared.
     /// </summary>
     public void P_SpawnSpecials()
     {
@@ -840,8 +841,107 @@ public sealed partial class World
             }
         }
 
-        //	Init other misc stuff: activeceilings (T5.5), activeplats (T5.5).
+        //	Init other misc stuff
+        for (int i = 0; i < CeilingMove.MAXCEILINGS; i++)
+            activeceilings[i] = null;
+
+        for (int i = 0; i < Plat.MAXPLATS; i++)
+            activeplats[i] = null;
+
         for (int i = 0; i < MAXBUTTONS; i++)
             buttonlist[i].Clear();
     }
+
+    /// <summary>
+    /// p_spec.c <c>EV_DoDonut</c>: Special Stuff that can not be categorized.
+    /// For each tagged sector s1 (the hole) not already moving, s2 is the
+    /// sector across s1's first line (the ring); for the first line of s2
+    /// whose back sector s3 is not s1, the ring rises to s3's floor and takes
+    /// its flat (special 0), and the hole lowers to it, both at half
+    /// <see cref="FloorMove.FLOORSPEED"/>. As Chocolate Doom: a one-sided
+    /// first line ends the search (vanilla reads invalid memory), and a
+    /// one-sided ring line before the outer one is its overrun emulation
+    /// (height 0; the flat stays, SPEC §12 T5.5).
+    /// </summary>
+    public int EV_DoDonut(line_t line)
+    {
+        int secnum = -1;
+        int rtn = 0;
+
+        while ((secnum = P_FindSectorFromLineTag(line, secnum)) >= 0)
+        {
+            sector_t s1 = sectors[secnum];
+
+            // ALREADY MOVING?  IF SO, KEEP GOING...
+            if (s1.specialdata != null)
+                continue;
+
+            rtn = 1;
+            sector_t? s2 = getNextSector(s1.lines[0], s1);
+
+            // Vanilla Doom does not check if the linedef is one sided.  The
+            // game does not crash, but reads invalid memory and causes the
+            // sector floor to move "down" to some unknown height.
+            // (Chocolate Doom warns and returns.)
+            if (s2 == null)
+                break;
+
+            for (int i = 0; i < s2.linecount; i++)
+            {
+                sector_t? s3 = s2.lines[i].backsector;
+
+                if (s3 == s1)
+                    continue;
+
+                int s3_floorheight;
+                string? s3_floorpic;
+                if (s3 == null)
+                {
+                    // e6y: s3 is NULL, so s3->floorheight is an int at
+                    // 0000:0000 and s3->floorpic a short at 0000:0008
+                    // (Chocolate Doom's DonutOverrun: 0 and flat 0x16 by
+                    // default, as under Windows 98). The sim keeps flat
+                    // names, not numbers: the ring keeps its flat.
+                    s3_floorheight = DONUT_FLOORHEIGHT_DEFAULT;
+                    s3_floorpic = null;
+                }
+                else
+                {
+                    s3_floorheight = s3.floorheight;
+                    s3_floorpic = s3.floorpic;
+                }
+
+                //	Spawn rising slime
+                var floor = new floormove_t();
+                P_AddThinker(floor);
+                s2.specialdata = floor;
+                floor.function = think_t.T_MoveFloor;
+                floor.type = floor_e.donutRaise;
+                floor.crush = false;
+                floor.direction = 1;
+                floor.sector = s2;
+                floor.speed = FloorMove.FLOORSPEED / 2;
+                floor.texture = s3_floorpic;
+                floor.newspecial = 0;
+                floor.floordestheight = s3_floorheight;
+
+                //	Spawn lowering donut-hole
+                floor = new floormove_t();
+                P_AddThinker(floor);
+                s1.specialdata = floor;
+                floor.function = think_t.T_MoveFloor;
+                floor.type = floor_e.lowerFloor;
+                floor.crush = false;
+                floor.direction = -1;
+                floor.sector = s1;
+                floor.speed = FloorMove.FLOORSPEED / 2;
+                floor.floordestheight = s3_floorheight;
+                break;
+            }
+        }
+        return rtn;
+    }
+
+    /// <summary>Chocolate Doom's <c>DONUT_FLOORHEIGHT_DEFAULT</c> (p_spec.c): the overrun's floor height.</summary>
+    public const int DONUT_FLOORHEIGHT_DEFAULT = 0x00000000;
 }

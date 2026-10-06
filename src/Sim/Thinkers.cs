@@ -22,6 +22,15 @@ public enum think_t
 
     /// <summary>p_doors.c <c>T_VerticalDoor</c> (a <see cref="vldoor_t"/>, T5.3).</summary>
     T_VerticalDoor,
+
+    /// <summary>p_floor.c <c>T_MoveFloor</c> (a <see cref="floormove_t"/>, T5.5).</summary>
+    T_MoveFloor,
+
+    /// <summary>p_plats.c <c>T_PlatRaise</c> (a <see cref="plat_t"/>, T5.5).</summary>
+    T_PlatRaise,
+
+    /// <summary>p_ceilng.c <c>T_MoveCeiling</c> (a <see cref="ceiling_t"/>, T5.5).</summary>
+    T_MoveCeiling,
 }
 
 /// <summary>

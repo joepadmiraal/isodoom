@@ -14,7 +14,7 @@ namespace IsoDoom.Sim;
 /// p_tick.c, World.Mobj.cs p_mobj.c, World.MapUtl.cs p_maputl.c, World.Map.cs p_map.c,
 /// World.User.cs p_user.c (and <c>G_Ticker</c>), World.Spec.cs p_spec.c,
 /// World.Switch.cs p_switch.c, World.Doors.cs p_doors.c, World.Floor.cs p_floor.c,
-/// World.Sound.cs the sound events, World.Unported.cs the stubs of the specials
+/// World.Plats.cs p_plats.c, World.Ceiling.cs p_ceilng.c, World.Sound.cs the sound events, World.Unported.cs the stubs of the specials
 /// still to port, World.Checksum.cs the per-tic state checksum (SPEC §6.1).
 /// <para>
 /// The <see cref="level"/>'s sectors are changed in place (heights, light,

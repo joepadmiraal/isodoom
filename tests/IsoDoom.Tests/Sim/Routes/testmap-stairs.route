@@ -1,0 +1,39 @@
+# The stairs test map (T5.5, RouteTestMaps): west across the W1 stairs
+# line (8, boundary 7): the four steps rise by 8 a step at a quarter unit
+# a tic (to 8, 16, 24 and 32 westwards); wait, climb them into room E
+# across the W1 fast crusher line (6, boundary 2): the crusher room C's
+# ceiling goes down to its floor + 8 and up again at 2 units a tic; wait
+# a cycle. Written by tools/RouteGen
+# (testmap-stairs).
+iwad testmap
+map stairs
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+25 0 0 0 x16
+15 0 0 0
+-2 0 0 0 x3
+-1 0 0 0 x7
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x117
+25 0 0 0 x40
+25 1 0 0
+25 0 0 0
+22 0 0 0
+-2 0 0 0 x5
+-1 0 0 0 x2
+-2 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0 x3
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 1 0
+0 0 0 0 x162

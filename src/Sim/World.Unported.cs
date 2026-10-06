@@ -3,58 +3,20 @@ using System.Collections.Generic;
 namespace IsoDoom.Sim;
 
 // Stubs for the specials the line triggers and P_SpawnSpecials call that M5's
-// later tasks port (T5.2): floors, lifts, ceilings and
-// stairs (p_floor.c, p_plats.c, p_ceilng.c, T5.5), teleports (p_telept.c,
-// T5.6), lights (p_lights.c, T5.7) and exits (g_game.c, T5.8). Each records its
-// call in unported and does nothing else; each task moves its functions to
-// their own file and deletes their stubs here (doors: World.Doors.cs, T5.3).
+// later tasks port (T5.2): teleports (p_telept.c, T5.6), lights (p_lights.c,
+// T5.7) and exits (g_game.c, T5.8). Each records its call in unported and does
+// nothing else; each task moves its functions to their own file and deletes
+// their stubs here (doors: World.Doors.cs, T5.3; floors, lifts, ceilings and
+// stairs: World.Floor.cs, World.Plats.cs, World.Ceiling.cs, T5.5).
 public sealed partial class World
 {
     /// <summary>
     /// Not vanilla: the calls to specials not ported yet, in order, as
-    /// <c>EV_DoFloor(line 25, lowerFloorToLowest)</c> (T5.2), so tests can see which
+    /// <c>EV_Teleport(line 5, side 0, MT_PLAYER)</c> (T5.2), so tests can see which
     /// special a trigger ran. Cleared by <see cref="P_SetupLevel"/>; not sim
     /// state (outside the checksum).
     /// </summary>
     public readonly List<string> unported = new();
-
-    /// <summary>
-    /// A stub of an <c>EV_</c> function that acts on the sectors tagged like
-    /// <paramref name="line"/>: returns what vanilla's would on a map where
-    /// no sector is busy, 1 when a sector has the line's tag.
-    /// </summary>
-    private int TaggedStub(string call, line_t line)
-    {
-        unported.Add(call);
-        return P_FindSectorFromLineTag(line, -1) >= 0 ? 1 : 0;
-    }
-
-    // ---- p_floor.c, p_plats.c, p_ceilng.c (T5.5) ----
-
-    /// <summary>p_floor.c <c>EV_DoFloor</c>: a stub until T5.5.</summary>
-    public int EV_DoFloor(line_t line, floor_e floortype) => TaggedStub($"EV_DoFloor(line {line.Index}, {floortype})", line);
-
-    /// <summary>p_floor.c <c>EV_BuildStairs</c>: a stub until T5.5.</summary>
-    public int EV_BuildStairs(line_t line, stair_e type) => TaggedStub($"EV_BuildStairs(line {line.Index}, {type})", line);
-
-    /// <summary>p_floor.c <c>EV_DoDonut</c>: a stub until T5.5.</summary>
-    public int EV_DoDonut(line_t line) => TaggedStub($"EV_DoDonut(line {line.Index})", line);
-
-    /// <summary>p_plats.c <c>EV_DoPlat</c>: a stub until T5.5.</summary>
-    public int EV_DoPlat(line_t line, plattype_e type, int amount) => TaggedStub($"EV_DoPlat(line {line.Index}, {type}, {amount})", line);
-
-    /// <summary>p_plats.c <c>EV_StopPlat</c>: a stub until T5.5.</summary>
-    public void EV_StopPlat(line_t line) => unported.Add($"EV_StopPlat(line {line.Index})");
-
-    /// <summary>p_ceilng.c <c>EV_DoCeiling</c>: a stub until T5.5.</summary>
-    public int EV_DoCeiling(line_t line, ceiling_e type) => TaggedStub($"EV_DoCeiling(line {line.Index}, {type})", line);
-
-    /// <summary>p_ceilng.c <c>EV_CeilingCrushStop</c>: a stub until T5.5 (returns 0, no ceiling is active).</summary>
-    public int EV_CeilingCrushStop(line_t line)
-    {
-        unported.Add($"EV_CeilingCrushStop(line {line.Index})");
-        return 0;
-    }
 
     // ---- p_telept.c (T5.6) ----
 
