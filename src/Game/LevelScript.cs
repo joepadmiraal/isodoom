@@ -61,7 +61,7 @@ namespace IsoDoom.Game;
 /// <c>step TICS</c> queues TICS tics built from the input at each tic (keys
 /// held by <c>down</c>, the cursor ground point) and waits until they ran.
 /// Either switches the game loop to scripted tics (<see cref="LevelScene.ScriptedTics"/>,
-/// also from the start when the script has a <c>cmd</c> or <c>step</c>):
+/// also from the start when the script has a <c>cmd</c>, <c>step</c> or <c>sim scripted</c>):
 /// tics run only from the queue, at 35 Hz, and the world holds still while
 /// it is empty, so the result does not depend on the frame rate
 /// (<c>--fixed-fps 30</c>, <c>60</c>, <c>144</c> give the same checksum;
@@ -106,7 +106,7 @@ public partial class LevelScript : Node
         // Scripted tics from the first frame, so no input tic runs before the first command.
         foreach (string command in _commands)
         {
-            if (command.StartsWith("cmd ", StringComparison.Ordinal) || command.StartsWith("step ", StringComparison.Ordinal))
+            if (command.StartsWith("cmd ", StringComparison.Ordinal) || command.StartsWith("step ", StringComparison.Ordinal) || command == "sim scripted")
             {
                 _scene.ScriptedTics = true;
                 break;

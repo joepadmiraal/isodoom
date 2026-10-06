@@ -60,6 +60,9 @@ namespace IsoDoom.Game;
 /// a masked middle on one side of a line only is drawn from behind too,
 /// mirrored, or as vanilla only from its own side; default mirror);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
+/// <c>--level-monsters=on|off</c> (T5.7: off spawns no monsters, vanilla's
+/// <c>-nomonsters</c>, e.g. so the light specials' <c>P_Random</c> calls match
+/// a vanilla reference run with it; default on);
 /// <c>--level-things=on|off</c> (T3.8: off hides the billboards and the
 /// player, as vanilla's reference renders draw no sprites; default on);
 /// <c>--level-tweaks=topdown|vanilla</c> (T4.7: the sim's <see cref="Tweaks"/>
@@ -153,6 +156,9 @@ public partial class LevelScene : Node3D
 
     /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
     public skill_t Skill { get; private set; } = skill_t.sk_medium;
+
+    /// <summary>Vanilla's <c>-nomonsters</c> (<c>--level-monsters=off</c>, T5.7; default false).</summary>
+    public bool NoMonsters { get; private set; }
 
     /// <summary>Whether the billboards and the player are drawn (<c>--level-things</c>, T3.8).</summary>
     private bool _showThings = true;
@@ -311,6 +317,13 @@ public partial class LevelScene : Node3D
                 Skill = int.TryParse(skill, out int n) && n >= 1 && n <= 5
                     ? (skill_t)(n - 1)
                     : throw new ArgumentException($"--level-skill: \"{skill}\" (1-5)");
+            if (WadLocator.GetUserArg("--level-monsters") is string monsters)
+                NoMonsters = monsters switch
+                {
+                    "on" => false,
+                    "off" => true,
+                    _ => throw new ArgumentException($"--level-monsters: \"{monsters}\" (on or off)"),
+                };
             if (WadLocator.GetUserArg("--level-things") is string things)
                 _showThings = things switch
                 {
@@ -879,6 +892,27 @@ public partial class LevelScene : Node3D
     private LevelMesh.SectorHeights? _interpolatedHeights;
 
     /// <summary>
+    /// The world's animations (T5.7): every frame of every animation drawn as
+    /// the sim's <c>texturetranslation</c>/<c>flattranslation</c> say
+    /// (<see cref="LevelMesh.TranslateTexture"/>, <see cref="LevelMesh.TranslateFlat"/>;
+    /// stepped on <c>leveltime</c> as vanilla, not interpolated).
+    /// </summary>
+    public static void Translate(World world, LevelMesh mesh)
+    {
+        for (int a = 0; a < world.lastanim; a++)
+        {
+            anim_t anim = world.anims[a]!;
+            for (int i = anim.basepic; i < anim.basepic + anim.numpics; i++)
+            {
+                if (anim.istexture)
+                    mesh.TranslateTexture(i, world.texturetranslation[i]);
+                else
+                    mesh.TranslateFlat(world.flatnames[i], world.flatnames[world.flattranslation[i]]);
+            }
+        }
+    }
+
+    /// <summary>
     /// Draws the world at <see cref="TicFraction"/>: the sectors at their
     /// interpolated heights with their current lights, flats and side
     /// textures (<see cref="LevelMesh.UpdateSectors"/>, T5.1), the player mobj as
@@ -890,6 +924,8 @@ public partial class LevelScene : Node3D
     {
         if (World is not { } world)
             return;
+        if (Mesh is { } mesh)
+            Translate(world, mesh);
         Mesh?.UpdateSectors(_interpolatedHeights ??= InterpolatedHeights);
         mobj_t? me = PlayerMobj;
         if (Player is not null && me is not null)
@@ -1208,7 +1244,9 @@ public partial class LevelScene : Node3D
 
         var clock = Stopwatch.StartNew();
         Level level = Level.Load(wad, map);
-        LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!, textureGroups: SwitchGroups(GameMode));
+        (List<string[]> animTextures, List<string[]> animFlats) = AnimGroups(wad);
+        LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!,
+            textureGroups: System.Linq.Enumerable.Concat(SwitchGroups(GameMode), animTextures), flatGroups: animFlats);
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
@@ -1267,6 +1305,35 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
+    /// The animation sequences of the WAD (p_spec.c <c>animdefs</c> as
+    /// <c>P_InitPicAnims</c> finds them, T5.7), wall textures and flats, which
+    /// <see cref="LevelMesh.Build"/> puts in the atlas up front; none (with a
+    /// warning) when the WAD's sequences are broken, as vanilla would error.
+    /// </summary>
+    public (List<string[]> Textures, List<string[]> Flats) AnimGroups(WadArchive wad)
+    {
+        try
+        {
+            return PicAnims.Sequences(Textures, FlatNames(wad));
+        }
+        catch (WadFormatException e)
+        {
+            GD.PushWarning($"Level: no animated textures: {e.Message}");
+            return (new List<string[]>(), new List<string[]>());
+        }
+    }
+
+    // The WAD's flat namespace by name (vanilla's flat numbers), per WAD.
+    private (WadArchive Wad, List<string> Names)? _flatNames;
+
+    private List<string> FlatNames(WadArchive wad)
+    {
+        if (_flatNames is not { } f || f.Wad != wad)
+            _flatNames = f = (wad, PicAnims.FlatNames(wad));
+        return f.Names;
+    }
+
+    /// <summary>
     /// A new game on <see cref="Skill"/> with <see cref="Tweaks"/> and its
     /// first level, <paramref name="level"/> (the mesh's own: the world
     /// changes its sectors in place, SPEC §12 T4.2): <c>G_InitNew</c> and
@@ -1277,7 +1344,8 @@ public partial class LevelScene : Node3D
     {
         try
         {
-            var world = new World(new SpawnSettings(GameMode, Skill), Tweaks) { textures = Textures };
+            var world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters), Tweaks) { textures = Textures };
+            world.P_InitPicAnims(Textures, FlatNames(Wad!)); // P_Init's (T5.7)
             world.G_DoLoadLevel(level);
             World = world;
             _unportedPrinted = world.unported.Count; // the level's start (P_SpawnSpecials) is not news

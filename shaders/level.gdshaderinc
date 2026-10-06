@@ -13,11 +13,15 @@
 // B = light level (0-255), A = the floor flat's texture slot. The vertex
 // shader places every vertex from it, so changing a sector's heights moves
 // its floor and walls without a rebuild (T5.1: the sim's, interpolated).
-// `side_textures` (R float, same layout, three texels per sidedef: upper,
-// lower, middle; IsoDoom.Render.LevelMesh.SidePartId): the texture slot of
+// `side_textures` (RG float, same layout, three texels per sidedef: upper,
+// lower, middle; IsoDoom.Render.LevelMesh.SidePartId): R the texture slot of
 // each sidedef texture, -1 for none, so a switch changes a wall's texture
-// without a rebuild (T5.1). `texture_info` (RGBA float, same layout, one
-// texel per texture slot): atlas x, y, width, height.
+// without a rebuild (T5.1); G how far the sidedef's textureoffset moved since
+// the build (map units, the same in all three), added to the texture column,
+// so a scrolling wall (linedef special 48) scrolls without a rebuild (T5.7).
+// `texture_info` (RGBA float, same layout, one texel per texture slot): atlas
+// x, y, width, height; an animation re-points a slot to another frame's
+// rectangle (vanilla's texturetranslation / flattranslation, T5.7).
 //
 // Light (SPEC §7.4, §12 T2.8): vanilla's tables (IsoDoom.Map.LightTables,
 // the CPU reference) in `light_tables` (R8, 128 x 32): row i = r_main.c
@@ -38,7 +42,8 @@
 //              their slot is the sector's), front sector, back sector (-1: none; for a cap
 //              its cut centre, 0 player, 1 cursor)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
-//   walls:     UV.x = texture column (textureoffset + distance from V1), UV.y = 0 bottom, 1 top
+//   walls:     UV.x = texture column (textureoffset at the build + distance from V1; the
+//              side's scroll is added, T5.7), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
 //              CUSTOM2 = texture-top plane (+ 8: add the slot's texture height, for a texture
 //                        whose bottom is pegged; T5.1), texture-top offset, fake contrast
@@ -181,7 +186,8 @@ void vertex() {
 	int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
 	vec4 front = data_texel(sector_data, front_id);
 	vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
-	int slot = kind == 0 ? int(front.a + 0.5) : int(floor(data_texel(side_textures, int(CUSTOM0.y)).r + 0.5));
+	vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
+	int slot = kind == 0 ? int(front.a + 0.5) : int(floor(side.r + 0.5));
 	ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
 	v_rect = rect;
 	v_kind = kind;
@@ -220,7 +226,7 @@ void vertex() {
 			top = bottom;
 		}
 		z = UV.y > 0.5 ? top : bottom;
-		v_texcoord = vec2(UV.x, texture_top - z);
+		v_texcoord = vec2(UV.x + side.g, texture_top - z);
 	}
 	VERTEX.y = z / MAP_UNITS_PER_METRE;
 	v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;

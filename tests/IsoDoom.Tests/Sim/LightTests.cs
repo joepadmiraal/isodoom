@@ -224,5 +224,10 @@ public class LightTests
         (List<string[]> tex, List<string[]> flats) = PicAnims.Sequences(Textures.R_InitTextures(wad), PicAnims.FlatNames(wad));
         Assert.Contains(flats, f => f.SequenceEqual(new[] { "NUKAGE1", "NUKAGE2", "NUKAGE3" }));
         Assert.All(tex.Concat(flats), seq => Assert.InRange(seq.Length, 2, 8));
+        // Vanilla's flat numbers (firstflat = F_START + 1, the inner markers counted): the animations'
+        // phase depends on them. DOOM1.WAD: F_START is lump 1206, NUKAGE1 lump 1258.
+        List<string> names = PicAnims.FlatNames(wad);
+        Assert.Equal("F1_START", names[0]);
+        Assert.Equal(1258 - 1207, PicAnims.FlatNum(names, "NUKAGE1"));
     }
 }

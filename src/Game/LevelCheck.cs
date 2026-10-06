@@ -190,8 +190,10 @@ public partial class LevelCheck : Godot.Node
             vertices += v;
             CheckTextureChangeData(m, map);
             CheckSectorInterpolation(m, map);
+            CheckScrollData(m, map);
             CheckGameLoop(map); // it moves the player and spawns a mobj
-            CheckTeleport(map); // last: it moves the player through a teleporter
+            CheckTeleport(map); // last but the animations: it moves the player through a teleporter
+            CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
                 GD.PrintErr($"Level check: {map}: {_failures - failures} failure(s)");
@@ -204,6 +206,9 @@ public partial class LevelCheck : Godot.Node
             + "at tic fractions 0, ½ and 1 (interpolated between the last two tics), a mobj spawned between tics is drawn where it is, and one removed is dropped");
         GD.Print($"Level check: teleports (T5.6): {_teleportMaps} maps teleported the player across a teleport line in a tic: drawn where it lands "
             + "(not interpolated), the camera snap asked for, fog drawn at both ends");
+        GD.Print($"Level check: animations (T5.7): {_animSequences} animation sequences drawn with every frame in the atlas; {_animatedMaps} maps ran them: "
+            + $"{_translatedSlots} slots drawn as the sim's translation says, {_scrollingWalls} scrolling walls (special 48) drawn scrolled as far as the sim moved them; "
+            + $"{_scrollChecks} maps scrolled a wall's texture through side_textures and back");
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");
@@ -350,6 +355,38 @@ public partial class LevelCheck : Godot.Node
                 Fail($"{map}: run-time texture {name} is not in the WAD");
             else
                 CheckSlot(m.TextureSlot(texnum), name, Composite(texnum), $"run-time texture {name}");
+        }
+        // T5.7: the flats only reachable by animation have slots of their own, and every frame of an
+        // animation the level draws is in the atlas.
+        var runtimeFlats = new HashSet<string>(m.RuntimeFlats, StringComparer.OrdinalIgnoreCase);
+        foreach (string name in runtimeFlats)
+            CheckSlot(m.FlatSlot(name), name, FlatImage(name), $"run-time flat {name}");
+        (List<string[]> animTextures, List<string[]> animFlats) = _scene.AnimGroups(_scene.Wad!);
+        foreach (string[] seq in animTextures)
+        {
+            bool drawn = false;
+            foreach (string name in seq)
+                drawn |= Textures.R_CheckTextureNumForName(name) is > 0 and var t && m.TextureSlot(t) >= 0 && !runtime.Contains(name);
+            foreach (string name in seq)
+            {
+                if (drawn && m.TextureSlot(Textures.R_CheckTextureNumForName(name)) < 0)
+                    Fail($"{map}: animation frame {name} has no slot, though the level draws its sequence ({string.Join(", ", seq)})");
+            }
+            if (drawn)
+                _animSequences++;
+        }
+        foreach (string[] seq in animFlats)
+        {
+            bool drawn = false;
+            foreach (string name in seq)
+                drawn |= m.FlatSlot(name) >= 0 && !runtimeFlats.Contains(name);
+            foreach (string name in seq)
+            {
+                if (drawn && m.FlatSlot(name) < 0)
+                    Fail($"{map}: animated flat {name} has no slot, though the level draws its sequence ({string.Join(", ", seq)})");
+            }
+            if (drawn)
+                _animSequences++;
         }
         foreach (IReadOnlyList<string> group in LevelScene.SwitchGroups(_scene.GameMode))
         {
@@ -937,6 +974,8 @@ public partial class LevelCheck : Godot.Node
 
         await CheckTextureChangeDrawn(m);
 
+        await CheckAnimationDrawn(m);
+
         GD.Print($"Level check: {map}: light compared at sector light levels {string.Join(" ", _lightLevels)} (>> 4), "
             + $"wall contrasts {string.Join(" ", _contrasts)}, colormaps {string.Join(" ", _colormaps)}; "
             + $"{_lightSkipped} pixels skipped within {LightMargin} units of a light table step, "
@@ -1070,7 +1109,7 @@ public partial class LevelCheck : Godot.Node
                             if (map0 < 0)
                                 continue;
                             (int col, int row) = TextureWrap.FlatTexel(x, y);
-                            expected = Shade(FlatImage(sector.FloorPic)[col, row], map0);
+                            expected = Shade(ShownFlat(m, sector.FloorPic)[col, row], map0);
                             ok = got == expected;
                             sectorsSeen[s] = true;
                         }
@@ -1203,9 +1242,11 @@ public partial class LevelCheck : Godot.Node
     /// instead: with <see cref="MaskedBackFaces.Mirrored"/> the same texels
     /// at the same map points (so mirrored on screen) lit by the back sector,
     /// with <see cref="MaskedBackFaces.Off"/> the background over the whole opening.
+    /// <paramref name="scroll"/> (fixed_t, T5.7) is how far its sidedef's
+    /// <c>textureoffset</c> moved since the build (a scrolling wall).
     /// </summary>
     private async Task<(int Pixels, bool TilingsDiffer)> CheckWall(LevelMesh m, WallSection s, WallTextureTiling tiling, string map, bool behind = false,
-        int? texture = null)
+        int? texture = null, int scroll = 0)
     {
         bool masked = LevelMesh.IsMasked(s);
         bool allClear = behind && m.MaskedBacks == MaskedBackFaces.Off;
@@ -1250,12 +1291,13 @@ public partial class LevelCheck : Godot.Node
             }
         }
 
-        string what = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({Textures.TextureDefs[texnum].Name}{(texture is null ? "" : ", changed at run time")}, {tiling} tiling)"
+        string what = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({Textures.TextureDefs[texnum].Name}{(texture is null ? "" : ", changed at run time")}"
+            + $"{(scroll == 0 ? "" : $", scrolled {scroll / 65536.0} units")}, {tiling} tiling)"
             + (behind ? $", from behind ({m.MaskedBacks})" : "");
         byte[]? frame = await Capture(what);
         if (frame is null)
             return (0, false);
-        IndexedImage tex = Composite(texnum);
+        IndexedImage tex = ShownComposite(m, texnum);
         int textureTop = s.TextureTopFor(textureHeight);
         int light = (behind ? s.BackSector! : s.FrontSector).LightLevel;
         int contrast = LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y); // axis-aligned: every seg has it
@@ -1271,7 +1313,7 @@ public partial class LevelCheck : Godot.Node
             double from = dirX * (pc.A.X / 65536.0 - v1x) + dirY * (pc.A.Y / 65536.0 - v1y);
             double to = dirX * (pc.B.X / 65536.0 - v1x) + dirY * (pc.B.Y / 65536.0 - v1y);
             if (!connector && to > from)
-                spans.Add((from, to, (long)s.TextureOffset + pc.ColumnA, (long)s.TextureOffset + pc.ColumnB));
+                spans.Add((from, to, (long)s.TextureOffset + scroll + pc.ColumnA, (long)s.TextureOffset + scroll + pc.ColumnB));
         }
         int compared = 0, bad = 0;
         bool differ = false;
@@ -1486,7 +1528,7 @@ public partial class LevelCheck : Godot.Node
                 if (map0 < 0)
                     continue;
                 (int col, int row) = TextureWrap.FlatTexel((int)Math.Floor(hx * 65536), (int)Math.Floor(hy * 65536));
-                (int R, int G, int B) expected = Shade(FlatImage(sector.FloorPic)[col, row], map0);
+                (int R, int G, int B) expected = Shade(ShownFlat(m, sector.FloorPic)[col, row], map0);
                 expectedColours[py * w + px] = (expected.R << 16) | (expected.G << 8) | expected.B;
                 int p = (py * w + px) * 4;
                 (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
@@ -1621,6 +1663,20 @@ public partial class LevelCheck : Godot.Node
         if (!_composites.TryGetValue(texnum, out IndexedImage? image))
             _composites[texnum] = image = Textures.R_GenerateComposite(texnum, TextureCompositeMode.Vanilla);
         return image;
+    }
+
+    /// <summary>The composite drawn for wall texture <paramref name="texnum"/>: its animation frame when its slot is translated (T5.7, <see cref="LevelMesh.SlotShows"/>).</summary>
+    private IndexedImage ShownComposite(LevelMesh m, int texnum)
+    {
+        int slot = m.TextureSlot(texnum);
+        return Composite(slot >= 0 ? Textures.R_CheckTextureNumForName(m.SlotNames[m.SlotShows(slot)]) : texnum);
+    }
+
+    /// <summary>The flat drawn for floor flat <paramref name="name"/>: its animation frame when its slot is translated (T5.7).</summary>
+    private IndexedImage ShownFlat(LevelMesh m, string name)
+    {
+        int slot = m.FlatSlot(name);
+        return FlatImage(slot >= 0 ? m.SlotNames[m.SlotShows(slot)] : name);
     }
 
     private IndexedImage FlatImage(string name)

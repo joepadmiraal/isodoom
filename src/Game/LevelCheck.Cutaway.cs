@@ -322,7 +322,7 @@ public partial class LevelCheck
                         if (colormap < 0)
                             break;
                         (int col, int row) = TextureWrap.FlatTexel((int)Math.Floor(c.X * 65536), (int)Math.Floor(c.Y * 65536));
-                        (int R, int G, int B) expected = Shade(FlatImage(sector.FloorPic)[col, row], colormap);
+                        (int R, int G, int B) expected = Shade(ShownFlat(m, sector.FloorPic)[col, row], colormap);
                         compared++;
                         capped++;
                         if (got != expected && badCap++ == 0)

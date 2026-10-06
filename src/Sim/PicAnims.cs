@@ -72,9 +72,8 @@ public static class PicAnims
     /// <summary>
     /// p_spec.c <c>P_InitPicAnims</c>' lookup: the <see cref="animdefs"/>
     /// whose start the WAD has (a texture of <paramref name="textures"/>, none
-    /// when null; a flat of <paramref name="flats"/>, the flat namespace in
-    /// order, vanilla's <c>firstflat</c>..<c>lastflat</c> without the inner
-    /// markers), as texture or flat numbers. As vanilla, a missing end or a
+    /// when null; a flat of <paramref name="flats"/>, <see cref="FlatNames"/>:
+    /// vanilla's <c>firstflat</c>..<c>lastflat</c>), as texture or flat numbers. As vanilla, a missing end or a
     /// cycle of fewer than two frames is an error (<see cref="WadFormatException"/>).
     /// </summary>
     public static List<anim_t> Resolve(Textures? textures, IReadOnlyList<string> flats)
@@ -133,10 +132,14 @@ public static class PicAnims
         return (tex, flat);
     }
 
-    /// <summary>r_data.c <c>R_FlatNumForName</c> without the error: the flat's number in <paramref name="flats"/>, or -1.</summary>
+    /// <summary>
+    /// r_data.c <c>R_FlatNumForName</c> without the error: the flat's number
+    /// in <paramref name="flats"/> (the last of that name, as
+    /// <c>W_CheckNumForName</c> finds the last lump), or -1.
+    /// </summary>
     public static int FlatNum(IReadOnlyList<string> flats, string name)
     {
-        for (int i = 0; i < flats.Count; i++)
+        for (int i = flats.Count - 1; i >= 0; i--)
         {
             if (string.Equals(flats[i], name, StringComparison.OrdinalIgnoreCase))
                 return i;
@@ -144,12 +147,38 @@ public static class PicAnims
         return -1;
     }
 
-    /// <summary>The flat namespace of <paramref name="wad"/> by name, in order (vanilla's flat numbers).</summary>
+    /// <summary>
+    /// The flats of <paramref name="wad"/> by name, numbered as vanilla's
+    /// <c>R_InitFlats</c> numbers them (<c>firstflat</c>..<c>lastflat</c>):
+    /// every lump between the last <c>F_START</c> and the last <c>F_END</c>,
+    /// inner markers (<c>F1_START</c>, …) included, since an animation's phase
+    /// depends on its frames' absolute numbers (<c>P_UpdateSpecials</c>); then
+    /// the flats of the merged flat namespace outside that range (a PWAD's,
+    /// which vanilla does not merge), in order.
+    /// </summary>
     public static List<string> FlatNames(WadArchive wad)
     {
+        int start = -1, end = -1;
+        for (int i = 0; i < wad.Lumps.Count; i++)
+        {
+            string name = wad.Lumps[i].Name;
+            if (name == "F_START")
+                start = i;
+            else if (name == "F_END")
+                end = i;
+        }
         var names = new List<string>();
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // lookups only (Sim invariants)
+        for (int i = start + 1; start >= 0 && i < end; i++)
+        {
+            names.Add(wad.Lumps[i].Name);
+            known.Add(wad.Lumps[i].Name);
+        }
         foreach (WadLump lump in wad.GetNamespace(LumpNamespace.Flats))
-            names.Add(lump.Name);
+        {
+            if (known.Add(lump.Name))
+                names.Add(lump.Name);
+        }
         return names;
     }
 }

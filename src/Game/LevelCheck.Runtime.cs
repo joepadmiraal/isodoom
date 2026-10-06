@@ -20,17 +20,24 @@ namespace IsoDoom.Game;
 // flat change re-points the sector's slot. Every change is put back. With a
 // real renderer, the rendered map's changed wall is also compared side-on
 // with the new texture.
+// T5.7: on every map a wall's sidedef scrolled through its textureoffset
+// moves its side_textures scroll (and back); after the tics the check runs,
+// every animation frame's slot draws the frame the sim's translation names
+// and every scrolling wall (special 48) is scrolled as far as the sim moved
+// it. With a real renderer, a wall translated to another texture (as an
+// animation re-points a slot) and a wall scrolled are compared side-on.
 public partial class LevelCheck
 {
     private int _switchPairs, _textureChanges, _flatChanges, _interpolatedSectors;
+    private int _animSequences, _animatedMaps, _translatedSlots, _scrollingWalls, _scrollChecks;
 
     /// <summary>The <c>side_textures</c> upload read back from the GPU against the CPU copy.</summary>
     private void CheckSideTexturesUpload(LevelMesh m, string map)
     {
         Image? gpu = m.SideTexturesTexture.GetImage();
-        if (gpu is null || gpu.GetFormat() != Image.Format.Rf)
+        if (gpu is null || gpu.GetFormat() != Image.Format.Rgf)
         {
-            Fail($"{map}: side_textures can't be read back as RF");
+            Fail($"{map}: side_textures can't be read back as RGF");
             return;
         }
         for (int side = 0; side < m.Level.Sides.Length; side++)
@@ -38,7 +45,8 @@ public partial class LevelCheck
             for (int part = 0; part < 3; part++)
             {
                 int id = 3 * side + part;
-                if ((int)MathF.Round(gpu.GetPixel(id % LevelMesh.DataWidth, id / LevelMesh.DataWidth).R) != m.SideTextureSlot(side, part))
+                Color texel = gpu.GetPixel(id % LevelMesh.DataWidth, id / LevelMesh.DataWidth);
+                if ((int)MathF.Round(texel.R) != m.SideTextureSlot(side, part) || texel.G != m.SideScroll(side, part))
                 {
                     Fail($"{map}: side {side} part {part}: the GPU side_textures texel differs");
                     return;
@@ -241,5 +249,145 @@ public partial class LevelCheck
             Fail($"{map}: line {s.Line.Index}'s {s.Kind} changed to {Textures.TextureDefs[texture].Name} at run time: no pixel compared");
         GD.Print($"Level check: {map}: line {s.Line.Index} side {s.Side} {s.Kind} changed from {Textures.TextureDefs[s.Texture].Name} to "
             + $"{Textures.TextureDefs[texture].Name} at run time{(s.BottomPegged ? " (texture bottom pegged)" : "")}: {pixels} drawn pixels compared");
+    }
+
+    /// <summary>
+    /// T5.7: a drawn wall's sidedef scrolled through its <c>textureoffset</c>
+    /// (as linedef special 48 does) moves its three <c>side_textures</c>
+    /// texels' scroll by as much, and back.
+    /// </summary>
+    private void CheckScrollData(LevelMesh m, string map)
+    {
+        WallSection? s = null;
+        foreach (WallSection o in m.Walls.Sections)
+        {
+            if (LevelMesh.IsDrawn(o))
+            {
+                s = o;
+                break;
+            }
+        }
+        if (s is null)
+            return;
+        IsoDoom.Map.Side side = s.SideDef;
+        int before = side.TextureOffset;
+        float scroll = m.SideScroll(side.Index);
+        side.TextureOffset += 5 << Fixed.FRACBITS;
+        m.UpdateSectors();
+        for (int part = 0; part < 3; part++)
+        {
+            if (m.SideScroll(side.Index, part) != scroll + 5)
+                Fail($"{map}: side {side.Index} scrolled 5 units: side_textures part {part} scroll {m.SideScroll(side.Index, part)}, expected {scroll + 5}");
+        }
+        if (CanCapture)
+            CheckSideTexturesUpload(m, $"{map} (side {side.Index} scrolled)");
+        side.TextureOffset = before;
+        m.UpdateSectors();
+        if (m.SideScroll(side.Index) != scroll)
+            Fail($"{map}: side {side.Index}'s scroll did not come back ({m.SideScroll(side.Index)}, was {scroll})");
+        _scrollChecks++;
+    }
+
+    /// <summary>
+    /// T5.7, after the tics the check ran on the map: every frame of the
+    /// world's animations the atlas holds draws (through <c>texture_info</c>)
+    /// the frame the sim's <c>texturetranslation</c>/<c>flattranslation</c>
+    /// names, and every scrolling wall's front side is scrolled by the sim's
+    /// tics (a unit a tic since the level began).
+    /// </summary>
+    private void CheckAnimations(LevelMesh m, string map)
+    {
+        if (_scene.World is not { } world)
+            return;
+        _scene.PresentWorld();
+        int translated = 0;
+        for (int a = 0; a < world.lastanim; a++)
+        {
+            anim_t anim = world.anims[a]!;
+            for (int i = anim.basepic; i < anim.basepic + anim.numpics; i++)
+            {
+                (int slot, int shows, string name, string to) = anim.istexture
+                    ? (m.TextureSlot(i), m.TextureSlot(world.texturetranslation[i]), Textures.TextureDefs[i].Name, Textures.TextureDefs[world.texturetranslation[i]].Name)
+                    : (m.FlatSlot(world.flatnames[i]), m.FlatSlot(world.flatnames[world.flattranslation[i]]), world.flatnames[i], world.flatnames[world.flattranslation[i]]);
+                if (slot < 0)
+                    continue;
+                translated++;
+                AtlasRect r = shows >= 0 ? m.Atlas.Rects[shows] : default;
+                if (shows < 0 || m.SlotShows(slot) != shows || m.TextureInfo(slot) != new Color(r.X, r.Y, r.Width, r.Height))
+                    Fail($"{map}: at tic {world.leveltime} {name} (slot {slot}) should draw {to} (slot {shows}): it draws slot {m.SlotShows(slot)}, texture_info {m.TextureInfo(slot)}");
+            }
+        }
+        if (translated > 0)
+        {
+            _animatedMaps++;
+            _translatedSlots += translated;
+            if (CanCapture)
+            {
+                Image? info = m.TextureInfoTexture.GetImage();
+                for (int i = 0; info is not null && i < m.Atlas.Rects.Count; i++)
+                {
+                    if (info.GetPixel(i % LevelMesh.DataWidth, i / LevelMesh.DataWidth) != m.TextureInfo(i))
+                    {
+                        Fail($"{map}: slot {i}: the GPU texture_info texel differs after the animations");
+                        break;
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < world.numlinespecials; i++)
+        {
+            int side = world.linespeciallist[i]!.sidenum[0];
+            if (m.SideScroll(side) != world.leveltime)
+                Fail($"{map}: scrolling wall line {world.linespeciallist[i]!.Index}: side {side} drawn scrolled {m.SideScroll(side)} units after {world.leveltime} tics");
+            _scrollingWalls++;
+        }
+        if (CanCapture)
+            CheckSideTexturesUpload(m, $"{map} (after {world.leveltime} tics)");
+    }
+
+    /// <summary>
+    /// T5.7, with a renderer: the rendered map's side-on wall
+    /// (<see cref="PickTextureChange"/>) is drawn with its slot translated to
+    /// another texture (as an animation re-points it: an animation's next
+    /// frame when the wall draws one) and compared side-on with that texture,
+    /// then scrolled 7 units through its sidedef and compared again. Both are put back.
+    /// </summary>
+    private async Task CheckAnimationDrawn(LevelMesh m)
+    {
+        string map = m.Level.Name;
+        if (PickTextureChange(m, sideOn: true) is not var (s, texture))
+        {
+            Fail($"{map}: no side-on wall section to translate and scroll");
+            return;
+        }
+        (List<string[]> animTextures, _) = _scene.AnimGroups(_scene.Wad!);
+        string name = Textures.TextureDefs[s.Texture].Name;
+        foreach (string[] seq in animTextures)
+        {
+            int k = Array.FindIndex(seq, n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            if (k >= 0)
+                texture = Textures.R_CheckTextureNumForName(seq[(k + 1) % seq.Length]);
+        }
+        m.TranslateTexture(s.Texture, texture);
+        m.UpdateSectors();
+        int translated = (await CheckWall(m, s, WallTextureTiling.Vanilla, map, texture: texture)).Pixels;
+        m.TranslateTexture(s.Texture, s.Texture);
+        _scene.PresentWorld(); // the world's own translation back
+        if (translated == 0)
+            Fail($"{map}: line {s.Line.Index}'s {s.Kind} translated to {Textures.TextureDefs[texture].Name}: no pixel compared");
+
+        const int scroll = 7 << Fixed.FRACBITS;
+        IsoDoom.Map.Side side = s.SideDef;
+        int before = side.TextureOffset;
+        int already = (int)MathF.Round(m.SideScroll(side.Index)) << Fixed.FRACBITS; // a scrolling wall moved by the sim
+        side.TextureOffset += scroll;
+        m.UpdateSectors();
+        int scrolled = (await CheckWall(m, s, WallTextureTiling.Vanilla, map, scroll: already + scroll)).Pixels;
+        side.TextureOffset = before;
+        m.UpdateSectors();
+        if (scrolled == 0)
+            Fail($"{map}: line {s.Line.Index}'s {s.Kind} scrolled: no pixel compared");
+        GD.Print($"Level check: {map}: line {s.Line.Index} side {s.Side} {s.Kind} ({name}) drawn translated to {Textures.TextureDefs[texture].Name}: "
+            + $"{translated} drawn pixels compared; scrolled 7 units: {scrolled} drawn pixels compared");
     }
 }
