@@ -1,4 +1,3 @@
-using System.IO;
 using System.Linq;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
@@ -93,33 +92,9 @@ public class Doom1TextureTests
     public void ExportDebugPngs()
     {
         (WadArchive wad, Textures t) = OpenDoom1();
-        Assert.SkipWhen(TestWads.RepoRoot is null, "Repo root not found; nowhere to write the debug PNGs.");
-        string dir = Path.Combine(TestWads.RepoRoot!, "TestResults", "graphics");
-        Directory.CreateDirectory(dir);
+        string dir = DebugPng.RequireOutputDir();
         byte[] palette = Playpal.Load(wad).GetPalette(0).ToArray();
-
-        void Write(string file, IndexedImage img, bool checker = false)
-        {
-            const int scale = 4;
-            byte[] rgba = PngWriter.Scale(img.Width, img.Height, img.ToRgba(palette), scale);
-            int w = img.Width * scale, h = img.Height * scale;
-            if (checker)
-            {
-                for (int i = 0; i < w * h; i++)
-                {
-                    if (rgba[i * 4 + 3] != 0)
-                        continue;
-                    byte c = (((i % w) / 8 + (i / w) / 8) & 1) == 0 ? (byte)255 : (byte)200;
-                    rgba[i * 4] = c;
-                    rgba[i * 4 + 1] = 0;
-                    rgba[i * 4 + 2] = c;
-                    rgba[i * 4 + 3] = 255;
-                }
-            }
-            string path = Path.Combine(dir, file);
-            PngWriter.WriteRgba(path, w, h, rgba);
-            Assert.True(new FileInfo(path).Length > 0);
-        }
+        void Write(string file, IndexedImage img, bool checker = false) => DebugPng.Write(dir, file, img, palette, checker: checker);
 
         Write("TEX_STARTAN3_x4.png", t.GetComposite("STARTAN3"));
         Write("TEX_DOOR3_x4.png", t.GetComposite("DOOR3"));

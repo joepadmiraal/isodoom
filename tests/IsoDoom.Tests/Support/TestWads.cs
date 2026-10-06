@@ -69,6 +69,20 @@ public static class TestWads
         return Doom2Path!;
     }
 
+    /// <summary>MD5 of the DOOM II v1.666 IWAD; tests assert version-specific counts only for this file.</summary>
+    public const string Doom2V1666Md5 = "30e3c2d0350b67bfbf47271970b74b2f";
+
+    private static readonly Lazy<string?> Doom2Md5Value = new(() => Doom2Path is null ? null : Md5Of(Doom2Path));
+
+    /// <summary>MD5 (lower-case hex) of <see cref="Doom2Path"/>, or null when there is no DOOM II IWAD.</summary>
+    public static string? Doom2Md5 => Doom2Md5Value.Value;
+
+    private static string Md5Of(string path)
+    {
+        using FileStream stream = File.OpenRead(path);
+        return Convert.ToHexStringLower(MD5.HashData(stream));
+    }
+
     private static string? FindDoom2()
     {
         string? overridePath = Environment.GetEnvironmentVariable(Doom2EnvVar);
@@ -109,8 +123,7 @@ public static class TestWads
             return $"DOOM1.WAD not found at {where}; put the shareware v1.9 WAD there to run this test.";
         }
 
-        using FileStream stream = File.OpenRead(path);
-        string md5 = Convert.ToHexStringLower(MD5.HashData(stream));
+        string md5 = Md5Of(path);
         return md5 == Doom1Md5
             ? null
             : $"{path} is not the shareware v1.9 DOOM1.WAD (MD5 {md5}, expected {Doom1Md5}).";

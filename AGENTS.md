@@ -40,6 +40,8 @@ Run from the repo root. Versions are pinned in `SPEC.md` §12; the .NET SDK come
 
 `wads/DOOM1.WAD` is the shareware v1.9 WAD (MD5 `f0cefca49926d00903cf57551d901abe`). Tests that need it skip themselves when the file is absent.
 
+`wads/doom2.wad` (any Doom II version; set `ISODOOM_DOOM2_WAD=/path/to/DOOM2.WAD` to use one elsewhere) enables the Doom II tests, which skip themselves without it.
+
 ## References
 
 - Vanilla source: `id-Software/DOOM` on GitHub (`linuxdoom-1.10`). Chocolate Doom covers vanilla-accurate fixes and OPL music (`i_oplmusic.c`).
