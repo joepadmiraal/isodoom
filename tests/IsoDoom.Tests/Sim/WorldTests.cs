@@ -63,7 +63,7 @@ public class WorldTests
     /// (unless <c>MF_NOSECTOR</c>) and the block list of the block under it
     /// (unless <c>MF_NOBLOCKMAP</c> or off the map), and the lists hold nothing else.
     /// </summary>
-    private static void CheckLinks(World world)
+    internal static void CheckLinks(World world)
     {
         List<mobj_t> mobjs = world.Mobjs().ToList();
         var inSectors = world.sectors.SelectMany(SectorList).ToList();
@@ -435,6 +435,7 @@ public class WorldTests
                 var t when t == typeof(string) => "x",
                 var t when t.IsEnum => System.Enum.ToObject(t, 1),
                 var t when t == typeof(mobj_t) => new mobj_t(),
+                var t when t == typeof(ticcmd_t) => new ticcmd_t { forwardmove = 1, sidemove = 2, angleturn = 3, consistancy = 4, chatchar = 5, buttons = 6 },
                 _ => null,
             };
             if (value != null)

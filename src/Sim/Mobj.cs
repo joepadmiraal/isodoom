@@ -111,6 +111,12 @@ public sealed class sector_t
 
     public short lightlevel { get => map.LightLevel; set => map.LightLevel = value; }
 
+    /// <summary>The floor flat's name (vanilla's flat number <c>floorpic</c>).</summary>
+    public string floorpic { get => map.FloorPic; set => map.FloorPic = value; }
+
+    /// <summary>The ceiling flat's name (vanilla's flat number <c>ceilingpic</c>); <see cref="World.SKYFLATNAME"/> is the sky.</summary>
+    public string ceilingpic { get => map.CeilingPic; set => map.CeilingPic = value; }
+
     public short special { get => map.Special; set => map.Special = value; }
 
     public short tag { get => map.Tag; set => map.Tag = value; }

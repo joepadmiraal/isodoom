@@ -74,7 +74,7 @@ public enum playerstate_t
 
 /// <summary>
 /// d_player.h <c>player_t</c>: the player's state beyond its mobj. The
-/// <c>ticcmd</c> (T4.5) and the psprites (T6.6) are added by their tasks.
+/// <c>ticcmd</c> is here since T4.4 (T4.5 drives the player with it); the psprites (T6.6) come with their task.
 /// </summary>
 public sealed class player_t
 {
@@ -89,6 +89,7 @@ public sealed class player_t
 
     public mobj_t? mo;
     public playerstate_t playerstate;
+    public ticcmd_t cmd;
 
     /// <summary>Focal origin above r.z (fixed_t).</summary>
     public int viewz;
@@ -125,8 +126,16 @@ public sealed class player_t
     public bool attackdown;
     public bool usedown;
 
-    /// <summary>Bit flags, for cheats and debug.</summary>
+    /// <summary>Bit flags, for cheats and debug (<see cref="CF_NOCLIP"/>…).</summary>
     public int cheats;
+
+    // d_player.h cheat_t
+    /// <summary>No clipping, walk through barriers.</summary>
+    public const int CF_NOCLIP = 1;
+    /// <summary>No damage, no health loss.</summary>
+    public const int CF_GODMODE = 2;
+    /// <summary>Not really a cheat, just a debug aid.</summary>
+    public const int CF_NOMOMENTUM = 4;
 
     /// <summary>Refired shots are less accurate.</summary>
     public int refire;
@@ -166,6 +175,7 @@ public sealed class player_t
     {
         mo = null;
         playerstate = default;
+        cmd = default;
         viewz = viewheight = deltaviewheight = bob = 0;
         health = armorpoints = armortype = 0;
         System.Array.Clear(powers);

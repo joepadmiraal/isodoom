@@ -11,7 +11,7 @@ namespace IsoDoom.Sim;
 /// run several worlds side by side. A world lives for a game (players and
 /// the random index carry over between levels); <see cref="G_DoLoadLevel"/>
 /// starts each level. The partial files follow vanilla's: World.Tick.cs is
-/// p_tick.c, World.Mobj.cs p_mobj.c, World.MapUtl.cs p_maputl.c,
+/// p_tick.c, World.Mobj.cs p_mobj.c, World.MapUtl.cs p_maputl.c, World.Map.cs p_map.c,
 /// World.Checksum.cs the per-tic state checksum (SPEC §6.1).
 /// <para>
 /// The <see cref="level"/>'s sectors are changed in place (heights, light,
