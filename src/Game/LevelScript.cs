@@ -41,7 +41,11 @@ namespace IsoDoom.Game;
 /// <c>visible MIN</c> at every step, and print the least visible step);
 /// <c>tour [STEP] [MIN]</c> (T3.4: <c>walkto</c> a point inside every
 /// sector's floor of the map, nearest unvisited first from where the
-/// placeholder stands);
+/// placeholder stands); <c>frametime [FRAMES]</c> (T3.8: measure the wall-clock
+/// time of the next FRAMES frames, default 300, and print the mean, median, 95th
+/// percentile and worst in ms; run with <c>--disable-vsync</c> before <c>--</c>);
+/// <c>things on|off</c> (T3.8: show or hide the thing billboards, e.g. to
+/// measure what they cost);
 /// <c>quit</c> (also implied at the end).
 /// </para>
 /// </summary>
@@ -106,6 +110,11 @@ public partial class LevelScript : Node
                         break;
                     case "tour":
                         exit |= await Tour(w.Length > 1 ? Int(w[1]) : 32, w.Length > 2 ? Int(w[2]) : DefaultMinVisible);
+                        break;
+                    case "frametime": await FrameTime(w.Length > 1 ? Int(w[1]) : 300); break;
+                    case "things":
+                        if (_scene.Things is { } things)
+                            things.Visible = things.Shadows.Visible = w[1] == "on";
                         break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
@@ -226,6 +235,28 @@ public partial class LevelScript : Node
         bool ctrl = Input.IsPhysicalKeyPressed(Godot.Key.Ctrl);
         foreach (bool pressed in new[] { true, false })
             Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, CtrlPressed = ctrl, Factor = 1 });
+    }
+
+    /// <summary>Prints wall-clock frame times over <paramref name="n"/> frames (T3.8; after a few frames to settle).</summary>
+    private async Task FrameTime(int n)
+    {
+        await Frames(10);
+        var ms = new double[Math.Max(1, n)];
+        ulong last = Time.GetTicksUsec();
+        for (int i = 0; i < ms.Length; i++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            ulong now = Time.GetTicksUsec();
+            ms[i] = (now - last) / 1000.0;
+            last = now;
+        }
+        double mean = 0;
+        foreach (double t in ms)
+            mean += t;
+        mean /= ms.Length;
+        Array.Sort(ms);
+        string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
+        GD.Print($"Level script: frame time over {ms.Length} frames at {GetViewport().GetVisibleRect().Size}: mean {F(mean)} ms ({F(1000 / mean)} fps), median {F(ms[ms.Length / 2])}, p95 {F(ms[(int)(ms.Length * 0.95)])}, worst {F(ms[^1])}");
     }
 
     private async Task Frames(int n)

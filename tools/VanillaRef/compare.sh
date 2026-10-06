@@ -4,8 +4,9 @@
 # Renders each view with the vanilla reference renderer (build.sh; $VANILLA_REF
 # or ~/.cache/isodoom/vanilla-ref) and with the level scene offscreen (Xvfb +
 # lavapipe; free-fly camera at eye level, vanilla's field of view, camera-depth
-# light, void in green), then compares them (compare.py). Writes vN.ppm, oN.png
-# (and dN.png) to DIR: WAD-derived, keep them out of the repo.
+# light, void in green, no sprites as vanilla's render has none), then compares
+# them (compare.py). Writes vN.ppm, oN.png (and dN.png) to DIR: WAD-derived,
+# keep them out of the repo.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -31,5 +32,5 @@ IFS=';' read -ra list <<< "$views"
 for i in "${!list[@]}"; do script="$script; view ${list[$i]} $(cat "$dir/v$i.z"); shot $dir/o$i.png"; done
 (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
     godot --fixed-fps 60 --resolution 1280x800 -- -iwad "$iwad" --level "$map" --level-camera=fly --level-light=camera \
-    --level-background=00ff00 "$@" --level-script="$script" >/dev/null 2>&1)
+    --level-background=00ff00 --level-things=off "$@" --level-script="$script" >/dev/null 2>&1)
 python3 "$here/compare.py" "$dir" "$iwad" $images

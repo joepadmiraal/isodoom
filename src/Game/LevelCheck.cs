@@ -1461,7 +1461,7 @@ public partial class LevelCheck : Godot.Node
     }
 
     /// <summary>A background colour more than a few steps from every colour of palette 0, so a missing floor can't pass as drawn.</summary>
-    private static (int R, int G, int B) UnusedColor(Playpal playpal)
+    internal static (int R, int G, int B) UnusedColor(Playpal playpal)
     {
         const int distance = 3 * BackgroundTolerance;
         for (int g = 0; g < 256; g += 3)

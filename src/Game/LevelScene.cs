@@ -42,12 +42,14 @@ namespace IsoDoom.Game;
 /// player's floor, default 32), <c>--level-cutaway-cursor=on|off</c> (the
 /// cursor ground point cuts too; default off);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
+/// <c>--level-things=on|off</c> (T3.8: off hides the billboards and the
+/// placeholder, as vanilla's reference renders draw no sprites; default on);
 /// <c>--level-sprite-tilt=0-1|off|half|full</c> (billboards turn towards the
 /// camera by this fraction of its elevation, T3.6, <see cref="SpriteSettings"/>;
 /// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
 /// upright), <c>--level-sprite-shadow=off|blend|dither</c> (blob shadows under
 /// actors; default off), <c>--level-sprite-outline=off|INDEX</c> (a one-texel
-/// outline in palette index INDEX; default off);
+/// outline in palette index INDEX; default 0, black);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-near=UNITS</c> (the shortest distance the
 /// player mode uses, T3.7; default 80, 0 for the tables down to the player);
@@ -109,8 +111,12 @@ public partial class LevelScene : Node3D
     /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
     public skill_t Skill { get; private set; } = skill_t.sk_medium;
 
+    /// <summary>Whether the billboards and the placeholder are drawn (<c>--level-things</c>, T3.8).</summary>
+    private bool _showThings = true;
+
     /// <summary>The loaded map's things as spawned on <see cref="Skill"/> (T3.2's spawn list, <see cref="SpawnedThings"/>), and their billboards (T3.5).</summary>
     public SpawnedThing[] SpawnedThings { get; private set; } = Array.Empty<SpawnedThing>();
+
     public ThingSprites? Things { get; private set; }
 
     /// <summary>The maps of the WAD (<c>ExMy</c>/<c>MAPxx</c> headers followed by <c>THINGS</c>), in lump order, each once.</summary>
@@ -200,6 +206,13 @@ public partial class LevelScene : Node3D
                 Skill = int.TryParse(skill, out int n) && n >= 1 && n <= 5
                     ? (skill_t)(n - 1)
                     : throw new ArgumentException($"--level-skill: \"{skill}\" (1-5)");
+            if (WadLocator.GetUserArg("--level-things") is string things)
+                _showThings = things switch
+                {
+                    "on" => true,
+                    "off" => false,
+                    _ => throw new ArgumentException($"--level-things: \"{things}\" (on or off)"),
+                };
             OpenWad();
             if (IsCheckRun)
             {
@@ -298,7 +311,7 @@ public partial class LevelScene : Node3D
         if (WadLocator.GetUserArg("--level-zoom") is string zoom)
             Iso.SetViewUnits(ParseFloat(zoom, "--level-zoom"));
 
-        Placeholder = new PlayerPlaceholder { Name = "Placeholder" };
+        Placeholder = new PlayerPlaceholder { Name = "Placeholder", Visible = _showThings };
         AddChild(Placeholder);
 
         // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
@@ -825,6 +838,7 @@ public partial class LevelScene : Node3D
         Things = new ThingSprites { Name = "Things" };
         Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
         Things.SetEntries(entries);
+        Things.Visible = Things.Shadows.Visible = _showThings;
         AddChild(Things);
         if (Things.MissingFrames > 0)
             GD.PushWarning($"Level: {level.Name}: {Things.MissingFrames} thing(s) whose spawn frame the WAD lacks are not drawn");
@@ -893,8 +907,10 @@ public partial class LevelScene : Node3D
     /// <summary>
     /// How much of the placeholder the game camera shows (T3.4; needs a real
     /// renderer, else null): the pixels that change when the placeholder is
-    /// hidden, against the pixels it covers with the level hidden. The camera
-    /// holds still and the overlay is hidden while the four frames render.
+    /// hidden, against the pixels it covers with the level hidden, over a
+    /// background in no palette colour (T3.8: over black, its black outline
+    /// and dark texels were left out of the total). The camera holds still
+    /// and the overlay is hidden while the four frames render.
     /// </summary>
     public async Task<(int Visible, int Total)?> PlaceholderVisibilityAsync()
     {
@@ -906,6 +922,12 @@ public partial class LevelScene : Node3D
         byte[] shown = await CaptureAsync();
         Placeholder.Visible = false;
         byte[] hidden = await CaptureAsync();
+        Color background = Environment.BackgroundColor;
+        if (Playpal is not null)
+        {
+            (int r, int g, int b) = LevelCheck.UnusedColor(Playpal);
+            Environment.BackgroundColor = Color.Color8((byte)r, (byte)g, (byte)b);
+        }
         foreach (MeshInstance3D chunk in _chunks)
             chunk.Visible = false;
         byte[] empty = await CaptureAsync();
@@ -913,6 +935,8 @@ public partial class LevelScene : Node3D
         byte[] alone = await CaptureAsync();
         foreach (MeshInstance3D chunk in _chunks)
             chunk.Visible = true;
+        Environment.BackgroundColor = background;
+        Placeholder.Visible = _showThings;
         Overlay.Visible = overlay;
         HoldCamera = hold;
         int visible = 0, total = 0;
