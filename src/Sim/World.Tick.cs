@@ -77,6 +77,8 @@ public sealed partial class World
     /// </summary>
     public void P_Ticker()
     {
+        P_StoreInterpolation(); // not vanilla: presentation only (T4.7)
+
         for (int i = 0; i < MAXPLAYERS; i++)
         {
             if (playeringame[i])
@@ -89,5 +91,60 @@ public sealed partial class World
 
         // for par times
         leveltime++;
+    }
+
+    /// <summary>
+    /// Not vanilla (SPEC §12 T4.7, as source ports): before a tic, every mobj
+    /// remembers its position and facing (<see cref="mobj_t.oldx"/>…) and may
+    /// be interpolated (<see cref="mobj_t.interp"/>); mobjs spawned, teleported
+    /// or moved by <see cref="PlaceMobj"/> during the tic clear it. The
+    /// presentation draws between the two. Changes nothing the sim reads.
+    /// </summary>
+    public void P_StoreInterpolation()
+    {
+        for (thinker_t th = thinkercap.next; th != thinkercap; th = th.next)
+        {
+            if (th is mobj_t mo)
+            {
+                mo.oldx = mo.x;
+                mo.oldy = mo.y;
+                mo.oldz = mo.z;
+                mo.oldangle = mo.angle;
+                mo.interp = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Not vanilla: a debug move (the level script's <c>place</c>, T4.7):
+    /// puts <paramref name="mo"/> at (<paramref name="x"/>, <paramref name="y"/>)
+    /// (fixed_t) on the floor there, facing <paramref name="angle"/> when given,
+    /// with no momentum and no collision check, like a teleport without the
+    /// fog; a player's view goes to its eye height and it stops running
+    /// (<c>S_PLAY</c>). Not interpolated.
+    /// </summary>
+    public void PlaceMobj(mobj_t mo, int x, int y, uint? angle = null)
+    {
+        P_UnsetThingPosition(mo);
+        mo.x = x;
+        mo.y = y;
+        P_SetThingPosition(mo);
+        mo.floorz = mo.subsector.sector.floorheight;
+        mo.ceilingz = mo.subsector.sector.ceilingheight;
+        mo.z = mo.floorz;
+        mo.momx = mo.momy = mo.momz = 0;
+        if (angle is uint a)
+            mo.angle = a;
+        if (mo.player is { } player)
+        {
+            // Standing still: vanilla resets the running frames only in
+            // P_XYMovement, which a mobj without momentum skips.
+            if (mo.state >= statenum_t.S_PLAY_RUN1 && mo.state <= statenum_t.S_PLAY_RUN4)
+                P_SetMobjState(mo, statenum_t.S_PLAY);
+            player.viewheight = player_t.VIEWHEIGHT;
+            player.deltaviewheight = 0;
+            player.viewz = mo.z + player.viewheight;
+        }
+        mo.interp = false;
     }
 }

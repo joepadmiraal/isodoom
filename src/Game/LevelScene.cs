@@ -15,11 +15,21 @@ namespace IsoDoom.Game;
 /// <summary>
 /// The level scene (T2.5, milestone M2): loads one map of the IWAD and shows
 /// it as a textured mesh (<see cref="LevelMesh"/>) through the game camera
-/// (<see cref="IsoCamera"/>, T3.3) following a player stand-in
-/// (<see cref="PlayerPlaceholder"/>), or from a fixed overview camera
+/// (<see cref="IsoCamera"/>, T3.3) following the player, or from a fixed overview camera
 /// (<see cref="LevelCamera"/>) or the free-fly debug camera. Opened by <see cref="Main"/> with the
 /// user argument <c>--level MAP</c> (<c>godot -- --level E1M1</c>; without a
 /// map name the first of <c>E1M1</c>/<c>MAP01</c>).
+/// <para>
+/// The game loop (T4.7): each map gets a <see cref="Sim.World"/> on the same
+/// <see cref="Level"/> as the mesh; <see cref="_Process"/> runs it at
+/// <see cref="SimInfo.TICRATE"/> from a time accumulator, one
+/// <c>ticcmd</c> per tic (<see cref="BuildTiccmd(Tweaks)"/> from the game's
+/// input while the game camera is current), whatever the frame rate, and
+/// draws the mobjs between the last two tics (<see cref="TicFraction"/>,
+/// <see cref="mobj_t.interp"/>): the player as <see cref="PlayerSprite"/>,
+/// which the game camera follows, the others as <see cref="Things"/>. A level
+/// script can play a <c>ticcmd</c> sequence instead (<see cref="QueueTic"/>).
+/// </para>
 /// <para>
 /// More user arguments (debugging and checks):
 /// <c>--level-view=iso|top</c> (camera angle, default iso);
@@ -51,7 +61,10 @@ namespace IsoDoom.Game;
 /// mirrored, or as vanilla only from its own side; default mirror);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
 /// <c>--level-things=on|off</c> (T3.8: off hides the billboards and the
-/// placeholder, as vanilla's reference renders draw no sprites; default on);
+/// player, as vanilla's reference renders draw no sprites; default on);
+/// <c>--level-tweaks=topdown|vanilla</c> (T4.7: the sim's <see cref="Tweaks"/>
+/// and the commands built for it: the twin-stick game, or vanilla's relative
+/// movement and turning; default topdown);
 /// <c>--level-sprite-tilt=0-1|off|half|full</c> (billboards turn towards the
 /// camera by this fraction of its elevation, T3.6, <see cref="SpriteSettings"/>;
 /// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
@@ -79,10 +92,10 @@ namespace IsoDoom.Game;
 /// <para>
 /// Keys (T2.7, T3.3; not under <c>--level-check</c>): Tab cycles the game
 /// camera, the overview and the free-fly camera (<see cref="FreeFlyCamera"/>,
-/// which has its own keys); with the game camera W/A/S/D walk the placeholder
-/// relative to the screen (Shift runs), it faces the cursor ground point,
-/// Ctrl + wheel zooms and O switches orthographic / perspective
-/// (<see cref="IsoCamera"/>); Home puts the placeholder (or, in free-fly, the
+/// which has its own keys); with the game camera the game's input actions
+/// drive the player (T4.6: W/A/S/D relative to the screen, Shift runs, the
+/// mouse aims), Ctrl + wheel zooms and O switches orthographic / perspective
+/// (<see cref="IsoCamera"/>); Home puts the player (or, in free-fly, the
 /// free-fly camera) at player 1's start, Page
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
@@ -134,13 +147,66 @@ public partial class LevelScene : Node3D
     /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
     public skill_t Skill { get; private set; } = skill_t.sk_medium;
 
-    /// <summary>Whether the billboards and the placeholder are drawn (<c>--level-things</c>, T3.8).</summary>
+    /// <summary>Whether the billboards and the player are drawn (<c>--level-things</c>, T3.8).</summary>
     private bool _showThings = true;
 
-    /// <summary>The loaded map's things as spawned on <see cref="Skill"/> (T3.2's spawn list, <see cref="SpawnedThings"/>), and their billboards (T3.5).</summary>
-    public SpawnedThing[] SpawnedThings { get; private set; } = Array.Empty<SpawnedThing>();
-
+    /// <summary>The billboards of the loaded map's mobjs but the player (T3.5; from the world's mobjs since T4.7, in thinker order: <see cref="DrawnMobjs"/>).</summary>
     public ThingSprites? Things { get; private set; }
+
+    /// <summary>The mobj of each entry of <see cref="Things"/>.</summary>
+    public IReadOnlyList<mobj_t> DrawnMobjs => _drawn;
+
+    private readonly List<mobj_t> _drawn = new();
+    private readonly List<mobj_t> _scratch = new();
+
+    /// <summary>
+    /// The loaded map's game state (T4.7): a new game on <see cref="Skill"/>
+    /// with <see cref="Tweaks"/>, on the mesh's own <see cref="Level"/>
+    /// (the world changes its sectors in place); null when no map is loaded
+    /// or its things can't be spawned.
+    /// </summary>
+    public World? World { get; private set; }
+
+    /// <summary>The sim's tweaks (<c>--level-tweaks</c>, default <see cref="Tweaks.TopDown"/>); the commands are built for them.</summary>
+    public Tweaks Tweaks { get; private set; } = Tweaks.TopDown;
+
+    /// <summary>The player mobj (<c>players[consoleplayer].mo</c>), or null.</summary>
+    public mobj_t? PlayerMobj => World is { } w ? w.players[w.consoleplayer].mo : null;
+
+    /// <summary>A tic's length in seconds (1 / <see cref="SimInfo.TICRATE"/>).</summary>
+    public const double TicSeconds = 1.0 / SimInfo.TICRATE;
+
+    /// <summary>
+    /// The most tics one frame runs (about 4 frames a second): a longer frame
+    /// (a stall, a map load) drops the rest instead of catching up.
+    /// </summary>
+    public const int MaxTicsPerFrame = 8;
+
+    private double _ticTime;
+    private readonly Queue<ticcmd_t?> _scriptTics = new();
+
+    /// <summary>How far the presentation is between the last two tics (0–1): the time banked towards the next tic, in tics.</summary>
+    public double TicFraction { get; private set; } = 1;
+
+    /// <summary>The tics run since the scene started (all maps; the level script waits on it).</summary>
+    public long TicsRun { get; private set; }
+
+    /// <summary>The command of the last tic run.</summary>
+    public ticcmd_t LastTiccmd { get; private set; }
+
+    /// <summary>While true no tic runs (the visibility measure keeps the world still).</summary>
+    public bool Paused { get; set; }
+
+    /// <summary>
+    /// Scripted tics (the level script's <c>cmd</c> and <c>step</c>): tics
+    /// run only from <see cref="QueueTic"/>'s queue, still paced at 35 Hz, and
+    /// the world holds still while it is empty, so a script's result does
+    /// not depend on the frame rate.
+    /// </summary>
+    public bool ScriptedTics { get; set; }
+
+    /// <summary>The scripted tics not run yet.</summary>
+    public int QueuedTics => _scriptTics.Count;
 
     /// <summary>The maps of the WAD (<c>ExMy</c>/<c>MAPxx</c> headers followed by <c>THINGS</c>), in lump order, each once.</summary>
     public IReadOnlyList<string> MapNames { get; private set; } = Array.Empty<string>();
@@ -154,10 +220,10 @@ public partial class LevelScene : Node3D
     /// <summary>The game camera (T3.3); null under <c>--level-check</c>.</summary>
     public IsoCamera? Iso { get; private set; }
 
-    /// <summary>The player stand-in the game camera follows (T3.3, until T4.7's player mobj); null under <c>--level-check</c>.</summary>
-    public PlayerPlaceholder? Placeholder { get; private set; }
+    /// <summary>The player mobj's billboard, which the game camera follows (T3.3's placeholder, the player mobj since T4.7); null under <c>--level-check</c>.</summary>
+    public PlayerSprite? Player { get; private set; }
 
-    /// <summary>While true the game camera does not follow the placeholder (scripted measurements keep the view still).</summary>
+    /// <summary>While true the game camera does not follow the player (scripted measurements keep the view still).</summary>
     public bool HoldCamera { get; set; }
 
     /// <summary>The cursor ground point (<see cref="CursorGround"/>) under the game camera, updated every frame while it is current.</summary>
@@ -165,10 +231,10 @@ public partial class LevelScene : Node3D
 
     private MeshInstance3D? _cursorMarker;
 
-    /// <summary>The game's input actions (T4.6): the placeholder walks by them; <see cref="BuildTiccmd"/> turns them into a <c>ticcmd</c>.</summary>
+    /// <summary>The game's input actions (T4.6): <see cref="BuildTiccmd"/> turns them into a <c>ticcmd</c> each tic.</summary>
     public GameInput GameInput { get; } = new();
 
-    /// <summary>The <c>ticcmd</c> builder (T4.6); T4.7 runs it once per tic for the sim.</summary>
+    /// <summary>The <c>ticcmd</c> builder (T4.6), run once per tic for the sim (T4.7).</summary>
     public TiccmdBuilder TiccmdBuilder { get; } = new();
 
     /// <summary>p_local.h <c>VIEWHEIGHT</c>: eye height above the floor, map units (where Home puts the free-fly camera).</summary>
@@ -242,6 +308,13 @@ public partial class LevelScene : Node3D
                     "off" => false,
                     _ => throw new ArgumentException($"--level-things: \"{things}\" (on or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-tweaks") is string tweaks)
+                Tweaks = tweaks switch
+                {
+                    "topdown" => Tweaks.TopDown,
+                    "vanilla" => Tweaks.Vanilla,
+                    _ => throw new ArgumentException($"--level-tweaks: \"{tweaks}\" (topdown or vanilla)"),
+                };
             OpenWad();
             if (IsCheckRun)
             {
@@ -310,8 +383,8 @@ public partial class LevelScene : Node3D
         if (mode == CameraMode.Iso && Iso is not null)
         {
             Iso.MakeCurrent();
-            if (Placeholder is not null)
-                Iso.Snap(Placeholder.Foot);
+            if (Player is not null)
+                Iso.Snap(Player.Foot);
         }
         else
             _camera.MakeCurrent();
@@ -327,7 +400,7 @@ public partial class LevelScene : Node3D
     /// <summary>Whether the game camera is the current one.</summary>
     public bool IsoActive => Iso is { } i && i.Current;
 
-    /// <summary>Creates the game camera, the placeholder (with the WAD's <c>PLAY</c> sprite) and the cursor marker.</summary>
+    /// <summary>Creates the game camera, the player's billboard and the cursor marker.</summary>
     private void CreateGameCamera()
     {
         Iso = new IsoCamera { Name = "Iso" };
@@ -344,8 +417,8 @@ public partial class LevelScene : Node3D
         if (WadLocator.GetUserArg("--level-zoom") is string zoom)
             Iso.SetViewUnits(ParseFloat(zoom, "--level-zoom"));
 
-        Placeholder = new PlayerPlaceholder { Name = "Placeholder", Visible = _showThings };
-        AddChild(Placeholder);
+        Player = new PlayerSprite { Name = "Player", Visible = _showThings };
+        AddChild(Player);
 
         // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
         var ring = new TorusMesh { InnerRadius = 5f / LevelMesh.MapUnitsPerMetre, OuterRadius = 8f / LevelMesh.MapUnitsPerMetre, Rings = 16, RingSegments = 4 };
@@ -427,29 +500,28 @@ public partial class LevelScene : Node3D
             ? f
             : throw new ArgumentException($"{what}: not a number: \"{s}\"");
 
-    /// <summary>Puts the placeholder at map point (<paramref name="x"/>, <paramref name="y"/>) facing <paramref name="angle"/> (vanilla degrees) and centres the game camera on it.</summary>
-    public void PlacePlaceholder(float x, float y, float? angle = null)
+    /// <summary>
+    /// Puts the player mobj at map point (<paramref name="x"/>, <paramref name="y"/>)
+    /// on the floor there, facing <paramref name="angle"/> (vanilla degrees)
+    /// when given, with no momentum (<see cref="World.PlaceMobj"/>: a debug
+    /// move, no collision check, not interpolated), and centres the game camera on it.
+    /// </summary>
+    public void PlacePlayer(float x, float y, float? angle = null)
     {
-        if (Placeholder is null || Mesh is null)
+        if (World is not { } world || PlayerMobj is not { } mo)
             return;
-        Placeholder.Place(Mesh.Level, x, y);
-        if (angle is float a)
-            Placeholder.Angle = a;
-        Iso?.Snap(Placeholder.Foot);
+        world.PlaceMobj(mo, ToFixed(x), ToFixed(y), angle is float a ? ThingSprites.BamOfDegrees(a) : null);
+        TiccmdBuilder.Reset(); // keep the new facing until something aims
+        PresentWorld();
+        if (Player is not null)
+            Iso?.Snap(Player.Foot);
     }
 
-    /// <summary>Puts the placeholder at player <paramref name="player"/>'s start (or the map's centre), facing its angle.</summary>
-    public void PlaceholderToStart(int player = 0)
+    /// <summary>Puts the player mobj back at player 1's start, facing its angle.</summary>
+    public void PlayerToStart()
     {
-        if (Mesh is null)
-            return;
-        if (Mesh.Level.PlayerStart(player) is MapThing start)
-            PlacePlaceholder(start.X, start.Y, start.Angle);
-        else
-        {
-            Vector3 c = Mesh.Bounds.GetCenter();
-            PlacePlaceholder(c.X * LevelMesh.MapUnitsPerMetre, -c.Z * LevelMesh.MapUnitsPerMetre, 90);
-        }
+        if (Mesh?.Level.PlayerStart(0) is MapThing start)
+            PlacePlayer(start.X, start.Y, start.Angle);
     }
 
     /// <summary>
@@ -524,13 +596,13 @@ public partial class LevelScene : Node3D
                 UseCamera(next);
                 break;
             case Key.Home:
-                if (FreeFlyActive || Placeholder is null)
+                if (FreeFlyActive || Player is null)
                 {
                     JumpToStart();
                     UseFreeFly(true);
                 }
                 else
-                    PlaceholderToStart();
+                    PlayerToStart();
                 break;
             case Key.Pagedown:
                 SwitchMap(1);
@@ -583,7 +655,10 @@ public partial class LevelScene : Node3D
     {
         if (!IsCheckRun && Mesh is not null)
         {
-            UpdateGameCamera(delta);
+            UpdateCursor();
+            RunTics(delta);
+            PresentWorld();
+            FollowPlayer(delta);
             if (GetViewport().GetCamera3D() is Camera3D current)
                 Things?.UpdateRotations(current);
             Mesh.SetLightOrigin(LightOrigin());
@@ -597,41 +672,21 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// One frame of the game camera (T3.3): the cursor ground point under the
-    /// mouse, the placeholder walked by W/A/S/D relative to the screen and
-    /// facing the cursor ground point, and the camera following it.
+    /// The cursor ground point under the mouse (T3.3) while the game camera
+    /// is current, at the player's height where no floor is hit, and the
+    /// input latches (<see cref="GameInput.Poll"/>, every frame).
     /// </summary>
-    private void UpdateGameCamera(double delta)
+    private void UpdateCursor()
     {
-        if (Iso is null || Placeholder is null || Mesh is null)
+        if (Iso is null || Mesh is null)
             return;
-        Placeholder.UpdateFloor();
         if (Iso.Current)
         {
-            Cursor = CursorGround.Pick(Mesh, Iso, Iso.CursorOrCentre, Placeholder.FloorHeight);
+            Cursor = CursorGround.Pick(Mesh, Iso, Iso.CursorOrCentre, Player?.Z ?? 0);
             GameInput.Poll();
-            Vector2 move = GameInput.Move().LimitLength(1f); // the move actions: keys and left stick (T4.6)
-            if (move != Vector2.Zero)
-            {
-                float speed = GameInput.RunHeld() != TiccmdBuilder.RunToggled ? PlayerPlaceholder.RunSpeed : PlayerPlaceholder.WalkSpeed;
-                Vector3 dir = Iso.GroundRight * move.X + Iso.GroundUp * move.Y; // Godot XZ: map x = X, map y = −Z
-                var step = new Vector2(dir.X, -dir.Z) * speed * (float)delta;
-                Placeholder.Move(step.X, step.Y);
-            }
-            if (Cursor is { } hit)
-            {
-                Vector3 c = hit.MapUnits;
-                Vector2 toCursor = new Vector2(c.X, c.Y) - Placeholder.MapPosition;
-                if (toCursor.LengthSquared() > 1f)
-                    Placeholder.Angle = Mathf.PosMod(Mathf.RadToDeg(MathF.Atan2(toCursor.Y, toCursor.X)), 360f);
-            }
-            if (!HoldCamera)
-                Iso.Follow(Placeholder.Foot, Cursor?.Point, delta);
         }
         else
             Cursor = null;
-        if (GetViewport().GetCamera3D() is Camera3D current)
-            Placeholder.FaceCamera(current);
         if (_cursorMarker is not null)
         {
             _cursorMarker.Visible = Cursor is not null && Overlay.Visible;
@@ -641,7 +696,135 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// The cutaway (T3.4) follows the placeholder (and the cursor ground point
+    /// The game loop (T4.7, SPEC §6.1): banks <paramref name="delta"/> and runs
+    /// one tic per <see cref="TicSeconds"/> banked (at most <see cref="MaxTicsPerFrame"/>),
+    /// then sets <see cref="TicFraction"/> to what is left. With
+    /// <see cref="ScriptedTics"/> an empty queue holds the world still (nothing
+    /// banked, the last tic shown). Nothing runs while <see cref="Paused"/>
+    /// or without a player mobj (vanilla needs one).
+    /// </summary>
+    private void RunTics(double delta)
+    {
+        if (World is null || PlayerMobj is null || Paused)
+            return;
+        _ticTime += delta;
+        int ran = 0;
+        while (_ticTime >= TicSeconds)
+        {
+            if (ScriptedTics && _scriptTics.Count == 0)
+                break;
+            _ticTime -= TicSeconds;
+            RunTic();
+            if (++ran >= MaxTicsPerFrame)
+            {
+                _ticTime = Math.Min(_ticTime, TicSeconds * 0.999);
+                break;
+            }
+        }
+        if (ScriptedTics && _scriptTics.Count == 0)
+        {
+            _ticTime = 0;
+            TicFraction = 1;
+        }
+        else
+            TicFraction = Math.Clamp(_ticTime / TicSeconds, 0, 1);
+    }
+
+    /// <summary>
+    /// One tic: the next scripted command (or, for a queued input tic or
+    /// without <see cref="ScriptedTics"/>, <see cref="BuildTiccmd(Tweaks)"/>)
+    /// through <see cref="World.G_Ticker(in ticcmd_t)"/>.
+    /// </summary>
+    private void RunTic() =>
+        Tic(ScriptedTics && _scriptTics.Dequeue() is ticcmd_t scripted ? scripted : BuildTiccmd(World!.tweaks));
+
+    /// <summary>Runs one tic of <paramref name="cmd"/> (the game loop's, and the level check's).</summary>
+    public void Tic(in ticcmd_t cmd)
+    {
+        World!.G_Ticker(cmd);
+        LastTiccmd = cmd;
+        TicsRun++;
+    }
+
+    /// <summary>Sets <see cref="TicFraction"/> (the level check draws the world between two tics; the game loop sets it every frame).</summary>
+    public void SetTicFraction(double fraction) => TicFraction = Math.Clamp(fraction, 0, 1);
+
+    /// <summary>
+    /// Queues one scripted tic (<see cref="ScriptedTics"/>): <paramref name="cmd"/>,
+    /// or null for a command built from the input at that tic.
+    /// </summary>
+    public void QueueTic(ticcmd_t? cmd) => _scriptTics.Enqueue(cmd);
+
+    /// <summary>Drops the scripted tics not run yet.</summary>
+    public void ClearQueuedTics() => _scriptTics.Clear();
+
+    /// <summary>
+    /// A mobj's position (map units) and facing at <see cref="TicFraction"/>
+    /// between the last two tics: from <see cref="mobj_t.oldx"/>… to where it
+    /// is, unless it may not be interpolated (<see cref="mobj_t.interp"/>:
+    /// spawned during the tic, teleported). The angle turns the short way.
+    /// </summary>
+    public (Vector3 Position, uint Angle) Interpolated(mobj_t mo)
+    {
+        double f = TicFraction;
+        if (!mo.interp || f >= 1)
+            return (new Vector3((float)(mo.x / 65536.0), (float)(mo.y / 65536.0), (float)(mo.z / 65536.0)), mo.angle);
+        static float Lerp(int a, int b, double f) => (float)((a + ((long)b - a) * f) / 65536.0);
+        uint angle = unchecked(mo.oldangle + (uint)(int)Math.Round(unchecked((int)(mo.angle - mo.oldangle)) * f));
+        return (new Vector3(Lerp(mo.oldx, mo.x, f), Lerp(mo.oldy, mo.y, f), Lerp(mo.oldz, mo.z, f)), angle);
+    }
+
+    /// <summary>
+    /// Draws the world at <see cref="TicFraction"/>: the player mobj as
+    /// <see cref="Player"/>, every other mobj as an entry of <see cref="Things"/>
+    /// (rebuilt when the mobjs change), each from its interpolated position,
+    /// facing and state.
+    /// </summary>
+    public void PresentWorld()
+    {
+        if (World is not { } world)
+            return;
+        mobj_t? me = PlayerMobj;
+        if (Player is not null && me is not null)
+            Player.Set(ThingEntry(me, Interpolated(me)));
+        if (Things is null)
+            return;
+        _scratch.Clear();
+        foreach (mobj_t mo in world.Mobjs())
+        {
+            if (mo != me)
+                _scratch.Add(mo);
+        }
+        bool same = _scratch.Count == _drawn.Count;
+        for (int i = 0; same && i < _scratch.Count; i++)
+            same = _scratch[i] == _drawn[i];
+        if (!same)
+        {
+            _drawn.Clear();
+            _drawn.AddRange(_scratch);
+            var entries = new ThingSprites.Entry[_drawn.Count];
+            for (int i = 0; i < entries.Length; i++)
+                entries[i] = ThingEntry(_drawn[i], Interpolated(_drawn[i]));
+            Things.SetEntries(entries);
+            return;
+        }
+        for (int i = 0; i < _drawn.Count; i++)
+            Things.SetEntry(i, ThingEntry(_drawn[i], Interpolated(_drawn[i])));
+    }
+
+    /// <summary>The game camera follows the player (T3.3) with its look-ahead towards the cursor ground point; the player's billboard turns to the current camera.</summary>
+    private void FollowPlayer(double delta)
+    {
+        if (Player is null)
+            return;
+        if (Iso is { Current: true } iso && !HoldCamera)
+            iso.Follow(Player.Foot, Cursor?.Point, delta);
+        if (GetViewport().GetCamera3D() is Camera3D current)
+            Player.FaceCamera(current);
+    }
+
+    /// <summary>
+    /// The cutaway (T3.4) follows the player (and the cursor ground point
     /// when <see cref="CutawaySettings.Cursor"/>) under the game camera; the
     /// overview and free-fly cameras show the walls whole.
     /// </summary>
@@ -649,11 +832,11 @@ public partial class LevelScene : Node3D
     {
         if (Mesh is null)
             return;
-        bool on = IsoActive && Placeholder is not null;
+        bool on = IsoActive && Player is not null && PlayerMobj is not null;
         CutawaySettings settings = on ? Cutaway : Cutaway with { Style = CutawayStyle.Off };
         if (Mesh.Cutaway != settings)
             Mesh.SetCutaway(settings);
-        Vector3? player = on ? new Vector3(Placeholder!.MapPosition.X, Placeholder.MapPosition.Y, Placeholder.FloorHeight) : null;
+        Vector3? player = on ? new Vector3(Player!.MapPosition.X, Player.MapPosition.Y, Player.Z) : null;
         Vector3? cursor = on && Cutaway.Cursor && Cursor is { } hit ? hit.MapUnits : null;
         if (Mesh.CutPlayer != player || Mesh.CutCursor != cursor)
             Mesh.SetCutawayCentres(player, cursor);
@@ -666,18 +849,24 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// T4.6: the <c>ticcmd</c> <see cref="TiccmdBuilder"/> makes from the input
-    /// since the last call for the placeholder under the game camera, with
-    /// <paramref name="tweaks"/> (the level script's <c>ticcmd</c>; T4.7 calls
-    /// it once per tic for the player mobj instead).
+    /// T4.6: the <c>ticcmd</c> <see cref="TiccmdBuilder"/> makes for the
+    /// player mobj (its x, y and angle) from the input since the last call,
+    /// with <paramref name="tweaks"/>; called once per tic (T4.7; the level
+    /// script's <c>ticcmd</c> prints one). Only the game camera reads the
+    /// input (the free-fly camera shares W/A/S/D, E and Space): under the
+    /// others the latches are dropped and the command only keeps the
+    /// player's angle.
     /// </summary>
     public ticcmd_t BuildTiccmd(Tweaks tweaks)
     {
         TiccmdInput input = GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null);
-        if (Placeholder is null || Iso is null)
-            return TiccmdBuilder.G_BuildTiccmd(input, tweaks, Tables.ANG90, 0, 0, Tables.ANG90);
-        return TiccmdBuilder.G_BuildTiccmd(input, tweaks, GameInput.ScreenUp(Iso.GroundUp),
-            ToFixed(Placeholder.MapPosition.X), ToFixed(Placeholder.MapPosition.Y), ThingSprites.BamOfDegrees(Placeholder.Angle));
+        if (!IsoActive)
+            input = new TiccmdInput();
+        mobj_t? mo = PlayerMobj;
+        uint screenUp = Iso is not null ? GameInput.ScreenUp(Iso.GroundUp) : Tables.ANG90;
+        return mo is null
+            ? TiccmdBuilder.G_BuildTiccmd(input, tweaks, screenUp, 0, 0, Tables.ANG90)
+            : TiccmdBuilder.G_BuildTiccmd(input, tweaks, screenUp, mo.x, mo.y, mo.angle);
     }
 
     /// <summary>A small cross at the screen centre (the free-fly camera's view direction; straight down it marks the floor the overlay names).</summary>
@@ -727,19 +916,21 @@ public partial class LevelScene : Node3D
         }
         else
             text.Append(FreeFly is null ? "overview\n" : "overview (Tab: free-fly)\n");
-        if (Placeholder is { } p && Mesh is not null && !FreeFlyActive)
+        if (Player is { } p && PlayerMobj is { } mo && Mesh is not null && !FreeFlyActive)
         {
             Vector2 at = p.MapPosition;
-            text.Append($"placeholder x {at.X:F0}  y {at.Y:F0}  z {p.FloorHeight:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}");
-            if (p.Sector is Sector ps)
-                text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel})");
-            text.Append('\n');
+            text.Append($"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}");
+            Sector ps = mo.subsector.sector.map;
+            text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel})\n");
         }
+        if (World is { } world)
+            text.Append($"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
+                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}\n");
         if (Cursor is { } hit)
         {
             Vector3 c = hit.MapUnits;
             text.Append($"cursor x {c.X:F0}  y {c.Y:F0}  z {c.Z:F0}   ");
-            text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the placeholder's floor)\n");
+            text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the player's height)\n");
         }
         if (Iso is { Current: true })
             text.Append(Cutaway.Style == CutawayStyle.Off
@@ -763,10 +954,10 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// The stand-in player position for light diminishing (map units x, y)
-    /// until the game has a player (M4): <c>--level-light-origin</c>, else
-    /// the free-fly camera's pivot when it is current, else the placeholder
-    /// (T3.3), else player 1's start (the map's centre without one).
+    /// The player position for light diminishing (map units x, y):
+    /// <c>--level-light-origin</c>, else the free-fly camera's pivot when it
+    /// is current, else the player mobj as drawn (T4.7), else player 1's
+    /// start (the map's centre without one).
     /// </summary>
     public Vector2 LightOrigin()
     {
@@ -779,7 +970,7 @@ public partial class LevelScene : Node3D
         }
         if (FreeFly is { } fly && fly.Current)
             return new Vector2(fly.Pivot.X, -fly.Pivot.Z) * LevelMesh.MapUnitsPerMetre;
-        if (Placeholder is { } p && Mesh is not null)
+        if (Player is { } p && PlayerMobj is not null)
             return p.MapPosition;
         if (Mesh is null)
             return Vector2.Zero;
@@ -866,8 +1057,12 @@ public partial class LevelScene : Node3D
         Mesh = null;
         Things?.QueueFree();
         Things = null;
-        SpawnedThings = Array.Empty<SpawnedThing>();
+        _drawn.Clear();
+        World = null;
         TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)
+        ClearQueuedTics();
+        _ticTime = 0;
+        TicFraction = 1;
 
         var clock = Stopwatch.StartNew();
         Level level = Level.Load(wad, map);
@@ -892,18 +1087,25 @@ public partial class LevelScene : Node3D
             _chunks.Add(node);
             Chunks[s] = node;
         }
+        StartWorld(level);
         BuildThings(level, mesh);
         clock.Stop();
         LastLoadMilliseconds = clock.Elapsed.TotalMilliseconds;
         Mesh = mesh;
         if (SpriteAtlas is not null)
-            Placeholder?.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
+            Player?.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
+        if (Player is not null)
+            Player.Visible = _showThings && PlayerMobj is not null;
 
         FrameCamera();
         if (FreeFly is not null)
             JumpToStart();
-        PlaceholderToStart();
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {SpawnedThings.Length} things, "
+        PresentWorld();
+        if (Player is not null && PlayerMobj is not null)
+            Iso?.Snap(Player.Foot);
+        else
+            Iso?.Snap(Mesh.Bounds.GetCenter());
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {_drawn.Count} things, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");
@@ -911,39 +1113,66 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// The map's things on <see cref="Skill"/> (T3.2's spawn list; the player
-    /// start is the placeholder's) as billboards (T3.5). A thing type the
-    /// game doesn't know (vanilla <c>I_Error</c>s) leaves the map without things.
+    /// A new game on <see cref="Skill"/> with <see cref="Tweaks"/> and its
+    /// first level, <paramref name="level"/> (the mesh's own: the world
+    /// changes its sectors in place, SPEC §12 T4.2): <c>G_InitNew</c> and
+    /// <c>G_DoLoadLevel</c>. A thing type the game doesn't know (vanilla
+    /// <c>I_Error</c>s) leaves the map without a world, so without things.
+    /// </summary>
+    private void StartWorld(Level level)
+    {
+        try
+        {
+            var world = new World(new SpawnSettings(GameMode, Skill), Tweaks);
+            world.G_DoLoadLevel(level);
+            World = world;
+        }
+        catch (WadFormatException e)
+        {
+            GD.PushWarning($"Level: {level.Name}: no things: {e.Message}");
+            World = null;
+        }
+    }
+
+    /// <summary>
+    /// The world's mobjs but the player's (T3.5's billboards; from the mobjs
+    /// since T4.7, <see cref="PresentWorld"/> keeps them in step). Voodoo
+    /// dolls (more starts of player 1) are drawn as things, as vanilla.
     /// </summary>
     private void BuildThings(Level level, LevelMesh mesh)
     {
         if (SpriteAtlas is null)
             return;
-        try
-        {
-            SpawnedThings = IsoDoom.Sim.SpawnedThings.Build(level, MapThingSpawning.SpawnList(level.Things, new SpawnSettings(GameMode, Skill)));
-        }
-        catch (WadFormatException e)
-        {
-            GD.PushWarning($"Level: {level.Name}: no things: {e.Message}");
-            SpawnedThings = Array.Empty<SpawnedThing>();
-        }
-        var entries = new ThingSprites.Entry[SpawnedThings.Length];
-        for (int i = 0; i < entries.Length; i++)
-            entries[i] = ThingEntry(SpawnedThings[i]);
         Things = new ThingSprites { Name = "Things" };
         Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
-        Things.SetEntries(entries);
+        _drawn.Clear();
+        PresentWorld(); // fills the entries from the mobjs
         Things.Visible = Things.Shadows.Visible = _showThings;
         AddChild(Things);
         if (Things.MissingFrames > 0)
             GD.PushWarning($"Level: {level.Name}: {Things.MissingFrames} thing(s) whose spawn frame the WAD lacks are not drawn");
     }
 
-    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>), marked as an actor (<see cref="IsActor"/>, T3.4b), and its radius (the wall pull, T3.5a).</summary>
+    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>) on its sector's floor, marked as an actor (<see cref="IsActor"/>, T3.4b), and its radius (the wall pull, T3.5a): what a mobj spawned there shows before its first tic (<see cref="ThingEntry(mobj_t)"/>).</summary>
     public static ThingSprites.Entry ThingEntry(SpawnedThing t) =>
         new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright,
-            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]), IsActor(Info.mobjinfo[(int)t.Spawn.Type]), Info.mobjinfo[(int)t.Spawn.Type].radius / 65536f);
+            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]), IsActor(Info.mobjinfo[(int)t.Spawn.Type]), Info.mobjinfo[(int)t.Spawn.Type].radius / 65536f,
+            (float)(t.Sector.FloorHeight / 65536.0));
+
+    /// <summary>A mobj as a billboard entry where it is now (T4.7).</summary>
+    public static ThingSprites.Entry ThingEntry(mobj_t mo) =>
+        ThingEntry(mo, (new Vector3((float)(mo.x / 65536.0), (float)(mo.y / 65536.0), (float)(mo.z / 65536.0)), mo.angle));
+
+    /// <summary>
+    /// A mobj as a billboard entry at <paramref name="at"/> (map units and
+    /// facing, <see cref="Interpolated"/>): its sector (<c>subsector->sector</c>,
+    /// the light), its state's sprite and frame (<c>FF_FULLBRIGHT</c>), the
+    /// blob shadow on its <c>floorz</c> (so a falling or flying thing's shadow
+    /// stays on the floor), actor flag and radius as <see cref="ThingEntry(SpawnedThing)"/>.
+    /// </summary>
+    public static ThingSprites.Entry ThingEntry(mobj_t mo, (Vector3 Position, uint Angle) at) =>
+        new(at.Position, at.Angle, mo.subsector.sector.Index, (int)mo.sprite, mo.frame & Info.FF_FRAMEMASK, (mo.frame & Info.FF_FULLBRIGHT) != 0,
+            ShadowRadius(mo.info), IsActor(mo.info), mo.radius / 65536f, (float)(mo.floorz / 65536.0));
 
     /// <summary>
     /// Whether a thing of <paramref name="info"/> is an actor the cutaway keeps
@@ -1009,22 +1238,23 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// How much of the placeholder the game camera shows (T3.4; needs a real
-    /// renderer, else null): the pixels that change when the placeholder is
+    /// How much of the player the game camera shows (T3.4; needs a real
+    /// renderer, else null): the pixels that change when the player is
     /// hidden, against the pixels it covers with the level hidden, over a
     /// background in no palette colour (T3.8: over black, its black outline
-    /// and dark texels were left out of the total). The camera holds still
-    /// and the overlay is hidden while the four frames render.
+    /// and dark texels were left out of the total). The camera and the world
+    /// hold still and the overlay is hidden while the four frames render.
     /// </summary>
-    public async Task<(int Visible, int Total)?> PlaceholderVisibilityAsync()
+    public async Task<(int Visible, int Total)?> PlayerVisibilityAsync()
     {
-        if (Placeholder is null || DisplayServer.GetName() == "headless")
+        if (Player is null || PlayerMobj is null || DisplayServer.GetName() == "headless")
             return null;
-        bool overlay = Overlay.Visible, hold = HoldCamera;
+        bool overlay = Overlay.Visible, hold = HoldCamera, paused = Paused;
         Overlay.Visible = false;
         HoldCamera = true;
+        Paused = true;
         byte[] shown = await CaptureAsync();
-        Placeholder.Visible = false;
+        Player.Visible = false;
         byte[] hidden = await CaptureAsync();
         Color background = Environment.BackgroundColor;
         if (Playpal is not null)
@@ -1035,14 +1265,15 @@ public partial class LevelScene : Node3D
         foreach (MeshInstance3D chunk in _chunks)
             chunk.Visible = false;
         byte[] empty = await CaptureAsync();
-        Placeholder.Visible = true;
+        Player.Visible = true;
         byte[] alone = await CaptureAsync();
         foreach (MeshInstance3D chunk in _chunks)
             chunk.Visible = true;
         Environment.BackgroundColor = background;
-        Placeholder.Visible = _showThings;
+        Player.Visible = _showThings;
         Overlay.Visible = overlay;
         HoldCamera = hold;
+        Paused = paused;
         int visible = 0, total = 0;
         for (int i = 0; i + 3 < shown.Length; i += 4)
         {

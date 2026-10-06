@@ -186,14 +186,17 @@ public partial class LevelCheck : Godot.Node
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
+            CheckGameLoop(map); // last: it moves the player and spawns a mobj
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
                 GD.PrintErr($"Level check: {map}: {_failures - failures} failure(s)");
         }
         GD.Print($"Level check: {_scene.MapNames.Count} maps built: {sectors} sector data texels, {slots} texture slots, "
             + $"{sections} wall sections and {vertices} vertices checked against the levels");
-        GD.Print($"Level check: things: {_thingsChecked} billboards checked against the spawn lists (skill {(int)_scene.Skill + 1}), "
+        GD.Print($"Level check: things: {_thingsChecked} billboards checked against the world's mobjs and the spawn lists (skill {(int)_scene.Skill + 1}), "
             + "positions, sectors and the rotations of an orthographic and a perspective camera");
+        GD.Print($"Level check: game loop: {_loopMaps} maps ran {GameLoopTics} tics each with the player walking; the billboards follow the mobjs "
+            + "at tic fractions 0, ½ and 1 (interpolated between the last two tics), a mobj spawned between tics is drawn where it is, and one removed is dropped");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "

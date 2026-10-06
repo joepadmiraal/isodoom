@@ -86,6 +86,24 @@ public sealed class mobj_t : thinker_t
     /// <summary>Thing being chased/attacked for tracers.</summary>
     public mobj_t? tracer;
 
+    // ---- Interpolation (not vanilla: presentation state, as source ports'
+    // oldx/oldy/oldz/oldangle and interp, e.g. Crispy Doom's p_mobj.h; SPEC §12 T4.7).
+    // Not in the checksum and never read by the sim.
+
+    /// <summary>Position (fixed_t) and facing at the start of the last tic (<see cref="World.P_StoreInterpolation"/>).</summary>
+    public int oldx, oldy, oldz;
+
+    /// <inheritdoc cref="oldx"/>
+    public uint oldangle;
+
+    /// <summary>
+    /// Whether the presentation may interpolate from <see cref="oldx"/>… to
+    /// the current position: false for a mobj spawned during the last tic
+    /// (the default) and after a teleport (T5.6) or a debug move
+    /// (<see cref="World.PlaceMobj"/>), which then draw where they are.
+    /// </summary>
+    public bool interp;
+
     public override string ToString() => $"{type} ({x >> Fixed.FRACBITS}, {y >> Fixed.FRACBITS}, {z >> Fixed.FRACBITS})";
 }
 

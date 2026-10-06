@@ -62,9 +62,12 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// it is an actor, which the cutaway cuts only with
     /// <see cref="CutawayThings.All"/> (T3.4b), and its <c>radius</c> in map
     /// units, by which the billboard is pulled towards the camera clear of
-    /// walls behind it (T3.5a, <see cref="SpriteSettings.WallPull"/>).
+    /// walls behind it (T3.5a, <see cref="SpriteSettings.WallPull"/>), and
+    /// the height its blob shadow lies at (T4.7: the mobj's <c>floorz</c>,
+    /// so a flying or falling thing's shadow stays on the floor; null: at
+    /// <see cref="MapPosition"/>'s z).
     /// </summary>
-    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0);
+    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null);
 
     public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
 
@@ -202,7 +205,7 @@ public partial class ThingSprites : MultiMeshInstance3D
     {
         Entry old = _entries[i];
         _entries[i] = entry;
-        if (old.MapPosition != entry.MapPosition)
+        if (old.MapPosition != entry.MapPosition || old.FloorZ != entry.FloorZ)
             WriteTransform(i);
         if (old != entry)
             UpdateInstance(i, force: true);
@@ -292,9 +295,10 @@ public partial class ThingSprites : MultiMeshInstance3D
 
     private void WriteTransform(int i)
     {
-        var t = new Transform3D(Basis.Identity, ToGodot(_entries[i].MapPosition));
-        Multimesh.SetInstanceTransform(i, t);
-        Shadows.Multimesh.SetInstanceTransform(i, t);
+        Entry e = _entries[i];
+        Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(e.MapPosition)));
+        Vector3 floor = e.FloorZ is float z ? new Vector3(e.MapPosition.X, e.MapPosition.Y, z) : e.MapPosition;
+        Shadows.Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(floor)));
     }
 
     private void Refresh()

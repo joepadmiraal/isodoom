@@ -23,9 +23,8 @@ public enum LightDiminishing
     /// player's eye looked at every point straight on, so light falls off in
     /// a radius around the player and doesn't change as the camera moves or
     /// the player turns; distances below a minimum (<see cref="LightTables.DefaultNearDistance"/>
-    /// unless set, T3.7) count as that minimum. Until M4 the player is the
-    /// placeholder under the game camera, the free-fly camera's pivot, or
-    /// player 1's start under the overview camera.
+    /// unless set, T3.7) count as that minimum. The level scene uses the player
+    /// mobj (T4.7), or the free-fly camera's pivot while that camera is current.
     /// </summary>
     Player,
 

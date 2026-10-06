@@ -136,10 +136,25 @@ public partial class LevelCheck
             return;
         }
         SpawnedThing[] expected = SpawnedThings.Build(m.Level, MapThingSpawning.SpawnList(m.Level.Things, new SpawnSettings(_scene.GameMode, _scene.Skill)));
-        if (things.Entries.Count != expected.Length || things.Multimesh.InstanceCount != expected.Length)
+        // T4.7: the billboards are the world's mobjs but the player's, in
+        // thinker order: the spawn list in THINGS order, plus voodoo dolls
+        // (MT_PLAYER mobjs of extra player 1 starts), which T3.2's list leaves out.
+        IReadOnlyList<mobj_t> mobjs = _scene.DrawnMobjs;
+        var dolls = new List<int>();
+        var spawned = new List<int>();
+        for (int i = 0; i < mobjs.Count; i++)
+            (mobjs[i].type == mobjtype_t.MT_PLAYER ? dolls : spawned).Add(i);
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || world.Mobjs().Count() != mobjs.Count + 1 || mobjs.Contains(me))
+            Fail($"{map}: the billboards' mobjs are not the world's mobjs but the player's ({mobjs.Count} drawn, player {(_scene.PlayerMobj is null ? "missing" : "present")})");
+        if (things.Entries.Count != mobjs.Count || things.Multimesh.InstanceCount != mobjs.Count || spawned.Count != expected.Length)
         {
-            Fail($"{map}: {things.Entries.Count} billboards ({things.Multimesh.InstanceCount} instances), the spawn list has {expected.Length} things");
+            Fail($"{map}: {things.Entries.Count} billboards ({things.Multimesh.InstanceCount} instances) for {mobjs.Count} mobjs ({dolls.Count} voodoo dolls), the spawn list has {expected.Length} things");
             return;
+        }
+        foreach (int i in dolls)
+        {
+            if (things.Entries[i] != LevelScene.ThingEntry(mobjs[i]))
+                Fail($"{map}: voodoo doll {i}: entry {things.Entries[i]}, expected {LevelScene.ThingEntry(mobjs[i])}");
         }
         if (things.MissingFrames > 0)
             Fail($"{map}: {things.MissingFrames} thing(s) whose spawn frame the WAD lacks");
@@ -162,10 +177,13 @@ public partial class LevelCheck
         foreach (bool ortho in new[] { true, false })
         {
             things.UpdateRotations(ortho, forward, eye);
-            for (int i = 0; i < expected.Length; i++)
+            for (int k = 0; k < expected.Length; k++)
             {
-                SpawnedThing t = expected[i];
+                int i = spawned[k];
+                SpawnedThing t = expected[k];
                 ThingSprites.Entry e = things.Entries[i];
+                if (e != LevelScene.ThingEntry(mobjs[i]))
+                    Fail($"{map}: thing {i}: entry {e}, its mobj's {LevelScene.ThingEntry(mobjs[i])}");
                 string what = $"{map}: thing {i} ({t.Spawn.Type} at {t.x >> Fixed.FRACBITS}, {t.y >> Fixed.FRACBITS})";
                 if (e != LevelScene.ThingEntry(t))
                 {
@@ -189,7 +207,78 @@ public partial class LevelCheck
                         + $"rotation slot {things.ShownFrames[i].Rot}), expected {custom} (slot {rot})");
             }
         }
-        _thingsChecked += expected.Length;
+        _thingsChecked += mobjs.Count;
+    }
+
+    /// <summary>The tics <see cref="CheckGameLoop"/> runs on each map.</summary>
+    private const int GameLoopTics = 4;
+
+    private int _loopMaps;
+
+    /// <summary>
+    /// T4.7: runs <see cref="GameLoopTics"/> tics of the player walking north
+    /// (<see cref="LevelScene.Tic"/>), then draws the world at tic fractions
+    /// 0, ½ and 1 (<see cref="LevelScene.PresentWorld"/>): every billboard must
+    /// show its mobj interpolated between where it started the last tic and
+    /// where it is (the midpoint at ½); a barrel spawned between tics shows
+    /// where it is (not interpolated), and removing it drops its billboard.
+    /// No player billboard exists under the check (no game camera).
+    /// </summary>
+    private void CheckGameLoop(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || _scene.Things is not { } things)
+            return; // CheckThings failed already
+        _loopMaps++;
+        var cmd = _scene.Tweaks.AbsoluteAiming
+            ? new ticcmd_t { forwardmove = 50, angleturn = Ticcmds.AbsoluteAngle(Tables.ANG90) }
+            : new ticcmd_t { forwardmove = 50 };
+        for (int t = 0; t < GameLoopTics; t++)
+            _scene.Tic(cmd);
+        if (!me.interp || (me.oldx, me.oldy) == (me.x, me.y) && (me.momx, me.momy) != (0, 0))
+            Fail($"{map}: after {GameLoopTics} tics the player mobj is not interpolated (interp {me.interp}, old ({me.oldx}, {me.oldy}), now ({me.x}, {me.y}))");
+        foreach (double f in new[] { 0.0, 0.5, 1.0 })
+        {
+            _scene.SetTicFraction(f);
+            _scene.PresentWorld();
+            (Vector3 p, uint a) = _scene.Interpolated(me);
+            var expected = new Vector3((float)((me.oldx + ((long)me.x - me.oldx) * f) / 65536.0), (float)((me.oldy + ((long)me.y - me.oldy) * f) / 65536.0),
+                (float)((me.oldz + ((long)me.z - me.oldz) * f) / 65536.0));
+            if ((p - expected).Length() > 1e-3f || (f == 0 && a != me.oldangle) || (f == 1 && a != me.angle))
+                Fail($"{map}: player at tic fraction {f}: drawn at {p} angle {a}, expected {expected} (old angle {me.oldangle}, now {me.angle})");
+            CheckEntriesFollowMobjs(map, things, $"tic fraction {f}");
+        }
+        mobj_t barrel = world.P_SpawnMobj(me.x, me.y + 64 * Fixed.FRACUNIT, World.ONFLOORZ, mobjtype_t.MT_BARREL);
+        _scene.SetTicFraction(0.5);
+        _scene.PresentWorld();
+        int i = things.Entries.Count - 1;
+        if (_scene.DrawnMobjs.Count == 0 || _scene.DrawnMobjs[^1] != barrel || things.Entries[i] != LevelScene.ThingEntry(barrel))
+            Fail($"{map}: a barrel spawned between tics is not drawn where it is ({(things.Entries.Count > 0 ? things.Entries[^1].ToString() : "no entries")})");
+        CheckEntriesFollowMobjs(map, things, "after a spawn");
+        world.P_RemoveMobj(barrel);
+        _scene.PresentWorld();
+        if (_scene.DrawnMobjs.Contains(barrel))
+            Fail($"{map}: a removed barrel is still drawn");
+        CheckEntriesFollowMobjs(map, things, "after a removal");
+        _scene.SetTicFraction(1);
+    }
+
+    private void CheckEntriesFollowMobjs(string map, ThingSprites things, string when)
+    {
+        IReadOnlyList<mobj_t> mobjs = _scene.DrawnMobjs;
+        if (things.Entries.Count != mobjs.Count || things.Multimesh.InstanceCount != mobjs.Count)
+        {
+            Fail($"{map}, {when}: {things.Entries.Count} billboards for {mobjs.Count} mobjs");
+            return;
+        }
+        for (int i = 0; i < mobjs.Count; i++)
+        {
+            ThingSprites.Entry e = LevelScene.ThingEntry(mobjs[i], _scene.Interpolated(mobjs[i]));
+            if (things.Entries[i] != e || !Near(things.InstancePosition(i), new Vector3(e.MapPosition.X, e.MapPosition.Z, -e.MapPosition.Y) / LevelMesh.MapUnitsPerMetre))
+            {
+                Fail($"{map}, {when}: billboard {i} ({mobjs[i]}): {things.Entries[i]}, expected {e}");
+                return;
+            }
+        }
     }
 
     // ---- Drawn pixels ----

@@ -31,24 +31,48 @@ namespace IsoDoom.Game;
 /// <see cref="FreeFlyCamera.VanillaFov"/>, so a 16:10 window shows what
 /// vanilla's full-screen 320×200 view shows); <c>mouse X Y</c> (T3.3: move
 /// the cursor to viewport pixel X, Y; the game camera's cursor ground point
-/// follows); <c>place X Y [ANGLE]</c> (T3.3: put the placeholder at map
-/// point X, Y, optionally facing ANGLE degrees, and centre the game camera on
-/// it); <c>visible [MIN]</c> (T3.4: print how much of the placeholder the
-/// game camera shows, in % of its pixels, and fail the script below MIN %,
-/// default 25; needs a real renderer); <c>walkto X Y [STEP] [MIN]</c> (T3.4:
-/// move the placeholder in a straight line, through walls, to map point X, Y,
+/// follows); <c>place X Y [ANGLE]</c> (T3.3: put the player mobj at map
+/// point X, Y on the floor, optionally facing ANGLE degrees, with no momentum
+/// and no collision check, and centre the game camera on it); <c>visible [MIN]</c>
+/// (T3.4: print how much of the player the game camera shows, in % of its
+/// pixels, and fail the script below MIN %, default 25; needs a real renderer;
+/// the world holds still meanwhile); <c>walkto X Y [STEP] [MIN]</c> (T3.4:
+/// move the player in a straight line, through walls, to map point X, Y,
 /// STEP units at a time (default 32), centring the camera and running
 /// <c>visible MIN</c> at every step, and print the least visible step);
 /// <c>tour [STEP] [MIN]</c> (T3.4: <c>walkto</c> a point inside every
 /// sector's floor of the map, nearest unvisited first from where the
-/// placeholder stands); <c>frametime [FRAMES]</c> (T3.8: measure the wall-clock
+/// player stands); <c>frametime [FRAMES]</c> (T3.8: measure the wall-clock
 /// time of the next FRAMES frames, default 300, and print the mean, median, 95th
 /// percentile and worst in ms; run with <c>--disable-vsync</c> before <c>--</c>);
 /// <c>things on|off</c> (T3.8: show or hide the thing billboards, e.g. to
 /// measure what they cost); <c>ticcmd [vanilla]</c> (T4.6: print the
 /// <c>ticcmd</c> the builder makes from the input since the last
-/// <c>ticcmd</c> for the placeholder, with the twin-stick tweaks or vanilla's);
+/// <c>ticcmd</c> for the player, with the twin-stick tweaks or vanilla's; it
+/// takes that input from the game loop's next tic);
 /// <c>quit</c> (also implied at the end).
+/// </para>
+/// <para>
+/// The game loop (T4.7): <c>cmd FORWARD SIDE ANGLETURN [BUTTONS] [TICS]</c>
+/// queues TICS tics (default 1) of that <c>ticcmd</c> (raw fields: with the
+/// twin-stick tweaks ANGLETURN is the absolute angle's upper 16 bits, e.g.
+/// 16384 = north, FORWARD thrusts north and SIDE east; with
+/// <c>--level-tweaks=vanilla</c> they are relative, as a demo's) and
+/// <c>step TICS</c> queues TICS tics built from the input at each tic (keys
+/// held by <c>down</c>, the cursor ground point) and waits until they ran.
+/// Either switches the game loop to scripted tics (<see cref="LevelScene.ScriptedTics"/>,
+/// also from the start when the script has a <c>cmd</c> or <c>step</c>):
+/// tics run only from the queue, at 35 Hz, and the world holds still while
+/// it is empty, so the result does not depend on the frame rate
+/// (<c>--fixed-fps 30</c>, <c>60</c>, <c>144</c> give the same checksum;
+/// a cursor aim does depend on it, as the camera follows the player with
+/// smoothing). <c>sim live|scripted</c> switches the mode (live: tics from the
+/// input every 1/35 s, as the game). <c>tics N</c> waits until N more tics
+/// ran (or the queue is empty). <c>checksum</c> waits until the queue is empty and
+/// prints <c>leveltime</c>, <c>World.Checksum()</c> and the player mobj.
+/// <c>smooth FRAMES</c> records where the player is drawn on each of the next
+/// FRAMES frames and prints the steps between frames (interpolation: even
+/// steps while moving at a steady speed).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -62,7 +86,19 @@ public partial class LevelScript : Node
         _commands = script.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    public override void _Ready() => _ = RunAsync();
+    public override void _Ready()
+    {
+        // Scripted tics from the first frame, so no input tic runs before the first command.
+        foreach (string command in _commands)
+        {
+            if (command.StartsWith("cmd ", StringComparison.Ordinal) || command.StartsWith("step ", StringComparison.Ordinal))
+            {
+                _scene.ScriptedTics = true;
+                break;
+            }
+        }
+        _ = RunAsync();
+    }
 
     private async Task RunAsync()
     {
@@ -102,7 +138,7 @@ public partial class LevelScript : Node
                         Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(Int(w[1]), Int(w[2])), GlobalPosition = new Vector2(Int(w[1]), Int(w[2])) });
                         break;
                     case "place":
-                        _scene.PlacePlaceholder(Int(w[1]), Int(w[2]), w.Length > 3 ? float.Parse(w[3], CultureInfo.InvariantCulture) : null);
+                        _scene.PlacePlayer(Int(w[1]), Int(w[2]), w.Length > 3 ? float.Parse(w[3], CultureInfo.InvariantCulture) : null);
                         break;
                     case "visible":
                         exit |= await Visible(w.Length > 1 ? Int(w[1]) : DefaultMinVisible, true) is null ? 1 : 0;
@@ -124,11 +160,53 @@ public partial class LevelScript : Node
                             GD.Print($"Level script: ticcmd forwardmove {cmd.forwardmove} sidemove {cmd.sidemove} angleturn {cmd.angleturn} ({(ushort)cmd.angleturn * 360.0 / 65536:0.##} deg) buttons {cmd.buttons}");
                             break;
                         }
+                    case "cmd":
+                        {
+                            var cmd = new IsoDoom.Sim.ticcmd_t
+                            {
+                                forwardmove = checked((sbyte)Int(w[1])),
+                                sidemove = checked((sbyte)Int(w[2])),
+                                angleturn = unchecked((short)Int(w[3])),
+                                buttons = w.Length > 4 ? checked((byte)Int(w[4])) : (byte)0,
+                            };
+                            _scene.ScriptedTics = true;
+                            for (int i = 0, n = w.Length > 5 ? Int(w[5]) : 1; i < n; i++)
+                                _scene.QueueTic(cmd);
+                            break;
+                        }
+                    case "step":
+                        _scene.ScriptedTics = true;
+                        for (int i = 0, n = Int(w[1]); i < n; i++)
+                            _scene.QueueTic(null);
+                        await Drain();
+                        break;
+                    case "sim":
+                        _scene.ScriptedTics = w[1] switch
+                        {
+                            "scripted" => true,
+                            "live" => false,
+                            _ => throw new ArgumentException($"sim: \"{w[1]}\" (live or scripted)"),
+                        };
+                        if (!_scene.ScriptedTics)
+                            _scene.ClearQueuedTics();
+                        break;
+                    case "tics":
+                        {
+                            long until = _scene.TicsRun + Int(w[1]);
+                            while (_scene.TicsRun < until && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.World is not null)
+                                await Frames(1);
+                            break;
+                        }
+                    case "checksum":
+                        await Drain();
+                        PrintChecksum();
+                        break;
+                    case "smooth": await Smooth(Int(w[1])); break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
             }
-            catch (Exception e) when (e is ArgumentException or IndexOutOfRangeException or FormatException)
+            catch (Exception e) when (e is ArgumentException or IndexOutOfRangeException or FormatException or OverflowException)
             {
                 GD.PrintErr($"Level script: bad command \"{command}\": {e.Message}");
                 GetTree().Quit(1);
@@ -139,20 +217,66 @@ public partial class LevelScript : Node
         GetTree().Quit(exit);
     }
 
-    /// <summary>The least share of the placeholder's pixels (%) <c>visible</c> and <c>walkto</c> accept by default.</summary>
+    /// <summary>Waits until the scripted tics queued so far ran (a map without a player runs none).</summary>
+    private async Task Drain()
+    {
+        while (_scene.QueuedTics > 0 && _scene.PlayerMobj is not null)
+            await Frames(1);
+    }
+
+    private void PrintChecksum()
+    {
+        if (_scene.World is not { } world)
+        {
+            GD.PrintErr("Level script: checksum: no world");
+            return;
+        }
+        string player = _scene.PlayerMobj is { } mo
+            ? $"; player x {mo.x} y {mo.y} z {mo.z} ({mo.x / 65536.0:F2}, {mo.y / 65536.0:F2}, {mo.z / 65536.0:F2}) angle {mo.angle} momx {mo.momx} momy {mo.momy} {mo.state}"
+            : "; no player";
+        GD.Print($"Level script: checksum leveltime {world.leveltime} checksum {world.Checksum():x16}{player}");
+    }
+
+    /// <summary>Records the drawn player position over <paramref name="n"/> frames and prints the steps between frames (map units).</summary>
+    private async Task Smooth(int n)
+    {
+        if (_scene.Player is not { } p)
+            throw new ArgumentException("no player");
+        var steps = new List<float>();
+        Vector2 last = p.MapPosition;
+        long tics = _scene.TicsRun;
+        for (int i = 0; i < n; i++)
+        {
+            await Frames(1);
+            Vector2 at = p.MapPosition;
+            steps.Add(at.DistanceTo(last));
+            last = at;
+        }
+        float jerk = 0; // the largest change between consecutive steps: small while the speed changes smoothly
+        for (int i = 1; i < steps.Count; i++)
+            jerk = Math.Max(jerk, Math.Abs(steps[i] - steps[i - 1]));
+        steps.Sort();
+        float sum = 0;
+        foreach (float s in steps)
+            sum += s;
+        string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
+        GD.Print($"Level script: smooth: {n} frames, {_scene.TicsRun - tics} tics; player step per frame min {F(steps[0])} median {F(steps[steps.Count / 2])} max {F(steps[^1])} mean {F(sum / steps.Count)} units, largest change between consecutive steps {F(jerk)}");
+    }
+
+    /// <summary>The least share of the player's pixels (%) <c>visible</c> and <c>walkto</c> accept by default.</summary>
     public const int DefaultMinVisible = 25;
 
-    /// <summary>Measures the placeholder's visibility (%); null (and an error) when it is below <paramref name="min"/> or can't be measured.</summary>
+    /// <summary>Measures the player's visibility (%); null (and an error) when it is below <paramref name="min"/> or can't be measured.</summary>
     private async Task<double?> Visible(int min, bool print)
     {
-        if (await _scene.PlaceholderVisibilityAsync() is not (int visible, int total))
+        if (await _scene.PlayerVisibilityAsync() is not (int visible, int total))
         {
-            GD.PrintErr("Level script: visible needs a real renderer and the placeholder (run without --headless)");
+            GD.PrintErr("Level script: visible needs a real renderer and the player (run without --headless)");
             return null;
         }
         double share = total == 0 ? 0 : 100.0 * visible / total;
-        Vector2 at = _scene.Placeholder!.MapPosition;
-        string where = $"placeholder at ({at.X:F0}, {at.Y:F0}), floor {_scene.Placeholder.FloorHeight:F0}";
+        Vector2 at = _scene.Player!.MapPosition;
+        string where = $"player at ({at.X:F0}, {at.Y:F0}), z {_scene.Player.Z:F0}";
         if (total == 0 || share < min)
         {
             GD.PrintErr($"Level script: {where}: {visible} of {total} pixels visible ({share:F0}%), below {min}%");
@@ -165,8 +289,8 @@ public partial class LevelScript : Node
 
     private async Task<int> WalkTo(int x, int y, int step, int min)
     {
-        if (_scene.Placeholder is not { } p)
-            throw new ArgumentException("no placeholder");
+        if (_scene.Player is not { } p || _scene.PlayerMobj is null)
+            throw new ArgumentException("no player");
         Vector2 from = p.MapPosition, to = new(x, y);
         int steps = Math.Max(1, (int)Math.Ceiling(from.DistanceTo(to) / Math.Max(1, step)));
         int failed = 0;
@@ -175,7 +299,7 @@ public partial class LevelScript : Node
         for (int i = 1; i <= steps; i++)
         {
             Vector2 at = from.Lerp(to, (float)i / steps);
-            _scene.PlacePlaceholder(at.X, at.Y);
+            _scene.PlacePlayer(at.X, at.Y);
             if (await Visible(min, false) is double share)
             {
                 if (share < least)
@@ -192,8 +316,8 @@ public partial class LevelScript : Node
 
     private async Task<int> Tour(int step, int min)
     {
-        if (_scene.Mesh is not { } m || _scene.Placeholder is not { } p)
-            throw new ArgumentException("no map or placeholder");
+        if (_scene.Mesh is not { } m || _scene.Player is not { } p || _scene.PlayerMobj is null)
+            throw new ArgumentException("no map or player");
         var points = new List<Vector2>();
         foreach (SectorFloor floor in m.Floors.BySector)
         {

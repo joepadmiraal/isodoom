@@ -16,8 +16,7 @@ public enum IsoProjection
 /// <summary>
 /// The game camera (T3.3, SPEC §7.1): a fixed isometric-style camera with a
 /// fixed yaw (<see cref="Yaw"/>, 45°) and pitch (<see cref="Pitch"/>, within
-/// 45–60°), never rotating, centred on a target (the player; until T4.7 the
-/// placeholder) with slight smoothing and a look-ahead towards the cursor
+/// 45–60°), never rotating, centred on a target (the player mobj as drawn) with slight smoothing and a look-ahead towards the cursor
 /// ground point. Ctrl + mouse wheel zooms within <see cref="MinViewUnits"/>–
 /// <see cref="MaxViewUnits"/>; O switches orthographic / perspective. Not built
 /// on <see cref="FreeFlyCamera"/>, which stays debug-only.
