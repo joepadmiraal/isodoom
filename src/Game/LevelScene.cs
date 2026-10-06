@@ -29,6 +29,10 @@ namespace IsoDoom.Game;
 /// <c>--level-camera=overview|fly</c> (start with the overview or the free-fly
 /// camera, T2.7; default overview);
 /// <c>--level-script=COMMANDS</c> (feed scripted input: <see cref="LevelScript"/>);
+/// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
+/// default player); <c>--level-light-origin=X,Y</c> (the player position light
+/// diminishing uses, in map units; by default the free-fly camera's pivot, or
+/// player 1's start under the overview camera);
 /// <c>--level-check</c> (load every map and check the meshes, data textures
 /// and, with a real renderer, drawn pixels: <see cref="LevelCheck"/>).
 /// </para>
@@ -36,8 +40,8 @@ namespace IsoDoom.Game;
 /// Keys (T2.7; not under <c>--level-check</c>): Tab switches between the
 /// overview and the free-fly camera (<see cref="FreeFlyCamera"/>, which has
 /// its own keys), Home puts the free-fly camera at player 1's start, Page
-/// Down / Page Up load the next / previous map of the WAD, F1 shows the
-/// controls, F3 hides the overlay.
+/// Down / Page Up load the next / previous map of the WAD, L cycles the light
+/// diminishing mode, F1 shows the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
 public partial class LevelScene : Node3D
@@ -48,6 +52,7 @@ public partial class LevelScene : Node3D
     private Control _crosshair = null!;
     private bool _showHelp;
     private readonly List<MeshInstance3D> _chunks = new();
+    private LightDiminishing _lightMode = LightDiminishing.Player;
 
     /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
     public LevelMesh? Mesh { get; private set; }
@@ -72,7 +77,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   F1 controls   F3 overlay\n"
+        "Tab overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   F1 controls   F3 overlay\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
 
@@ -118,6 +123,14 @@ public partial class LevelScene : Node3D
                 AddChild(new LevelCheck(this)); // loads every map itself; no free-fly camera, no keys
                 return;
             }
+            if (WadLocator.GetUserArg("--level-light") is string light)
+                _lightMode = light switch
+                {
+                    "none" => LightDiminishing.None,
+                    "camera" => LightDiminishing.Camera,
+                    "player" => LightDiminishing.Player,
+                    _ => throw new ArgumentException($"--level-light: unknown mode \"{light}\" (player, none or camera)"),
+                };
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             string? map = WadLocator.GetUserArg("--level");
@@ -226,6 +239,10 @@ public partial class LevelScene : Node3D
             case Key.Pageup:
                 SwitchMap(-1);
                 break;
+            case Key.L:
+                _lightMode = (LightDiminishing)(((int)_lightMode + 1) % 3);
+                Mesh?.SetLightDiminishing(_lightMode);
+                break;
             case Key.F1:
                 _showHelp = !_showHelp;
                 break;
@@ -240,6 +257,8 @@ public partial class LevelScene : Node3D
 
     public override void _Process(double delta)
     {
+        if (!IsCheckRun && Mesh is not null)
+            Mesh.SetLightOrigin(LightOrigin());
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
             _message.Text = OverlayText();
@@ -285,9 +304,44 @@ public partial class LevelScene : Node3D
         }
         else
             text.Append(FreeFly is null ? "overview\n" : "overview (Tab: free-fly)\n");
+        if (Mesh is not null)
+        {
+            Vector2 o = Mesh.LightOrigin;
+            text.Append(Mesh.LightMode switch
+            {
+                LightDiminishing.None => $"light: none (fixed distance {Mesh.LightReference:F0})\n",
+                LightDiminishing.Camera => "light: camera depth\n",
+                _ => $"light: player distance from ({o.X:F0}, {o.Y:F0})\n",
+            });
+        }
         text.Append(_status);
         text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The stand-in player position for light diminishing (map units x, y)
+    /// until the game has a player (M3/M4): <c>--level-light-origin</c>, else
+    /// the free-fly camera's pivot when it is current, else player 1's start
+    /// (the map's centre without one).
+    /// </summary>
+    public Vector2 LightOrigin()
+    {
+        if (WadLocator.GetUserArg("--level-light-origin") is string arg)
+        {
+            string[] xy = arg.Split(',');
+            if (xy.Length == 2 && float.TryParse(xy[0], System.Globalization.CultureInfo.InvariantCulture, out float x)
+                && float.TryParse(xy[1], System.Globalization.CultureInfo.InvariantCulture, out float y))
+                return new Vector2(x, y);
+        }
+        if (FreeFly is { } fly && fly.Current)
+            return new Vector2(fly.Pivot.X, -fly.Pivot.Z) * LevelMesh.MapUnitsPerMetre;
+        if (Mesh is null)
+            return Vector2.Zero;
+        if (Mesh.Level.PlayerStart(0) is MapThing start)
+            return new Vector2(start.X, start.Y);
+        Vector3 c = Mesh.Bounds.GetCenter();
+        return new Vector2(c.X, -c.Z) * LevelMesh.MapUnitsPerMetre;
     }
 
     /// <summary>A Godot-space point in whole map units (x, y, height), rounded.</summary>
@@ -357,6 +411,7 @@ public partial class LevelScene : Node3D
         LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!);
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
+        mesh.SetLightDiminishing(_lightMode);
 
         Chunks = new MeshInstance3D?[mesh.SectorMeshes.Length];
         for (int s = 0; s < mesh.SectorMeshes.Length; s++)

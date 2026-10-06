@@ -12,13 +12,24 @@
 // `texture_info` (RGBA float, same layout, one texel per texture slot):
 // atlas x, y, width, height.
 //
+// Light (SPEC §7.4, §12 T2.8): vanilla's tables (IsoDoom.Map.LightTables,
+// the CPU reference) in `light_tables` (R8, 128 x 32): row i = r_main.c
+// zlight[i] (floors, by distance >> LIGHTZSHIFT), row 16 + i = scalelight[i]
+// (walls, by scale (centerx << 20) / distance, capped at 47). The light
+// number is (sector light >> 4) + extralight (+ the wall's fake contrast),
+// clamped to 0-15, as r_segs.c / r_plane.c. The distance (fixed_t, clamped to
+// MAX_DISTANCE units) depends on `light_mode` (IsoDoom.Map.LightDiminishing):
+// 0 none (`light_reference`, map units), 1 player (horizontal distance from
+// `light_origin`, map x/y), 2 camera (view-space depth). Only the
+// distance is float; the rest is integer, so the CPU can match it exactly.
+//
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall), texture slot, front sector, back sector (-1: none)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   walls:     UV.x = texture column (textureoffset + distance from V1), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
-//              CUSTOM2 = texture-top plane, texture-top offset, -, -
+//              CUSTOM2 = texture-top plane, texture-top offset, fake contrast (-1, 0, +1), -
 //              planes are IsoDoom.Map.WallPlane: 0 front floor, 1 front ceiling,
 //              2 back floor, 3 back ceiling, 4 higher floor, 5 lower ceiling
 //
@@ -29,6 +40,14 @@ render_mode unshaded, cull_back, depth_draw_opaque, shadows_disabled, fog_disabl
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
+// r_main.c
+const int LIGHTLEVELS = 16;
+const int LIGHTSEGSHIFT = 4;
+const int MAXLIGHTSCALE = 48;
+const int MAXLIGHTZ = 128;
+const int LIGHTZSHIFT = 20;
+// IsoDoom.Map.LightTables.MaxDistanceUnits
+const float MAX_DISTANCE = 4096.0;
 
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
@@ -37,15 +56,27 @@ uniform sampler2D sector_data : filter_nearest, repeat_disable;
 uniform sampler2D playpal : filter_nearest, repeat_disable;
 uniform sampler2D colormap : filter_nearest, repeat_disable;
 uniform int palette_index = 0;
-// -1: from the sector light (flat for now: 31 - light / 8); 0-33: this map everywhere.
+// -1: from the sector light and distance; 0-33: this map everywhere (vanilla's
+// fixedcolormap: 0 full bright, 1 light amplification, 32 invulnerability).
 uniform int colormap_override = -1;
+uniform sampler2D light_tables : filter_nearest, repeat_disable;
+// IsoDoom.Map.LightDiminishing: 0 none, 1 player, 2 camera.
+uniform int light_mode = 1;
+uniform vec2 light_origin = vec2(0.0);
+uniform float light_reference = 256.0;
+// r_main.c centerx (viewwidth / 2): the projection of the wall scale.
+uniform int light_centerx = 160;
+// p_user.c / r_main.c extralight (the muzzle flash: 0-2).
+uniform int extralight = 0;
 // IsoDoom.Map.WallTextureTiling: 0 vanilla (width mask, & 127, tutti-frutti), 1 texture size.
 uniform int wall_tiling = 0;
 
 varying flat ivec4 v_rect;
 varying flat int v_kind;
-varying flat int v_colormap;
+varying flat int v_lightnum;
 varying vec2 v_texcoord;
+varying vec2 v_map;
+varying float v_depth;
 
 vec4 data_texel(sampler2D tex, int id) {
 	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
@@ -71,7 +102,7 @@ void vertex() {
 	v_rect = ivec4(data_texel(texture_info, int(CUSTOM0.y)) + 0.5);
 	v_kind = kind;
 	int light = clamp(int(front.b + 0.5), 0, 255);
-	v_colormap = colormap_override >= 0 ? colormap_override : 31 - (light >> 3);
+	v_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
 
 	float z;
 	if (kind == 0) {
@@ -87,6 +118,24 @@ void vertex() {
 		v_texcoord = vec2(UV.x, texture_top - z);
 	}
 	VERTEX.y = z / MAP_UNITS_PER_METRE;
+	v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+	v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+}
+
+// IsoDoom.Map.LightTables.WallColormap / PlaneColormap.
+int light_colormap() {
+	if (colormap_override >= 0) {
+		return colormap_override;
+	}
+	float d = light_mode == 0 ? light_reference : light_mode == 1 ? length(v_map - light_origin) : v_depth;
+	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
+	int lightnum = clamp(v_lightnum, 0, LIGHTLEVELS - 1);
+	if (v_kind == 0) {
+		int z = dist <= 0 ? 0 : min(dist >> LIGHTZSHIFT, MAXLIGHTZ - 1);
+		return int(texelFetch(light_tables, ivec2(z, lightnum), 0).r * 255.0 + 0.5);
+	}
+	int scale = dist <= 0 ? MAXLIGHTSCALE - 1 : min((light_centerx << 20) / dist, MAXLIGHTSCALE - 1);
+	return int(texelFetch(light_tables, ivec2(scale, LIGHTLEVELS + lightnum), 0).r * 255.0 + 0.5);
 }
 
 int floor_mod(int a, int n) {
@@ -121,7 +170,7 @@ void fragment() {
 		row = floor_mod(t.y, h);
 	}
 	int index = int(texelFetch(atlas, v_rect.xy + ivec2(col, row), 0).r * 255.0 + 0.5);
-	int mapped = int(texelFetch(colormap, ivec2(index, v_colormap), 0).r * 255.0 + 0.5);
+	int mapped = int(texelFetch(colormap, ivec2(index, light_colormap()), 0).r * 255.0 + 0.5);
 	// PLAYPAL holds sRGB values; ALBEDO is linear (Godot converts back on output).
 	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb);
 }

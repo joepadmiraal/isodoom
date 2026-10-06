@@ -32,14 +32,20 @@ namespace IsoDoom.Game;
 /// checks run again, then the floor is put back.</item>
 /// <item><b>With a real renderer</b> (not <c>--headless</c>), drawn pixels of
 /// the rendered map are compared with the CPU palette conversion
-/// (<see cref="TextureWrap"/>, COLORMAP, PLAYPAL) at 1 map unit per pixel,
+/// (<see cref="TextureWrap"/>, the light mapping of <see cref="LightTables"/>,
+/// COLORMAP, PLAYPAL) at 1 map unit per pixel,
 /// pixel centres on texel centres: straight down onto every floor (tiles over
 /// the whole map; the void must show the background, a colour in no palette);
 /// side-on (orthographic, perpendicular) onto every drawn axis-aligned wall
 /// section, in vanilla tiling and again in texture-size tiling where the two
 /// differ; and for the moved sector an oblique view of its floor before and
 /// after the move (the expected texels must change and the drawn ones follow)
-/// and side-on views of every wall that uses its planes.</item>
+/// and side-on views of every wall that uses its planes. Light (T2.8): all of
+/// it with the default player-distance mapping from player 1's start; the
+/// top-down floors again with no diminishing (and <c>extralight</c> 1), by
+/// camera depth, and (one tile) with a fixed colormap. Pixels whose distance
+/// is within <see cref="LightMargin"/> of a table step are skipped; at least
+/// two sector light levels and both fake contrasts must be compared.</item>
 /// </list>
 /// Prints a summary and quits with exit code 1 on any failure.
 /// </summary>
@@ -62,6 +68,8 @@ public partial class LevelCheck : Godot.Node
     private readonly Dictionary<int, IndexedImage> _composites = new();
     private readonly Dictionary<string, IndexedImage> _flats = new(StringComparer.OrdinalIgnoreCase);
     private (int R, int G, int B) _background;
+    private readonly SortedSet<int> _lightLevels = new(), _contrasts = new(), _colormaps = new();
+    private long _lightSkipped;
 
     public LevelCheck(LevelScene scene) => _scene = scene;
 
@@ -134,6 +142,7 @@ public partial class LevelCheck : Godot.Node
             int failures = _failures;
             CheckSectorData(m, map);
             slots += CheckSlots(m, map);
+            CheckLightTables(m, map);
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
@@ -242,6 +251,27 @@ public partial class LevelCheck : Godot.Node
         return used.Length;
     }
 
+    /// <summary>The light tables upload (r_main.c zlight/scalelight as <see cref="LightTables.ToBytes"/>) and its binding.</summary>
+    private void CheckLightTables(LevelMesh m, string map)
+    {
+        byte[] expected = m.Lights.ToBytes();
+        Image? image = m.LightTablesTexture.GetImage(); // null under the dummy renderer
+        if (image is null)
+        {
+            if (CanCapture)
+                Fail($"{map}: the light tables can't be read back");
+        }
+        else if (image.GetFormat() != Image.Format.R8 || image.GetWidth() != LightTables.TableWidth || image.GetHeight() != LightTables.TableHeight
+            || !image.GetData().AsSpan().SequenceEqual(expected))
+            Fail($"{map}: the light tables upload differs from LightTables");
+        if (m.Material.GetShaderParameter("light_tables").As<Texture2D>() != m.LightTablesTexture
+            || m.Material.GetShaderParameter("light_centerx").AsInt32() != m.Lights.CenterX)
+            Fail($"{map}: the material doesn't bind the light tables");
+        // Vanilla's tables, spot-checked (r_main.c; unit tests check more).
+        if (m.Lights.zlight(8, 15) != 23 || m.Lights.scalelight(8, 10) != 23 || m.Lights.zlight(0, 1) != 20 || m.Lights.scalelight(10, 40) != 0)
+            Fail($"{map}: the light tables aren't vanilla's");
+    }
+
     /// <summary>
     /// Each sector chunk's vertex arrays against its floor triangles and wall
     /// sections, with the plane references evaluated from the uploaded data
@@ -260,14 +290,24 @@ public partial class LevelCheck : Godot.Node
         foreach (SectorFloor f in m.Floors.BySector)
             floors[f.Sector] = f;
 
-        int sectionCount = 0, vertexCount = 0;
+        var sideSegs = new List<Seg>?[level.Lines.Length * 2];
+        foreach (Seg seg in level.Segs)
+            (sideSegs[seg.LineDef.Index * 2 + seg.Side] ??= new List<Seg>()).Add(seg);
+        int sectionCount = 0, vertexCount = 0, quads = 0;
         for (int sector = 0; sector < level.Sectors.Length; sector++)
         {
             string what = $"{map}: sector {sector}";
             SectorFloor? floor = floors[sector] is { TriangleCount: > 0 } f ? f : null;
             List<WallSection> sectorWalls = walls[sector] ?? new List<WallSection>();
             int floorVertices = floor?.Vertices.Count ?? 0;
-            int expectedVertices = floorVertices + 4 * sectorWalls.Count;
+            var quadRuns = new List<List<(double From, double To, int Contrast)>>();
+            int quadCount = 0;
+            foreach (WallSection s in sectorWalls)
+            {
+                quadRuns.Add(m.WallQuadRuns(s));
+                quadCount += quadRuns[^1].Count;
+            }
+            int expectedVertices = floorVertices + 4 * quadCount;
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
             if (expectedVertices == 0)
             {
@@ -292,7 +332,7 @@ public partial class LevelCheck : Godot.Node
             float[] c1 = arrays[(int)Mesh.ArrayType.Custom1].AsFloat32Array();
             float[] c2 = arrays[(int)Mesh.ArrayType.Custom2].AsFloat32Array();
             int[] idx = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
-            int expectedIndices = (floor?.Indices.Count ?? 0) + 6 * sectorWalls.Count;
+            int expectedIndices = (floor?.Indices.Count ?? 0) + 6 * quadCount;
             if (pos.Length != expectedVertices || uv.Length != expectedVertices || c0.Length != 4 * expectedVertices
                 || c1.Length != 4 * expectedVertices || c2.Length != 4 * expectedVertices || idx.Length != expectedIndices)
             {
@@ -325,66 +365,118 @@ public partial class LevelCheck : Godot.Node
                 }
             }
 
-            // Walls: one quad per drawn section, V1 bottom, V1 top, V2 top, V2 bottom.
+            // Walls: one quad per contrast run of each drawn section, V1 bottom, V1 top, V2 top, V2 bottom.
+            int quad = 0;
             for (int q = 0; q < sectorWalls.Count; q++)
             {
                 WallSection s = sectorWalls[q];
-                int b = floorVertices + 4 * q, bi = (floor?.Indices.Count ?? 0) + 6 * q;
                 string sw = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind}";
                 sectionCount++;
                 double length = Math.Sqrt(Math.Pow((s.V2.X - (double)s.V1.X) / 65536.0, 2) + Math.Pow((s.V2.Y - (double)s.V1.Y) / 65536.0, 2));
-                double u1 = s.TextureOffset / 65536.0;
-                Vector3 p1 = LevelMesh.ToGodot(s.V1.X, s.V1.Y, 0), p2 = LevelMesh.ToGodot(s.V2.X, s.V2.Y, 0);
-                Vector3[] corners = { p1, p1, p2, p2 };
-                double[] us = { u1, u1, u1 + length, u1 + length };
-                float[] vs = { 0, 1, 1, 0 };
-                for (int k = 0; k < 4; k++)
+                CheckRuns(sideSegs[s.Line.Index * 2 + s.Side], quadRuns[q], length, sw);
+                foreach ((double from, double to, int contrast) in quadRuns[q])
                 {
-                    if (!Near(pos[b + k], corners[k]))
-                        Fail($"{sw}: corner {k} at {pos[b + k]}, expected {corners[k]}");
-                    if (Math.Abs(uv[b + k].X - us[k]) > 1e-3 || uv[b + k].Y != vs[k])
-                        Fail($"{sw}: corner {k} texture coordinate {uv[b + k]}, expected ({us[k]}, {vs[k]})");
-                    if (!Custom(c0, b + k, LevelMesh.KindWall, m.TextureSlot(s.Texture), sector, s.BackSector?.Index ?? -1))
-                        Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected wall, slot {m.TextureSlot(s.Texture)}, {sector}, {s.BackSector?.Index ?? -1}");
-                }
-                int[] quad = { b, b + 1, b + 2, b, b + 2, b + 3 };
-                for (int k = 0; k < 6; k++)
-                {
-                    if (idx[bi + k] != quad[k])
+                    int b = floorVertices + 4 * quad, bi = (floor?.Indices.Count ?? 0) + 6 * quad;
+                    quad++;
+                    double u1 = s.TextureOffset / 65536.0;
+                    Vector3 p1 = LevelMesh.WallPoint(s, from / length), p2 = LevelMesh.WallPoint(s, to / length);
+                    Vector3[] corners = { p1, p1, p2, p2 };
+                    double[] us = { u1 + from, u1 + from, u1 + to, u1 + to };
+                    float[] vs = { 0, 1, 1, 0 };
+                    for (int k = 0; k < 4; k++)
                     {
-                        Fail($"{sw}: quad indices differ");
-                        break;
+                        if (!Near(pos[b + k], corners[k]))
+                            Fail($"{sw}: corner {k} at {pos[b + k]}, expected {corners[k]}");
+                        if (Math.Abs(uv[b + k].X - us[k]) > 1e-3 || uv[b + k].Y != vs[k])
+                            Fail($"{sw}: corner {k} texture coordinate {uv[b + k]}, expected ({us[k]}, {vs[k]})");
+                        if (!Custom(c0, b + k, LevelMesh.KindWall, m.TextureSlot(s.Texture), sector, s.BackSector?.Index ?? -1))
+                            Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected wall, slot {m.TextureSlot(s.Texture)}, {sector}, {s.BackSector?.Index ?? -1}");
+                        if (c2[(b + k) * 4 + 2] != contrast)
+                            Fail($"{sw}: corner {k}: fake contrast {c2[(b + k) * 4 + 2]}, expected {contrast}");
                     }
-                }
+                    int[] quadIndices = { b, b + 1, b + 2, b, b + 2, b + 3 };
+                    for (int k = 0; k < 6; k++)
+                    {
+                        if (idx[bi + k] != quadIndices[k])
+                        {
+                            Fail($"{sw}: quad indices differ");
+                            break;
+                        }
+                    }
 
-                // The vertex shader's evaluation of the plane references, from the uploaded data texels.
-                for (int k = 0; k < 4; k++)
-                {
-                    int front = (int)c0[(b + k) * 4 + 2], back = (int)c0[(b + k) * 4 + 3];
-                    if (front < 0 || front >= level.Sectors.Length || back >= level.Sectors.Length)
+                    // The vertex shader's evaluation of the plane references, from the uploaded data texels.
+                    for (int k = 0; k < 4; k++)
                     {
-                        Fail($"{sw}: corner {k}: sector ids {front}, {back} out of range");
-                        break;
-                    }
-                    Color fd = m.SectorData(front), bd = back >= 0 ? m.SectorData(back) : fd;
-                    float bottom = Math.Max(PlaneHeight((int)c1[(b + k) * 4], fd, bd) + c1[(b + k) * 4 + 1], fd.R);
-                    float top = Math.Min(PlaneHeight((int)c1[(b + k) * 4 + 2], fd, bd) + c1[(b + k) * 4 + 3], fd.G);
-                    top = Math.Max(top, bottom);
-                    float textureTop = PlaneHeight((int)c2[(b + k) * 4], fd, bd) + c2[(b + k) * 4 + 1];
-                    (int sb, int st) = s.Span();
-                    float eb = (float)(sb / 65536.0), et = (float)(Math.Max(st, sb) / 65536.0);
-                    float ett = (float)(s.TextureTop.Evaluate(s.FrontSector, s.BackSector) / 65536.0);
-                    if (Math.Abs(bottom - eb) > 1e-3 || Math.Abs(top - et) > 1e-3 || Math.Abs(textureTop - ett) > 1e-3)
-                    {
-                        Fail($"{sw}: corner {k}: the attributes give span {bottom}..{top}, row 0 at {textureTop}; expected {eb}..{et}, row 0 at {ett}");
-                        break;
+                        int front = (int)c0[(b + k) * 4 + 2], back = (int)c0[(b + k) * 4 + 3];
+                        if (front < 0 || front >= level.Sectors.Length || back >= level.Sectors.Length)
+                        {
+                            Fail($"{sw}: corner {k}: sector ids {front}, {back} out of range");
+                            break;
+                        }
+                        Color fd = m.SectorData(front), bd = back >= 0 ? m.SectorData(back) : fd;
+                        float bottom = Math.Max(PlaneHeight((int)c1[(b + k) * 4], fd, bd) + c1[(b + k) * 4 + 1], fd.R);
+                        float top = Math.Min(PlaneHeight((int)c1[(b + k) * 4 + 2], fd, bd) + c1[(b + k) * 4 + 3], fd.G);
+                        top = Math.Max(top, bottom);
+                        float textureTop = PlaneHeight((int)c2[(b + k) * 4], fd, bd) + c2[(b + k) * 4 + 1];
+                        (int sb, int st) = s.Span();
+                        float eb = (float)(sb / 65536.0), et = (float)(Math.Max(st, sb) / 65536.0);
+                        float ett = (float)(s.TextureTop.Evaluate(s.FrontSector, s.BackSector) / 65536.0);
+                        if (Math.Abs(bottom - eb) > 1e-3 || Math.Abs(top - et) > 1e-3 || Math.Abs(textureTop - ett) > 1e-3)
+                        {
+                            Fail($"{sw}: corner {k}: the attributes give span {bottom}..{top}, row 0 at {textureTop}; expected {eb}..{et}, row 0 at {ett}");
+                            break;
+                        }
                     }
                 }
             }
+            quads += quad;
         }
-        if (sectionCount != m.WallQuads)
-            Fail($"{map}: {m.WallQuads} wall quads, {sectionCount} drawn sections");
+        if (quads != m.WallQuads)
+            Fail($"{map}: {m.WallQuads} wall quads, {quads} expected ({sectionCount} drawn sections)");
         return (sectionCount, vertexCount);
+    }
+
+    /// <summary>
+    /// A section's quads against vanilla's per-seg fake contrast: they cover
+    /// the side from 0 to its length without gaps, and the middle of each seg
+    /// of the side lies in a quad with that seg's contrast (r_segs.c).
+    /// </summary>
+    private void CheckRuns(List<Seg>? segs, List<(double From, double To, int Contrast)> runs, double length, string what)
+    {
+        if (runs.Count == 0 || runs[0].From != 0 || Math.Abs(runs[^1].To - length) > 1e-9)
+        {
+            Fail($"{what}: the wall quads don't cover the side");
+            return;
+        }
+        for (int i = 1; i < runs.Count; i++)
+        {
+            if (runs[i].From != runs[i - 1].To || runs[i].Contrast == runs[i - 1].Contrast)
+                Fail($"{what}: wall quads {i - 1} and {i} don't join or have the same contrast");
+        }
+        if (segs is null)
+        {
+            Fail($"{what}: no seg runs along the side");
+            return;
+        }
+        foreach (Seg seg in segs)
+        {
+            double segLength = Math.Sqrt(Math.Pow((seg.V2.X - (double)seg.V1.X) / 65536.0, 2) + Math.Pow((seg.V2.Y - (double)seg.V1.Y) / 65536.0, 2));
+            double mid = seg.Offset / 65536.0 + segLength / 2;
+            int expected = LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y);
+            bool found = false;
+            foreach ((double from, double to, int contrast) in runs)
+            {
+                if (mid >= from && mid <= to)
+                {
+                    found = true;
+                    if (contrast != expected)
+                        Fail($"{what}: seg {seg.Index} has fake contrast {expected}, its wall quad {contrast}");
+                    break;
+                }
+            }
+            if (!found)
+                Fail($"{what}: seg {seg.Index} lies in no wall quad");
+        }
     }
 
     /// <summary>The shader's <c>plane_height</c> (IsoDoom.Map.WallPlane numbers).</summary>
@@ -450,7 +542,24 @@ public partial class LevelCheck : Godot.Node
         _scene.Environment.BackgroundColor = Color.Color8((byte)_background.R, (byte)_background.G, (byte)_background.B);
         _scene.Overlay.Visible = false;
 
-        await CheckFloorsTopDown(m);
+        // Light (T2.8): the player-distance mapping (default) from player 1's
+        // start; then top-down again with no diminishing (and extralight 1),
+        // by camera depth, and with a fixed colormap (invulnerability).
+        Vector2 origin = m.Level.PlayerStart(0) is MapThing start ? new Vector2(start.X, start.Y)
+            : new Vector2(m.Bounds.GetCenter().X, -m.Bounds.GetCenter().Z) * LevelMesh.MapUnitsPerMetre;
+        m.SetLightOrigin(origin);
+        m.SetLightDiminishing(LightDiminishing.Player);
+        await CheckFloorsTopDown(m, $"player light from ({origin.X}, {origin.Y})");
+        m.SetLightDiminishing(LightDiminishing.None);
+        m.SetExtraLight(1);
+        await CheckFloorsTopDown(m, $"no diminishing (distance {m.LightReference}), extralight 1");
+        m.SetExtraLight(0);
+        m.SetLightDiminishing(LightDiminishing.Camera);
+        await CheckFloorsTopDown(m, "camera depth light");
+        m.SetLightDiminishing(LightDiminishing.Player);
+        m.SetColormapOverride(Colormap.INVERSECOLORMAP);
+        await CheckFloorsTopDown(m, "fixed colormap 32", 1);
+        m.SetColormapOverride(-1);
 
         var sizeTiling = new List<WallSection>();
         int walls = 0, wallPixels = 0;
@@ -478,6 +587,14 @@ public partial class LevelCheck : Godot.Node
 
         if (move is { } mv)
             await MoveCheck(m, mv.Lower, mv.Sector);
+
+        GD.Print($"Level check: {map}: light compared at sector light levels {string.Join(" ", _lightLevels)} (>> 4), "
+            + $"wall contrasts {string.Join(" ", _contrasts)}, colormaps {string.Join(" ", _colormaps)}; "
+            + $"{_lightSkipped} pixels skipped within {LightMargin} units of a light table step");
+        if (_lightLevels.Count < 2)
+            Fail($"{map}: fewer than two light levels compared");
+        if (!_contrasts.Contains(-1) || !_contrasts.Contains(1))
+            Fail($"{map}: walls of both orientations (fake contrast -1 and +1) must be compared");
 
         _scene.Overlay.Visible = true;
         _scene.Environment.BackgroundColor = oldBackground;
@@ -528,9 +645,10 @@ public partial class LevelCheck : Godot.Node
     /// neighbourhood lies in one sector's floor triangles (rasterised on the
     /// CPU) must show that sector's flat texel; in the void, the background.
     /// </summary>
-    private async Task CheckFloorsTopDown(LevelMesh m)
+    private async Task CheckFloorsTopDown(LevelMesh m, string pass, int maxTiles = int.MaxValue)
     {
         string map = m.Level.Name;
+        int tiles = 0;
         Vector2I size = ViewSize();
         int w = size.X, h = size.Y;
         double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
@@ -556,11 +674,15 @@ public partial class LevelCheck : Godot.Node
         {
             for (int tx = 0; tx < tilesX; tx++)
             {
+                if (tiles++ >= maxTiles)
+                    break;
                 int left = left0 + tx * w, top = top0 - ty * h;
                 int[] grid = RasterFloors(m, left, top, w, h);
                 bool[] uniform = Uniform(grid, w, h, 2);
-                Ortho(basis, new Vector3(left + w / 2f, top - h / 2f, highest + 64), 1, highest - lowest + 128);
-                string what = $"{map}: floors top-down, tile ({tx},{ty}) at x {left}, y {top}";
+                // Half a unit off whole heights, so camera depths don't sit on a light table step.
+                float cameraZ = highest + 64.5f;
+                Ortho(basis, new Vector3(left + w / 2f, top - h / 2f, cameraZ), 1, highest - lowest + 128);
+                string what = $"{map}: floors top-down ({pass}), tile ({tx},{ty}) at x {left}, y {top}";
                 byte[]? frame = await Capture(what);
                 if (frame is null)
                     continue;
@@ -589,8 +711,12 @@ public partial class LevelCheck : Godot.Node
                         else
                         {
                             Sector sector = m.Level.Sectors[s];
+                            int map0 = ExpectedColormap(m, false, sector.LightLevel, 0, x / 65536.0, y / 65536.0,
+                                cameraZ - sector.FloorHeight / 65536.0);
+                            if (map0 < 0)
+                                continue;
                             (int col, int row) = TextureWrap.FlatTexel(x, y);
-                            expected = Shade(FlatImage(sector.FloorPic)[col, row], sector.LightLevel);
+                            expected = Shade(FlatImage(sector.FloorPic)[col, row], map0);
                             ok = got == expected;
                             sectorsSeen[s] = true;
                         }
@@ -613,7 +739,7 @@ public partial class LevelCheck : Godot.Node
                 seen++;
         }
         _pixels += compared;
-        GD.Print($"Level check: {map}: floors top-down in {tilesX * tilesY} tile(s): {compared} drawn pixels compared "
+        GD.Print($"Level check: {map}: floors top-down ({pass}) in {Math.Min(tiles, tilesX * tilesY)} tile(s): {compared} drawn pixels compared "
             + $"({voidPixels} void), {seen} of {withFloor} floors seen");
         if (seen == 0)
             Fail($"{map}: no floor pixel compared");
@@ -752,6 +878,7 @@ public partial class LevelCheck : Godot.Node
         IndexedImage tex = Composite(s.Texture);
         int textureTop = s.TextureTop.Evaluate(s.FrontSector, s.BackSector);
         int light = s.FrontSector.LightLevel;
+        int contrast = LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y); // axis-aligned: every seg has it
         int compared = 0, bad = 0;
         bool differ = false;
         string first = "";
@@ -776,7 +903,10 @@ public partial class LevelCheck : Godot.Node
                 var other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height,
                     tiling == WallTextureTiling.Vanilla ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
                 differ |= other != (tc, tr) && tex[other.Column, other.Row] != tex[tc, tr];
-                (int R, int G, int B) expected = Shade(tex[tc, tr], light);
+                int map0 = ExpectedColormap(m, true, light, contrast, v1x + dirX * (d + 0.5), v1y + dirY * (d + 0.5), 0.5);
+                if (map0 < 0)
+                    continue;
+                (int R, int G, int B) expected = Shade(tex[tc, tr], map0);
                 int p = (py * w + px) * 4;
                 (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
                 compared++;
@@ -913,8 +1043,11 @@ public partial class LevelCheck : Godot.Node
                 double hx = cx + px + 0.5 - w / 2.0;
                 if (!InsideFloor(floor, hx, hy, 2) || Occluded(sector, hx, hy, ceilingZ - floorZ + 2))
                     continue;
+                int map0 = ExpectedColormap(m, false, sector.LightLevel, 0, hx, hy, 0);
+                if (map0 < 0)
+                    continue;
                 (int col, int row) = TextureWrap.FlatTexel((int)Math.Floor(hx * 65536), (int)Math.Floor(hy * 65536));
-                (int R, int G, int B) expected = Shade(FlatImage(sector.FloorPic)[col, row], sector.LightLevel);
+                (int R, int G, int B) expected = Shade(FlatImage(sector.FloorPic)[col, row], map0);
                 expectedColours[py * w + px] = (expected.R << 16) | (expected.G << 8) | expected.B;
                 int p = (py * w + px) * 4;
                 (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
@@ -992,10 +1125,49 @@ public partial class LevelCheck : Godot.Node
 
     // ---- CPU references ----
 
-    /// <summary>The colour the level shader draws for palette index <paramref name="index"/> in a sector of light <paramref name="light"/> (flat light, palette 0).</summary>
-    private (int R, int G, int B) Shade(byte index, int light)
+    /// <summary>Distances (map units) this close to a light table step are not compared (the shader's distance is float).</summary>
+    private const double LightMargin = 1.0 / 64;
+
+    /// <summary>
+    /// The colormap the level shader picks (<see cref="LightTables.WallColormap"/>
+    /// or <see cref="LightTables.PlaneColormap"/>, by the mesh's light mode,
+    /// origin, reference distance, extralight and override) for a wall or
+    /// floor point at map (<paramref name="x"/>, <paramref name="y"/>) and
+    /// camera depth <paramref name="depth"/> (map units); −1 when the distance
+    /// is within <see cref="LightMargin"/> of a table step.
+    /// </summary>
+    private int ExpectedColormap(LevelMesh m, bool wall, int lightlevel, int contrast, double x, double y, double depth)
     {
-        byte mapped = Colormap.GetMap(IndexedTextures.ViewerLightToColormap(light))[index];
+        if (m.ColormapOverride >= 0)
+            return m.ColormapOverride;
+        double d = m.LightMode switch
+        {
+            LightDiminishing.None => m.LightReference,
+            LightDiminishing.Camera => depth,
+            _ => Math.Sqrt((x - m.LightOrigin.X) * (x - m.LightOrigin.X) + (y - m.LightOrigin.Y) * (y - m.LightOrigin.Y)),
+        };
+        int At(double units)
+        {
+            int dist = (int)(Math.Clamp(units, 0, LightTables.MaxDistanceUnits) * 65536.0); // the shader's conversion
+            return wall ? m.Lights.WallColormap(lightlevel, m.ExtraLight, contrast, dist) : m.Lights.PlaneColormap(lightlevel, m.ExtraLight, dist);
+        }
+        int colormap = At(d);
+        if (m.LightMode != LightDiminishing.None && (At(d - LightMargin) != colormap || At(d + LightMargin) != colormap))
+        {
+            _lightSkipped++;
+            return -1;
+        }
+        _lightLevels.Add(lightlevel >> LightTables.LIGHTSEGSHIFT);
+        if (wall)
+            _contrasts.Add(contrast);
+        _colormaps.Add(colormap);
+        return colormap;
+    }
+
+    /// <summary>The colour the level shader draws for palette index <paramref name="index"/> through COLORMAP row <paramref name="colormap"/> (palette 0).</summary>
+    private (int R, int G, int B) Shade(byte index, int colormap)
+    {
+        byte mapped = Colormap.GetMap(colormap)[index];
         (byte r, byte g, byte b) = Playpal.GetColor(0, mapped);
         return (r, g, b);
     }

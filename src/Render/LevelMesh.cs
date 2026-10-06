@@ -26,6 +26,13 @@ namespace IsoDoom.Render;
 /// texels per row): floor height, ceiling height (map units), light level.
 /// Change a <see cref="Sector"/> of <see cref="Level"/> and call
 /// <see cref="UpdateSectors"/> to move its floor and walls.</item>
+/// <item><b>Light</b> (T2.8): vanilla's <c>zlight</c>/<c>scalelight</c>
+/// (<see cref="LightTables"/>) in a small R8 texture, the fake contrast per
+/// wall quad (one quad per contrast run of a side, <see cref="SideContrasts"/>),
+/// and the distance by <see cref="LightDiminishing"/> (uniforms set with
+/// <see cref="SetLightDiminishing"/>, <see cref="SetLightOrigin"/>,
+/// <see cref="SetLightReference"/>, <see cref="SetExtraLight"/>,
+/// <see cref="SetColormapOverride"/>).</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -55,6 +62,7 @@ public sealed class LevelMesh
     {
         Level = level;
         Walls = walls;
+        Contrasts = SideContrasts.Build(level);
         Floors = floors;
         Textures = textures;
         _textureSlot = textureSlot;
@@ -67,6 +75,20 @@ public sealed class LevelMesh
     public WallSections Walls { get; }
     public FloorTriangles Floors { get; }
     public Textures Textures { get; }
+
+    /// <summary>The fake contrast runs of every side (r_segs.c, per seg): one wall quad per run.</summary>
+    public SideContrasts Contrasts { get; }
+
+    /// <summary>The light tables the shader reads (r_main.c, full-screen view; SPEC §12 T2.8).</summary>
+    public LightTables Lights { get; } = LightTables.R_InitLightTables();
+
+    public ImageTexture LightTablesTexture { get; private set; } = null!;
+
+    /// <summary>The light settings as last set (<see cref="SetLightDiminishing"/> and friends).</summary>
+    public LightDiminishing LightMode { get; private set; } = LightDiminishing.Player;
+    public Vector2 LightOrigin { get; private set; }
+    public float LightReference { get; private set; } = LightTables.DefaultReferenceDistance;
+    public int ExtraLight { get; private set; }
 
     /// <summary>The texture atlas; slot <c>i</c>'s rectangle is <c>Atlas.Rects[i]</c>.</summary>
     public TextureAtlas Atlas { get; }
@@ -84,7 +106,7 @@ public sealed class LevelMesh
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
-    /// <summary>Number of wall sections in the meshes, and of floor triangles.</summary>
+    /// <summary>Number of wall quads in the meshes (one per contrast run of each drawn section), and of floor triangles.</summary>
     public int WallQuads { get; private set; }
     public int FloorTriangleCount { get; private set; }
 
@@ -149,8 +171,47 @@ public sealed class LevelMesh
     /// <summary>Selects the wall tiling (<see cref="WallTextureTiling"/>).</summary>
     public void SetWallTiling(WallTextureTiling tiling) => Material.SetShaderParameter("wall_tiling", (int)tiling);
 
-    /// <summary>Forces one COLORMAP row everywhere (0–33), or -1 for the sector lights.</summary>
-    public void SetColormapOverride(int map) => Material.SetShaderParameter("colormap_override", map);
+    /// <summary>
+    /// Forces one COLORMAP row everywhere (0–33), or -1 for the sector lights:
+    /// vanilla's <c>fixedcolormap</c> (0 full bright, 1 light amplification
+    /// visor, 32 <c>INVERSECOLORMAP</c> for invulnerability).
+    /// </summary>
+    public void SetColormapOverride(int map)
+    {
+        ColormapOverride = map;
+        Material.SetShaderParameter("colormap_override", map);
+    }
+
+    /// <summary>The forced COLORMAP row (<see cref="SetColormapOverride"/>), -1 for none.</summary>
+    public int ColormapOverride { get; private set; } = -1;
+
+    /// <summary>Selects the distance light diminishing uses (<see cref="LightDiminishing"/>).</summary>
+    public void SetLightDiminishing(LightDiminishing mode)
+    {
+        LightMode = mode;
+        Material.SetShaderParameter("light_mode", (int)mode);
+    }
+
+    /// <summary>The player position for <see cref="LightDiminishing.Player"/>, in map units (x, y).</summary>
+    public void SetLightOrigin(Vector2 mapUnits)
+    {
+        LightOrigin = mapUnits;
+        Material.SetShaderParameter("light_origin", mapUnits);
+    }
+
+    /// <summary>The distance of <see cref="LightDiminishing.None"/>, in map units.</summary>
+    public void SetLightReference(float mapUnits)
+    {
+        LightReference = mapUnits;
+        Material.SetShaderParameter("light_reference", mapUnits);
+    }
+
+    /// <summary>r_main.c <c>extralight</c> (the player's weapon flash, 0–2), added to every light number.</summary>
+    public void SetExtraLight(int extralight)
+    {
+        ExtraLight = extralight;
+        Material.SetShaderParameter("extralight", extralight);
+    }
 
     /// <summary>Selects the PLAYPAL palette.</summary>
     public void SetPalette(int palette) => Material.SetShaderParameter("palette_index", palette);
@@ -200,8 +261,16 @@ public sealed class LevelMesh
         Material.SetShaderParameter("sector_data", SectorDataTexture);
         Material.SetShaderParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
         Material.SetShaderParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
+        LightTablesTexture = ImageTexture.CreateFromImage(
+            Image.CreateFromData(LightTables.TableWidth, LightTables.TableHeight, false, Image.Format.R8, Lights.ToBytes()));
+        Material.SetShaderParameter("light_tables", LightTablesTexture);
+        Material.SetShaderParameter("light_centerx", Lights.CenterX);
         SetPalette(0);
         SetColormapOverride(-1);
+        SetLightDiminishing(LightDiminishing.Player);
+        SetLightOrigin(Vector2.Zero);
+        SetLightReference(LightTables.DefaultReferenceDistance);
+        SetExtraLight(0);
         SetWallTiling(WallTextureTiling.Vanilla);
     }
 
@@ -256,21 +325,24 @@ public sealed class LevelMesh
                 continue;
             Chunk c = ChunkOf(s.FrontSector.Index);
             double dx = (s.V2.X - (double)s.V1.X) / 65536.0, dy = (s.V2.Y - (double)s.V1.Y) / 65536.0;
-            float u1 = (float)(s.TextureOffset / 65536.0);
-            float u2 = (float)(s.TextureOffset / 65536.0 + Math.Sqrt(dx * dx + dy * dy));
+            double length = Math.Sqrt(dx * dx + dy * dy);
             var c0 = new Vector4(KindWall, TextureSlot(s.Texture), s.FrontSector.Index, s.BackSector?.Index ?? -1);
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
-            var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), 0, 0);
-            Vector3 p1 = ToGodot(s.V1.X, s.V1.Y, 0), p2 = ToGodot(s.V2.X, s.V2.Y, 0);
-            int first = c.Vertices.Count;
-            c.Add(p1, new Vector2(u1, 0), c0, c1, c2); // V1 bottom
-            c.Add(p1, new Vector2(u1, 1), c0, c1, c2); // V1 top
-            c.Add(p2, new Vector2(u2, 1), c0, c1, c2); // V2 top
-            c.Add(p2, new Vector2(u2, 0), c0, c1, c2); // V2 bottom
-            // Seen from the front sector (on the side's right), V1 is on the left:
-            // V1b, V1t, V2t is clockwise on screen, Godot's front face.
-            c.Indices.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
-            WallQuads++;
+            foreach ((double from, double to, int contrast) in WallQuadRuns(s))
+            {
+                var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), contrast, 0);
+                float u1 = (float)(s.TextureOffset / 65536.0 + from), u2 = (float)(s.TextureOffset / 65536.0 + to);
+                Vector3 p1 = WallPoint(s, from / length), p2 = WallPoint(s, to / length);
+                int first = c.Vertices.Count;
+                c.Add(p1, new Vector2(u1, 0), c0, c1, c2); // V1 bottom
+                c.Add(p1, new Vector2(u1, 1), c0, c1, c2); // V1 top
+                c.Add(p2, new Vector2(u2, 1), c0, c1, c2); // V2 top
+                c.Add(p2, new Vector2(u2, 0), c0, c1, c2); // V2 bottom
+                // Seen from the front sector (on the side's right), V1 is on the left:
+                // V1b, V1t, V2t is clockwise on screen, Godot's front face.
+                c.Indices.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
+                WallQuads++;
+            }
         }
 
         const Mesh.ArrayFormat custom =
@@ -315,4 +387,38 @@ public sealed class LevelMesh
     }
 
     private static float Units(int fixedValue) => (float)(fixedValue / 65536.0);
+
+    /// <summary>
+    /// The quads a drawn section is split into: one per fake contrast run of
+    /// its side (<see cref="Contrasts"/>), as (from, to) distances from V1 in
+    /// map units (the float line length at the end) and the run's contrast.
+    /// </summary>
+    public List<(double From, double To, int Contrast)> WallQuadRuns(WallSection s)
+    {
+        double dx = (s.V2.X - (double)s.V1.X) / 65536.0, dy = (s.V2.Y - (double)s.V1.Y) / 65536.0;
+        double length = Math.Sqrt(dx * dx + dy * dy);
+        IReadOnlyList<ContrastRun> runs = Contrasts.Runs(s.Line, s.Side);
+        var quads = new List<(double, double, int)>();
+        if (runs.Count == 0) // T2.3 builds sections only for sides with segs; keep the linedef's contrast just in case
+            quads.Add((0, length, LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y)));
+        for (int i = 0; i < runs.Count; i++)
+        {
+            double from = i == 0 ? 0 : Math.Min(runs[i].Start / 65536.0, length);
+            double to = i + 1 < runs.Count ? Math.Min(runs[i + 1].Start / 65536.0, length) : length;
+            if (to > from)
+                quads.Add((from, to, runs[i].Contrast));
+        }
+        return quads;
+    }
+
+    /// <summary>The point a fraction <paramref name="t"/> of the way from the section's V1 to V2, at height 0, in Godot space.</summary>
+    public static Vector3 WallPoint(WallSection s, double t)
+    {
+        if (t <= 0)
+            return ToGodot(s.V1.X, s.V1.Y, 0);
+        if (t >= 1)
+            return ToGodot(s.V2.X, s.V2.Y, 0);
+        double x = s.V1.X + (s.V2.X - (double)s.V1.X) * t, y = s.V1.Y + (s.V2.Y - (double)s.V1.Y) * t;
+        return new Vector3((float)(x / 65536.0 / MapUnitsPerMetre), 0, (float)(-y / 65536.0 / MapUnitsPerMetre));
+    }
 }
