@@ -173,4 +173,66 @@ public class FloorTriangleTests
         FloorChecks.Check(map, polys, floors);
         Assert.All(Enumerable.Range(0, map.Subsectors.Length), i => Assert.Equal(polys.Polygons[i].Length == 0, floors.FloorSectorOf[i] < 0));
     }
+
+    // ---- SectorAt (T2.7's overlay: the floor under the free-fly camera) ----
+
+    [Fact]
+    public void SyntheticSectorAtMatchesTheBsp()
+    {
+        Level map = LoadSynthetic();
+        FloorTriangles floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
+        Assert.Equal(map.R_PointInSubsector(0, 0).Sector.Index, floors.SectorAt(0, 0)); // player 1 start
+        Assert.Equal(-1, floors.SectorAt(5000 << FRACBITS, 5000 << FRACBITS));
+        Assert.True(CheckSectorAtGrid(map, floors, 4) > 1000);
+    }
+
+    [Fact]
+    public void Doom1E1M1SectorAtMatchesTheBsp()
+    {
+        Level map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
+        FloorTriangles floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
+        Assert.Equal(38, floors.SectorAt(1056 << FRACBITS, -3616 << FRACBITS)); // player 1 start
+        // Inside the zig-zag corridor's bend: void, though the BSP's leaf there belongs to sector 16.
+        Assert.Equal(-1, floors.SectorAt(2336 << FRACBITS, -3957 << FRACBITS));
+        Assert.Equal(16, map.R_PointInSubsector(2336 << FRACBITS, -3957 << FRACBITS).Sector.Index);
+        Assert.True(CheckSectorAtGrid(map, floors, 16) > 10000);
+    }
+
+    /// <summary>
+    /// On a grid of <paramref name="step"/> map units over the map, wherever
+    /// a floor is drawn (<see cref="FloorTriangles.SectorAt"/>) more than a
+    /// unit from every linedef, <see cref="Level.R_PointInSubsector"/> names
+    /// the same sector (so the overlay's sector is the floor under the
+    /// camera). Returns the number of points compared.
+    /// </summary>
+    private static int CheckSectorAtGrid(Level map, FloorTriangles floors, int step)
+    {
+        int minX = map.Vertexes.Min(v => v.X >> FRACBITS), maxX = map.Vertexes.Max(v => v.X >> FRACBITS);
+        int minY = map.Vertexes.Min(v => v.Y >> FRACBITS), maxY = map.Vertexes.Max(v => v.Y >> FRACBITS);
+        var lines = map.Lines.Select(l => (X1: l.V1.X / 65536.0, Y1: l.V1.Y / 65536.0, X2: l.V2.X / 65536.0, Y2: l.V2.Y / 65536.0)).ToArray();
+        int compared = 0;
+        var wrong = new System.Collections.Generic.List<string>();
+        for (int y = minY + step / 2; y < maxY; y += step)
+        {
+            for (int x = minX + step / 2; x < maxX; x += step)
+            {
+                int drawn = floors.SectorAt(x << FRACBITS, y << FRACBITS);
+                if (drawn < 0 || lines.Any(l => DistanceToSegment(x, y, l) <= 1))
+                    continue;
+                compared++;
+                int bsp = map.R_PointInSubsector(x << FRACBITS, y << FRACBITS).Sector.Index;
+                if (bsp != drawn)
+                    wrong.Add($"({x}, {y}): floor of sector {drawn}, BSP sector {bsp}");
+            }
+        }
+        Assert.True(wrong.Count == 0, string.Join("\n", wrong.Take(20)));
+        return compared;
+    }
+
+    private static double DistanceToSegment(double x, double y, (double X1, double Y1, double X2, double Y2) l)
+    {
+        double dx = l.X2 - l.X1, dy = l.Y2 - l.Y1;
+        double t = Math.Clamp(((x - l.X1) * dx + (y - l.Y1) * dy) / (dx * dx + dy * dy), 0, 1);
+        return Math.Sqrt(Math.Pow(x - l.X1 - t * dx, 2) + Math.Pow(y - l.Y1 - t * dy, 2));
+    }
 }

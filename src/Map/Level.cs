@@ -151,6 +151,25 @@ public sealed class Level
         return Subsectors[nodenum & ~Node.NF_SUBSECTOR];
     }
 
+    /// <summary>
+    /// The start of player <paramref name="player"/> (0–3), as p_mobj.c
+    /// <c>P_SpawnMapThing</c> records it in <c>playerstarts[]</c>: the last
+    /// thing of type <c>player + 1</c> in <c>THINGS</c> (vanilla overwrites
+    /// earlier ones), or null when the map has none.
+    /// </summary>
+    public MapThing? PlayerStart(int player)
+    {
+        if (player is < 0 or > 3)
+            throw new ArgumentOutOfRangeException(nameof(player));
+        MapThing? start = null;
+        foreach (MapThing t in Things)
+        {
+            if (t.Type == player + 1)
+                start = t; // p_mobj.c: playerstarts[mthing->type-1] = *mthing;
+        }
+        return start;
+    }
+
     // ---- p_setup.c ----
 
     private static int Count(ReadOnlySpan<byte> lump, int recordSize) => lump.Length / recordSize;

@@ -30,6 +30,9 @@ public class SyntheticMapTests
         Assert.Equal(6, map.Sectors.Length);
         Assert.Equal(new MapThing(0, 0, 90, 1, 7), map.Things.Single(t => t.Type == 1));
         Assert.Equal(new MapThing(320, 64, 180, 3001, 7), map.Things[2]);
+        Assert.Equal(new MapThing(0, 0, 90, 1, 7), map.PlayerStart(0));
+        Assert.Null(map.PlayerStart(1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => map.PlayerStart(4));
     }
 
     [Fact]

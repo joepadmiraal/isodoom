@@ -199,6 +199,29 @@ public sealed class FloorTriangles
     }
 
     /// <summary>
+    /// The sector whose floor triangles cover the point (<paramref name="x"/>,
+    /// <paramref name="y"/>) (fixed_t; edges count as inside, the first
+    /// sector in index order wins on a shared edge), or −1 over the void.
+    /// What is drawn under a point, as opposed to <see cref="Level.R_PointInSubsector"/>,
+    /// which always finds a subsector, even outside the map (T2.7's overlay
+    /// shows both).
+    /// </summary>
+    public int SectorAt(int x, int y)
+    {
+        var p = new PolygonVertex(x, y);
+        foreach (SectorFloor floor in BySector)
+        {
+            for (int t = 0; t < floor.TriangleCount; t++)
+            {
+                PolygonVertex a = floor.Corner(t, 0), b = floor.Corner(t, 1), c = floor.Corner(t, 2);
+                if (TwiceArea(a, b, p) >= 0 && TwiceArea(b, c, p) >= 0 && TwiceArea(c, a, p) >= 0)
+                    return floor.Sector;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>
     /// Twice the area of a triangle in this class's winding (clockwise, y up),
     /// in fixed_t² (2^32 per square map unit): positive when clockwise.
     /// </summary>

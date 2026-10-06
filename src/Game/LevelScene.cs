@@ -26,14 +26,27 @@ namespace IsoDoom.Game;
 /// in map units, through the data texture after loading);
 /// <c>--level-screenshot=FILE.png</c> (save a capture and quit; needs a real
 /// renderer; the image is WAD data, keep it out of the repo);
+/// <c>--level-camera=overview|fly</c> (start with the overview or the free-fly
+/// camera, T2.7; default overview);
+/// <c>--level-script=COMMANDS</c> (feed scripted input: <see cref="LevelScript"/>);
 /// <c>--level-check</c> (load every map and check the meshes, data textures
 /// and, with a real renderer, drawn pixels: <see cref="LevelCheck"/>).
+/// </para>
+/// <para>
+/// Keys (T2.7; not under <c>--level-check</c>): Tab switches between the
+/// overview and the free-fly camera (<see cref="FreeFlyCamera"/>, which has
+/// its own keys), Home puts the free-fly camera at player 1's start, Page
+/// Down / Page Up load the next / previous map of the WAD, F1 shows the
+/// controls, F3 hides the overlay.
 /// </para>
 /// </summary>
 public partial class LevelScene : Node3D
 {
     private Camera3D _camera = null!;
     private Label _message = null!;
+    private string _status = "";
+    private Control _crosshair = null!;
+    private bool _showHelp;
     private readonly List<MeshInstance3D> _chunks = new();
 
     /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
@@ -50,6 +63,18 @@ public partial class LevelScene : Node3D
 
     /// <summary>The scene's camera (the overview camera; checks move it).</summary>
     public Camera3D Camera => _camera;
+
+    /// <summary>The free-fly debug camera (T2.7); null under <c>--level-check</c>, which must keep the overview camera current.</summary>
+    public FreeFlyCamera? FreeFly { get; private set; }
+
+    /// <summary>p_local.h <c>VIEWHEIGHT</c>: eye height above the floor, map units (where Home puts the free-fly camera).</summary>
+    public const int VIEWHEIGHT = 41;
+
+    /// <summary>Controls shown by F1.</summary>
+    public const string ControlsHelp =
+        "Tab overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   F1 controls   F3 overlay\n"
+        + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
+        + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
 
     /// <summary>The scene's environment (black background; checks change it).</summary>
     public Godot.Environment Environment { get; private set; } = null!;
@@ -75,8 +100,14 @@ public partial class LevelScene : Node3D
         };
         AddChild(new WorldEnvironment { Environment = Environment });
         Overlay = new CanvasLayer();
-        _message = new Label { Position = new Vector2(8, 8) };
+        _message = new Label
+        {
+            Position = new Vector2(8, 8),
+            LabelSettings = new LabelSettings { FontSize = 14, OutlineSize = 4, OutlineColor = Colors.Black },
+        };
         Overlay.AddChild(_message);
+        _crosshair = Crosshair();
+        Overlay.AddChild(_crosshair);
         AddChild(Overlay);
 
         try
@@ -84,9 +115,11 @@ public partial class LevelScene : Node3D
             OpenWad();
             if (IsCheckRun)
             {
-                AddChild(new LevelCheck(this)); // loads every map itself
+                AddChild(new LevelCheck(this)); // loads every map itself; no free-fly camera, no keys
                 return;
             }
+            FreeFly = new FreeFlyCamera { Name = "FreeFly" };
+            AddChild(FreeFly);
             string? map = WadLocator.GetUserArg("--level");
             if (map is null || map.StartsWith('-'))
                 map = DefaultMap();
@@ -101,9 +134,168 @@ public partial class LevelScene : Node3D
             return;
         }
         GetViewport().SizeChanged += FrameCamera;
-        if (WadLocator.GetUserArg("--level-screenshot") is string path)
+        if (WadLocator.GetUserArg("--level-camera") == "fly")
+            UseFreeFly(true);
+        if (WadLocator.GetUserArg("--level-script") is string script)
+            AddChild(new LevelScript(this, script));
+        else if (WadLocator.GetUserArg("--level-screenshot") is string path)
             _ = ScreenshotAsync(path);
     }
+
+    /// <summary>Makes the free-fly camera (<paramref name="fly"/>) or the overview camera current.</summary>
+    public void UseFreeFly(bool fly)
+    {
+        if (FreeFly is null)
+            return;
+        if (fly)
+            FreeFly.MakeCurrent();
+        else
+        {
+            _camera.MakeCurrent();
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+        }
+    }
+
+    /// <summary>Whether the free-fly camera is the current one.</summary>
+    public bool FreeFlyActive => FreeFly is { } f && f.Current;
+
+    /// <summary>
+    /// Puts the free-fly camera at player <paramref name="player"/>'s start of
+    /// the loaded map, at <see cref="VIEWHEIGHT"/> above its floor, facing
+    /// its angle (or at the map's centre when the map has no such start).
+    /// </summary>
+    public void JumpToStart(int player = 0)
+    {
+        if (FreeFly is null || Mesh is null)
+            return;
+        Level level = Mesh.Level;
+        if (level.PlayerStart(player) is MapThing start)
+        {
+            Sector sector = level.R_PointInSubsector(start.X << Fixed.FRACBITS, start.Y << Fixed.FRACBITS).Sector;
+            float z = (sector.FloorHeight >> Fixed.FRACBITS) + VIEWHEIGHT;
+            FreeFly.Place(LevelMesh.ToGodot(start.X << Fixed.FRACBITS, start.Y << Fixed.FRACBITS, z), FreeFlyCamera.YawForMapAngle(start.Angle), 0);
+        }
+        else
+            FreeFly.Place(Mesh.Bounds.GetCenter(), 0, -30);
+    }
+
+    /// <summary>Loads the map <paramref name="step"/> places after the current one in <see cref="MapNames"/> (wrapping).</summary>
+    public void SwitchMap(int step)
+    {
+        if (MapNames.Count == 0)
+            return;
+        int i = Mesh is null ? -1 : IndexOfMap(Mesh.Level.Name);
+        string next = MapNames[Mathf.PosMod(i + step, MapNames.Count)];
+        try
+        {
+            LoadMap(next);
+        }
+        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
+        {
+            GD.PrintErr($"Level: {next}: {e.Message}");
+            _status = $"{next}: {e.Message}";
+        }
+    }
+
+    private int IndexOfMap(string map)
+    {
+        for (int i = 0; i < MapNames.Count; i++)
+        {
+            if (MapNames[i] == map)
+                return i;
+        }
+        return -1;
+    }
+
+    public override void _UnhandledInput(InputEvent e)
+    {
+        if (IsCheckRun || e is not InputEventKey { Pressed: true, Echo: false } key)
+            return;
+        switch (key.PhysicalKeycode)
+        {
+            case Key.Tab:
+                UseFreeFly(!FreeFlyActive);
+                break;
+            case Key.Home:
+                JumpToStart();
+                UseFreeFly(true);
+                break;
+            case Key.Pagedown:
+                SwitchMap(1);
+                break;
+            case Key.Pageup:
+                SwitchMap(-1);
+                break;
+            case Key.F1:
+                _showHelp = !_showHelp;
+                break;
+            case Key.F3:
+                Overlay.Visible = !Overlay.Visible;
+                break;
+            default:
+                return;
+        }
+        GetViewport().SetInputAsHandled();
+    }
+
+    public override void _Process(double delta)
+    {
+        _crosshair.Visible = FreeFlyActive;
+        if (!IsCheckRun && Overlay.Visible)
+            _message.Text = OverlayText();
+    }
+
+    /// <summary>A small cross at the screen centre (the free-fly camera's view direction; straight down it marks the floor the overlay names).</summary>
+    private static Control Crosshair()
+    {
+        var root = new Control { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+        root.SetAnchorsPreset(Control.LayoutPreset.Center);
+        foreach (Rect2 r in new[] { new Rect2(-6, -1, 5, 2), new Rect2(1, -1, 5, 2), new Rect2(-1, -6, 2, 5), new Rect2(-1, 1, 2, 5) })
+            root.AddChild(new ColorRect { Position = r.Position, Size = r.Size, Color = Colors.White, MouseFilter = Control.MouseFilterEnum.Ignore });
+        return root;
+    }
+
+    /// <summary>
+    /// The debug overlay (SPEC §10): map, FPS, camera; for the free-fly camera
+    /// its position in map units, angle, and the subsector and sector under it
+    /// (<see cref="Level.R_PointInSubsector"/>); then the build status.
+    /// </summary>
+    public string OverlayText()
+    {
+        var text = new System.Text.StringBuilder();
+        string map = Mesh?.Level.Name ?? "no map";
+        text.Append($"{map} ({IndexOfMap(map) + 1}/{MapNames.Count})   FPS {Engine.GetFramesPerSecond():F0}   ");
+        if (FreeFly is { } fly && fly.Current)
+        {
+            text.Append(fly.IsOrthographic
+                ? $"free-fly, orthographic {fly.Size * LevelMesh.MapUnitsPerMetre:F0} units"
+                : $"free-fly, perspective {fly.Fov:F0}°");
+            text.Append($"   speed {fly.Speed:F0}/s\n");
+            (int x, int y, int z) = MapPosition(fly.Pivot);
+            text.Append($"x {x}  y {y}  z {z}   angle {fly.MapAngle:F0}°  pitch {fly.Pitch:F0}°\n");
+            if (Mesh is not null)
+            {
+                int fx = ToFixed(fly.Pivot.X * LevelMesh.MapUnitsPerMetre), fy = ToFixed(-fly.Pivot.Z * LevelMesh.MapUnitsPerMetre);
+                Subsector ss = Mesh.Level.R_PointInSubsector(fx, fy);
+                Sector s = ss.Sector;
+                int drawn = Mesh.Floors.SectorAt(fx, fy);
+                text.Append($"sector {s.Index} (floor {s.FloorHeight >> Fixed.FRACBITS} {s.FloorPic}, ceiling {s.CeilingHeight >> Fixed.FRACBITS}, light {s.LightLevel})   subsector {ss.Index}");
+                text.Append(drawn == s.Index ? "\n" : drawn < 0 ? "   (outside the map: no floor here)\n" : $"   (floor drawn here: sector {drawn})\n");
+            }
+        }
+        else
+            text.Append(FreeFly is null ? "overview\n" : "overview (Tab: free-fly)\n");
+        text.Append(_status);
+        text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
+        return text.ToString();
+    }
+
+    /// <summary>A Godot-space point in whole map units (x, y, height), rounded.</summary>
+    public static (int X, int Y, int Z) MapPosition(Vector3 p) =>
+        ((int)MathF.Round(p.X * LevelMesh.MapUnitsPerMetre), (int)MathF.Round(-p.Z * LevelMesh.MapUnitsPerMetre), (int)MathF.Round(p.Y * LevelMesh.MapUnitsPerMetre));
+
+    /// <summary>Map units to fixed_t, clamped to the fixed_t range.</summary>
+    private static int ToFixed(float units) => (int)Math.Clamp(Math.Round(units * 65536.0), int.MinValue, int.MaxValue);
 
     /// <summary>Opens the IWAD <see cref="WadLocator"/> finds and reads its texture table, palettes and map list.</summary>
     private void OpenWad()
@@ -180,11 +372,13 @@ public partial class LevelScene : Node3D
         Mesh = mesh;
 
         FrameCamera();
+        if (FreeFly is not null)
+            JumpToStart();
         string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");
-        _message.Text = text;
+        _message.Text = _status = text;
     }
 
     private void MoveFloors(Level level, string moves)
@@ -251,7 +445,7 @@ public partial class LevelScene : Node3D
     private void Fail(string message)
     {
         GD.PrintErr($"Level: {message}");
-        _message.Text = message;
+        _message.Text = _status = message;
         if (IsCheckRun)
             GD.PrintErr("Level check: FAILED (no WAD loaded)");
         if (WadLocator.HasUserArg("--level-screenshot") || IsCheckRun)

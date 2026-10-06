@@ -30,6 +30,8 @@ public class Doom1MapTests
 
         MapThing start = Assert.Single(map.Things, t => t.Type == 1);
         Assert.Equal(new MapThing(1056, -3616, 90, 1, MapThing.MTF_EASY | MapThing.MTF_NORMAL | MapThing.MTF_HARD), start);
+        Assert.Equal(start, map.PlayerStart(0));
+        Assert.All(new[] { 1, 2, 3 }, p => Assert.NotNull(map.PlayerStart(p))); // co-op starts
         Sector startSector = map.R_PointInSubsector(start.X << FRACBITS, start.Y << FRACBITS).Sector;
         Assert.Equal(38, startSector.Index);
         Assert.Equal(0, startSector.FloorHeight);
