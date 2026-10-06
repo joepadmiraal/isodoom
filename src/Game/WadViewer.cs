@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Godot;
 using IsoDoom.Render;
 using IsoDoom.Wad;
@@ -15,11 +16,15 @@ namespace IsoDoom.Game;
 /// (UI, menus, fonts, intermission) and the palette tables. Graphics are
 /// uploaded as indexed RG8 textures and coloured by the palette shader, with a
 /// light-level slider (COLORMAP), an invulnerability toggle and a PLAYPAL
-/// palette selector. The IWAD comes from <see cref="WadLocator"/>; when none is found the
+/// palette selector. A second tab lists every lump of the merged archive
+/// (<see cref="LumpDirectory"/>: name, size, file, namespace, kind; lumps a
+/// later file overrides are greyed out); selecting a graphic lump shows it as
+/// the graphic browser does, with the browser's category and entry switched to
+/// it, and double-clicking it opens the browser tab. The IWAD comes from <see cref="WadLocator"/>; when none is found the
 /// viewer opens a file picker and remembers the choice.
 /// <para>
 /// User arguments (after <c>--</c>): <c>--viewer-check</c> walks every
-/// graphic, checks it uploads and, with a real renderer, that the drawn
+/// graphic and every row of the lump list, checks it uploads and, with a real renderer, that the drawn
 /// pixels match the CPU palette conversion, then quits (exit code 1 on a
 /// failure). <c>--viewer-screenshots=DIR</c> saves a few viewport captures
 /// to DIR and quits. See <see cref="WadViewerCheck"/>.
@@ -29,9 +34,24 @@ public partial class WadViewer : Control
 {
     private static readonly string[] CategoryNames = { "Wall textures", "Flats", "Sprites", "Wall patches", "Other graphics", "Palette" };
 
+    /// <summary>Lump list columns.</summary>
+    public const int LumpColumnIndex = 0, LumpColumnName = 1, LumpColumnSize = 2, LumpColumnFile = 3, LumpColumnNamespace = 4, LumpColumnKind = 5;
+    private static readonly string[] LumpColumnTitles = { "#", "Name", "Size", "File", "Namespace", "Kind" };
+    private const int GraphicsTab = 0, LumpsTab = 1;
+    private const float GraphicsTabWidth = 240, LumpsTabWidth = 700;
+
     private GraphicsCatalog? _catalog;
     private ShaderMaterial? _material;
     private FileDialog _picker = null!;
+
+    private TabContainer _tabs = null!;
+    private LineEdit _lumpFilter = null!;
+    private OptionButton _lumpKind = null!;
+    private Tree _lumpTree = null!;
+    private IReadOnlyList<LumpEntry>? _lumps;
+    private readonly List<int> _lumpRows = new(); // archive lump indices behind the tree rows
+    private readonly Dictionary<int, TreeItem> _lumpItems = new();
+    private bool _selectingLump;
 
     private OptionButton _category = null!;
     private LineEdit _filter = null!;
@@ -60,6 +80,26 @@ public partial class WadViewer : Control
 
     /// <summary>The main view (for checks and captures).</summary>
     public IndexedGraphicRect MainView => _main;
+
+    /// <summary>Every lump of the loaded archive, classified (the lump list's rows when unfiltered).</summary>
+    public IReadOnlyList<LumpEntry>? Lumps => _lumps;
+
+    /// <summary>The archive lump indices of the lump list's rows, in order.</summary>
+    public IReadOnlyList<int> LumpRows => _lumpRows;
+
+    /// <summary>The lump selected in the lump list, or null.</summary>
+    public LumpEntry? CurrentLump { get; private set; }
+
+    /// <summary>The graphic browser's selected entry (catalog index), frame and rotation slot.</summary>
+    public int? CurrentEntry => CurrentRow();
+    public int CurrentFrame => Math.Max(0, _frame.Selected);
+    public int CurrentSlot => Math.Max(0, _rotation.Selected);
+
+    /// <summary>True when the main view shows a graphic (false for a non-graphic lump).</summary>
+    public bool MainViewShown => _main.Visible;
+
+    /// <summary>The text the info line shows.</summary>
+    public string InfoText => _info.Text;
 
     /// <summary>The COLORMAP row and PLAYPAL palette the shader currently uses.</summary>
     public int CurrentColormap { get; private set; }
@@ -131,6 +171,13 @@ public partial class WadViewer : Control
         }
 
         _catalog = catalog;
+        _lumps = LumpDirectory.Build(catalog.Wad);
+        CurrentLump = null;
+        _lumpFilter.Editable = true;
+        _lumpKind.Disabled = false;
+        _lumpFilter.Text = "";
+        _lumpKind.Select(0);
+        RebuildLumpTree();
         _material = IndexedTextures.CreatePaletteMaterial(
             IndexedTextures.CreatePlaypalTexture(_catalog.Playpal),
             IndexedTextures.CreateColormapTexture(_catalog.Colormap));
@@ -191,6 +238,38 @@ public partial class WadViewer : Control
         OnEntrySelected(index, frame, slot);
     }
 
+    /// <summary>Shows the graphic browser tab (true) or the lump list tab (false).</summary>
+    public void ShowTab(bool lumps) => _tabs.CurrentTab = lumps ? LumpsTab : GraphicsTab;
+
+    /// <summary>Clears the lump list's filters, so it shows every lump.</summary>
+    public void ClearLumpFilter()
+    {
+        _lumpFilter.Text = "";
+        _lumpKind.Select(0);
+        RebuildLumpTree();
+    }
+
+    /// <summary>The text of a lump list cell (<c>LumpColumn*</c>) for archive lump <paramref name="index"/>.</summary>
+    public string LumpCellText(int index, int column) => _lumpItems[index].GetText(column);
+
+    /// <summary>Selects archive lump <paramref name="index"/> in the lump list, as a click does.</summary>
+    public void SelectLump(int index)
+    {
+        if (!_lumpItems.TryGetValue(index, out TreeItem? item))
+            throw new ArgumentOutOfRangeException(nameof(index), "Lump is filtered out.");
+        _selectingLump = true;
+        try
+        {
+            item.Select(0);
+        }
+        finally
+        {
+            _selectingLump = false;
+        }
+        _lumpTree.ScrollToItem(item);
+        OnLumpSelected(index);
+    }
+
     /// <summary>Sets the light level (0–255) and invulnerability toggle and the PLAYPAL palette.</summary>
     public void SetLighting(int light, bool invulnerable, int palette)
     {
@@ -220,9 +299,11 @@ public partial class WadViewer : Control
         split.AddThemeConstantOverride("separation", 8);
         margin.AddChild(split);
 
-        // Left: category, filter, list.
-        var left = new VBoxContainer { CustomMinimumSize = new Vector2(240, 0) };
-        split.AddChild(left);
+        // Left: a graphic browser tab (category, filter, list) and a lump list tab.
+        _tabs = new TabContainer { CustomMinimumSize = new Vector2(GraphicsTabWidth, 0) };
+        split.AddChild(_tabs);
+        var left = new VBoxContainer { Name = "Graphics" };
+        _tabs.AddChild(left);
         _category = new OptionButton();
         foreach (string name in CategoryNames)
             _category.AddItem(name);
@@ -234,6 +315,50 @@ public partial class WadViewer : Control
         _list = new ItemList { SizeFlagsVertical = SizeFlags.ExpandFill };
         _list.ItemSelected += row => OnEntrySelected(_shown[(int)row], 0, 0);
         left.AddChild(_list);
+
+        var lumps = new VBoxContainer { Name = "Lumps" };
+        _tabs.AddChild(lumps);
+        var lumpFilters = new HBoxContainer();
+        lumps.AddChild(lumpFilters);
+        _lumpFilter = new LineEdit { PlaceholderText = "Filter by name", ClearButtonEnabled = true, Editable = false, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _lumpFilter.TextChanged += _ => RebuildLumpTree();
+        lumpFilters.AddChild(_lumpFilter);
+        _lumpKind = new OptionButton { Disabled = true, TooltipText = "Show only lumps of this kind" };
+        _lumpKind.AddItem("All kinds");
+        foreach (LumpKind kind in Enum.GetValues<LumpKind>())
+            _lumpKind.AddItem(LumpDirectory.KindName(kind));
+        _lumpKind.ItemSelected += _ => RebuildLumpTree();
+        lumpFilters.AddChild(_lumpKind);
+        _lumpTree = new Tree
+        {
+            Columns = LumpColumnTitles.Length,
+            ColumnTitlesVisible = true,
+            HideRoot = true,
+            SelectMode = Tree.SelectModeEnum.Row,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            TooltipText = "Select a graphic to show it; double-click to open it in the Graphics tab",
+        };
+        int[] widths = { 60, 104, 64, 120, 84, 0 };
+        for (int c = 0; c < LumpColumnTitles.Length; c++)
+        {
+            _lumpTree.SetColumnTitle(c, LumpColumnTitles[c]);
+            _lumpTree.SetColumnExpand(c, widths[c] == 0);
+            _lumpTree.SetColumnClipContent(c, true);
+            if (widths[c] > 0)
+                _lumpTree.SetColumnCustomMinimumWidth(c, widths[c]);
+        }
+        _lumpTree.ItemSelected += () =>
+        {
+            if (!_selectingLump && _lumpTree.GetSelected() is TreeItem item)
+                OnLumpSelected(item.GetMetadata(0).AsInt32());
+        };
+        _lumpTree.ItemActivated += () =>
+        {
+            if (_catalog is not null && _lumpTree.GetSelected() is TreeItem item && _catalog.Locate(item.GetMetadata(0).AsInt32()) is not null)
+                ShowTab(lumps: false);
+        };
+        lumps.AddChild(_lumpTree);
+        _tabs.TabChanged += OnTabChanged; // after the tabs exist: adding the first one emits it
 
         // Right: controls, sprite controls, info, view.
         var right = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -364,6 +489,7 @@ public partial class WadViewer : Control
             return;
         GraphicCategory category = Category;
         ClearStrip();
+        _spriteBar.Visible = category == GraphicCategory.Sprites;
         if (category != GraphicCategory.Sprites)
         {
             Show(_catalog.Get(category, index));
@@ -413,9 +539,106 @@ public partial class WadViewer : Control
     private void Show(GraphicView view)
     {
         CurrentView = view;
+        _main.Visible = true;
         _main.SetGraphic(view.Image, view.Flip, _material!);
         _main.Zoom = (int)_zoom.Value;
         _info.Text = view.Label;
+    }
+
+    private void OnTabChanged(long tab)
+    {
+        _tabs.CustomMinimumSize = new Vector2(tab == LumpsTab ? LumpsTabWidth : GraphicsTabWidth, 0);
+        // Back in the browser: show its selection again (the lump list may have shown something else).
+        if (tab == GraphicsTab && CurrentRow() is int idx)
+            OnEntrySelected(idx, CurrentFrame, CurrentSlot);
+    }
+
+    private void RebuildLumpTree()
+    {
+        _lumpTree.Clear();
+        _lumpRows.Clear();
+        _lumpItems.Clear();
+        if (_lumps is null)
+            return;
+        TreeItem root = _lumpTree.CreateItem();
+        string filter = _lumpFilter.Text.Trim().ToUpperInvariant();
+        LumpKind? kind = _lumpKind.Selected > 0 ? (LumpKind)(_lumpKind.Selected - 1) : null;
+        var dim = new Color(0.55f, 0.55f, 0.55f);
+        foreach (LumpEntry e in _lumps)
+        {
+            if (filter.Length > 0 && !e.Lump.Name.Contains(filter, StringComparison.Ordinal))
+                continue;
+            if (kind is LumpKind k && e.Kind != k)
+                continue;
+            TreeItem item = _lumpTree.CreateItem(root);
+            item.SetMetadata(0, e.Index);
+            item.SetText(LumpColumnIndex, e.Index.ToString());
+            item.SetText(LumpColumnName, e.Lump.Name);
+            item.SetText(LumpColumnSize, e.Lump.Size.ToString());
+            item.SetTextAlignment(LumpColumnSize, HorizontalAlignment.Right);
+            item.SetText(LumpColumnFile, e.Lump.File.Name);
+            item.SetText(LumpColumnNamespace, LumpDirectory.NamespaceName(e.Lump.Namespace));
+            item.SetText(LumpColumnKind, KindText(e));
+            if (e.IsOverridden)
+            {
+                for (int c = 0; c < LumpColumnTitles.Length; c++)
+                    item.SetCustomColor(c, dim);
+                item.SetTooltipText(LumpColumnKind, $"Not used: overridden by {e.OverriddenBy!.Name} in {e.OverriddenBy.File.Name}");
+            }
+            _lumpRows.Add(e.Index);
+            _lumpItems[e.Index] = item;
+        }
+    }
+
+    private static string KindText(LumpEntry e)
+    {
+        string text = LumpDirectory.KindName(e.Kind);
+        if (e.Detail.Length > 0)
+            text += $" ({e.Detail})";
+        if (e.OverriddenBy is WadLump by)
+            text += $", overridden by {by.File.Name}";
+        return text;
+    }
+
+    private void OnLumpSelected(int index)
+    {
+        if (_catalog is null || _lumps is null)
+            return;
+        LumpEntry e = _lumps[index];
+        CurrentLump = e;
+        string line = $"Lump #{e.Index} {e.Lump.Name}: {e.Lump.Size} bytes, {e.Lump.File.Name} entry {e.Lump.Index}, "
+            + $"{LumpDirectory.NamespaceName(e.Lump.Namespace)} namespace, {KindText(e)}"
+            + (e.OverriddenBy is WadLump by ? $" (#{_lumps.First(x => ReferenceEquals(x.Lump, by)).Index} {by.Name})" : "");
+
+        if (_catalog.Locate(index) is GraphicLocation loc)
+        {
+            // Switch the graphic browser to it (its list only, not the tab) and show it from there.
+            if (Category != loc.Category || _filter.Text.Length > 0)
+                SelectCategory(loc.Category);
+            SelectEntry(loc.Index, loc.Frame, loc.Slot);
+            _info.Text = $"{line}\n{_info.Text}";
+            return;
+        }
+
+        ClearStrip();
+        _spriteBar.Visible = false;
+        if (e.IsGraphic)
+        {
+            string note = e.OverriddenBy is WadLump o ? $"overridden by {o.File.Name}, so no list shows it" : "not used by any sprite frame";
+            try
+            {
+                Show(_catalog.ViewLump(e.Lump, note));
+                _info.Text = $"{line}\n{_info.Text}";
+                return;
+            }
+            catch (WadFormatException ex)
+            {
+                line += $"\nCannot decode it: {ex.Message}";
+            }
+        }
+        CurrentView = null;
+        _main.Visible = false;
+        _info.Text = line;
     }
 
     private void ClearStrip()

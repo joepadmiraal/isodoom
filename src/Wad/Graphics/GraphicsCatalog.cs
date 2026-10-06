@@ -32,6 +32,13 @@ public enum GraphicCategory
 public readonly record struct GraphicView(GraphicCategory Category, string Name, IndexedImage Image, bool Flip, string Label);
 
 /// <summary>
+/// Where the viewer lists a lump: entry <paramref name="Index"/> of
+/// <paramref name="Category"/>, and for sprites the frame and rotation slot
+/// that show it unmirrored.
+/// </summary>
+public readonly record struct GraphicLocation(GraphicCategory Category, int Index, int Frame = 0, int Slot = 0);
+
+/// <summary>
 /// Everything in a WAD that the viewer can show, as index images (no Godot
 /// types; the viewer uploads them). Each category has a name list; sprites are
 /// listed by sprite (only those with frames) and picked further by frame and
@@ -49,6 +56,7 @@ public sealed class GraphicsCatalog
     private readonly IReadOnlyList<WadLump> _patches;
     private readonly IReadOnlyList<WadLump> _graphics;
     private readonly List<SpriteDef> _sprites = new();
+    private Dictionary<WadLump, GraphicLocation>? _locations;
 
     private GraphicsCatalog(WadArchive wad)
     {
@@ -184,6 +192,81 @@ public sealed class GraphicsCatalog
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Where lump <paramref name="lumpIndex"/> (an index into
+    /// <see cref="WadArchive.Lumps"/>) is listed, or null when no list shows
+    /// it (a non-graphic, an overridden lump, a sprite lump no frame uses).
+    /// A sprite lump gives the first frame slot that draws it unmirrored;
+    /// <c>PLAYPAL</c> and <c>COLORMAP</c> give their palette views.
+    /// </summary>
+    public GraphicLocation? Locate(int lumpIndex)
+    {
+        _locations ??= BuildLocations();
+        return _locations.TryGetValue(_wad.Lumps[lumpIndex], out GraphicLocation loc) ? loc : null;
+    }
+
+    /// <summary>
+    /// The picture of a patch-format or flat lump decoded directly, for lumps
+    /// that no list shows (see <see cref="Locate"/>). Flat-namespace lumps
+    /// decode as flats, everything else as patches.
+    /// </summary>
+    public GraphicView ViewLump(WadLump lump, string note)
+    {
+        if (lump.Namespace == LumpNamespace.Flats)
+            return new(GraphicCategory.Flats, lump.Name, Flat.Decode(lump.Data.Span, lump.Name), false,
+                $"{lump.Name}  64x64 flat ({lump.File.Name}); {note}");
+        IndexedImage img = Patch.Decode(lump.Data.Span, lump.Name);
+        GraphicCategory category = lump.Namespace switch
+        {
+            LumpNamespace.Sprites => GraphicCategory.Sprites,
+            LumpNamespace.Patches => GraphicCategory.Patches,
+            _ => GraphicCategory.Graphics,
+        };
+        return new(category, lump.Name, img, false,
+            $"{lump.Name}  {img.Width}x{img.Height}, offset {img.LeftOffset},{img.TopOffset} ({lump.File.Name}); {note}");
+    }
+
+    private Dictionary<WadLump, GraphicLocation> BuildLocations()
+    {
+        var map = new Dictionary<WadLump, GraphicLocation>(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < _flats.Count; i++)
+            map[_flats[i]] = new(GraphicCategory.Flats, i);
+        for (int i = 0; i < _patches.Count; i++)
+            map[_patches[i]] = new(GraphicCategory.Patches, i);
+        for (int i = 0; i < _graphics.Count; i++)
+            map[_graphics[i]] = new(GraphicCategory.Graphics, i);
+        for (int i = 0; i < _sprites.Count; i++)
+        {
+            SpriteDef def = _sprites[i];
+            for (int frame = 0; frame < def.NumFrames; frame++)
+            {
+                SpriteFrame f = def.Frames[frame];
+                for (int slot = 0; slot < 8; slot++)
+                {
+                    if (!f.Flip[slot])
+                        map.TryAdd(_wad.Lumps[f.Lump[slot]], new(GraphicCategory.Sprites, i, frame, slot));
+                }
+            }
+        }
+        // Mirrored-only uses (a lump installed only as the second half of a pair).
+        for (int i = 0; i < _sprites.Count; i++)
+        {
+            SpriteDef def = _sprites[i];
+            for (int frame = 0; frame < def.NumFrames; frame++)
+            {
+                SpriteFrame f = def.Frames[frame];
+                for (int slot = 0; slot < 8; slot++)
+                    map.TryAdd(_wad.Lumps[f.Lump[slot]], new(GraphicCategory.Sprites, i, frame, slot));
+            }
+        }
+        int playpal = _wad.W_CheckNumForName(PlaypalView), colormap = _wad.W_CheckNumForName(ColormapView);
+        if (playpal >= 0)
+            map.TryAdd(_wad.Lumps[playpal], new(GraphicCategory.Palette, 0));
+        if (colormap >= 0)
+            map.TryAdd(_wad.Lumps[colormap], new(GraphicCategory.Palette, 1));
+        return map;
     }
 
     private static GraphicView PatchView(GraphicCategory category, WadLump lump)

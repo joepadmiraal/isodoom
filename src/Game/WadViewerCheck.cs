@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Render;
+using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Game;
@@ -18,8 +19,13 @@ namespace IsoDoom.Game;
 /// compares every pixel of the graphic with the CPU palette conversion
 /// (<see cref="IndexedImage.ToRgba"/>, the path the T1.3/T1.4 reference PNGs
 /// use), mirrored when the view is flipped, under three lighting settings.
-/// Transparent pixels must show the background. Prints a summary and quits
-/// with exit code 1 on any failure.</item>
+/// Transparent pixels must show the background. Then it walks every row of
+/// the lump list (T1.6a): the list must hold every lump of the merged archive
+/// in order with its name, size, file and namespace; selecting a graphic lump
+/// (patch, flat, sprite, other graphic) must show exactly that lump's picture,
+/// with the browser switched to its entry when it has one, and pass the same
+/// upload and pixel checks; selecting any other lump must hide the main view.
+/// Prints a summary and quits with exit code 1 on any failure.</item>
 /// <item><c>--viewer-screenshots=DIR</c>: saves viewport captures of a few
 /// showcase graphics to DIR (keep it out of the repo, or in a gitignored
 /// folder: the images are WAD data) and quits.</item>
@@ -46,7 +52,10 @@ public partial class WadViewerCheck : Node
             DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
             await NextFrame();
             if (WadLocator.HasUserArg("--viewer-check"))
+            {
                 await CheckAll();
+                await CheckLumps();
+            }
             if (WadLocator.GetUserArg("--viewer-screenshots") is string dir)
                 await Screenshots(dir);
         }
@@ -112,6 +121,106 @@ public partial class WadViewerCheck : Node
         _viewer.MainView.SolidBackground = null;
         _viewer.SetZoom(2);
         _viewer.SetLighting(255, false, 0);
+    }
+
+    private async Task CheckLumps()
+    {
+        GraphicsCatalog catalog = _viewer.Catalog ?? throw new InvalidOperationException("No WAD loaded.");
+        IReadOnlyList<LumpEntry> lumps = _viewer.Lumps ?? throw new InvalidOperationException("No lump list.");
+        WadArchive wad = catalog.Wad;
+        bool gpu = CanCapture;
+        Color background = UnusedColor(catalog.Playpal);
+        _viewer.MainView.SolidBackground = background;
+        _viewer.SetZoom(1);
+        _viewer.SetLighting(255, false, 0);
+        _viewer.ShowTab(lumps: true);
+        _viewer.ClearLumpFilter();
+        await NextFrame();
+
+        // The list holds every lump, in archive order, with the right cells.
+        if (lumps.Count != wad.NumLumps || _viewer.LumpRows.Count != wad.NumLumps)
+            Fail($"lump list: {_viewer.LumpRows.Count} rows, {lumps.Count} entries, the archive has {wad.NumLumps} lumps");
+        for (int row = 0; row < _viewer.LumpRows.Count; row++)
+        {
+            int i = _viewer.LumpRows[row];
+            WadLump lump = wad.Lumps[i];
+            if (i != row || !ReferenceEquals(lumps[i].Lump, lump)
+                || _viewer.LumpCellText(i, WadViewer.LumpColumnName) != lump.Name
+                || _viewer.LumpCellText(i, WadViewer.LumpColumnSize) != lump.Size.ToString()
+                || _viewer.LumpCellText(i, WadViewer.LumpColumnFile) != lump.File.Name
+                || _viewer.LumpCellText(i, WadViewer.LumpColumnNamespace) != LumpDirectory.NamespaceName(lump.Namespace)
+                || !_viewer.LumpCellText(i, WadViewer.LumpColumnKind).StartsWith(LumpDirectory.KindName(lumps[i].Kind), StringComparison.Ordinal))
+                Fail($"lump list row {row}: wrong lump or cells for #{i} {lump.Name}");
+        }
+
+        int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0;
+        var kinds = new int[Enum.GetValues<LumpKind>().Length];
+        foreach (int i in _viewer.LumpRows)
+        {
+            LumpEntry e = lumps[i];
+            kinds[(int)e.Kind]++;
+            _viewer.SelectLump(i);
+            string what = $"lump #{i} {e.Lump.Name} ({e.Kind})";
+            if (!ReferenceEquals(_viewer.CurrentLump, e))
+            {
+                Fail($"{what}: not the selected lump");
+                continue;
+            }
+            if (!_viewer.InfoText.Contains(e.Lump.Name, StringComparison.Ordinal))
+                Fail($"{what}: the info line doesn't name it");
+            GraphicLocation? loc = catalog.Locate(i);
+            if (!e.IsGraphic && loc is null)
+            {
+                if (_viewer.MainViewShown || _viewer.CurrentView is not null)
+                    Fail($"{what}: a non-graphic lump left a graphic shown");
+                others++;
+                continue;
+            }
+
+            if (!_viewer.MainViewShown || _viewer.CurrentView is not GraphicView view)
+            {
+                Fail($"{what}: no graphic shown");
+                continue;
+            }
+            if (loc is GraphicLocation l)
+            {
+                // Shown through the browser: its category and entry (and sprite frame/slot) point at it.
+                if (_viewer.Category != l.Category || _viewer.CurrentEntry != l.Index
+                    || (l.Category == GraphicCategory.Sprites && (_viewer.CurrentFrame != l.Frame || _viewer.CurrentSlot != l.Slot)))
+                    Fail($"{what}: the browser shows {_viewer.Category} entry {_viewer.CurrentEntry}, expected {l}");
+            }
+            if (!e.IsGraphic)
+            {
+                tables++; // PLAYPAL/COLORMAP open their palette views
+            }
+            else
+            {
+                if (loc is null)
+                    direct++;
+                else
+                    viaBrowser++;
+                IndexedImage expected = e.Kind == LumpKind.Flat ? Flat.Decode(e.Lump.Data.Span, e.Lump.Name) : Patch.Decode(e.Lump.Data.Span, e.Lump.Name);
+                IndexedImage shown = view.Image;
+                if (view.Name != e.Lump.Name || view.Flip || shown.Width != expected.Width || shown.Height != expected.Height
+                    || shown.LeftOffset != expected.LeftOffset || shown.TopOffset != expected.TopOffset
+                    || !shown.Pixels.AsSpan().SequenceEqual(expected.Pixels) || !shown.Opaque.AsSpan().SequenceEqual(expected.Opaque))
+                    Fail($"{what}: shows {view.Category}/{view.Name}{(view.Flip ? " flipped" : "")}, not the lump's picture");
+            }
+            pixels += await CheckCurrent(gpu, background);
+        }
+        var kindSummary = new List<string>();
+        foreach (LumpKind k in Enum.GetValues<LumpKind>())
+        {
+            if (kinds[(int)k] > 0)
+                kindSummary.Add($"{kinds[(int)k]} {LumpDirectory.KindName(k)}");
+        }
+        GD.Print($"WAD viewer check: lump list: {_viewer.LumpRows.Count} lumps ({string.Join(", ", kindSummary)}); "
+            + $"{viaBrowser + direct} graphic lumps shown ({viaBrowser} through the browser, {direct} directly), "
+            + $"{tables} palette tables shown, {others} other lumps"
+            + (gpu ? $", {pixels} drawn pixels compared" : " (headless: upload only)"));
+        _viewer.ShowTab(lumps: false);
+        _viewer.MainView.SolidBackground = null;
+        _viewer.SetZoom(2);
     }
 
     /// <summary>Checks the current view's upload and, when possible, its drawn pixels. Returns pixels compared.</summary>
@@ -205,7 +314,8 @@ public partial class WadViewerCheck : Node
             }
             if (index < 0)
             {
-                Fail($"screenshot: {category}/{name} not found");
+                // The showcase list is DOOM1's; other IWADs lack some entries (Doom II has no BRNBIGC).
+                GD.Print($"WAD viewer: screenshot {file} skipped, {category}/{name} is not in this WAD");
                 return;
             }
             _viewer.SetLighting(light, invuln, palette);
@@ -237,6 +347,33 @@ public partial class WadViewerCheck : Node
         await Shot("play_a.png", GraphicCategory.Sprites, "PLAY", 0, 2);
         await Shot("playpal.png", GraphicCategory.Palette, GraphicsCatalog.PlaypalView, zoom: 16);
         await Shot("colormap.png", GraphicCategory.Palette, GraphicsCatalog.ColormapView, zoom: 3);
+
+        async Task LumpShot(string file, string name)
+        {
+            int index = catalog.Wad.W_CheckNumForName(name);
+            if (index < 0)
+            {
+                Fail($"screenshot: lump {name} not found");
+                return;
+            }
+            _viewer.ShowTab(lumps: true);
+            _viewer.ClearLumpFilter();
+            _viewer.SetLighting(255, false, 0);
+            _viewer.SetZoom(3);
+            _viewer.SelectLump(index);
+            await NextFrame();
+            await NextFrame();
+            string path = Path.Combine(dir, file);
+            Error err = _viewer.GetViewport().GetTexture().GetImage().SavePng(path);
+            if (err != Error.Ok)
+                Fail($"screenshot {path}: {err}");
+            else
+                GD.Print($"WAD viewer: saved {path}");
+        }
+
+        await LumpShot("lumps_trooa1.png", "TROOA1");
+        await LumpShot("lumps_demo1.png", "DEMO1");
+        _viewer.ShowTab(lumps: false);
         _viewer.SetLighting(255, false, 0);
         _viewer.SetZoom(2);
     }
