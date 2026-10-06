@@ -161,9 +161,12 @@ public class MapThingSpawnTests
         MapThingSpawn[] list = MapThingSpawning.SpawnList(map.Things, new SpawnSettings(GameMode.shareware, skill));
         Assert.Equal(
             new[] { (MapThingSpawnKind.PlayerStart, mobjtype_t.NUMMOBJTYPES), (MapThingSpawnKind.Mobj, mobjtype_t.MT_BARREL), (MapThingSpawnKind.Mobj, mobjtype_t.MT_TROOP) },
-            list.Select(s => (s.Kind, s.Type)));
+            list.Take(3).Select(s => (s.Kind, s.Type)));
         Assert.Equal(0x80000000u, list[2].Angle);
-        Assert.Equal("Mobj 2; PlayerStart 1; MT_TROOP 1; MT_BARREL 1; player 1", Summary(list));
+        // T3.5's imps facing the other seven directions, the lamp and the hanging body.
+        Assert.Equal(new uint[] { 0, 0x20000000, 0x40000000, 0x60000000, 0xA0000000, 0xC0000000, 0xE0000000 }, list.Skip(3).Take(7).Select(s => s.Angle));
+        Assert.Equal(new[] { mobjtype_t.MT_MISC31, mobjtype_t.MT_MISC56 }, list.Skip(10).Select(s => s.Type));
+        Assert.Equal("Mobj 11; PlayerStart 1; MT_TROOP 8; MT_BARREL 1; MT_MISC31 1; MT_MISC56 1; player 1", Summary(list));
     }
 
     // Checked once against vanilla (doomgeneric at T2.9's pinned commit, the

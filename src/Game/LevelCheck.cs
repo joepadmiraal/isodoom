@@ -58,7 +58,10 @@ namespace IsoDoom.Game;
 /// camera depth, and (one tile) with a fixed colormap. Pixels whose distance
 /// is within <see cref="LightMargin"/> of a table step are skipped; at least
 /// two sector light levels and both fake contrasts must be compared. The
-/// cutaway (T3.4) from the game camera's angle: see LevelCheck.Cutaway.cs.</item>
+/// cutaway (T3.4) from the game camera's angle: see LevelCheck.Cutaway.cs.
+/// These views hide the things.</item>
+/// <item><b>Thing sprites</b> (T3.5; the atlas and every map's billboards
+/// headless, drawn sprites with a renderer): see LevelCheck.Sprites.cs.</item>
 /// </list>
 /// Prints a summary and quits with exit code 1 on any failure.
 /// </summary>
@@ -174,6 +177,7 @@ public partial class LevelCheck : Godot.Node
             slots += CheckSlots(m, map);
             CheckLightTables(m, map);
             CheckCursorGround(m, map);
+            CheckThings(m, map);
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
@@ -183,6 +187,8 @@ public partial class LevelCheck : Godot.Node
         }
         GD.Print($"Level check: {_scene.MapNames.Count} maps built: {sectors} sector data texels, {slots} texture slots, "
             + $"{sections} wall sections and {vertices} vertices checked against the levels");
+        GD.Print($"Level check: things: {_thingsChecked} billboards checked against the spawn lists (skill {(int)_scene.Skill + 1}), "
+            + "positions, sectors and the rotations of an orthographic and a perspective camera");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
@@ -717,6 +723,9 @@ public partial class LevelCheck : Godot.Node
         _background = UnusedColor(Playpal);
         _scene.Environment.BackgroundColor = Color.Color8((byte)_background.R, (byte)_background.G, (byte)_background.B);
         _scene.Overlay.Visible = false;
+        // The level's own views are compared without the things (T3.5: SpriteChecks shows them).
+        if (_scene.Things is { } things)
+            things.Visible = false;
 
         // Light (T2.8): the player-distance mapping (default) from player 1's
         // start; then top-down again with no diminishing (and extralight 1),
@@ -770,6 +779,8 @@ public partial class LevelCheck : Godot.Node
         m.SetWallTiling(WallTextureTiling.Vanilla);
         GD.Print($"Level check: {map}: {sizeTiling.Count} wall sections where the tilings differ, again in texture-size tiling: {wallPixels} drawn pixels compared");
 
+        await SpriteChecks(m);
+
         await CutawayCheck(m);
 
         if (move is { } mv)
@@ -784,6 +795,8 @@ public partial class LevelCheck : Godot.Node
             Fail($"{map}: walls of both orientations (fake contrast -1 and +1) must be compared");
 
         _scene.Overlay.Visible = true;
+        if (_scene.Things is { } shown)
+            shown.Visible = true;
         _scene.Environment.BackgroundColor = oldBackground;
         _scene.FrameCamera();
     }
@@ -1384,9 +1397,10 @@ public partial class LevelCheck : Godot.Node
     /// origin, reference distance, extralight and override) for a wall or
     /// floor point at map (<paramref name="x"/>, <paramref name="y"/>) and
     /// camera depth <paramref name="depth"/> (map units); −1 when the distance
-    /// is within <see cref="LightMargin"/> of a table step.
+    /// is within <see cref="LightMargin"/> of a table step. A <paramref name="sprite"/>
+    /// is lit as a wall with no contrast (r_things.c <c>spritelights</c>; T3.5).
     /// </summary>
-    private int ExpectedColormap(LevelMesh m, bool wall, int lightlevel, int contrast, double x, double y, double depth)
+    private int ExpectedColormap(LevelMesh m, bool wall, int lightlevel, int contrast, double x, double y, double depth, bool sprite = false)
     {
         if (m.ColormapOverride >= 0)
             return m.ColormapOverride;
@@ -1408,7 +1422,7 @@ public partial class LevelCheck : Godot.Node
             return -1;
         }
         _lightLevels.Add(lightlevel >> LightTables.LIGHTSEGSHIFT);
-        if (wall)
+        if (wall && !sprite)
             _contrasts.Add(contrast);
         _colormaps.Add(colormap);
         return colormap;

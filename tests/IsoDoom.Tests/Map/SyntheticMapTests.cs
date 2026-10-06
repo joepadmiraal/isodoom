@@ -20,7 +20,7 @@ public class SyntheticMapTests
     {
         Level map = Load();
         Assert.Equal("E1M1", map.Name);
-        Assert.Equal(3, map.Things.Length);
+        Assert.Equal(12, map.Things.Length);
         Assert.Equal(20, map.Lines.Length);
         Assert.Equal(24, map.Sides.Length);
         Assert.Equal(18, map.Vertexes.Length);

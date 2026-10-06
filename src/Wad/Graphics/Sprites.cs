@@ -25,6 +25,27 @@ public sealed class SpriteFrame
     public bool Rotate { get; }
     public IReadOnlyList<int> Lump { get; }
     public IReadOnlyList<bool> Flip { get; }
+
+    /// <summary>
+    /// r_things.c <c>R_ProjectSprite</c>'s choice of lump for a viewer: a
+    /// rotating frame shows rotation <see cref="Sprites.R_ProjectSpriteRotation"/>
+    /// of <paramref name="ang"/> (BAM: the direction from the viewpoint to the
+    /// thing, vanilla's <c>R_PointToAngle (thing-&gt;x, thing-&gt;y)</c>) and
+    /// <paramref name="thingAngle"/> (the thing's facing, BAM); a rotation-0
+    /// frame shows slot 0 for all views. <c>Rot</c> is the slot used (0 for
+    /// rotation-0 frames); <c>Flip</c> mirrors the lump's columns.
+    /// </summary>
+    public (int Lump, bool Flip, int Rot) Select(uint ang, uint thingAngle)
+    {
+        if (!Rotate)
+        {
+            // use single rotation for all views
+            return (Lump[0], Flip[0], 0);
+        }
+        // choose a different rotation based on player view
+        int rot = Sprites.R_ProjectSpriteRotation(ang, thingAngle);
+        return (Lump[rot], Flip[rot], rot);
+    }
 }
 
 /// <summary>A sprite and its frames A, B, … (r_defs.h <c>spritedef_t</c>).</summary>
@@ -79,6 +100,19 @@ public sealed class Sprites
         for (int i = 0; i < sprites.Length; i++)
             _indexByName.TryAdd(sprites[i].Name, i);
     }
+
+    /// <summary>tables.h <c>ANG45</c> (BAM).</summary>
+    private const uint ANG45 = 0x20000000;
+
+    /// <summary>
+    /// r_things.c <c>R_ProjectSprite</c>: the rotation slot (0–7, rotation
+    /// <c>rot + 1</c>) a viewer sees of a thing facing <paramref name="thingAngle"/>
+    /// when the direction from the viewpoint to the thing is <paramref name="ang"/>
+    /// (both BAM): <c>rot = (ang-thing-&gt;angle+(unsigned)(ANG45/2)*9)&gt;&gt;29</c>.
+    /// Slot 0 is the thing's front (it faces the viewer), slot 4 its back.
+    /// </summary>
+    public static int R_ProjectSpriteRotation(uint ang, uint thingAngle) =>
+        (int)(unchecked(ang - thingAngle + (ANG45 / 2) * 9) >> 29);
 
     /// <summary>r_things.c <c>sprites[]</c>, in the order of the name list.</summary>
     public IReadOnlyList<SpriteDef> SpriteDefs => _sprites;

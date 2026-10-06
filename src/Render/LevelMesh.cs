@@ -117,8 +117,16 @@ public sealed class LevelMesh
     /// <summary>The material of the masked middles (a chunk's last surface, when it has any; T3.1). Its parameters follow <see cref="Material"/>'s.</summary>
     public ShaderMaterial MaskedMaterial { get; private set; } = null!;
 
-    /// <summary>Both materials, for setting a shader parameter on each.</summary>
-    public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial };
+    /// <summary>
+    /// The material of the level's thing sprites (T3.5, <c>shaders/sprite.gdshader</c>,
+    /// used by <see cref="ThingSprites"/>): it gets every shared parameter
+    /// (palette, light tables and settings, sector data) with the other two;
+    /// its sprite atlas is set by <see cref="ThingSprites.Bind"/>.
+    /// </summary>
+    public ShaderMaterial SpriteMaterial { get; private set; } = null!;
+
+    /// <summary>Every material (level, masked, sprites), for setting a shader parameter on each.</summary>
+    public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial, SpriteMaterial };
 
     public ImageTexture AtlasTexture { get; private set; } = null!;
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
@@ -286,11 +294,11 @@ public sealed class LevelMesh
     /// <summary>The <c>texture_info</c> texel of texture slot <paramref name="slot"/> as uploaded: atlas x, y, width, height.</summary>
     public Color TextureInfo(int slot) => _infoImage.GetPixel(slot % DataWidth, slot / DataWidth);
 
-    /// <summary>Sets a shader parameter on both materials.</summary>
+    /// <summary>Sets a shader parameter on every material (the sprite shader ignores the ones it lacks).</summary>
     private void SetParameter(string name, Variant value)
     {
-        Material.SetShaderParameter(name, value);
-        MaskedMaterial.SetShaderParameter(name, value);
+        foreach (ShaderMaterial material in Materials)
+            material.SetShaderParameter(name, value);
     }
 
     private void WriteSector(Sector s) =>
@@ -317,6 +325,7 @@ public sealed class LevelMesh
 
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
+        SpriteMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShaderPath) };
         SetParameter("atlas", AtlasTexture);
         SetParameter("texture_info", TextureInfoTexture);
         SetParameter("sector_data", SectorDataTexture);

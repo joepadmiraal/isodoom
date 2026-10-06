@@ -22,7 +22,8 @@ namespace IsoDoom.Tools.SyntheticIwad;
 /// <c>P_START</c>/<c>P1_START</c> with a duplicate name (the later copy wins,
 /// the earlier one is overridden); flats in <c>F_START</c>/<c>F1_START</c>;
 /// sprites in <c>S_START</c> with a fully rotated frame (mirrored pairs) and
-/// two rotation-0 frames, plus a sprite lump no sprite uses; global graphics
+/// rotation-0 frames (one full bright in its spawn state, one for a thing
+/// hanging from the ceiling), plus a sprite lump no sprite uses; global graphics
 /// (title, status bar, menu, font glyphs, with offsets and transparency); a
 /// map with a real BSP tree and every wall-section case (see <c>BuildMap</c>); ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
 /// speaker sounds, a demo and a plain text lump.
@@ -77,6 +78,8 @@ public static class SyntheticIwad
         w.Lump("BAR1A0", EncodePatch(Barrel(0)));
         w.Lump("BAR1B0", EncodePatch(Barrel(1)));
         w.Lump("XXXXA0", EncodePatch(Barrel(2))); // in no sprite name list: listed, but no sprite frame
+        w.Lump("COLUA0", EncodePatch(Lamp()));      // floor lamp (MT_MISC31): a full-bright spawn frame
+        w.Lump("GOR2A0", EncodePatch(Hanging()));   // hanging body (MT_MISC56): spawns on the ceiling
         w.Markers("S_END");
 
         w.Markers("P_START", "P1_START");
@@ -358,7 +361,8 @@ public static class SyntheticIwad
 
     private static Image Arrow()
     {
-        // Asymmetric (points right, notch at the top), so a mirrored rotation is visibly mirrored.
+        // Asymmetric (points right, notch at the top), so a mirrored rotation is visibly mirrored. A foot
+        // (rows 44-55) reaches 4 rows below the origin, as many of id's sprites do (T3.5).
         var img = new Image(41, 56, 20, 52);
         for (int y = 0; y < 56; y++)
         {
@@ -367,8 +371,43 @@ public static class SyntheticIwad
                 bool head = x >= 20 && Math.Abs(y - 28) <= 40 - x;
                 bool shaft = x < 20 && y >= 22 && y <= 34;
                 bool notch = y < 6 && x > 26;
-                if ((head || shaft) && !notch)
+                bool foot = y >= 44 && x >= 12 && x <= 24 + (y - 44) / 3;
+                if ((head || shaft || foot) && !notch)
                     img.Set(x, y, Index(x / 6, 2 + y / 14, 1));
+            }
+        }
+        return img;
+    }
+
+    private static Image Lamp()
+    {
+        // A post with a bright bulb; 3 rows below the origin.
+        var img = new Image(15, 48, 7, 45);
+        for (int y = 0; y < 48; y++)
+        {
+            for (int x = 0; x < 15; x++)
+            {
+                bool bulb = y < 12 && (x - 7) * (x - 7) + (y - 6) * (y - 6) <= 36;
+                bool post = y >= 12 && Math.Abs(x - 7) <= (y >= 44 ? 6 : 2);
+                if (bulb || post)
+                    img.Set(x, y, bulb ? Index(7, 6 + (x + y) % 2, 1) : Index(2 + y % 3, 2, 2));
+            }
+        }
+        return img;
+    }
+
+    private static Image Hanging()
+    {
+        // A rope and a hanging shape, asymmetric; its origin is near the bottom, as id's hanging sprites.
+        var img = new Image(20, 60, 9, 58);
+        for (int y = 0; y < 60; y++)
+        {
+            for (int x = 0; x < 20; x++)
+            {
+                bool rope = y < 20 && x >= 8 && x <= 10;
+                bool body = y >= 20 && Math.Abs(x - 9) <= 3 + (y - 20) / 8 && !(y > 50 && x < 6);
+                if (rope || body)
+                    img.Set(x, y, rope ? Index(5, 5, 0) : Index(6, (x + 2 * y) % 4, 0));
             }
         }
         return img;
@@ -554,7 +593,18 @@ public static class SyntheticIwad
         w.Lump("THINGS", Shorts( // x, y, angle, type, flags (all skills)
             0, 0, 90, 1, 7,           // player 1 start
             64, 64, 0, 2035, 7,       // barrel (BAR1)
-            320, 64, 180, 3001, 7));  // imp (TROO), in the east room's north subsector
+            320, 64, 180, 3001, 7,    // imp (TROO), in the east room's north subsector
+            // T3.5: imps facing the other seven directions (every rotation and mirror from any one
+            // view), a full-bright lamp and a thing hanging from room C's ceiling.
+            -80, 80, 0, 3001, 7,
+            -80, 0, 45, 3001, 7,
+            -80, -80, 90, 3001, 7,
+            0, -80, 135, 3001, 7,
+            80, -80, 225, 3001, 7,
+            80, 0, 270, 3001, 7,
+            0, 80, 315, 3001, 7,
+            784, 0, 0, 2028, 7,       // floor lamp (COLU, full bright) in courtyard A
+            576, 0, 0, 59, 7));       // hanging body (GOR2, MF_SPAWNCEILING) in room C
         var linedefs = new List<short>();
         for (int i = 0; i < MapLinedefs.GetLength(0); i++)
         {

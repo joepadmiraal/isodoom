@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
 using IsoDoom.Render;
+using IsoDoom.Sim;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
@@ -40,6 +41,7 @@ namespace IsoDoom.Game;
 /// (default 80), <c>--level-cutaway-height=UNITS</c> (the cutoff above the
 /// player's floor, default 32), <c>--level-cutaway-cursor=on|off</c> (the
 /// cursor ground point cuts too; default off);
+/// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-origin=X,Y</c> (the player position light
 /// diminishing uses, in map units; by default the free-fly camera's pivot, or
@@ -83,6 +85,20 @@ public partial class LevelScene : Node3D
     public Textures? Textures { get; private set; }
     public Playpal? Playpal { get; private set; }
     public Colormap? Colormap { get; private set; }
+
+    /// <summary>The WAD's sprite index and its sprite atlas (T3.5; null when the sprites can't be indexed).</summary>
+    public Sprites? Sprites { get; private set; }
+    public SpriteAtlas? SpriteAtlas { get; private set; }
+
+    /// <summary>The IWAD's game mode (which things spawn, T3.2).</summary>
+    public GameMode GameMode { get; private set; }
+
+    /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
+    public skill_t Skill { get; private set; } = skill_t.sk_medium;
+
+    /// <summary>The loaded map's things as spawned on <see cref="Skill"/> (T3.2's spawn list, <see cref="SpawnedThings"/>), and their billboards (T3.5).</summary>
+    public SpawnedThing[] SpawnedThings { get; private set; } = Array.Empty<SpawnedThing>();
+    public ThingSprites? Things { get; private set; }
 
     /// <summary>The maps of the WAD (<c>ExMy</c>/<c>MAPxx</c> headers followed by <c>THINGS</c>), in lump order, each once.</summary>
     public IReadOnlyList<string> MapNames { get; private set; } = Array.Empty<string>();
@@ -167,6 +183,10 @@ public partial class LevelScene : Node3D
 
         try
         {
+            if (WadLocator.GetUserArg("--level-skill") is string skill)
+                Skill = int.TryParse(skill, out int n) && n >= 1 && n <= 5
+                    ? (skill_t)(n - 1)
+                    : throw new ArgumentException($"--level-skill: \"{skill}\" (1-5)");
             OpenWad();
             if (IsCheckRun)
             {
@@ -266,14 +286,6 @@ public partial class LevelScene : Node3D
 
         Placeholder = new PlayerPlaceholder { Name = "Placeholder" };
         AddChild(Placeholder);
-        try
-        {
-            Placeholder.LoadSprite(Wad!, Sprites.R_InitSprites(Wad!), Playpal!);
-        }
-        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
-        {
-            GD.PushWarning($"Level: no player sprite: {e.Message}");
-        }
 
         // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
         var ring = new TorusMesh { InnerRadius = 5f / LevelMesh.MapUnitsPerMetre, OuterRadius = 8f / LevelMesh.MapUnitsPerMetre, Rings = 16, RingSegments = 4 };
@@ -451,6 +463,8 @@ public partial class LevelScene : Node3D
         if (!IsCheckRun && Mesh is not null)
         {
             UpdateGameCamera(delta);
+            if (GetViewport().GetCamera3D() is Camera3D current)
+                Things?.UpdateRotations(current);
             Mesh.SetLightOrigin(LightOrigin());
             UpdateCutaway();
         }
@@ -652,12 +666,24 @@ public partial class LevelScene : Node3D
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
         ModifiedGame.D_CheckModifiedGame(wad, info);
         Textures = Textures.R_InitTextures(wad);
+        GameMode = info.GameMode;
+        try
+        {
+            Sprites = Sprites.R_InitSprites(wad);
+            SpriteAtlas = SpriteAtlas.Build(wad, Sprites);
+        }
+        catch (WadFormatException e)
+        {
+            GD.PushWarning($"Level: no sprites: {e.Message}");
+            (Sprites, SpriteAtlas) = (null, null);
+        }
         Playpal = Playpal.Load(wad);
         Colormap = Colormap.Load(wad);
         MapNames = FindMaps(wad);
         Wad = wad;
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
-        GD.Print($"Level: {found.Path}: {info}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms");
+        GD.Print($"Level: {found.Path}: {info}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms"
+            + (SpriteAtlas is { } sa ? $" (sprite atlas: {sa.Lumps.Count} lumps in {sa.Atlas.Image.Width}x{sa.Atlas.Image.Height}, {sa.BuildMilliseconds:F0} ms)" : ""));
     }
 
     /// <summary>The first of <c>E1M1</c>/<c>MAP01</c> the WAD has (else <c>MAP01</c>, which then fails to load).</summary>
@@ -694,6 +720,9 @@ public partial class LevelScene : Node3D
         _chunks.Clear();
         Chunks = Array.Empty<MeshInstance3D?>();
         Mesh = null;
+        Things?.QueueFree();
+        Things = null;
+        SpawnedThings = Array.Empty<SpawnedThing>();
 
         var clock = Stopwatch.StartNew();
         Level level = Level.Load(wad, map);
@@ -712,20 +741,56 @@ public partial class LevelScene : Node3D
             _chunks.Add(node);
             Chunks[s] = node;
         }
+        BuildThings(level, mesh);
         clock.Stop();
         LastLoadMilliseconds = clock.Elapsed.TotalMilliseconds;
         Mesh = mesh;
+        if (SpriteAtlas is not null)
+            Placeholder?.Bind(SpriteAtlas, mesh.SpriteMaterial);
 
         FrameCamera();
         if (FreeFly is not null)
             JumpToStart();
         PlaceholderToStart();
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked, "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked, {SpawnedThings.Length} things, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");
         _message.Text = _status = text;
     }
+
+    /// <summary>
+    /// The map's things on <see cref="Skill"/> (T3.2's spawn list; the player
+    /// start is the placeholder's) as billboards (T3.5). A thing type the
+    /// game doesn't know (vanilla <c>I_Error</c>s) leaves the map without things.
+    /// </summary>
+    private void BuildThings(Level level, LevelMesh mesh)
+    {
+        if (SpriteAtlas is null)
+            return;
+        try
+        {
+            SpawnedThings = IsoDoom.Sim.SpawnedThings.Build(level, MapThingSpawning.SpawnList(level.Things, new SpawnSettings(GameMode, Skill)));
+        }
+        catch (WadFormatException e)
+        {
+            GD.PushWarning($"Level: {level.Name}: no things: {e.Message}");
+            SpawnedThings = Array.Empty<SpawnedThing>();
+        }
+        var entries = new ThingSprites.Entry[SpawnedThings.Length];
+        for (int i = 0; i < entries.Length; i++)
+            entries[i] = ThingEntry(SpawnedThings[i]);
+        Things = new ThingSprites { Name = "Things" };
+        Things.Bind(SpriteAtlas, mesh.SpriteMaterial);
+        Things.SetEntries(entries);
+        AddChild(Things);
+        if (Things.MissingFrames > 0)
+            GD.PushWarning($"Level: {level.Name}: {Things.MissingFrames} thing(s) whose spawn frame the WAD lacks are not drawn");
+    }
+
+    /// <summary>A spawned thing as a billboard entry (map units).</summary>
+    public static ThingSprites.Entry ThingEntry(SpawnedThing t) =>
+        new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright);
 
     private void MoveFloors(Level level, string moves)
     {
