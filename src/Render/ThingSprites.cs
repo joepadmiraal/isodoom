@@ -39,7 +39,8 @@ namespace IsoDoom.Render;
 /// </list>
 /// Per-instance custom data: (atlas slot, or −1 to hide; flags: 1 flip, 2
 /// full bright, 4 actor (T3.4b: the cutaway keeps it whole unless
-/// <see cref="CutawayThings.All"/>); sector; radius in map units (T3.5a)). Positions and frames are set by the owner
+/// <see cref="CutawayThings.All"/>), 8 the player's own sprite (T4.7a: its
+/// minimum light, <see cref="SpriteSettings.PlayerLight"/>); sector; radius in map units (T3.5a)). Positions and frames are set by the owner
 /// (<see cref="SetEntries"/>, <see cref="SetEntry"/>).
 /// </summary>
 public partial class ThingSprites : MultiMeshInstance3D
@@ -53,7 +54,7 @@ public partial class ThingSprites : MultiMeshInstance3D
     public const float PullMargin = 1f;
 
     /// <summary>Custom data flags.</summary>
-    public const int FlagFlip = 1, FlagFullBright = 2, FlagActor = 4;
+    public const int FlagFlip = 1, FlagFullBright = 2, FlagActor = 4, FlagOwn = 8;
 
     /// <summary>
     /// One thing: map position (x, y, z in map units), facing (BAM), sector
@@ -65,9 +66,12 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// walls behind it (T3.5a, <see cref="SpriteSettings.WallPull"/>), and
     /// the height its blob shadow lies at (T4.7: the mobj's <c>floorz</c>,
     /// so a flying or falling thing's shadow stays on the floor; null: at
-    /// <see cref="MapPosition"/>'s z).
+    /// <see cref="MapPosition"/>'s z), and whether it is the console
+    /// player's own sprite (T4.7a: lit at least at
+    /// <see cref="SpriteSettings.PlayerLight"/>; <see cref="PlayerSprite"/>
+    /// sets it).
     /// </summary>
-    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null);
+    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null, bool Own = false);
 
     public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
 
@@ -320,7 +324,7 @@ public partial class ThingSprites : MultiMeshInstance3D
             return;
         _shown[i] = shown;
         bool hidden = _isolated is int only && only != i;
-        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0);
+        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0) | (e.Own ? FlagOwn : 0);
         _custom[i] = new Color(hidden ? -1 : shown.Slot, flags, e.Sector, e.Radius);
         Multimesh.SetInstanceCustomData(i, _custom[i]);
         Shadows.Multimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));

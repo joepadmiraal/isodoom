@@ -7,7 +7,8 @@
 // One MultiMesh instance per thing (IsoDoom.Render.ThingSprites):
 //   instance transform  the thing's position (Godot space; basis identity)
 //   INSTANCE_CUSTOM     atlas slot (-1: draw nothing), flags (1 flip, 2 full
-//                       bright, 4 actor), sector (light), radius (map units)
+//                       bright, 4 actor, 8 the player's own sprite), sector
+//                       (light), radius (map units)
 //   VERTEX              sprite space: x 0 left / 1 right; y 0 bottom row,
 //                       1 the patch origin's height, 2 top row; z 1 for the
 //                       lower quad (the rows below the origin)
@@ -77,7 +78,8 @@
 // Light: one colormap per instance, as vanilla's per vissprite: the
 // `colormap_override` (vanilla fixedcolormap) if set, else colormap 0 for
 // full-bright frames, else scalelight[(sector light >> 4) + extralight]
-// [scale] with no fake contrast, the scale from the distance the walls use
+// [scale] with no fake contrast (the player's own sprite, flag 8, with its
+// sector light raised to at least `own_light`, T4.7a: SpriteSettings.PlayerLight), the scale from the distance the walls use
 // (`light_mode`: 0 the reference, 1 the horizontal distance from
 // `light_origin` to the thing, at least `light_near`, 2 the thing's view depth). The CPU reference is
 // IsoDoom.Map.LightTables.WallColormap with contrast 0. The level shader's
@@ -119,6 +121,8 @@ uniform float tilt = 0.0;
 uniform int tilt_depth = 0;
 uniform int outline = -1;
 uniform float wall_pull = 0.0;
+// The player's own sprite's minimum light level (T4.7a; 0: none).
+uniform int own_light = 0;
 // The cutaway (T3.4, T3.4b): the level shader's uniforms, and which things it
 // cuts (0 none, 1 all but actors, 2 all).
 uniform int cut_mode = 0;
@@ -162,6 +166,9 @@ int sprite_colormap(int flags, int sector, vec3 foot_world, mat4 view) {
 		return 0;
 	}
 	int light = clamp(int(data_texel(sector_data, sector).b + 0.5), 0, 255);
+	if ((flags & 8) != 0) {
+		light = max(light, own_light);
+	}
 	int lightnum = clamp((light >> LIGHTSEGSHIFT) + extralight, 0, LIGHTLEVELS - 1);
 	vec2 map_xy = vec2(foot_world.x, -foot_world.z) * MAP_UNITS_PER_METRE;
 	float d = light_mode == 0 ? light_reference

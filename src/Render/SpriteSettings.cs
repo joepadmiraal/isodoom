@@ -59,8 +59,9 @@ public enum SpriteShadowStyle
 /// <summary>
 /// The thing sprites' readability options (T3.6, SPEC §7.5, §12, §13 Q3):
 /// billboard tilt towards the camera, blob shadows and outlines, the
-/// pull away from walls behind (T3.5a) and the upright hiding (T3.6a). Each is a presentation option; the
-/// defaults are the ones chosen in T3.6 and T3.5a.
+/// pull away from walls behind (T3.5a), the upright hiding (T3.6a) and the
+/// player's minimum light (T4.7a). Each is a presentation option; the
+/// defaults are the ones chosen in T3.6, T3.5a and T4.7a.
 /// </summary>
 public sealed record SpriteSettings
 {
@@ -116,6 +117,32 @@ public sealed record SpriteSettings
 
     /// <summary>A one-texel outline around sprites in this palette index (lit as the sprite), or −1 for none.</summary>
     public int Outline { get; init; } = DefaultOutline;
+
+    /// <summary>The default minimum light of the player's own sprite (SPEC §12 T4.7a).</summary>
+    public const int DefaultPlayerLight = 128;
+
+    /// <summary>
+    /// The player's own sprite's minimum light level (T4.7a, 0–255; 0 for
+    /// none, lit as any thing): the sprite is lit as if its sector's light
+    /// were at least this (then light diminishing, <c>extralight</c> and the
+    /// fixed colormaps as usual), so it stays visible in dark sectors while
+    /// the room stays dark. Vanilla never draws its own player.
+    /// </summary>
+    public int PlayerLight { get; init; } = DefaultPlayerLight;
+
+    /// <summary>
+    /// The light level a sprite is lit by (the shader's rule; the CPU
+    /// reference): its sector's <paramref name="sectorLight"/>, raised to
+    /// <see cref="PlayerLight"/> for the player's own sprite.
+    /// </summary>
+    public int SpriteLight(int sectorLight, bool own) => own ? Math.Max(sectorLight, PlayerLight) : sectorLight;
+
+    /// <summary>Parses the player's minimum light: <c>off</c> (0) or a light level 0–255.</summary>
+    public static int ParsePlayerLight(string s) => s == "off"
+        ? 0
+        : int.TryParse(s, out int i) && i >= 0 && i <= 255
+            ? i
+            : throw new ArgumentException($"--level-player-light: \"{s}\" (off or a light level 0-255)");
 
     /// <summary>Parses a tilt: a fraction 0–1, or <c>off</c> (0) / <c>half</c> (0.5) / <c>full</c> (1).</summary>
     public static float ParseTilt(string s) => s switch

@@ -34,7 +34,8 @@ namespace IsoDoom.Game;
 /// player distance, colormap 0 when full bright) or the background where
 /// the patch is transparent, and nothing else may be drawn. One thing again
 /// with no diminishing and <c>extralight</c> 1, one with a fixed colormap
-/// (which beats full bright, as vanilla). Then one thing on open floor from
+/// (which beats full bright, as vanilla), and one as the player's own
+/// sprite in a dark sector (its minimum light, T4.7a, <see cref="CheckPlayerLight"/>). Then one thing on open floor from
 /// the game camera's angle with the level shown: the rows below its origin
 /// must draw over the floor (SPEC §12 T3.5). The tilt depth (T3.6), the wall
 /// pull (T3.5a, <see cref="CheckWallPull"/>) and the things' cutaway (T3.4b)
@@ -169,6 +170,19 @@ public partial class LevelCheck
             if (a.VariantType != b.VariantType || a.ToString() != b.ToString()
                 || (a.VariantType == Variant.Type.Object && a.AsGodotObject() != b.AsGodotObject()))
                 Fail($"{map}: the sprite material's {name} ({b}) differs from the level material's ({a})");
+        }
+
+        // T4.7a: the player's minimum light reaches the shader, and the player's billboard marks its entry as its own.
+        if (m.SpriteMaterial.GetShaderParameter("own_light").AsInt32() != m.Sprites.PlayerLight)
+            Fail($"{map}: the sprite material's own_light ({m.SpriteMaterial.GetShaderParameter("own_light")}) is not the player's minimum light {m.Sprites.PlayerLight}");
+        if (_scene.PlayerMobj is { } player)
+        {
+            var playerSprite = new PlayerSprite();
+            playerSprite.Set(LevelScene.ThingEntry(player));
+            if (!playerSprite.Entry.Own || playerSprite.Entry != LevelScene.ThingEntry(player) with { Own = true } || things.Entries.Any(e => e.Own))
+                Fail($"{map}: the player's billboard entry {playerSprite.Entry} is not marked as its own sprite, or another thing's is");
+            playerSprite.Sprite.Free(); // not a child until _Ready
+            playerSprite.Free();
         }
 
         // An orthographic view along the game camera's direction, then a perspective camera south-east of the map.
@@ -360,6 +374,8 @@ public partial class LevelCheck
             m.SetExtraLight(0);
             m.SetLightDiminishing(LightDiminishing.Player);
         }
+        if (picked.Exists(i => !things.Entries[i].FullBright))
+            compared += await CheckPlayerLight(m, things, atlas, lit, basis);
         int bright = picked.Exists(i => things.Entries[i].FullBright) ? picked.Find(i => things.Entries[i].FullBright) : picked[0];
         m.SetColormapOverride(Colormap.INVERSECOLORMAP);
         compared += await CompareSprite(m, things, atlas, bright, basis, $"{map}: thing {bright}, fixed colormap {Colormap.INVERSECOLORMAP}");
@@ -376,7 +392,7 @@ public partial class LevelCheck
             compared += await CompareSprite(m, things, atlas, i, pitched, $"{map}: thing {i}, full tilt from the game camera's pitch");
         m.SetSprites(settings);
         GD.Print($"Level check: {map}: {picked.Count} things of distinct frames, rotations and mirrors seen side-on ({fullbright} full bright; rotation slots {string.Join(" ", rotations)}"
-            + $"{(flipCompared ? ", mirrored ones among them" : "")}; outline {settings.Outline}), plus two light options, no outline, and full tilt from {IsoCamera.DefaultPitch}°: {compared} pixels compared");
+            + $"{(flipCompared ? ", mirrored ones among them" : "")}; outline {settings.Outline}), plus two light options, the player's minimum light, no outline, and full tilt from {IsoCamera.DefaultPitch}°: {compared} pixels compared");
 
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
@@ -390,6 +406,57 @@ public partial class LevelCheck
         await CheckThingCutaway(m, things, atlas);
         things.Isolate(null);
         things.Visible = false;
+    }
+
+    /// <summary>
+    /// T4.7a: the player's minimum light (<see cref="SpriteSettings.PlayerLight"/>).
+    /// Thing <paramref name="i"/> (not full bright) in its sector darkened to
+    /// light 0, with the light origin on it (where the player's own sprite is
+    /// lit from): marked as the player's own sprite it must draw at the
+    /// minimum light (<see cref="SpriteSettings.DefaultPlayerLight"/> if the
+    /// option is off), and at the sector's light with the option off, or
+    /// unmarked; in a sector brighter than the minimum, marked, at the
+    /// sector's light. Pixels as <see cref="CompareSprite"/>.
+    /// </summary>
+    private async Task<int> CheckPlayerLight(LevelMesh m, ThingSprites things, SpriteAtlas atlas, int i, Basis basis)
+    {
+        string map = m.Level.Name;
+        ThingSprites.Entry original = things.Entries[i];
+        Sector sector = m.Level.Sectors[original.Sector];
+        short light = sector.LightLevel;
+        Vector2 origin = m.LightOrigin;
+        SpriteSettings settings = m.Sprites;
+        int minimum = settings.PlayerLight > 0 ? settings.PlayerLight : SpriteSettings.DefaultPlayerLight;
+        m.SetLightOrigin(new Vector2(original.MapPosition.X, original.MapPosition.Y));
+        int compared = 0;
+        var cases = new (short Sector, int Minimum, bool Own, string What)[]
+        {
+            (0, minimum, true, $"the player's own sprite, sector light 0, minimum {minimum}"),
+            (0, 0, true, "the player's own sprite, sector light 0, no minimum"),
+            (0, minimum, false, $"not the player's, sector light 0, minimum {minimum}"),
+            ((short)Math.Min(minimum + 64, 255), minimum, true, $"the player's own sprite, sector light {Math.Min(minimum + 64, 255)}, minimum {minimum}"),
+        };
+        foreach ((short sectorLight, int min, bool own, string what) in cases)
+        {
+            sector.LightLevel = sectorLight;
+            m.UpdateSectors();
+            m.SetSprites(settings with { PlayerLight = min });
+            things.SetEntry(i, original with { Own = own });
+            int flags = (int)Math.Round(things.CustomData(i).G);
+            if (((flags & ThingSprites.FlagOwn) != 0) != own
+                || m.SpriteMaterial.GetShaderParameter("own_light").AsInt32() != min)
+                Fail($"{map}: thing {i}, {what}: custom data flags {flags}, own_light {m.SpriteMaterial.GetShaderParameter("own_light")}");
+            compared += await CompareSprite(m, things, atlas, i, basis, $"{map}: thing {i}, {what}");
+        }
+        // The minimum must change the drawn light (else the comparison proves nothing).
+        if (m.Lights.WallColormap(minimum, 0, 0, (int)(m.LightNear * 65536)) == m.Lights.WallColormap(0, 0, 0, (int)(m.LightNear * 65536)))
+            Fail($"{map}: the player's minimum light {minimum} draws as light 0");
+        things.SetEntry(i, original);
+        m.SetSprites(settings);
+        sector.LightLevel = light;
+        m.UpdateSectors();
+        m.SetLightOrigin(origin);
+        return compared;
     }
 
     /// <summary>
@@ -419,7 +486,7 @@ public partial class LevelCheck
 
         int colormap = m.ColormapOverride >= 0 ? m.ColormapOverride
             : e.FullBright ? 0
-            : ExpectedColormap(m, true, m.Level.Sectors[e.Sector].LightLevel, 0, e.MapPosition.X, e.MapPosition.Y, back, sprite: true);
+            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, back, sprite: true);
         Vector2I size = ViewSize();
         int left = fx - patch.LeftOffset, top = fy - patch.TopOffset;
         // T3.6: the outline (in the sprite light) on transparent texels next to an opaque one, one texel around the rectangle too.

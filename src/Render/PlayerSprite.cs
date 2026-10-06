@@ -13,7 +13,10 @@ namespace IsoDoom.Render;
 /// (<see cref="Set"/>): position, facing and the state's sprite frame
 /// (<c>PLAY</c> standing or running). A node of its own, apart from the other
 /// things, so the visibility measure (the level script's <c>visible</c>) can
-/// hide it alone.
+/// hide it alone. Its entry is marked as the player's own sprite
+/// (<see cref="ThingSprites.FlagOwn"/>), lit at least at
+/// <see cref="SpriteSettings.PlayerLight"/> so it stays visible in dark
+/// sectors (T4.7a, SPEC §12).
 /// </summary>
 public partial class PlayerSprite : Node3D
 {
@@ -24,7 +27,7 @@ public partial class PlayerSprite : Node3D
     public static readonly float ShadowRadius = IsoDoom.Sim.Info.mobjinfo[(int)IsoDoom.Sim.mobjtype_t.MT_PLAYER].radius / 65536f;
 
     private readonly ThingSprites _sprite = new() { Name = "Sprite" };
-    private ThingSprites.Entry _entry = new(Vector3.Zero, 0, 0, SprPlay, 0, false, ShadowRadius, Actor: true, Radius: ShadowRadius);
+    private ThingSprites.Entry _entry = new(Vector3.Zero, 0, 0, SprPlay, 0, false, ShadowRadius, Actor: true, Radius: ShadowRadius, Own: true);
     private bool _bound;
 
     /// <summary>The billboard's entry as last set (map units).</summary>
@@ -67,9 +70,14 @@ public partial class PlayerSprite : Node3D
         _sprite.SetEntry(0, _entry);
     }
 
-    /// <summary>Shows <paramref name="entry"/> (map units; the player mobj as <c>LevelScene.ThingEntry</c> makes it).</summary>
+    /// <summary>
+    /// Shows <paramref name="entry"/> (map units; the player mobj as
+    /// <c>LevelScene.ThingEntry</c> makes it), marked as the player's own
+    /// sprite (<see cref="ThingSprites.Entry.Own"/>: its minimum light, T4.7a).
+    /// </summary>
     public void Set(ThingSprites.Entry entry)
     {
+        entry = entry with { Own = true };
         _entry = entry;
         if (_bound)
         {

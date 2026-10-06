@@ -77,6 +77,9 @@ namespace IsoDoom.Game;
 /// <c>--level-sprite-hidden=depth|upright</c> (T3.6a, <see cref="SpriteSettings.Hidden"/>:
 /// with upright, a tilted billboard is also dropped whole when the level would
 /// hide its upright billboard whole; default depth);
+/// <c>--level-player-light=LEVEL|off</c> (T4.7a, <see cref="SpriteSettings.PlayerLight"/>:
+/// the player's own sprite is lit as if its sector's light were at least
+/// LEVEL, 0–255, so it stays visible in dark sectors; default 128);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-near=UNITS</c> (the shortest distance the
 /// player mode uses, T3.7; default 80, 0 for the tables down to the player);
@@ -100,7 +103,8 @@ namespace IsoDoom.Game;
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
 /// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), P
-/// the sprite wall pull (on, off), H the upright hiding (depth, upright), M
+/// the sprite wall pull (on, off), H the upright hiding (depth, upright), B
+/// the player's minimum light (on, off), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
 /// cap (dark, flat, off), V the things it cuts (decor, all, off), F1 shows
 /// the controls, F3 hides the overlay.
@@ -127,6 +131,9 @@ public partial class LevelScene : Node3D
 
     /// <summary>The wall pull key P turns back on (T3.5a): <c>--level-sprite-wall-pull</c>'s, or the default.</summary>
     private float _wallPull = SpriteSettings.DefaultWallPull;
+
+    /// <summary>The player's minimum light key B turns back on (T4.7a): <c>--level-player-light</c>'s, or the default.</summary>
+    private int _playerLight = SpriteSettings.DefaultPlayerLight;
 
     /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
     public LevelMesh? Mesh { get; private set; }
@@ -242,7 +249,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -333,6 +340,8 @@ public partial class LevelScene : Node3D
             SpriteOptions = ParseSprites();
             if (SpriteOptions.WallPull > 0)
                 _wallPull = SpriteOptions.WallPull;
+            if (SpriteOptions.PlayerLight > 0)
+                _playerLight = SpriteOptions.PlayerLight;
             if (WadLocator.GetUserArg("--level-masked-back") is string backs)
                 MaskedBacks = ParseMaskedBacks(backs);
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
@@ -476,7 +485,7 @@ public partial class LevelScene : Node3D
         _ => throw new ArgumentException($"--level-masked-back: \"{value}\" (mirror or off)"),
     };
 
-    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), <c>--level-sprite-wall-pull</c> (T3.5a) and <c>--level-sprite-hidden</c> (T3.6a).</summary>
+    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), <c>--level-sprite-wall-pull</c> (T3.5a), <c>--level-sprite-hidden</c> (T3.6a) and <c>--level-player-light</c> (T4.7a).</summary>
     private static SpriteSettings ParseSprites()
     {
         var settings = new SpriteSettings();
@@ -492,6 +501,8 @@ public partial class LevelScene : Node3D
             settings = settings with { WallPull = SpriteSettings.ParseWallPull(pull) };
         if (WadLocator.GetUserArg("--level-sprite-hidden") is string hidden)
             settings = settings with { Hidden = SpriteSettings.ParseHidden(hidden) };
+        if (WadLocator.GetUserArg("--level-player-light") is string playerLight)
+            settings = settings with { PlayerLight = SpriteSettings.ParsePlayerLight(playerLight) };
         return settings;
     }
 
@@ -634,6 +645,9 @@ public partial class LevelScene : Node3D
                 break;
             case Key.H:
                 SpriteOptions = SpriteOptions with { Hidden = SpriteOptions.Hidden == SpriteHidden.Depth ? SpriteHidden.Upright : SpriteHidden.Depth };
+                break;
+            case Key.B:
+                SpriteOptions = SpriteOptions with { PlayerLight = SpriteOptions.PlayerLight > 0 ? 0 : _playerLight };
                 break;
             case Key.M:
                 MaskedBacks = MaskedBacks == MaskedBackFaces.Mirrored ? MaskedBackFaces.Off : MaskedBackFaces.Mirrored;
@@ -921,7 +935,8 @@ public partial class LevelScene : Node3D
             Vector2 at = p.MapPosition;
             text.Append($"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}");
             Sector ps = mo.subsector.sector.map;
-            text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel})\n");
+            text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel}"
+                + $"{(SpriteOptions.PlayerLight > ps.LightLevel ? $", sprite lit at {SpriteOptions.PlayerLight}" : "")})\n");
         }
         if (World is { } world)
             text.Append($"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "

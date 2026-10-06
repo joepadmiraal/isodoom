@@ -351,7 +351,7 @@ public sealed class LevelMesh
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
     public SpriteSettings Sprites { get; private set; } = new();
 
-    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6), wall pull (T3.5a) and upright hiding (T3.6a; <see cref="SpriteSettings"/>).</summary>
+    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6), wall pull (T3.5a), upright hiding (T3.6a) and the player's minimum light (T4.7a; <see cref="SpriteSettings"/>).</summary>
     public void SetSprites(SpriteSettings settings)
     {
         Sprites = settings;
@@ -363,6 +363,7 @@ public sealed class LevelMesh
         SpriteMaterial.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
         SpriteMaterial.SetShaderParameter("outline", settings.Outline);
         SpriteMaterial.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
+        SpriteMaterial.SetShaderParameter("own_light", Math.Clamp(settings.PlayerLight, 0, 255));
         ShadowMaterial.SetShaderParameter("shadow_mode", (int)settings.Shadow);
         ShadowMaterial.SetShaderParameter("shadow_opacity", settings.ShadowOpacity);
     }
