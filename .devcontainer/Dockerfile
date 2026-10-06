@@ -1,7 +1,7 @@
 # Dev image for IsoDoom: .NET 10 SDK + Godot 4 (.NET build), with the
 # libraries the editor needs to open a window on the host's Wayland/X11
 # display, render through Mesa (Vulkan/GL) and play audio through PulseAudio,
-# plus Xvfb for running windowed checks without a display.
+# plus Xvfb for running windowed checks without a display and actionlint for CI.
 FROM mcr.microsoft.com/devcontainers/dotnet:2-10.0-noble
 
 ARG GODOT_VERSION=4.7.2
@@ -34,6 +34,17 @@ RUN set -eux; \
     mv "/opt/${name}" /opt/godot; \
     ln -s "/opt/godot/Godot_v${tag}_mono_linux.x86_64" /opt/godot/godot-bin; \
     rm /tmp/godot.zip
+
+# actionlint (MIT, dev tool only) for linting .github/workflows/ci.yml; it runs
+# shellcheck on the run: scripts. Pinned with the release's SHA-256.
+ARG ACTIONLINT_VERSION=1.7.12
+ARG ACTIONLINT_SHA256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+RUN set -eux; \
+    name="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"; \
+    wget -q "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${name}" -O /tmp/actionlint.tar.gz; \
+    echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint; \
+    rm /tmp/actionlint.tar.gz
 
 # `godot` wrapper: prefer native Wayland when a Wayland socket is available,
 # otherwise fall back to Godot's default (X11).
