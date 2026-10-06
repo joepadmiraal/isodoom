@@ -79,7 +79,7 @@ public readonly record struct MapThingSpawn(MapThing Thing, MapThingSpawnKind Ki
     /// The mobj's <c>angle</c> (BAM): <c>ANG45 * (mthing->angle / 45)</c>,
     /// so map angles snap down to multiples of 45° (C truncating division).
     /// </summary>
-    public uint Angle => unchecked(MapThingSpawning.ANG45 * (uint)(Thing.Angle / 45));
+    public uint Angle => unchecked(Tables.ANG45 * (uint)(Thing.Angle / 45));
 
     /// <summary>Whether the mobj gets <c>MF_AMBUSH</c> (<c>MTF_AMBUSH</c> in the options).</summary>
     public bool Ambush => (Thing.Options & MapThing.MTF_AMBUSH) != 0;
@@ -94,9 +94,6 @@ public readonly record struct MapThingSpawn(MapThing Thing, MapThingSpawnKind Ki
 /// </summary>
 public static class MapThingSpawning
 {
-    /// <summary>tables.h <c>ANG45</c> (BAM).</summary>
-    internal const uint ANG45 = 0x20000000;
-
     /// <summary>
     /// The options bit p_mobj.c tests as <c>16</c>: not in single player
     /// (vanilla has no name for it; Boom calls it <c>MTF_NOTSINGLE</c>).
