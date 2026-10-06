@@ -16,7 +16,23 @@ public enum CutawayStyle
     Dither = 2,
 }
 
-/// <summary>The cutaway's presentation options (T3.4, SPEC §12): style, radius, cutoff height and whether the cursor ground point also cuts.</summary>
+/// <summary>
+/// What the cutaway shows inside a cut block (T3.4a, SPEC §12; a presentation
+/// option). The shader's <c>cut_cap</c>.
+/// </summary>
+public enum CutawayCap
+{
+    /// <summary>Nothing: the inside of a block whose top is cut shows the void (T3.4).</summary>
+    Off = 0,
+
+    /// <summary>The block's cross-section at the cutoff: its floor flat, lit as its floor, as if the block were cut down to the stub its walls keep.</summary>
+    Flat = 1,
+
+    /// <summary>As <see cref="Flat"/>, <see cref="Cutaway.CapDarken"/> light levels darker, so the cut reads as a section rather than a floor.</summary>
+    Dark = 2,
+}
+
+/// <summary>The cutaway's presentation options (T3.4, SPEC §12): style, radius, cutoff height, whether the cursor ground point also cuts, and the cap (T3.4a).</summary>
 public sealed record CutawaySettings
 {
     /// <summary>Defaults, tuned on E1M1, E1M8 and Doom II MAP15 with the game camera (SPEC §12 T3.4).</summary>
@@ -32,6 +48,9 @@ public sealed record CutawaySettings
 
     /// <summary>Whether the cursor ground point cuts as the player does.</summary>
     public bool Cursor { get; init; }
+
+    /// <summary>What a cut block shows inside (T3.4a).</summary>
+    public CutawayCap Cap { get; init; } = CutawayCap.Dark;
 }
 
 /// <summary>
@@ -64,6 +83,38 @@ public static class Cutaway
     /// cut by rounding (the shader's <c>CUT_PLANE_MARGIN</c>).
     /// </summary>
     public const float PlaneMargin = 1f;
+
+    /// <summary>Light levels (of vanilla's 16) a <see cref="CutawayCap.Dark"/> cap loses against its floor (the shader's <c>CAP_DARKEN</c>).</summary>
+    public const int CapDarken = 4;
+
+    /// <summary>
+    /// Whether centre <paramref name="centre"/>'s cap (T3.4a) covers map point
+    /// <paramref name="xy"/> of a sector whose floor is at
+    /// <paramref name="floor"/>: the floor is above the cutoff, and the cap
+    /// point (at the cutoff height) is within the radius of the anchor's line
+    /// towards the camera (the shader's kind 4; orthographic). It is drawn
+    /// unless something nearer is drawn or the other centre cuts it.
+    /// </summary>
+    public static bool Caps(Vector2 xy, float floor, Vector3 centre, CutawaySettings settings, Vector3 toCamera)
+    {
+        float z = centre.Z + settings.Height;
+        if (settings.Cap == CutawayCap.Off || settings.Style == CutawayStyle.Off || floor <= z)
+            return false;
+        var a = new Vector3(centre.X, centre.Y, centre.Z + Anchor);
+        return Distance(new Vector3(xy.X, xy.Y, z), a, toCamera) < settings.Radius;
+    }
+
+    /// <summary>The light number (vanilla's, before clamping to 0–15) a cap adds to its sector's (T3.4a).</summary>
+    public static int CapLightOffset(CutawayCap cap) => cap == CutawayCap.Dark ? -CapDarken : 0;
+
+    /// <summary>Parses a cap name (<c>dark</c>, <c>flat</c>, <c>off</c>).</summary>
+    public static CutawayCap ParseCap(string s) => s switch
+    {
+        "dark" => CutawayCap.Dark,
+        "flat" => CutawayCap.Flat,
+        "off" => CutawayCap.Off,
+        _ => throw new ArgumentException($"--level-cutaway-cap: unknown cap \"{s}\" (dark, flat or off)"),
+    };
 
     /// <summary>
     /// Whether centre <paramref name="centre"/> (x, y, floor height) cuts wall

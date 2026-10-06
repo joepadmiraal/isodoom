@@ -45,7 +45,10 @@ namespace IsoDoom.Render;
 /// <item><b>Cutaway</b> (T3.4): walls hiding the player (and optionally the
 /// cursor ground point) are cut above a height in both materials
 /// (<see cref="Render.Cutaway"/>, <see cref="SetCutaway"/>,
-/// <see cref="SetCutawayCentres"/>); off until set.</item>
+/// <see cref="SetCutawayCentres"/>); off until set. Each floor is also
+/// in its chunk's solid surface twice more, after the walls, as the caps of
+/// the two centres (<see cref="KindCap"/>, T3.4a), collapsed by the vertex
+/// shader unless the floor is cut.</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -66,8 +69,14 @@ public sealed class LevelMesh
     /// Vertex kinds (<c>CUSTOM0.x</c>). <see cref="KindMaskedBack"/> (T3.1a) is
     /// the back face of a one-sided masked middle: drawn as a masked middle from
     /// the other side, or collapsed by the vertex shader (<see cref="MaskedBackFaces"/>).
+    /// <see cref="KindCap"/> (T3.4a) is a copy of a floor that the vertex shader
+    /// places at a cut centre's cutoff (<see cref="CutawayCap"/>; <c>CUSTOM0.w</c>
+    /// is the centre, <see cref="CapPlayer"/> or <see cref="CapCursor"/>).
     /// </summary>
-    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3;
+    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4;
+
+    /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
+    public const int CapPlayer = 0, CapCursor = 1;
 
     /// <summary>Half the height range of a chunk's culling box, in metres (any fixed_t height fits).</summary>
     private const float HeightRange = 32768f / MapUnitsPerMetre;
@@ -321,6 +330,7 @@ public sealed class LevelMesh
         SetParameter("cut_radius", settings.Radius);
         SetParameter("cut_height", settings.Height);
         SetParameter("cut_anchor", Render.Cutaway.Anchor);
+        SetParameter("cut_cap", (int)settings.Cap);
     }
 
     /// <summary>
@@ -521,6 +531,24 @@ public sealed class LevelMesh
                 bc.Add(p2, new Vector2(u2, 0), b0, b1, c2);
                 bc.Indices.AddRange(BackFaceIndices(first));
                 MaskedBackQuads++;
+            }
+        }
+
+        // T3.4a: each floor again per cut centre, after the walls, as its cap (placed and
+        // collapsed by the vertex shader).
+        foreach (SectorFloor floor in Floors.BySector)
+        {
+            if (floor.TriangleCount == 0)
+                continue;
+            Chunk c = chunks[floor.Sector]!;
+            foreach (int centre in new[] { CapPlayer, CapCursor })
+            {
+                int first = c.Vertices.Count;
+                var c0 = new Vector4(KindCap, FlatSlot(Level.Sectors[floor.Sector].FloorPic), floor.Sector, centre);
+                foreach (PolygonVertex v in floor.Vertices)
+                    c.Add(ToGodot(v.X, v.Y, 0), new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)), c0, Vector4.Zero, Vector4.Zero);
+                foreach (int i in floor.Indices)
+                    c.Indices.Add(first + i);
             }
         }
 

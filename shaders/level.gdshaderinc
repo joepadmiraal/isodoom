@@ -29,8 +29,9 @@
 //
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
-//   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face), texture slot,
-//              front sector, back sector (-1: none)
+//   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
+//              4 a floor's cutaway cap), texture slot, front sector, back sector (-1: none;
+//              for a cap its cut centre, 0 player, 1 cursor)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   walls:     UV.x = texture column (textureoffset + distance from V1), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
@@ -68,6 +69,17 @@
 // `cut_mode` 0 draws everything, 1 discards cut fragments, 2 discards half of
 // them in a 4x4 ordered dither. Discarded fragments write no depth, so
 // whatever is behind (lower floors, sprites) shows.
+//
+// Cap (T3.4a; IsoDoom.Render.CutawayCap, `cut_cap` 0 off, 1 flat, 2 dark): a
+// block whose top and walls are cut would show the void inside. Kind 4 is a
+// copy of each floor per cut centre (CUSTOM0.w: 0 `cut_player`, 1
+// `cut_cursor`), placed at that centre's cutoff, c.z + `cut_height`, and drawn
+// only where the sector's floor is above it (so the floor is cut there) and
+// within the centre's disc: the block's cross-section at the cutoff, as if it
+// were cut down to the stub its walls keep. It shows the sector's flat, lit as
+// the floor (flat) or CAP_DARKEN light levels darker (dark). It is collapsed
+// when the cutaway or the cap is off or the centre is inactive, and is cut by
+// the other centre as any floor.
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -81,6 +93,8 @@ const int LIGHTZSHIFT = 20;
 const float MAX_DISTANCE = 4096.0;
 // IsoDoom.Render.Cutaway.PlaneMargin (map units).
 const float CUT_PLANE_MARGIN = 1.0;
+// IsoDoom.Render.Cutaway.CapDarken: light levels (of 16) a dark cap loses.
+const int CAP_DARKEN = 4;
 
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
@@ -115,10 +129,14 @@ uniform vec4 cut_cursor = vec4(0.0);
 uniform float cut_radius = 96.0;
 uniform float cut_height = 32.0;
 uniform float cut_anchor = 28.0;
+// The cap (T3.4a): 0 off, 1 flat, 2 dark.
+uniform int cut_cap = 0;
 
 varying flat ivec4 v_rect;
 varying flat int v_kind;
 varying flat int v_lightnum;
+// The cut centre whose cap this is (kind 4, T3.4a): 0 player, 1 cursor; -1 not a cap.
+varying flat int v_cap;
 varying vec2 v_texcoord;
 varying vec2 v_map;
 varying float v_height;
@@ -147,8 +165,13 @@ void vertex() {
 	if (back_face) {
 		kind = 2;
 	}
+	v_cap = -1;
+	if (kind == 4) {
+		kind = 0;
+		v_cap = int(CUSTOM0.w);
+	}
 	int front_id = int(CUSTOM0.z);
-	int back_id = int(CUSTOM0.w);
+	int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
 	vec4 front = data_texel(sector_data, front_id);
 	vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
 	ivec4 rect = ivec4(data_texel(texture_info, int(CUSTOM0.y)) + 0.5);
@@ -161,6 +184,17 @@ void vertex() {
 	if (kind == 0) {
 		z = front.r;
 		v_texcoord = UV;
+		if (v_cap >= 0) {
+			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+			z = c.z + cut_height;
+			if (cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || front.r <= z) {
+				// Nothing to cap: collapse the triangle.
+				VERTEX.xz = vec2(0.0);
+			}
+			if (cut_cap == 2) {
+				v_lightnum -= CAP_DARKEN;
+			}
+		}
 	} else {
 		// WallSection.Span: clipped to the front sector, empty when top <= bottom.
 		float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);
@@ -248,6 +282,16 @@ void fragment() {
 		}
 		if (cut_hides(p, n, cut_player, ortho, to_camera, cam) || cut_hides(p, n, cut_cursor, ortho, to_camera, cam)) {
 			if (cut_mode == 1 || bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
+				discard;
+			}
+		}
+		if (v_cap >= 0) {
+			// A cap shows only inside its centre's disc, where the floor above it is cut.
+			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+			vec3 a = vec3(c.xy, c.z + cut_anchor);
+			vec3 axis = ortho ? to_camera : normalize(cam - a);
+			vec3 d = p - a;
+			if (length(d - axis * dot(d, axis)) >= cut_radius) {
 				discard;
 			}
 		}

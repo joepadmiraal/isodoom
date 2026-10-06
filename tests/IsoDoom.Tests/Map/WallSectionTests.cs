@@ -150,16 +150,16 @@ public class WallSectionTests
         Assert.Equal(260 << FRACBITS, upper.TextureTop.Evaluate(upper.FrontSector, upper.BackSector));
         Assert.Equal(260 << FRACBITS, lower.TextureTop.Evaluate(lower.FrontSector, lower.BackSector));
 
-        // Sky on both sides of L15 (A 256, B 192): no upper; the lower -16..24 is anchored at B's ceiling.
+        // Sky on both sides of L15 (A 256, B 192): no upper; the lower -16..64 is anchored at B's ceiling.
         Assert.DoesNotContain(walls.Sections, s => s.Line.Index == 15 && s.Kind == Upper);
         WallSection skyLower = Find(walls, 15, 0, Lower);
-        Assert.Equal((-16, 24), Units(skyLower.Span()));
+        Assert.Equal((-16, 64), Units(skyLower.Span()));
         Assert.Equal(200 << FRACBITS, skyLower.TextureTop.Evaluate(skyLower.FrontSector, skyLower.BackSector));
-        // The unpegged GRATE stands on the higher floor (24) with row 0 at 24 + 64, raised by A's
-        // rowoffset 8 to 96 on A's side, so it is drawn once from 96 down to 32 (not tiled down to 24).
+        // The unpegged GRATE stands on the higher floor (64) with row 0 at 64 + 64, raised by A's
+        // rowoffset 8 to 136 on A's side, so it is drawn once from 136 down to 72 (not tiled down to 64).
         WallSection skyGrate = Find(walls, 15, 0, MaskedMiddle);
-        Assert.Equal((32, 96), Units(skyGrate.Span()));
-        Assert.Equal((24, 88), Units(Find(walls, 15, 1, MaskedMiddle).Span()));
+        Assert.Equal((72, 136), Units(skyGrate.Span()));
+        Assert.Equal((64, 128), Units(Find(walls, 15, 1, MaskedMiddle).Span()));
     }
 
     [Fact]

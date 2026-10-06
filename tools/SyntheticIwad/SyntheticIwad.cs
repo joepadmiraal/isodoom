@@ -551,6 +551,8 @@ public static class SyntheticIwad
     // 256 and 192, so L15 has no upper on A's side (the sky rule) although
     // its texture is "-"; L15 has a lower (unpegged, so anchored at the back
     // ceiling by the sky rule) and a masked GRATE (unpegged) on both sides.
+    // B's floor (64) is 80 above A's, more than the cutaway's cutoff (32), so
+    // a centre in A just west of L15 has B's floor cut and capped (T3.4a).
     private static readonly short[] MapVertexes =
     {
         -128, 128, 128, 128, 128, -128, -128, -128, // v0-v3: west room
@@ -681,7 +683,7 @@ public static class SyntheticIwad
             Sector(0, 128, "FLOOR1", "FLOOR2", 144),    // 2: room C
             Sector(0, 0, "FLOOR2", "FLOOR2", 112),      // 3: door D, closed
             Sector(-16, 256, "FLOOR2", "F_SKY1", 255),  // 4: courtyard A
-            Sector(24, 192, "FLOOR1", "F_SKY1", 192))); // 5: ledge B
+            Sector(64, 192, "FLOOR1", "F_SKY1", 192))); // 5: ledge B, raised 80 over A (T3.4a)
         w.Lump("REJECT", new byte[(6 * 6 + 7) / 8]); // all clear: every sector sees every other
         w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 10, 3));
     }

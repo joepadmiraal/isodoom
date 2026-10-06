@@ -475,8 +475,9 @@ public partial class LevelCheck : Godot.Node
     /// then one quad per piece of each of <paramref name="sectionsOfSurface"/>
     /// (T2.9), A bottom, A top, B top, B bottom; a back face (T3.1a) has the
     /// same corners and columns, its sectors and plane references swapped
-    /// (<see cref="LevelMesh.OtherSide"/>) and the other winding. Returns the
-    /// wall quads checked.
+    /// (<see cref="LevelMesh.OtherSide"/>) and the other winding. After the
+    /// walls, the floor again per cut centre as its cap (T3.4a,
+    /// <see cref="LevelMesh.KindCap"/>). Returns the wall quads checked.
     /// </summary>
     private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
         List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
@@ -486,7 +487,7 @@ public partial class LevelCheck : Godot.Node
         int quadCount = 0;
         foreach ((WallSection s, _) in sectionsOfSurface)
             quadCount += m.Pieces.Of(s.Line, s.Side).Count;
-        int expectedVertices = floorVertices + 4 * quadCount;
+        int expectedVertices = 3 * floorVertices + 4 * quadCount; // the floor, the walls, two caps
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
         Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         Vector2[] uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
@@ -494,7 +495,7 @@ public partial class LevelCheck : Godot.Node
         float[] c1 = arrays[(int)Mesh.ArrayType.Custom1].AsFloat32Array();
         float[] c2 = arrays[(int)Mesh.ArrayType.Custom2].AsFloat32Array();
         int[] idx = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
-        int expectedIndices = (floor?.Indices.Count ?? 0) + 6 * quadCount;
+        int expectedIndices = 3 * (floor?.Indices.Count ?? 0) + 6 * quadCount;
         if (pos.Length != expectedVertices || uv.Length != expectedVertices || c0.Length != 4 * expectedVertices
             || c1.Length != 4 * expectedVertices || c2.Length != 4 * expectedVertices || idx.Length != expectedIndices)
         {
@@ -523,6 +524,30 @@ public partial class LevelCheck : Godot.Node
                 {
                     Fail($"{what}: floor index {i} is {idx[i]}, expected {floor.Indices[i]}");
                     break;
+                }
+            }
+
+            // T3.4a: the caps, the same triangles once per cut centre after the walls.
+            foreach (int centre in new[] { LevelMesh.CapPlayer, LevelMesh.CapCursor })
+            {
+                int vb = floorVertices * (1 + centre) + 4 * quadCount, ib = floor.Indices.Count * (1 + centre) + 6 * quadCount;
+                for (int i = 0; i < floorVertices; i++)
+                {
+                    PolygonVertex v = floor.Vertices[i];
+                    if (!Near(pos[vb + i], LevelMesh.ToGodot(v.X, v.Y, 0)) || !Near(uv[vb + i], new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)))
+                        || !Custom(c0, vb + i, LevelMesh.KindCap, flatSlot, sector, centre))
+                    {
+                        Fail($"{what}: cap {centre} vertex {i} differs ({Custom4(c0, vb + i)})");
+                        break;
+                    }
+                }
+                for (int i = 0; i < floor.Indices.Count; i++)
+                {
+                    if (idx[ib + i] != vb + floor.Indices[i])
+                    {
+                        Fail($"{what}: cap {centre} index {i} is {idx[ib + i]}, expected {vb + floor.Indices[i]}");
+                        break;
+                    }
                 }
             }
         }

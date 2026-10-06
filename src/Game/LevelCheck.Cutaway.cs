@@ -21,23 +21,48 @@ namespace IsoDoom.Game;
 /// nothing above the cutoff there). The same view with the cursor ground point
 /// as the only centre must equal it, and the dither must keep the uncut pixels
 /// and clear about half of the cut ones.
+/// <para>
+/// The cap (T3.4a): a second view puts the centre just behind a raised floor
+/// (a lower wall facing away from the camera, its back sector more than the
+/// cutoff above). With the cap off, the cut floor's pixels show the
+/// background; with it on, the pixels whose ray meets the cap plane (the
+/// cutoff over the centre's floor) inside the raised sector's floor, past
+/// surfaces that are all cut, show that sector's flat at that point, lit as
+/// its floor (flat) or <see cref="Cutaway.CapDarken"/> levels darker (dark);
+/// the rest as before. Both views compare their capped pixels, and the cursor
+/// centre must give the same capped frame.
+/// </para>
 /// </summary>
 public partial class LevelCheck
 {
     /// <summary>Map units (= pixels here) kept clear of surface edges and of the cut's boundaries when classifying a pixel.</summary>
     private const float CutMargin = 1.5f;
 
-    private enum CutPixel : byte { Skip, Keep, Cleared }
+    /// <summary>Flat texel coordinates this close (map units) to a texel edge are not compared on a cap.</summary>
+    private const double CapTexelMargin = 0.05;
 
-    /// <summary>A view's pixel classes over the disc's screen box; the cleared pixels (and those of them where a floor is cut); the kept pixels in the disc whose first surface is a wall, and those of them above the cutoff.</summary>
-    private sealed record CutClasses(CutPixel[] Classes, (int Left, int Top, int Right, int Bottom) Box, int Cleared, int KeptWalls, int KeptAbove, int ClearedFloors);
+    private enum CutPixel : byte { Skip, Keep, Cleared, Capped }
+
+    /// <summary>Where a capped pixel's ray meets the cap: the raised sector and the map point.</summary>
+    private readonly record struct CapPoint(int Sector, double X, double Y, double Depth);
+
+    /// <summary>
+    /// A view's pixel classes over the disc's screen box, with the cap off
+    /// (<see cref="Classes"/>) and on (<see cref="CapClasses"/>, where
+    /// <see cref="CutPixel.Capped"/> pixels have their <see cref="CapPoints"/>);
+    /// the cleared pixels (and those of them where a floor is cut); the kept
+    /// pixels in the disc whose first surface is a wall, and those of them
+    /// above the cutoff; the capped pixels.
+    /// </summary>
+    private sealed record CutClasses(CutPixel[] Classes, CutPixel[] CapClasses, CapPoint[] CapPoints, (int Left, int Top, int Right, int Bottom) Box,
+        int Cleared, int KeptWalls, int KeptAbove, int ClearedFloors, int Capped);
 
     private readonly record struct CutQuad(Vector2 A, Vector2 Dir, float Length, Vector3 Normal, float Bottom, float Top, bool Masked, WallSection Section);
 
     private async Task CutawayCheck(LevelMesh m)
     {
         string map = m.Level.Name;
-        var settings = new CutawaySettings { Style = CutawayStyle.Cut };
+        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off };
         Basis basis = Basis.FromEuler(new Vector3(-Mathf.DegToRad(IsoCamera.DefaultPitch), Mathf.DegToRad(IsoCamera.Yaw), 0));
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
         var toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
@@ -118,6 +143,41 @@ public partial class LevelCheck
         }
         await CompareCutView(m, behindCentre, behind, settings, basis, toCamera, $"{map}: cutaway, centre ({behindCentre.X:F0}, {behindCentre.Y:F0}, {behindCentre.Z:F0}) behind {chosen}");
         await CompareCutView(m, frontCentre, inFront, settings, basis, toCamera, $"{map}: cutaway, centre ({frontCentre.X:F0}, {frontCentre.Y:F0}, {frontCentre.Z:F0}) in front of {chosen}");
+
+        // T3.4a: a centre just behind a raised floor (seen from the camera), whose floor is cut and capped.
+        int raised = 0;
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            if (!LevelMesh.IsDrawn(s) || s.Kind != WallSectionKind.Lower || s.BackSector is not Sector high)
+                continue;
+            float floor = s.FrontSector.FloorHeight / 65536f, step = high.FloorHeight / 65536f - floor;
+            var v1 = new Vector2(s.V1.X / 65536f, s.V1.Y / 65536f);
+            var v2 = new Vector2(s.V2.X / 65536f, s.V2.Y / 65536f);
+            float len = v1.DistanceTo(v2);
+            if (step < settings.Height + 16 || len < 32)
+                continue;
+            Vector2 dir = (v2 - v1) / len, n = new(dir.Y, -dir.X);
+            if (n.Dot(toCameraFlat) > -0.5f)
+                continue; // the low side must be away from the camera, the raised floor in front of the centre
+            Vector2 mid = (v1 + v2) / 2;
+            var centre = new Vector3(mid.X + n.X * 24, mid.Y + n.Y * 24, floor);
+            if (CursorGround.DrawnSectorAt(m, (int)(centre.X * 65536), (int)(centre.Y * 65536)) != s.FrontSector.Index)
+                continue;
+            if (raised++ >= 40)
+                break;
+            CutView(centre, basis, toCamera);
+            CutClasses c = ClassifyCut(m, quads, floorHeights, centre, settings, toCamera, w, h);
+            if (c.ClearedFloors < 50 || c.Capped < 50)
+                continue;
+            await CompareCutView(m, centre, c, settings, basis, toCamera,
+                $"{map}: cutaway cap, centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0}) behind the raised floor of sector {high.Index} (line {s.Line.Index})");
+            return;
+        }
+        if (raised > 0)
+            Fail($"{map}: cutaway cap: no view found (a centre 24 units behind a raised floor's lower wall facing away from the game camera, "
+                + "with at least 50 pixels cleared through the floor and 50 capped)");
+        else
+            GD.Print($"Level check: {map}: cutaway cap: no raised floor (over {settings.Height + 16} units, a lower wall facing away from the game camera) to cut");
     }
 
     /// <summary>
@@ -140,9 +200,17 @@ public partial class LevelCheck
         m.SetCutawayCentres(centre, null);
         m.SetCutaway(settings with { Style = CutawayStyle.Dither });
         byte[]? dither = await Capture($"{what}, dither");
+        // T3.4a: the cap, dark (around the player and then the cursor ground point) and flat.
+        m.SetCutaway(settings with { Cap = CutawayCap.Dark });
+        byte[]? dark = await Capture($"{what}, dark cap");
+        m.SetCutawayCentres(null, centre);
+        byte[]? darkCursor = await Capture($"{what}, dark cap, cursor centre");
+        m.SetCutawayCentres(centre, null);
+        m.SetCutaway(settings with { Cap = CutawayCap.Flat });
+        byte[]? flat = await Capture($"{what}, flat cap");
         m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
         m.SetCutawayCentres(null, null);
-        if (off is null || cut is null || cursor is null || dither is null)
+        if (off is null || cut is null || cursor is null || dither is null || dark is null || darkCursor is null || flat is null)
             return;
 
         var box = classes.Box;
@@ -198,6 +266,79 @@ public partial class LevelCheck
         GD.Print($"Level check: {what}: {compared} pixels compared ({classes.Cleared} cut to the background, {classes.ClearedFloors} of them through a floor; uncut wall pixels in the disc: "
             + $"{classes.KeptWalls}, {classes.KeptAbove} of them above the cutoff; the rest as with the cutaway off); cursor centre identical"
             + (classes.Cleared > 0 ? $"; dither cleared {share:P0} of the cut pixels" : ""));
+
+        foreach ((CutawayCap cap, byte[] frame) in new[] { (CutawayCap.Dark, dark), (CutawayCap.Flat, flat) })
+            CompareCap(m, classes, cap, off, frame, $"{what}, {cap.ToString().ToLowerInvariant()} cap");
+        int badCapCursor = 0;
+        for (int i = 0; i < dark.Length; i++)
+        {
+            if (dark[i] != darkCursor[i])
+                badCapCursor++;
+        }
+        if (badCapCursor > 0)
+            Fail($"{what}: {badCapCursor} byte(s) differ with the cap around the cursor ground point instead of the player");
+    }
+
+    /// <summary>
+    /// A capped frame against the classes with the cap on: uncut pixels as
+    /// with the cutaway off, cleared ones the background, capped ones the
+    /// raised sector's flat at the cap point, lit as its floor (with the
+    /// cap's light offset).
+    /// </summary>
+    private void CompareCap(LevelMesh m, CutClasses classes, CutawayCap cap, byte[] off, byte[] frame, string what)
+    {
+        Vector2I size = ViewSize();
+        int w = size.X, h = size.Y;
+        var box = classes.Box;
+        int bw = box.Right - box.Left;
+        long compared = 0;
+        int badKeep = 0, badClear = 0, badCap = 0, capped = 0;
+        string firstKeep = "", firstClear = "", firstCap = "";
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                int p = (py * w + px) * 4;
+                bool inBox = px >= box.Left && px < box.Right && py >= box.Top && py < box.Bottom;
+                int i = inBox ? (py - box.Top) * bw + (px - box.Left) : -1;
+                CutPixel cls = i >= 0 ? classes.CapClasses[i] : CutPixel.Keep;
+                (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
+                switch (cls)
+                {
+                    case CutPixel.Keep:
+                        compared++;
+                        if (got != (off[p], off[p + 1], off[p + 2]) && badKeep++ == 0)
+                            firstKeep = $"pixel ({px}, {py}): drew {got}, {(off[p], off[p + 1], off[p + 2])} with the cutaway off";
+                        break;
+                    case CutPixel.Cleared:
+                        compared++;
+                        if (!NearBackground(got) && badClear++ == 0)
+                            firstClear = $"pixel ({px}, {py}): drew {got}, expected the background {_background}";
+                        break;
+                    case CutPixel.Capped:
+                        CapPoint c = classes.CapPoints[i];
+                        Sector sector = m.Level.Sectors[c.Sector];
+                        int colormap = ExpectedColormap(m, false, sector.LightLevel + 16 * Cutaway.CapLightOffset(cap), 0, c.X, c.Y, c.Depth);
+                        if (colormap < 0)
+                            break;
+                        (int col, int row) = TextureWrap.FlatTexel((int)Math.Floor(c.X * 65536), (int)Math.Floor(c.Y * 65536));
+                        (int R, int G, int B) expected = Shade(FlatImage(sector.FloorPic)[col, row], colormap);
+                        compared++;
+                        capped++;
+                        if (got != expected && badCap++ == 0)
+                            firstCap = $"pixel ({px}, {py}), map ({c.X:F2}, {c.Y:F2}) in sector {c.Sector}: drew {got}, expected {expected}";
+                        break;
+                }
+            }
+        }
+        _pixels += compared;
+        if (badKeep > 0)
+            Fail($"{what}: {badKeep} pixel(s) whose first surface is not cut changed with the cutaway, first at {firstKeep}");
+        if (badClear > 0)
+            Fail($"{what}: {badClear} pixel(s) cut through to nothing still draw a surface, first at {firstClear}");
+        if (badCap > 0)
+            Fail($"{what}: {badCap} of {capped} capped pixel(s) differ, first at {firstCap}");
+        GD.Print($"Level check: {what}: {compared} pixels compared, {capped} of them on the cap");
     }
 
     /// <summary>The scene camera looking along the game camera's direction at the cut centre's anchor, 1 map unit per pixel.</summary>
@@ -223,7 +364,11 @@ public partial class LevelCheck
         int top = Math.Max(0, (int)a.Y - reach), bottom = Math.Min(h, (int)a.Y + reach + 1);
         int bw = Math.Max(0, right - left), bh = Math.Max(0, bottom - top);
         var classes = new CutPixel[bw * bh];
-        int cleared = 0, keptWalls = 0, keptAbove = 0, clearedFloors = 0;
+        var capClasses = new CutPixel[bw * bh];
+        var capPoints = new CapPoint[bw * bh];
+        int cleared = 0, keptWalls = 0, keptAbove = 0, clearedFloors = 0, capped = 0;
+        float capZ = centre.Z + settings.Height;
+        Vector3 camera = Cutaway.ToMapAxes(cam.GlobalPosition) * LevelMesh.MapUnitsPerMetre;
         var hits = new List<(float T, bool Definite, int Cut, bool Wall, float Z)>();
         for (int py = top; py < bottom; py++)
         {
@@ -233,6 +378,9 @@ public partial class LevelCheck
                 Vector3 o = Cutaway.ToMapAxes(cam.ProjectRayOrigin(screen)) * LevelMesh.MapUnitsPerMetre;
                 Vector3 d = Cutaway.ToMapAxes(cam.ProjectRayNormal(screen)).Normalized();
                 hits.Clear();
+                int capState = 0; // T3.4a: 0 the ray meets no cap, 1 near a cap's edge, 2 a cap at capT
+                float capT = 0;
+                CapPoint capPoint = default;
                 foreach (CutQuad q in quads)
                 {
                     float denom = d.X * q.Normal.X + d.Y * q.Normal.Y;
@@ -267,8 +415,35 @@ public partial class LevelCheck
                         if (matches > 0)
                             hits.Add((t, matches == 5, CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), false, p.Z));
                     }
+
+                    // T3.4a: the cap plane, inside a floor above it (all five points in one such sector) and the disc.
+                    float tc = (capZ - o.Z) / d.Z;
+                    if (tc > 0)
+                    {
+                        Vector3 q = o + d * tc;
+                        int raised = 0, sector = -2;
+                        foreach ((float ox, float oy) in new[] { (0f, 0f), (CutMargin, 0f), (-CutMargin, 0f), (0f, CutMargin), (0f, -CutMargin) })
+                        {
+                            int s = CursorGround.DrawnSectorAt(m, (int)Math.Round((q.X + ox) * 65536.0), (int)Math.Round((q.Y + oy) * 65536.0));
+                            if (s >= 0 && m.Level.Sectors[s].FloorHeight / 65536f > capZ)
+                            {
+                                raised++;
+                                sector = sector == -2 || sector == s ? s : -1;
+                            }
+                        }
+                        float inside = settings.Radius - Cutaway.Distance(q, anchor, toCamera);
+                        if (raised > 0 && inside > -CutMargin)
+                        {
+                            double fx = q.X - Math.Floor(q.X), fy = -q.Y - Math.Floor(-q.Y);
+                            bool texel = fx > CapTexelMargin && fx < 1 - CapTexelMargin && fy > CapTexelMargin && fy < 1 - CapTexelMargin;
+                            capState = raised == 5 && sector >= 0 && inside > CutMargin && texel ? 2 : 1;
+                            capT = tc;
+                            capPoint = new CapPoint(sector, q.X, q.Y, (q - camera).Dot(-toCamera));
+                        }
+                    }
                 }
                 hits.Sort((x, y) => x.T.CompareTo(y.T));
+                int idx = (py - top) * bw + (px - left);
 
                 // Keep: every surface up to the first definite one is definitely not cut.
                 bool keep = true;
@@ -290,7 +465,28 @@ public partial class LevelCheck
                 // Cleared: something is on the ray, and every surface on it is definitely cut.
                 bool clear = hits.Count > 0 && hits.TrueForAll(x => x.Cut == 1) && hits.Exists(x => x.Definite);
                 CutPixel cls = keep ? CutPixel.Keep : clear ? CutPixel.Cleared : CutPixel.Skip;
-                classes[(py - top) * bw + (px - left)] = cls;
+                classes[idx] = cls;
+
+                // With the cap on: capped when every surface before the cap is definitely cut; kept when
+                // the first definite surface comes before it and is kept; as with the cap off without one.
+                CutPixel capClass = cls;
+                if (capState > 0)
+                {
+                    int first = hits.FindIndex(x => x.Cut != 1);
+                    if (first < 0 || hits[first].T > capT)
+                        capClass = capState == 2 ? CutPixel.Capped : CutPixel.Skip;
+                    else
+                    {
+                        int definite = hits.FindIndex(x => x.Definite);
+                        capClass = keep && definite >= 0 && hits[definite].T < capT ? CutPixel.Keep : CutPixel.Skip;
+                    }
+                }
+                capClasses[idx] = capClass;
+                if (capClass == CutPixel.Capped)
+                {
+                    capPoints[idx] = capPoint;
+                    capped++;
+                }
                 if (cls == CutPixel.Cleared)
                 {
                     cleared++;
@@ -306,7 +502,7 @@ public partial class LevelCheck
                 }
             }
         }
-        return new CutClasses(classes, (left, top, right, bottom), cleared, keptWalls, keptAbove, clearedFloors);
+        return new CutClasses(classes, capClasses, capPoints, (left, top, right, bottom), cleared, keptWalls, keptAbove, clearedFloors, capped);
     }
 
     /// <summary>Whether <see cref="Cutaway.Hides"/> cuts the surface point: 0 definitely not, 1 definitely, 2 within <see cref="CutMargin"/> of a boundary of the rule.</summary>

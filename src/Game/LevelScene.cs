@@ -40,7 +40,9 @@ namespace IsoDoom.Game;
 /// <see cref="Cutaway"/>; default cut), <c>--level-cutaway-radius=UNITS</c>
 /// (default 80), <c>--level-cutaway-height=UNITS</c> (the cutoff above the
 /// player's floor, default 32), <c>--level-cutaway-cursor=on|off</c> (the
-/// cursor ground point cuts too; default off);
+/// cursor ground point cuts too; default off),
+/// <c>--level-cutaway-cap=dark|flat|off</c> (T3.4a, <see cref="CutawayCap"/>:
+/// what a cut block shows inside; default dark);
 /// <c>--level-masked-back=mirror|off</c> (T3.1a, <see cref="MaskedBackFaces"/>:
 /// a masked middle on one side of a line only is drawn from behind too,
 /// mirrored, or as vanilla only from its own side; default mirror);
@@ -76,7 +78,8 @@ namespace IsoDoom.Game;
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
 /// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), M
-/// the one-sided masked middles from behind (mirrored, off), F1 shows
+/// the one-sided masked middles from behind (mirrored, off), K the cutaway
+/// cap (dark, flat, off), F1 shows
 /// the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
@@ -154,7 +157,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   M masked backs   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   M masked backs   K cutaway cap   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -356,6 +359,8 @@ public partial class LevelScene : Node3D
                     _ => throw new ArgumentException($"--level-cutaway-cursor: \"{cursor}\" (on or off)"),
                 },
             };
+        if (WadLocator.GetUserArg("--level-cutaway-cap") is string cap)
+            settings = settings with { Cap = Render.Cutaway.ParseCap(cap) };
         return settings;
     }
 
@@ -504,6 +509,9 @@ public partial class LevelScene : Node3D
                 break;
             case Key.X:
                 Cutaway = Cutaway with { Style = Cutaway.Style switch { CutawayStyle.Cut => CutawayStyle.Dither, CutawayStyle.Dither => CutawayStyle.Off, _ => CutawayStyle.Cut } };
+                break;
+            case Key.K:
+                Cutaway = Cutaway with { Cap = Cutaway.Cap switch { CutawayCap.Dark => CutawayCap.Flat, CutawayCap.Flat => CutawayCap.Off, _ => CutawayCap.Dark } };
                 break;
             case Key.T:
                 SpriteOptions = SpriteOptions with { Tilt = SpriteOptions.Tilt >= 1f ? 0.5f : SpriteOptions.Tilt >= 0.5f ? 0f : 1f };
@@ -673,7 +681,7 @@ public partial class LevelScene : Node3D
         if (Iso is { Current: true })
             text.Append(Cutaway.Style == CutawayStyle.Off
                 ? "cutaway: off\n"
-                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}\n");
+                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}, cap {Cutaway.Cap.ToString().ToLowerInvariant()}\n");
         if (Mesh is not null)
         {
             Vector2 o = Mesh.LightOrigin;
