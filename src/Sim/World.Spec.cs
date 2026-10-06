@@ -711,7 +711,8 @@ public sealed partial class World
     /// once a tic after the thinkers (<see cref="P_Ticker"/>). The level
     /// timer (deathmatch only) and the scrolling walls (special 48: the front
     /// side's texture offset, one unit a tic) are ported; the animated
-    /// textures and flats come with T5.7 and the button timers with T5.4.
+    /// textures and flats come with T5.7. Then the button timers (T5.4,
+    /// <see cref="P_UpdateButtons"/>).
     /// </summary>
     public void P_UpdateSpecials()
     {
@@ -738,7 +739,8 @@ public sealed partial class World
             }
         }
 
-        //	DO BUTTONS (T5.4)
+        //	DO BUTTONS
+        P_UpdateButtons();
     }
 
     /// <summary>
@@ -748,8 +750,8 @@ public sealed partial class World
     /// stubs (<see cref="unported"/>); secrets (9) count into
     /// <see cref="totalsecret"/>. Line effects: the scrolling walls (48),
     /// at most <see cref="MAXLINEANIMS"/> as Chocolate Doom (vanilla
-    /// overruns). The active ceilings, lifts and buttons are cleared by
-    /// T5.4/T5.5.
+    /// overruns). The buttons are cleared (T5.4); the active ceilings and
+    /// lifts by T5.5.
     /// </summary>
     public void P_SpawnSpecials()
     {
@@ -838,6 +840,8 @@ public sealed partial class World
             }
         }
 
-        //	Init other misc stuff: activeceilings (T5.5), activeplats (T5.5), buttonlist (T5.4).
+        //	Init other misc stuff: activeceilings (T5.5), activeplats (T5.5).
+        for (int i = 0; i < MAXBUTTONS; i++)
+            buttonlist[i].Clear();
     }
 }

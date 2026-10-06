@@ -763,6 +763,10 @@ public static class SyntheticIwad
     // door) are DR manual doors (1) facing the rooms; 78-85 the walls (78-80
     // R's, 81 and 82 the door's tracks, 83-85 S's). Subsectors 25-27; the
     // root node now splits along y = 144.
+    //
+    // T5.4, switches: lines 0 (SR) and 1 (S1) draw the switch texture
+    // SW1BRCOM, line 27 (alcove 0's north wall, SW1BRCOM since T5.1) is an SR
+    // raise-door button (63) of the door (tag 6). Line 2 stays BRICK1.
 
     /// <summary>E1M2's sector count: the corridor, the alcoves, and rooms R and S with the door between (T5.3).</summary>
     public const int SpecialsSectors = 1 + SpecialsAlcoves + 3;
@@ -770,7 +774,7 @@ public static class SyntheticIwad
     /// <summary>E1M2's door sector (T5.3), between rooms R (sector 25) and S (27).</summary>
     public const int DoorSector = SpecialsAlcoves + 2;
 
-    /// <summary>The tag of E1M2's door sector (no line has it: tests give it to one).</summary>
+    /// <summary>The tag of E1M2's door sector (line 27, alcove 0's SR button, has it since T5.4; tests give it to other lines).</summary>
     public const short DoorTag = 6;
 
     /// <summary>E1M2's door lines (T5.3): the door's sides facing R (front R) and S (front S), both DR manual doors (1).</summary>
@@ -815,8 +819,8 @@ public static class SyntheticIwad
             lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)special, (short)tag,
                 (short)Side("BRICK1", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", back) });
 
-        OneSided(0, 1, 0, "BRICK1", special: 63, tag: 5);  // L0: corridor south (westwards), SR raise door
-        OneSided(1, Mid(0), 0, "BRICK1", special: 103, tag: 5); // L1: corridor west, S1 open door
+        OneSided(0, 1, 0, "SW1BRCOM", special: 63, tag: 5);  // L0: corridor south (westwards), SR raise door (a switch texture, T5.4)
+        OneSided(1, Mid(0), 0, "SW1BRCOM", special: 103, tag: 5); // L1: corridor west, S1 open door (a switch texture, T5.4)
         OneSided(Mid(n), 0, 0, "BRICK1", special: 103, tag: 9); // L2: corridor east, S1 open door of no sector
         for (int i = 0; i < n; i++)
         {
@@ -826,7 +830,13 @@ public static class SyntheticIwad
             TwoSided(Mid(i + 1), Mid(i), 1 + i, 0, special, tag);
         }
         for (int i = 0; i < n; i++)
-            OneSided(Top(i), Top(i + 1), 1 + i, i == 0 ? "SW1BRCOM" : "BRICK1"); // L27 + i: alcove north walls
+        {
+            // L27 + i: alcove north walls; alcove 0's an SR raise-door button (63) of the door sector (T5.4).
+            if (i == 0)
+                OneSided(Top(i), Top(i + 1), 1 + i, "SW1BRCOM", special: 63, tag: DoorTag);
+            else
+                OneSided(Top(i), Top(i + 1), 1 + i, "BRICK1");
+        }
         OneSided(Mid(0), Top(0), 1, "BRICK1");       // L51: the row's west end
         OneSided(Top(n), Mid(n), n, "BRICK1");       // L52: its east end
         for (int j = 1; j < n; j++)

@@ -1,23 +1,212 @@
+using System;
+
 namespace IsoDoom.Sim;
 
-// p_switch.c: the use triggers (P_UseSpecialLine) and the once-only rule of
-// P_ChangeSwitchTexture (T5.2). The switch textures, P_InitSwitchList and the
-// button timers come with T5.4 (Switches.cs has the texture table).
+// p_switch.c: the switch list (P_InitSwitchList), the switch textures and
+// button timers (P_ChangeSwitchTexture, P_StartButton; T5.4) and the use
+// triggers (P_UseSpecialLine, T5.2). The countdown is in P_UpdateSpecials
+// (World.Spec.cs); Switches.cs has the texture table.
 public sealed partial class World
 {
+    /// <summary>p_spec.h <c>MAXBUTTONS</c>: 4 players, 4 buttons each at once, max.</summary>
+    public const int MAXBUTTONS = 16;
+
+    /// <summary>p_spec.h <c>BUTTONTIME</c>: 1 second, in tics.</summary>
+    public const int BUTTONTIME = 35;
+
+    /// <summary>
+    /// p_switch.c <c>switchlist</c>: the switch textures of the game mode in
+    /// pairs (off, on), by name (vanilla's texture numbers; see
+    /// <see cref="P_InitSwitchList"/>). <see cref="numswitches"/> pairs.
+    /// </summary>
+    public readonly string[] switchlist = new string[Switches.MAXSWITCHES * 2];
+
+    /// <summary>p_switch.c <c>numswitches</c>: the number of pairs in <see cref="switchlist"/>.</summary>
+    public int numswitches;
+
+    /// <summary>p_switch.c <c>buttonlist</c>: the pressed buttons; a free slot has <c>btimer</c> 0.</summary>
+    public readonly button_t[] buttonlist = NewButtonList();
+
+    private static button_t[] NewButtonList()
+    {
+        var list = new button_t[MAXBUTTONS];
+        for (int i = 0; i < MAXBUTTONS; i++)
+            list[i] = new button_t();
+        return list;
+    }
+
+    /// <summary>
+    /// p_switch.c <c>P_InitSwitchList</c>: only called at game initialization
+    /// (the <see cref="World"/> constructor, vanilla's <c>P_Init</c>). The
+    /// pairs of <see cref="Switches.alphSwitchList"/> whose episode set the
+    /// game mode has (<see cref="Switches.For"/>). The sim keeps texture
+    /// names, so a pair the WAD lacks is kept (it matches no side) where
+    /// vanilla's <c>R_TextureNumForName</c> errors (SPEC §12 T5.4).
+    /// </summary>
+    public void P_InitSwitchList()
+    {
+        int index = 0;
+        foreach (switchlist_t s in Switches.For(gamemode))
+        {
+            switchlist[index++] = s.name1;
+            switchlist[index++] = s.name2;
+        }
+        numswitches = index / 2;
+    }
+
+    /// <summary>
+    /// p_switch.c <c>P_StartButton</c>: start a button counting down till it
+    /// turns off. Nothing when the line's button is already pressed; vanilla
+    /// errors when all <see cref="MAXBUTTONS"/> slots are taken.
+    /// </summary>
+    public void P_StartButton(line_t line, bwhere_e w, string texture, int time)
+    {
+        // See if button is already pressed
+        for (int i = 0; i < MAXBUTTONS; i++)
+        {
+            if (buttonlist[i].btimer != 0 && buttonlist[i].line == line)
+                return;
+        }
+
+        for (int i = 0; i < MAXBUTTONS; i++)
+        {
+            if (buttonlist[i].btimer == 0)
+            {
+                buttonlist[i].line = line;
+                buttonlist[i].where = w;
+                buttonlist[i].btexture = texture;
+                buttonlist[i].btimer = time;
+                buttonlist[i].soundorg = line.frontsector;
+                return;
+            }
+        }
+
+        throw new InvalidOperationException("P_StartButton: no button slots left!");
+    }
+
     /// <summary>
     /// p_switch.c <c>P_ChangeSwitchTexture</c>: function that changes wall
     /// texture. Tell it if switch is ok to use again (1=yes, it's a button).
-    /// Only the once-only rule is ported: a switch (<paramref name="useAgain"/>
-    /// 0) clears the line's special. The texture change, its sound and
-    /// <c>P_StartButton</c> come with T5.4.
+    /// A switch (<paramref name="useAgain"/> 0) clears the line's special.
+    /// The first texture of the front side (top, middle, bottom) that is in
+    /// <see cref="switchlist"/>, in list order, becomes its partner, with
+    /// <c>sfx_swtchn</c>; a button also starts its timer
+    /// (<see cref="P_StartButton"/>, the texture it switches back to). As
+    /// vanilla: the exit sound <c>sfx_swtchx</c> never plays (the special
+    /// is already 0 when the exit switch checks for 11), and the sound comes
+    /// from <c>buttonlist[0]</c>'s origin, not the line's (none while that
+    /// slot is free; SPEC §12 T5.4).
     /// </summary>
     public void P_ChangeSwitchTexture(line_t line, int useAgain)
     {
         if (useAgain == 0)
             line.special = 0;
 
-        // The switch texture, sfx_swtchn/sfx_swtchx and P_StartButton (T5.4).
+        side_t side = sides[line.sidenum[0]];
+        string texTop = side.toptexture;
+        string texMid = side.midtexture;
+        string texBot = side.bottomtexture;
+
+        sfxenum_t sound = sfxenum_t.sfx_swtchn;
+
+        // EXIT SWITCH?
+        if (line.special == 11)
+            sound = sfxenum_t.sfx_swtchx;
+
+        for (int i = 0; i < numswitches * 2; i++)
+        {
+            if (SameTexture(switchlist[i], texTop))
+            {
+                StartButtonSound(sound);
+                side.toptexture = switchlist[i ^ 1];
+
+                if (useAgain != 0)
+                    P_StartButton(line, bwhere_e.top, switchlist[i], BUTTONTIME);
+
+                return;
+            }
+            else
+            {
+                if (SameTexture(switchlist[i], texMid))
+                {
+                    StartButtonSound(sound);
+                    side.midtexture = switchlist[i ^ 1];
+
+                    if (useAgain != 0)
+                        P_StartButton(line, bwhere_e.middle, switchlist[i], BUTTONTIME);
+
+                    return;
+                }
+                else
+                {
+                    if (SameTexture(switchlist[i], texBot))
+                    {
+                        StartButtonSound(sound);
+                        side.bottomtexture = switchlist[i ^ 1];
+
+                        if (useAgain != 0)
+                            P_StartButton(line, bwhere_e.bottom, switchlist[i], BUTTONTIME);
+
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // S_StartSound(buttonlist->soundorg, sound): the first slot's origin, whichever line it holds.
+    private void StartButtonSound(sfxenum_t sound)
+    {
+        if (buttonlist[0].soundorg is { } sector)
+            S_StartSound(sector, sound);
+        else
+            S_StartSound((mobj_t?)null, sound);
+    }
+
+    // Vanilla compares texture numbers; the sim compares the names (case-insensitively, as R_TextureNumForName).
+    private static bool SameTexture(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// p_spec.c <c>P_UpdateSpecials</c>' <c>DO BUTTONS</c> part: count the
+    /// pressed buttons down; one that reaches 0 gets its texture back, with
+    /// <c>sfx_swtchn</c> from its line's front sector (vanilla passes the
+    /// address of the <c>soundorg</c> field, a garbage origin; SPEC §12
+    /// T5.4), and its slot is freed.
+    /// </summary>
+    private void P_UpdateButtons()
+    {
+        //	DO BUTTONS
+        for (int i = 0; i < MAXBUTTONS; i++)
+        {
+            button_t b = buttonlist[i];
+            if (b.btimer != 0)
+            {
+                b.btimer--;
+                if (b.btimer == 0)
+                {
+                    side_t side = sides[b.line!.sidenum[0]];
+                    switch (b.where)
+                    {
+                        case bwhere_e.top:
+                            side.toptexture = b.btexture!;
+                            break;
+
+                        case bwhere_e.middle:
+                            side.midtexture = b.btexture!;
+                            break;
+
+                        case bwhere_e.bottom:
+                            side.bottomtexture = b.btexture!;
+                            break;
+                    }
+                    if (b.soundorg is { } sector)
+                        S_StartSound(sector, sfxenum_t.sfx_swtchn);
+                    else
+                        S_StartSound((mobj_t?)null, sfxenum_t.sfx_swtchn);
+                    b.Clear();
+                }
+            }
+        }
     }
 
     /// <summary>

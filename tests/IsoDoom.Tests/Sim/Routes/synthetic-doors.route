@@ -6,6 +6,9 @@
 # wall) once they are idle, and again (spent). Stays in the corridor (the
 # lift and floor lines of alcoves 0 and 22 are T5.5's). Written by a
 # scratch generator steering the sim.
+# T5.4: both lines draw SW1BRCOM, so the dump's textures column checks
+# the button turning on and back after 35 tics (twice) and the switch
+# turning once.
 # forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
 iwad synthetic
 map E1M2

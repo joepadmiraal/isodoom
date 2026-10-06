@@ -35,7 +35,10 @@ namespace IsoDoom.Tests.Sim;
 /// index, and the mobj's <c>state</c> and <c>tics</c>, then (T5.3) the
 /// <c>sectors</c> whose floor or ceiling height differs from the map's
 /// <c>SECTORS</c> lump, as <c>SECTOR:FLOOR:CEILING</c> (fixed_t) joined by
-/// commas, or <c>-</c> for none (doors, lifts). For the synthetic
+/// commas, or <c>-</c> for none (doors, lifts), then (T5.4) the
+/// <c>textures</c> of sidedefs that differ from the map's <c>SIDEDEFS</c>
+/// lump, as <c>SIDE:PART:NAME</c> (<c>PART</c> <c>t</c>, <c>m</c> or
+/// <c>b</c>) joined by commas, or <c>-</c> for none (switches). For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -48,7 +51,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures" };
 
     public string Name { get; }
     public string Path { get; }
@@ -182,9 +185,10 @@ public sealed class VanillaRoute
     /// <summary>
     /// The sim's state after a tic, as a dump line; <paramref name="mapHeights"/>
     /// are the sectors' floor and ceiling heights as the map has them
-    /// (<see cref="MapHeights"/>).
+    /// (<see cref="MapHeights"/>), <paramref name="mapTextures"/> the sidedefs'
+    /// textures (<see cref="MapTextures"/>).
     /// </summary>
-    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights)
+    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights, string[] mapTextures)
     {
         player_t p = world.players[world.consoleplayer];
         mobj_t mo = p.mo!;
@@ -201,8 +205,19 @@ public sealed class VanillaRoute
             if (sec.floorheight != mapHeights[i].Floor || sec.ceilingheight != mapHeights[i].Ceiling)
                 moved.Add(string.Create(CultureInfo.InvariantCulture, $"{i}:{sec.floorheight}:{sec.ceilingheight}"));
         }
-        return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved));
+        string[] textures = MapTextures(world);
+        var changed = new List<string>();
+        for (int i = 0; i < textures.Length; i++)
+        {
+            if (!string.Equals(textures[i], mapTextures[i], StringComparison.OrdinalIgnoreCase))
+                changed.Add(string.Create(CultureInfo.InvariantCulture, $"{i / 3}:{"tmb"[i % 3]}:{textures[i].ToUpperInvariant()}"));
+        }
+        return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed));
     }
+
+    /// <summary>The sidedefs' textures, top, middle and bottom of each in sidedef order (before the first tic: the map's).</summary>
+    public static string[] MapTextures(World world) =>
+        world.sides.SelectMany(s => new[] { s.toptexture, s.midtexture, s.bottomtexture }).ToArray();
 
     /// <summary>The sectors' floor and ceiling heights (fixed_t) of a world before its first tic: the map's.</summary>
     public static (int Floor, int Ceiling)[] MapHeights(World world) =>
@@ -217,12 +232,13 @@ public sealed class VanillaRoute
         string[] expected = Reference();
         World world = NewWorld();
         (int, int)[] mapHeights = MapHeights(world);
+        string[] mapTextures = MapTextures(world);
         Assert.True(expected.Length == Cmds.Count,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
             world.G_Ticker(Cmds[tic]);
-            string actual = Line(world, mapHeights);
+            string actual = Line(world, mapHeights, mapTextures);
             if (actual == expected[tic])
                 continue;
             string[] e = expected[tic].Split(' '), a = actual.Split(' ');

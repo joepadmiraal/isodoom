@@ -60,6 +60,9 @@ public sealed partial class World
         for (int i = 0; i < MAXPLAYERS; i++)
             players[i].playerstate = playerstate_t.PST_REBORN;
         P_InitThinkers();
+
+        // p_setup.c P_Init (the switch list; the animations come with T5.7)
+        P_InitSwitchList();
     }
 
     /// <summary>The game settings (doomstat.h <c>gamemode</c>, <c>gameskill</c>, <c>netgame</c>, <c>deathmatch</c>, <c>nomonsters</c>).</summary>

@@ -9,8 +9,8 @@ public readonly record struct switchlist_t(string name1, string name2, short epi
 /// <summary>
 /// p_switch.c's switch texture table (T5.1: the presentation puts both
 /// textures of every pair a level uses in its atlas up front, SPEC §12 T5.1).
-/// <c>P_InitSwitchList</c>'s texture numbers, <c>P_ChangeSwitchTexture</c>
-/// and the button timers come with T5.4.
+/// <c>P_InitSwitchList</c>, <c>P_ChangeSwitchTexture</c> and the button
+/// timers are in <c>World.Switch.cs</c> (T5.4).
 /// </summary>
 public static class Switches
 {

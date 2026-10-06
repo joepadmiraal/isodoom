@@ -141,3 +141,37 @@ public enum result_e
     crushed,
     pastdest,
 }
+
+/// <summary>p_spec.h <c>bwhere_e</c>: which texture of a button's front side is switched (p_switch.c, T5.4).</summary>
+public enum bwhere_e
+{
+    top,
+    middle,
+    bottom,
+}
+
+/// <summary>
+/// p_spec.h <c>button_t</c>: a pressed button (a switch usable again) waiting
+/// to switch its texture back (p_switch.c <c>P_StartButton</c>, counted down
+/// by <c>P_UpdateSpecials</c>; T5.4). <see cref="btexture"/> is a texture
+/// name (the sim keeps names); <see cref="soundorg"/> the sector whose sound
+/// origin vanilla points at (the line's front sector), null for none.
+/// </summary>
+public sealed class button_t
+{
+    public line_t? line;
+    public bwhere_e where;
+    public string? btexture;
+    public int btimer;
+    public sector_t? soundorg;
+
+    /// <summary><c>memset(&amp;buttonlist[i], 0, sizeof(button_t))</c>.</summary>
+    public void Clear()
+    {
+        line = null;
+        where = bwhere_e.top;
+        btexture = null;
+        btimer = 0;
+        soundorg = null;
+    }
+}

@@ -14,14 +14,17 @@
 // The movement reference (T4.8): with $DUMP_TICS set (and no $VIEWS), it
 // plays a demo (-playdemo) without the specials the sim lacks yet
 // (dump_nospecials in ref.patch: sector specials and animations; line
-// triggers and doors run since T5.2/T5.3) and appends one line per tic to the file $DUMP_TICS, after the
+// triggers, doors, switches and P_UpdateSpecials run since T5.2-T5.4) and
+// appends one line per tic to the file $DUMP_TICS, after the
 // tic: leveltime, the ticcmd read (forwardmove, sidemove, angleturn,
 // buttons), player 1's mobj x, y, z, momx, momy, momz, angle (unsigned),
 // viewz, the P_Random index, and the mobj's state (statenum_t) and tics
 // (fixed_t and BAM as integers); then (T5.3) the sectors whose floor or
 // ceiling height differs from the map's SECTORS lump, as
 // SECTOR:FLOOR:CEILING (fixed_t) joined by commas in sector order, or - for
-// none.
+// none; then (T5.4) the sidedef textures that differ from the map's SIDEDEFS
+// lump (switches), as SIDE:PART:NAME (PART t, m or b; NAME upper case)
+// joined by commas in sidedef and part order, or - for none.
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
@@ -34,6 +37,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #define MAX_VIEWS 4096
 
@@ -67,6 +71,9 @@ void DG_Init(void)
 }
 
 static byte *map_sectors(void);
+static byte *map_lump(int lump);
+// r_data.c's textures: each starts with its name (char[8], not terminated when 8 long).
+extern char **textures;
 
 // Called by the patched p_tick.c at the end of every P_Ticker.
 void dump_tic(void)
@@ -89,19 +96,44 @@ void dump_tic(void)
         if (sectors[i].floorheight != floor || sectors[i].ceilingheight != ceiling)
             fprintf(ticfile, "%s%d:%d:%d", moved++ ? "," : "", i, sectors[i].floorheight, sectors[i].ceilingheight);
     }
-    fprintf(ticfile, "%s\n", moved ? "" : "-");
+    fprintf(ticfile, "%s ", moved ? "" : "-");
+    // The switched textures (T5.4).
+    byte *sidedata = map_lump(ML_SIDEDEFS);
+    int changed = 0;
+    for (int i = 0; i < numsides; i++)
+    {
+        const char *names[3] = { (char *)sidedata + 30 * i + 4, (char *)sidedata + 30 * i + 20, (char *)sidedata + 30 * i + 12 };
+        int now[3] = { sides[i].toptexture, sides[i].midtexture, sides[i].bottomtexture };
+        for (int k = 0; k < 3; k++)
+        {
+            char name[9] = { 0 };
+            memcpy(name, names[k], 8);
+            if (now[k] == R_TextureNumForName(name))
+                continue;
+            fprintf(ticfile, "%s%d:%c:", changed++ ? "," : "", i, "tmb"[k]);
+            for (int c = 0; c < 8 && textures[now[k]][c]; c++)
+                fputc(toupper((unsigned char)textures[now[k]][c]), ticfile);
+        }
+    }
+    fprintf(ticfile, "%s\n", changed ? "" : "-");
     fflush(ticfile);
 }
 
-// The map's SECTORS lump.
-static byte *map_sectors(void)
+// A lump of the map (ML_SECTORS, ...).
+static byte *map_lump(int lump)
 {
     char name[9];
     if (gamemode == commercial)
         snprintf(name, sizeof name, "MAP%02d", gamemap);
     else
         snprintf(name, sizeof name, "E%dM%d", gameepisode, gamemap);
-    return W_CacheLumpNum(W_GetNumForName(name) + ML_SECTORS, PU_CACHE);
+    return W_CacheLumpNum(W_GetNumForName(name) + lump, PU_CACHE);
+}
+
+// The map's SECTORS lump.
+static byte *map_sectors(void)
+{
+    return map_lump(ML_SECTORS);
 }
 
 // The light levels of the map's SECTORS lump (undoes flickering, glowing, ...).
