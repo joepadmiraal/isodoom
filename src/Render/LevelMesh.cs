@@ -46,6 +46,7 @@ public sealed class LevelMesh
     private const float HeightRange = 32768f / MapUnitsPerMetre;
 
     private readonly Image _sectorImage;
+    private Image _infoImage = null!;
     private readonly int[] _textureSlot; // texture number → slot, -1 if unused
     private readonly Dictionary<string, int> _flatSlot = new(StringComparer.OrdinalIgnoreCase);
 
@@ -168,6 +169,9 @@ public sealed class LevelMesh
     /// <summary>The sector data texel of <paramref name="sector"/> as uploaded: floor, ceiling (map units), light.</summary>
     public Color SectorData(int sector) => _sectorImage.GetPixel(sector % DataWidth, sector / DataWidth);
 
+    /// <summary>The <c>texture_info</c> texel of texture slot <paramref name="slot"/> as uploaded: atlas x, y, width, height.</summary>
+    public Color TextureInfo(int slot) => _infoImage.GetPixel(slot % DataWidth, slot / DataWidth);
+
     private void WriteSector(Sector s) =>
         _sectorImage.SetPixel(s.Index % DataWidth, s.Index / DataWidth,
             new Color((float)(s.FloorHeight / 65536.0), (float)(s.CeilingHeight / 65536.0), s.LightLevel, 0));
@@ -178,7 +182,7 @@ public sealed class LevelMesh
     {
         AtlasTexture = IndexedTextures.CreateTexture(Atlas.Image);
 
-        var info = Image.CreateEmpty(DataWidth, Rows(Atlas.Rects.Count), false, Image.Format.Rgbaf);
+        var info = _infoImage = Image.CreateEmpty(DataWidth, Rows(Atlas.Rects.Count), false, Image.Format.Rgbaf);
         for (int i = 0; i < Atlas.Rects.Count; i++)
         {
             AtlasRect r = Atlas.Rects[i];

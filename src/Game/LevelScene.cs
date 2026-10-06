@@ -25,39 +25,74 @@ namespace IsoDoom.Game;
 /// <c>--level-sector-floor=SECTOR:HEIGHT[,SECTOR:HEIGHT…]</c> (set sector floors,
 /// in map units, through the data texture after loading);
 /// <c>--level-screenshot=FILE.png</c> (save a capture and quit; needs a real
-/// renderer; the image is WAD data, keep it out of the repo).
+/// renderer; the image is WAD data, keep it out of the repo);
+/// <c>--level-check</c> (load every map and check the meshes, data textures
+/// and, with a real renderer, drawn pixels: <see cref="LevelCheck"/>).
 /// </para>
 /// </summary>
 public partial class LevelScene : Node3D
 {
     private Camera3D _camera = null!;
     private Label _message = null!;
+    private readonly List<MeshInstance3D> _chunks = new();
 
-    /// <summary>The loaded level's mesh, or null when loading failed.</summary>
+    /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
     public LevelMesh? Mesh { get; private set; }
+
+    /// <summary>The loaded IWAD (plus PWADs), its texture table, palettes and colormaps; null until <see cref="OpenWad"/> succeeds.</summary>
+    public WadArchive? Wad { get; private set; }
+    public Textures? Textures { get; private set; }
+    public Playpal? Playpal { get; private set; }
+    public Colormap? Colormap { get; private set; }
+
+    /// <summary>The maps of the WAD (<c>ExMy</c>/<c>MAPxx</c> headers followed by <c>THINGS</c>), in lump order, each once.</summary>
+    public IReadOnlyList<string> MapNames { get; private set; } = Array.Empty<string>();
+
+    /// <summary>The scene's camera (the overview camera; checks move it).</summary>
+    public Camera3D Camera => _camera;
+
+    /// <summary>The scene's environment (black background; checks change it).</summary>
+    public Godot.Environment Environment { get; private set; } = null!;
+
+    /// <summary>The overlay with the status line (checks hide it so it doesn't cover pixels).</summary>
+    public CanvasLayer Overlay { get; private set; } = null!;
+
+    /// <summary>The node of each sector's chunk (null where <see cref="LevelMesh.SectorMeshes"/> has none).</summary>
+    public MeshInstance3D?[] Chunks { get; private set; } = Array.Empty<MeshInstance3D?>();
+
+    private static bool IsCheckRun => WadLocator.HasUserArg("--level-check");
 
     public override void _Ready()
     {
         _camera = new Camera3D { Current = true };
         AddChild(_camera);
-        AddChild(new WorldEnvironment
+        Environment = new Godot.Environment
         {
-            Environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = Colors.Black, // SPEC §7.2: the void is black
-                TonemapMode = Godot.Environment.ToneMapper.Linear,
-                AmbientLightSource = Godot.Environment.AmbientSource.Disabled,
-            },
-        });
-        var overlay = new CanvasLayer();
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = Colors.Black, // SPEC §7.2: the void is black
+            TonemapMode = Godot.Environment.ToneMapper.Linear,
+            AmbientLightSource = Godot.Environment.AmbientSource.Disabled,
+        };
+        AddChild(new WorldEnvironment { Environment = Environment });
+        Overlay = new CanvasLayer();
         _message = new Label { Position = new Vector2(8, 8) };
-        overlay.AddChild(_message);
-        AddChild(overlay);
+        Overlay.AddChild(_message);
+        AddChild(Overlay);
 
         try
         {
-            Load();
+            OpenWad();
+            if (IsCheckRun)
+            {
+                AddChild(new LevelCheck(this)); // loads every map itself
+                return;
+            }
+            string? map = WadLocator.GetUserArg("--level");
+            if (map is null || map.StartsWith('-'))
+                map = DefaultMap();
+            LoadMap(map);
+            if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
+                MoveFloors(Mesh!.Level, moves);
         }
         catch (Exception e) when (e is WadFormatException or ModifiedGameException or IOException or UnauthorizedAccessException
             or KeyNotFoundException or ArgumentException)
@@ -65,11 +100,13 @@ public partial class LevelScene : Node3D
             Fail(e.Message);
             return;
         }
+        GetViewport().SizeChanged += FrameCamera;
         if (WadLocator.GetUserArg("--level-screenshot") is string path)
             _ = ScreenshotAsync(path);
     }
 
-    private void Load()
+    /// <summary>Opens the IWAD <see cref="WadLocator"/> finds and reads its texture table, palettes and map list.</summary>
+    private void OpenWad()
     {
         IwadSearchResult found = WadLocator.Find(out _);
         if (found.Warning is not null)
@@ -77,39 +114,76 @@ public partial class LevelScene : Node3D
         if (found.Path is null)
             throw new IOException(found.Error ?? "No IWAD found (pass -- -iwad PATH or set ISODOOM_IWAD).");
 
-        var clock = Stopwatch.StartNew();
         var wad = WadArchive.Open(found.Path, [.. found.Pwads]);
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
         ModifiedGame.D_CheckModifiedGame(wad, info);
-        string? map = WadLocator.GetUserArg("--level");
-        if (map is null || map.StartsWith('-'))
-            map = wad.W_CheckNumForName("E1M1") >= 0 ? "E1M1" : "MAP01";
+        Textures = Textures.R_InitTextures(wad);
+        Playpal = Playpal.Load(wad);
+        Colormap = Colormap.Load(wad);
+        MapNames = FindMaps(wad);
+        Wad = wad;
+        GD.Print($"Level: {found.Path}: {info}, {MapNames.Count} maps");
+    }
+
+    /// <summary>The first of <c>E1M1</c>/<c>MAP01</c> the WAD has (else <c>MAP01</c>, which then fails to load).</summary>
+    public string DefaultMap() => Wad!.W_CheckNumForName("E1M1") >= 0 ? "E1M1" : "MAP01";
+
+    private static List<string> FindMaps(WadArchive wad)
+    {
+        var maps = new List<string>();
+        for (int i = 0; i + 1 < wad.NumLumps; i++)
+        {
+            string name = wad.Lumps[i].Name;
+            if (LumpDirectory.IsMapName(name) && wad.Lumps[i + 1].Name == "THINGS" && !maps.Contains(name))
+                maps.Add(name);
+        }
+        return maps;
+    }
+
+    /// <summary>
+    /// Shows map <paramref name="map"/> of the open WAD: frees the previous
+    /// level's chunks, builds the new <see cref="LevelMesh"/> and frames the
+    /// overview camera. Throws <see cref="WadFormatException"/> (or
+    /// <see cref="KeyNotFoundException"/> for an unknown flat) when the map
+    /// can't be built.
+    /// </summary>
+    public void LoadMap(string map)
+    {
+        WadArchive wad = Wad ?? throw new InvalidOperationException("No WAD open.");
         map = map.ToUpperInvariant();
         if (wad.W_CheckNumForName(map) < 0)
-            throw new WadFormatException($"{found.Path} has no map {map}");
+            throw new WadFormatException($"the WAD has no map {map}");
 
+        foreach (MeshInstance3D chunk in _chunks)
+            chunk.QueueFree();
+        _chunks.Clear();
+        Chunks = Array.Empty<MeshInstance3D?>();
+        Mesh = null;
+
+        var clock = Stopwatch.StartNew();
         Level level = Level.Load(wad, map);
-        Textures textures = Textures.R_InitTextures(wad);
-        Mesh = LevelMesh.Build(wad, level, textures, Playpal.Load(wad), Colormap.Load(wad));
+        LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!);
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
-            Mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
+            mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
 
-        for (int s = 0; s < Mesh.SectorMeshes.Length; s++)
+        Chunks = new MeshInstance3D?[mesh.SectorMeshes.Length];
+        for (int s = 0; s < mesh.SectorMeshes.Length; s++)
         {
-            if (Mesh.SectorMeshes[s] is ArrayMesh chunk)
-                AddChild(new MeshInstance3D { Mesh = chunk, Name = $"Sector{s}", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+            if (mesh.SectorMeshes[s] is not ArrayMesh chunkMesh)
+                continue;
+            var node = new MeshInstance3D { Mesh = chunkMesh, Name = $"Sector{s}", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+            AddChild(node);
+            _chunks.Add(node);
+            Chunks[s] = node;
         }
         clock.Stop();
-
-        if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
-            MoveFloors(level, moves);
+        Mesh = mesh;
 
         FrameCamera();
-        GetViewport().SizeChanged += FrameCamera;
-        string text = $"{map}: {level.Sectors.Length} sectors, {Mesh.FloorTriangleCount} floor triangles, {Mesh.WallQuads} wall quads, "
-            + $"{Mesh.SlotNames.Count} textures in a {Mesh.Atlas.Image.Width}x{Mesh.Atlas.Image.Height} atlas, {Mesh.Walls.Missing.Count} missing; "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, "
+            + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
-        GD.Print($"Level: {found.Path}: {text}");
+        GD.Print($"Level: {text}");
         _message.Text = text;
     }
 
@@ -127,7 +201,8 @@ public partial class LevelScene : Node3D
         Mesh!.UpdateSectors();
     }
 
-    private void FrameCamera()
+    /// <summary>Frames the overview camera on the level (or the <c>--level-focus</c> sector).</summary>
+    public void FrameCamera()
     {
         if (Mesh is null)
             return;
@@ -177,7 +252,9 @@ public partial class LevelScene : Node3D
     {
         GD.PrintErr($"Level: {message}");
         _message.Text = message;
-        if (WadLocator.HasUserArg("--level-screenshot"))
+        if (IsCheckRun)
+            GD.PrintErr("Level check: FAILED (no WAD loaded)");
+        if (WadLocator.HasUserArg("--level-screenshot") || IsCheckRun)
             GetTree().Quit(1);
     }
 }

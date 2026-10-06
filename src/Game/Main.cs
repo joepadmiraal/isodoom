@@ -5,7 +5,8 @@ namespace IsoDoom.Game;
 /// <summary>
 /// Entry point of the main scene. Until the game shell exists (M7) it opens
 /// the WAD viewer (T1.6), which shows a message when no IWAD is found, or,
-/// with the user argument <c>--level [MAP]</c>, the level scene (T2.5).
+/// with the user argument <c>--level [MAP]</c> or <c>--level-check</c>, the
+/// level scene (T2.5, T2.6).
 /// </summary>
 public partial class Main : Node
 {
@@ -15,7 +16,7 @@ public partial class Main : Node
     public override void _Ready()
     {
         GD.Print($"IsoDoom started (Sim assembly: {typeof(IsoDoom.Sim.SimInfo).Assembly.GetName().Name})");
-        string scene = WadLocator.HasUserArg("--level") ? LevelScenePath : WadViewerScene;
+        string scene = WadLocator.HasUserArg("--level") || WadLocator.HasUserArg("--level-check") ? LevelScenePath : WadViewerScene;
         AddChild(GD.Load<PackedScene>(scene).Instantiate());
     }
 }

@@ -1,7 +1,8 @@
 # CI: build + test the .NET solution, then export the Godot project for
-# Linux x86_64 headlessly, run the WAD viewer check (T1.6b) against a
-# generated synthetic IWAD (tools/SyntheticIwad: no id data, no download) in
-# the editor and in the exported build, and upload the build. Toolchain
+# Linux x86_64 headlessly, run the WAD viewer check (T1.6b) and the level
+# check (T2.6) against a generated synthetic IWAD (tools/SyntheticIwad: no id
+# data, no download) in the editor and in the exported build, and upload the
+# build. Toolchain
 # versions are pinned
 # in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
 # IsoDoom.csproj; the .NET SDK comes from global.json).
@@ -143,6 +144,14 @@ jobs:
           timeout 300 godot --headless -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check-editor.log
           grep -q "WAD viewer check: OK" viewer-check-editor.log
 
+      # The level check (T2.6), editor, headless: every map of the IWAD built
+      # in the level scene; meshes, texture binding and per-sector data
+      # checked against the levels. Exits 1 on a failure.
+      - name: Level check (editor, headless)
+        run: |
+          timeout 300 godot --headless -- --level-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee level-check-editor.log
+          grep -q "Level check: OK" level-check-editor.log
+
       - name: Export
         run: |
           mkdir -p export/linux
@@ -171,6 +180,19 @@ jobs:
             export/linux/IsoDoom.x86_64 --audio-driver Dummy -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check-export.log
           grep -q "drawn pixels compared" viewer-check-export.log
           grep -q "WAD viewer check: OK" viewer-check-export.log
+
+      # The level check in the exported build with a real renderer: also
+      # renders the synthetic E1M1 top-down and side-on at every wall, moves a
+      # floor through the data texture, and compares drawn pixels with the
+      # CPU texel lookup and palette conversion.
+      - name: Level check (exported build, software Vulkan)
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          timeout 600 xvfb-run -a -s "-screen 0 1280x720x24" \
+            export/linux/IsoDoom.x86_64 --audio-driver Dummy -- --level-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee level-check-export.log
+          grep -q "drawn pixels compared" level-check-export.log
+          grep -q "Level check: OK" level-check-export.log
 
       - uses: actions/upload-artifact@v5
         with:
