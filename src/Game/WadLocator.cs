@@ -2,71 +2,89 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Godot;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Game;
 
 /// <summary>
-/// Finds the IWAD for the WAD viewer (T1.6). A stopgap until T1.1a's full
-/// search (Steam/GOG locations, file picker). Order:
-/// <list type="number">
-/// <item><c>--iwad PATH</c> or <c>--iwad=PATH</c> among the user arguments
-/// (after <c>--</c> on the Godot command line);</item>
-/// <item>the <c>ISODOOM_IWAD</c> environment variable;</item>
-/// <item>the <c>ISODOOM_DOOM1_WAD</c> environment variable (the one the tests use);</item>
-/// <item>an IWAD with a standard name in <c>wads/</c> of the project folder
-/// (editor runs) or next to the executable (exports): <c>DOOM1.WAD</c>,
-/// <c>DOOM.WAD</c>, <c>DOOMU.WAD</c>, <c>DOOM2.WAD</c>, <c>TNT.WAD</c>,
-/// <c>PLUTONIA.WAD</c>, upper or lower case.</item>
-/// </list>
-/// An explicitly given path (argument or variable) that does not exist is
-/// reported and not replaced by a fallback.
+/// Godot glue for the IWAD search (T1.1a, SPEC §5.1). The search itself is
+/// <see cref="IwadLocator"/> (plain C#, unit-tested); this fills its
+/// <see cref="IwadSearchContext"/> from the process and keeps the configured
+/// IWAD in <c>user://settings.cfg</c> (<c>[wad] iwad</c>), which the file
+/// picker writes.
+/// <para>
+/// Command line: Godot's user arguments, i.e. those after <c>--</c>
+/// (<c>godot -- -iwad doom2.wad -file mymap.wad</c>,
+/// <c>IsoDoom.x86_64 -- -iwad …</c>).
+/// </para>
 /// </summary>
 public static class WadLocator
 {
-    private static readonly string[] IwadNames = { "DOOM1.WAD", "DOOM.WAD", "DOOMU.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD" };
+    public const string SettingsPath = "user://settings.cfg";
+    private const string Section = "wad";
+    private const string IwadKey = "iwad";
 
-    /// <summary>The IWAD path, or null with <paramref name="error"/> saying what was tried.</summary>
-    public static string? Find(out string error)
+    /// <summary>Runs the search with the process's command line, environment, folders and settings.</summary>
+    public static IwadSearchResult Find(out IReadOnlyList<string> searchedDirs)
     {
-        string? explicitPath = GetUserArg("--iwad")
-            ?? NonEmpty(System.Environment.GetEnvironmentVariable("ISODOOM_IWAD"))
-            ?? NonEmpty(System.Environment.GetEnvironmentVariable("ISODOOM_DOOM1_WAD"));
-        if (explicitPath is not null)
-        {
-            // Exported builds run with the executable's folder as the working
-            // directory, so resolve a relative path against the shell's.
-            string? pwd = System.Environment.GetEnvironmentVariable("PWD");
-            if (!Path.IsPathRooted(explicitPath) && !string.IsNullOrEmpty(pwd))
-                explicitPath = Path.Combine(pwd, explicitPath);
-            error = File.Exists(explicitPath) ? "" : $"IWAD not found: {explicitPath}";
-            return File.Exists(explicitPath) ? explicitPath : null;
-        }
+        var locator = new IwadLocator(CreateContext());
+        IwadSearchResult result = locator.D_FindIWAD();
+        searchedDirs = locator.iwad_dirs;
+        return result;
+    }
 
-        var dirs = new List<string>();
-        if (OS.HasFeature("editor"))
-            dirs.Add(Path.Combine(ProjectSettings.GlobalizePath("res://"), "wads"));
-        string? exeDir = Path.GetDirectoryName(OS.GetExecutablePath());
-        if (!OS.HasFeature("editor") && exeDir is not null)
-            dirs.Add(Path.Combine(exeDir, "wads"));
+    public static IwadSearchContext CreateContext() => new()
+    {
+        CommandLine = new CommandLine(OS.GetExecutablePath(), OS.GetCmdlineUserArgs()),
+        CurrentDirectory = UserWorkingDirectory(),
+        GameDirectories = GameDirectories(),
+        ConfiguredIwad = LoadConfiguredIwad(),
+    };
 
-        foreach (string dir in dirs)
-        {
-            foreach (string name in IwadNames)
-            {
-                foreach (string candidate in new[] { name, name.ToLowerInvariant() })
-                {
-                    string path = Path.Combine(dir, candidate);
-                    if (File.Exists(path))
-                    {
-                        error = "";
-                        return path;
-                    }
-                }
-            }
-        }
+    /// <summary>
+    /// The game folder: the project folder in editor runs, the executable's
+    /// folder in exports; each followed by its <c>wads/</c> subfolder.
+    /// </summary>
+    public static IReadOnlyList<string> GameDirectories()
+    {
+        string? root = OS.HasFeature("editor")
+            ? ProjectSettings.GlobalizePath("res://")
+            : Path.GetDirectoryName(OS.GetExecutablePath());
+        if (string.IsNullOrEmpty(root))
+            return Array.Empty<string>();
+        root = root.TrimEnd('/', '\\');
+        return new[] { root, Path.Combine(root, "wads") };
+    }
 
-        error = $"No IWAD found. Put DOOM1.WAD in {string.Join(" or ", dirs)}, set ISODOOM_IWAD, or pass -- --iwad PATH.";
-        return null;
+    /// <summary>
+    /// The shell's working directory. Exported builds run with the executable's
+    /// folder as the process working directory, so prefer <c>$PWD</c>.
+    /// </summary>
+    private static string UserWorkingDirectory()
+    {
+        string? pwd = System.Environment.GetEnvironmentVariable("PWD");
+        return !string.IsNullOrEmpty(pwd) && Directory.Exists(pwd) ? pwd : Directory.GetCurrentDirectory();
+    }
+
+    /// <summary>The IWAD path saved by the file picker, or null.</summary>
+    public static string? LoadConfiguredIwad()
+    {
+        var config = new ConfigFile();
+        if (config.Load(SettingsPath) != Error.Ok)
+            return null;
+        string value = config.GetValue(Section, IwadKey, "").AsString();
+        return value.Length > 0 ? value : null;
+    }
+
+    /// <summary>Saves <paramref name="path"/> as the configured IWAD (searched before the folders on the next start).</summary>
+    public static void SaveConfiguredIwad(string path)
+    {
+        var config = new ConfigFile();
+        config.Load(SettingsPath); // keep other settings; a missing file is fine
+        config.SetValue(Section, IwadKey, path);
+        Error err = config.Save(SettingsPath);
+        if (err != Error.Ok)
+            GD.PushWarning($"Could not save {SettingsPath}: {err}");
     }
 
     /// <summary>The value of <c>name VALUE</c> or <c>name=VALUE</c> among the user arguments, or null.</summary>
@@ -86,6 +104,4 @@ public static class WadLocator
     /// <summary>True if <paramref name="name"/> (alone or as <c>name=…</c>) is among the user arguments.</summary>
     public static bool HasUserArg(string name) =>
         Array.Exists(OS.GetCmdlineUserArgs(), a => a == name || a.StartsWith(name + "=", StringComparison.Ordinal));
-
-    private static string? NonEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 }

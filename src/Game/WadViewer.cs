@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Godot;
 using IsoDoom.Render;
 using IsoDoom.Wad;
@@ -14,7 +15,8 @@ namespace IsoDoom.Game;
 /// (UI, menus, fonts, intermission) and the palette tables. Graphics are
 /// uploaded as indexed RG8 textures and coloured by the palette shader, with a
 /// light-level slider (COLORMAP), an invulnerability toggle and a PLAYPAL
-/// palette selector. The IWAD comes from <see cref="WadLocator"/>.
+/// palette selector. The IWAD comes from <see cref="WadLocator"/>; when none is found the
+/// viewer opens a file picker and remembers the choice.
 /// <para>
 /// User arguments (after <c>--</c>): <c>--viewer-check</c> walks every
 /// graphic, checks it uploads and, with a real renderer, that the drawn
@@ -29,6 +31,7 @@ public partial class WadViewer : Control
 
     private GraphicsCatalog? _catalog;
     private ShaderMaterial? _material;
+    private FileDialog _picker = null!;
 
     private OptionButton _category = null!;
     private LineEdit _filter = null!;
@@ -68,33 +71,100 @@ public partial class WadViewer : Control
         TextureFilter = TextureFilterEnum.Nearest;
         BuildUi();
 
-        string? path = WadLocator.Find(out string error);
-        if (path is null)
+        IwadSearchResult found = WadLocator.Find(out IReadOnlyList<string> searched);
+        if (found.Warning is not null)
+            GD.PushWarning($"WAD viewer: {found.Warning}");
+        if (found.Path is null)
         {
-            ShowError(error);
+            string message = found.Error ?? "No IWAD found.";
+            if (found.Source == IwadSource.None)
+            {
+                var existing = new List<string>();
+                foreach (string dir in searched)
+                {
+                    if (Directory.Exists(dir))
+                        existing.Add(dir);
+                }
+                GD.Print($"WAD viewer: searched {searched.Count} folders; these exist: {string.Join(", ", existing)}");
+                message += " Choose your DOOM1.WAD, DOOM.WAD or DOOM2.WAD with \"Choose IWAD…\", put it in "
+                    + $"{WadLocator.GameDirectories()[^1]}, set ISODOOM_IWAD, or pass -- -iwad PATH.";
+            }
+            ShowError(message);
+            if (found.Source == IwadSource.None)
+                OpenPicker();
             return;
         }
+        GD.Print($"WAD viewer: IWAD from {Describe(found)}");
+        LoadWad(found.Path, found.Pwads);
+
+        if (_catalog is not null && IsCheckRun)
+            AddChild(new WadViewerCheck(this));
+    }
+
+    private static bool IsCheckRun => WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots");
+
+    private static string Describe(IwadSearchResult r) => r.Source switch
+    {
+        IwadSource.CommandLine => "the command line (-iwad)",
+        IwadSource.Environment => $"the {r.SourceDetail} environment variable",
+        IwadSource.Config => $"the configured path ({WadLocator.SettingsPath})",
+        IwadSource.Search => $"the search directory {r.SourceDetail}",
+        _ => "nowhere",
+    };
+
+    /// <summary>Loads an IWAD (plus PWADs) into the viewer; false, with the error shown, if it can't be loaded.</summary>
+    private bool LoadWad(string path, IReadOnlyList<string> pwads)
+    {
+        GraphicsCatalog catalog;
+        IwadInfo info;
         try
         {
-            _catalog = GraphicsCatalog.Load(WadArchive.Open(path));
+            var archive = WadArchive.Open(path, [.. pwads]);
+            info = IwadIdentification.D_IdentifyVersion(archive);
+            catalog = GraphicsCatalog.Load(archive);
         }
-        catch (Exception e) when (e is WadFormatException or System.IO.IOException or KeyNotFoundException)
+        catch (Exception e) when (e is WadFormatException or IOException or UnauthorizedAccessException or KeyNotFoundException)
         {
             ShowError($"Could not load {path}: {e.Message}");
-            return;
+            return false;
         }
 
+        _catalog = catalog;
         _material = IndexedTextures.CreatePaletteMaterial(
             IndexedTextures.CreatePlaypalTexture(_catalog.Playpal),
             IndexedTextures.CreateColormapTexture(_catalog.Colormap));
         _palette.MaxValue = _catalog.Playpal.Count - 1;
-        GD.Print($"WAD viewer: {path} ({_catalog.Wad.NumLumps} lumps)");
+        _category.Disabled = false;
+        _filter.Editable = true;
+        _catalog.CompositeMode = _corrected.ButtonPressed ? TextureCompositeMode.Corrected : TextureCompositeMode.Vanilla;
+        string files = pwads.Count == 0 ? "" : $" + {string.Join(", ", pwads)}";
+        GD.Print($"WAD viewer: {path}{files} ({_catalog.Wad.NumLumps} lumps): {info}");
 
         UpdateLight();
         SelectCategory(GraphicCategory.Graphics);
+        return true;
+    }
 
-        if (WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots"))
-            AddChild(new WadViewerCheck(this));
+    /// <summary>Shows the IWAD file picker (not in headless or check runs, where nobody can answer it).</summary>
+    private void OpenPicker()
+    {
+        if (IsCheckRun)
+            return;
+        if (DisplayServer.GetName() == "headless")
+        {
+            GD.Print("WAD viewer: no display, so no IWAD file picker");
+            return;
+        }
+        GD.Print("WAD viewer: showing the IWAD file picker");
+        _picker.PopupCenteredRatio(0.7f);
+    }
+
+    private void OnIwadPicked(string path)
+    {
+        if (!LoadWad(path, Array.Empty<string>()))
+            return;
+        WadLocator.SaveConfiguredIwad(path);
+        GD.Print($"WAD viewer: saved {path} as the configured IWAD in {WadLocator.SettingsPath}");
     }
 
     // ---- Selection API (used by the UI and by WadViewerCheck) ----
@@ -198,6 +268,21 @@ public partial class WadViewer : Control
                 OnEntrySelected(idx, 0, 0);
         };
         controls.AddChild(_corrected);
+        var choose = new Button { Text = "Choose IWAD…", TooltipText = "Pick an IWAD file; it is remembered for the next start" };
+        choose.Pressed += () => _picker.PopupCenteredRatio(0.7f);
+        controls.AddChild(choose);
+
+        _picker = new FileDialog
+        {
+            FileMode = FileDialog.FileModeEnum.OpenFile, // sets a default title, so set Title after it
+            ModeOverridesTitle = false,
+            Title = "Choose an IWAD (DOOM1.WAD, DOOM.WAD, DOOM2.WAD, …)",
+            Access = FileDialog.AccessEnum.Filesystem,
+            Filters = ["*.wad;WAD files"],
+            UseNativeDialog = true, // falls back to Godot's own dialog where the platform has none
+        };
+        _picker.FileSelected += OnIwadPicked;
+        AddChild(_picker);
 
         _spriteBar = new HBoxContainer { Visible = false };
         _spriteBar.AddThemeConstantOverride("separation", 12);
@@ -230,9 +315,12 @@ public partial class WadViewer : Control
     {
         GD.Print($"WAD viewer: {message}");
         _info.Text = message;
-        _category.Disabled = true;
-        _filter.Editable = false;
-        if (WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots"))
+        if (_catalog is null) // a failed pick keeps the WAD already shown
+        {
+            _category.Disabled = true;
+            _filter.Editable = false;
+        }
+        if (IsCheckRun)
         {
             GD.PrintErr("WAD viewer check: FAILED (no WAD loaded)");
             GetTree().Quit(1);

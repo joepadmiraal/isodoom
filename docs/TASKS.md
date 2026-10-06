@@ -22,8 +22,13 @@ Legend: `[ ]` todo, `[x]` done.
 
 - [x] **T1.1 WAD reader.** Parse the header and lump directory; look lumps up by name; handle namespace markers (`S_`, `F_`, `P_` and their `SS_`/`FF_` variants); merge PWADs over the IWAD. SPEC §5.1.
   *Done when:* tests against `DOOM1.WAD` assert the lump count, the `IWAD` type, and that `E1M1`, `PLAYPAL` and `TROOA1` are found.
-- [ ] **T1.1a IWAD location.** Find the IWAD through a configurable path, the game folder and common install locations (Steam/GOG), with a file picker as the fallback, and load PWADs given on the command line (`-file`) through `WadArchive`. SPEC §5.1.
+- [x] **T1.1a IWAD location.** Find the IWAD through a configurable path, the game folder and common install locations (Steam/GOG), with a file picker as the fallback, and load PWADs given on the command line (`-file`) through `WadArchive`. SPEC §5.1.
   *Done when:* the game starts with `DOOM1.WAD` from each search location in turn, and shows the picker when none is found.
+  *Done:* `IsoDoom.Wad.IwadLocator` (d_iwad.c port, unit-tested on temp folders with a faked environment) searches `-iwad`, `ISODOOM_IWAD`/`ISODOOM_DOOM1_WAD`, the configured path (`user://settings.cfg`, written by the picker), the working directory, the game folder and its `wads/`, `DOOMWADDIR`/`DOOMWADPATH`, XDG folders, Steam (all libraries) and GOG folders/registry keys; `-file` PWADs load through `WadArchive`. The editor run and the exported binary both started with `DOOM1.WAD` from each Linux location, and the viewer opens the file picker when nothing is found (checked with a real display). The loading path is `WadViewer.LoadWad` for now. See SPEC §12.
+- [ ] **T1.1b Optional shareware download.** SPEC §5.1: when no IWAD is found, offer to download the shareware `DOOM1.WAD` (v1.9, MD5 `f0cefca49926d00903cf57551d901abe`) next to the picker, if a stable, redistributable source exists and it is cheap (SPEC §12: otherwise deferred). Check the shareware licence terms first, verify the MD5, and save it to the game folder or `user://` and the configured path.
+  *Done when:* with no IWAD anywhere, the download option fetches and verifies `DOOM1.WAD` and the game starts with it, or the task is closed with the reason logged in SPEC §12.
+- [ ] **T1.1c IWAD search on real installs.** T1.1a's Windows (GOG/Steam registry keys, GOG Galaxy folder), macOS and Steam Deck paths are only unit-tested with faked folders. Check them against real installs (Steam Ultimate Doom/Doom II including the 2024 re-release folders, a GOG install, a Steam Deck SD-card library) and fix any folder names.
+  *Done when:* the game finds the IWAD unaided on at least a Windows Steam or GOG install and a Steam Deck.
 - [x] **T1.2 IWAD identification.** Detect shareware, registered, Ultimate, Doom II and Final Doom from the lumps present, as vanilla `IdentifyVersion` does. SPEC §2.
   *Done when:* `DOOM1.WAD` is detected as shareware, and the other modes are covered by synthetic test WADs.
 - [ ] **T1.2a Modified-game checks and IWAD variants.** Vanilla `D_DoomMain` (d_main.c) refuses PWADs with the shareware IWAD ("You cannot -file with the shareware version. Register!") and checks that a registered IWAD holds the episode 2-3 lumps. Decide whether to port the shareware refusal as vanilla behaviour (with a tweak flag to allow PWADs, SPEC §6.3) or drop it, and wire the check into the loading path from T1.1a. Also detect Chocolate Doom's `gamevariant` (Freedoom via the `FREEDOOM` lump, FreeDM via `FREEDM`, BFG Edition via `DMENUPIC`) on top of `IwadInfo`. SPEC §2.
@@ -65,3 +70,5 @@ Legend: `[ ]` todo, `[x]` done.
 ## M3 to M10
 
 Not broken down yet. See SPEC §11.
+
+*Note (from T1.1a):* when the game shell (M7) is broken down, add an IWAD selection menu for when several IWADs are found (`IwadLocator.D_FindAllIWADs`), and revisit the in-folder IWAD preference (DOOM 1 before DOOM II, SPEC §12) once DOOM II is playable.
