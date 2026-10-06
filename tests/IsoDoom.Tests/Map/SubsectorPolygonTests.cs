@@ -66,11 +66,12 @@ public class SubsectorPolygonTests
         SubsectorPolygons polys = SubsectorPolygons.Build(map);
         PolygonChecks.CheckShapes(map, polys);
 
-        // West room 256×256; east room split at y = 0 (a partition with no linedef on it).
+        // West room 256×256; east room split at y = 0 (a partition with no linedef on it);
+        // the strip east of x = 448: room C 128×256, door D 16×256, courtyard A 256×256, ledge B 128×256.
         double[] areas = polys.Polygons.Select(PolygonChecks.PolygonArea).ToArray();
-        Assert.Equal(new double[] { 256 * 256, 256 * 128, 256 * 128 }.Order(), areas.Order());
+        Assert.Equal(new double[] { 256 * 256, 256 * 128, 256 * 128, 128 * 256, 16 * 256, 256 * 256, 128 * 256 }, areas);
         Assert.Equal(PolygonChecks.SectorAreasFromLines(map), PolygonChecks.SectorAreasFromPolygons(map, polys));
-        Assert.Equal(new[] { 256.0 * 256, 256.0 * 256 }, PolygonChecks.SectorAreasFromLines(map));
+        Assert.Equal(new[] { 256.0 * 256, 256.0 * 256, 128.0 * 256, 16.0 * 256, 256.0 * 256, 128.0 * 256 }, PolygonChecks.SectorAreasFromLines(map));
 
         // Each polygon's corners are exactly the room corners (clockwise, from some start).
         foreach (Subsector ss in map.Subsectors)
@@ -88,6 +89,7 @@ public class SubsectorPolygonTests
         Assert.Contains(polys.Polygons, p => p.Contains(V(384, 0)) && p.Contains(V(128, 0)));
         Assert.Single(polys.BySector[0]);
         Assert.Equal(2, polys.BySector[1].Length);
+        Assert.All(polys.BySector.Skip(2), s => Assert.Single(s));
 
         PolygonChecks.Coverage c = PolygonChecks.Render(map, polys, "synthetic-E1M1.png");
         Assert.True(c.Failures == 0 && c.Covered > 0, c.ToString());

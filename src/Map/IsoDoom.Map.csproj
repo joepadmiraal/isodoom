@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Map lump parsing, BSP, blockmap, reject, sector polygons. No Godot reference. -->
+  <!-- Map lump parsing, BSP, blockmap, reject, sector polygons, wall sections. No Godot reference. -->
   <PropertyGroup>
     <RootNamespace>IsoDoom.Map</RootNamespace>
   </PropertyGroup>

@@ -35,7 +35,7 @@ public class SyntheticIwadTests
     {
         GraphicsCatalog catalog = GraphicsCatalog.Load(Open());
         Textures t = catalog.Textures;
-        Assert.Equal(new[] { "BRICK1", "BRKPNL", "GRATE", "PANEL", "WINFRAME" }, t.TextureDefs.Select(d => d.Name));
+        Assert.Equal(new[] { "NULLTEX", "BRICK1", "BRKPNL", "GRATE", "PANEL", "WINFRAME" }, t.TextureDefs.Select(d => d.Name));
         Assert.Equal(5, t.TextureDefs[t.R_TextureNumForName("BRKPNL")].Patches.Count);
         Assert.True(t.TextureDefs[t.R_TextureNumForName("GRATE")].Masked);
         Assert.Equal(72, t.TextureDefs[t.R_TextureNumForName("PANEL")].Height);

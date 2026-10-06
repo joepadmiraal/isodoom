@@ -24,7 +24,7 @@ namespace IsoDoom.Tools.SyntheticIwad;
 /// sprites in <c>S_START</c> with a fully rotated frame (mirrored pairs) and
 /// two rotation-0 frames, plus a sprite lump no sprite uses; global graphics
 /// (title, status bar, menu, font glyphs, with offsets and transparency); a
-/// two-room map with a real BSP tree (see <c>BuildMap</c>); ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
+/// map with a real BSP tree and every wall-section case (see <c>BuildMap</c>); ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
 /// speaker sounds, a demo and a plain text lump.
 /// </para>
 /// </summary>
@@ -42,6 +42,7 @@ public static class SyntheticIwad
         w.Lump("DEMO1", BuildDemo());
         BuildMap(w);
         w.Lump("TEXTURE1", BuildTextureLump(
+            new Tex("NULLTEX", 64, 64, false, (0, 0, 0)), // texture 0 is never drawn (vanilla's AASTINKY/AASHITTY)
             new Tex("BRICK1", 64, 64, false, (0, 0, 0)),
             new Tex("BRKPNL", 128, 128, false, (0, 0, 0), (64, 0, 1), (-32, 64, 0), (32, 64, 0), (96, 64, 0)),
             new Tex("GRATE", 64, 64, true, (0, 0, 2), (32, 0, 2)),
@@ -89,6 +90,7 @@ public static class SyntheticIwad
         w.Lump("FLOOR1", Checker().Pixels);
         w.Lump("FLOOR2", Diagonal().Pixels);
         w.Lump("LAVA1", Waves().Pixels);
+        w.Lump("F_SKY1", Solid(64, 64, (x, y) => Index(1, 2, 3)).Pixels); // the sky flat (r_sky.h SKYFLATNAME)
         w.Markers("F1_END", "F_END");
         return w.Build();
     }
@@ -128,12 +130,38 @@ public static class SyntheticIwad
             Level map = Level.Load(wad, "E1M1");
             if (map.Nodes.Length < 2 || map.Sectors.Length < 2)
                 problems.Add($"E1M1 has {map.Nodes.Length} nodes and {map.Sectors.Length} sectors, expected a BSP tree over several sectors");
+            WallSections walls = WallSections.Build(map, catalog.Textures);
+            if (walls.Missing.Count > 0)
+                problems.Add($"E1M1 has missing wall textures: {string.Join(", ", walls.Missing)}");
+            foreach (WallSectionKind k in Enum.GetValues<WallSectionKind>())
+            {
+                if (!Has(walls, s => s.Kind == k && s.Texture != 0))
+                    problems.Add($"E1M1 has no textured {k} wall section");
+            }
+            if (!Has(walls, s => s.Kind == WallSectionKind.Upper && (s.Line.Flags & Line.ML_DONTPEGTOP) != 0 && s.Texture != 0))
+                problems.Add("E1M1 has no upper unpegged wall");
+            if (!Has(walls, s => s.Kind == WallSectionKind.Lower && (s.Line.Flags & Line.ML_DONTPEGBOTTOM) != 0 && s.Texture != 0))
+                problems.Add("E1M1 has no lower unpegged wall");
+            if (!Has(walls, s => s.BackSector is { CeilingPic: WallSections.SKYFLATNAME } && s.FrontSector.CeilingPic == WallSections.SKYFLATNAME))
+                problems.Add("E1M1 has no line with a sky ceiling on both sides");
+            if (!Has(walls, s => s.BackSector is { } b && b.FloorHeight == b.CeilingHeight))
+                problems.Add("E1M1 has no closed door (a two-sided line onto a sector with no height)");
         }
         catch (WadFormatException e)
         {
             problems.Add($"E1M1 does not load: {e.Message}");
         }
         return problems;
+    }
+
+    private static bool Has(WallSections walls, Func<WallSection, bool> match)
+    {
+        foreach (WallSection s in walls.Sections)
+        {
+            if (match(s))
+                return true;
+        }
+        return false;
     }
 
     // ---- Palette ----
@@ -449,7 +477,7 @@ public static class SyntheticIwad
         return lump;
     }
 
-    // ---- Map: two rooms, three subsectors under two BSP nodes ----
+    // ---- Map: two rooms, three subsectors under two BSP nodes, and a wall-section test strip ----
     //
     //  (-128,128) v0 ---L0--- v1 (128,128) ---L4--- v4 (384,128)
     //       |                  |                       |
@@ -461,17 +489,39 @@ public static class SyntheticIwad
     // (-128,-128) v3 ---L2--- v2 (128,-128) ---L6--- v5 (384,-128)
     //
     // L1 is two-sided (the east room is raised 16 and its ceiling 16 lower, so
-    // the west side has upper and lower textures). Node 1 (the root) splits
-    // along L1, node 0 splits the east room at y = 0, so the east subsectors
-    // each have an edge with no seg on it, as real node builders make them.
-    // Linedefs run clockwise around each room, so their right (front) sides face in.
-
+    // the west side has upper and lower textures; the east side has a masked
+    // GRATE). Node 1 splits along L1, node 0 splits the east room at y = 0, so
+    // the east subsectors each have an edge with no seg on it, as real node
+    // builders make them. Linedefs run clockwise around each room, so their
+    // right (front) sides face in.
+    //
+    // East of x = 448 (the root node's partition, no linedef), a separate strip
+    // covers the other wall-section cases (T2.3), one sector per subsector:
+    //
+    //  v8 --L7-- v9 -L11- v10 -----L14----- v11 --L17-- v12      y = 128
+    //  |         |   D    |                 |           |
+    //  L10  C    L8 door  L12   A courtyard L15  B ledge L18
+    //  |         |        |     (sky)       |   (sky)   |
+    //  v13 -L9-- v14 -L13- v15 ----L16----- v16 --L19-- v17      y = -128
+    //  x = 512   640      656               912         1040
+    //
+    // C (sector 2): a room, floor 0, ceiling 128; its west wall is lower
+    // unpegged with a y offset. D (sector 3): a closed door (floor = ceiling =
+    // 0), so L8 gives C a pegged upper and L12 gives A an upper and lower
+    // unpegged pair. A (sector 4) and B (sector 5) have F_SKY1 ceilings at
+    // 256 and 192, so L15 has no upper on A's side (the sky rule) although
+    // its texture is "-"; L15 has a lower (unpegged, so anchored at the back
+    // ceiling by the sky rule) and a masked GRATE (unpegged) on both sides.
     private static readonly short[] MapVertexes =
     {
         -128, 128, 128, 128, 128, -128, -128, -128, // v0-v3: west room
         384, 128, 384, -128,                        // v4, v5: east room
         384, 0, 128, 0,                             // v6, v7: where node 0's partition splits L5 and L1
+        512, 128, 640, 128, 656, 128, 912, 128, 1040, 128,      // v8-v12: the strip's north edge
+        512, -128, 640, -128, 656, -128, 912, -128, 1040, -128, // v13-v17: its south edge
     };
+
+    private const short TwoSided = Line.ML_TWOSIDED, PegTop = Line.ML_DONTPEGTOP, PegBottom = Line.ML_DONTPEGBOTTOM;
 
     // v1, v2, flags, special, tag, right side, left side (-1: none)
     private static readonly short[,] MapLinedefs =
@@ -483,6 +533,19 @@ public static class SyntheticIwad
         { 1, 4, 1, 0, 0, 5, -1 }, // L4: east room north
         { 4, 5, 1, 0, 0, 6, -1 }, // L5: east room east
         { 5, 2, 1, 0, 0, 7, -1 }, // L6: east room south
+        { 8, 9, 1, 0, 0, 8, -1 },                              // L7: C north
+        { 9, 14, TwoSided, 1, 0, 9, 10 },                      // L8: C | door D (a DR door special)
+        { 14, 13, 1, 0, 0, 11, -1 },                           // L9: C south
+        { 13, 8, 1 | PegBottom, 0, 0, 12, -1 },                // L10: C west, lower unpegged
+        { 9, 10, 1 | PegBottom, 0, 0, 13, -1 },                // L11: door track north (no height while closed)
+        { 10, 15, TwoSided | PegTop | PegBottom, 0, 0, 14, 15 }, // L12: door D | courtyard A, both unpegged
+        { 15, 14, 1 | PegBottom, 0, 0, 16, -1 },               // L13: door track south
+        { 10, 11, 1, 0, 0, 17, -1 },                           // L14: A north
+        { 11, 16, TwoSided | PegBottom, 0, 0, 18, 19 },        // L15: A | B, sky on both sides, masked GRATE
+        { 16, 15, 1, 0, 0, 20, -1 },                           // L16: A south
+        { 11, 12, 1, 0, 0, 21, -1 },                           // L17: B north
+        { 12, 17, 1, 0, 0, 22, -1 },                           // L18: B east
+        { 17, 16, 1, 0, 0, 23, -1 },                           // L19: B south
     };
 
     private static void BuildMap(Writer w)
@@ -502,12 +565,28 @@ public static class SyntheticIwad
         w.Lump("SIDEDEFS", Concat(
             Sidedef("-", "-", "BRICK1", 0),         // 0: L0
             Sidedef("PANEL", "PANEL", "-", 0),      // 1: L1 front (west room): upper and lower
-            Sidedef("-", "-", "-", 1),              // 2: L1 back (east room)
+            Sidedef("-", "-", "GRATE", 1),          // 2: L1 back (east room): masked, pegged
             Sidedef("-", "-", "BRKPNL", 0, 32),     // 3: L2, with an x offset
             Sidedef("-", "-", "BRICK1", 0),         // 4: L3
             Sidedef("-", "-", "BRKPNL", 1),         // 5: L4
             Sidedef("-", "-", "BRICK1", 1, 0, 8),   // 6: L5, with a y offset
-            Sidedef("-", "-", "BRKPNL", 1)));       // 7: L6
+            Sidedef("-", "-", "BRKPNL", 1),         // 7: L6
+            Sidedef("-", "-", "BRICK1", 2),         // 8: L7
+            Sidedef("PANEL", "-", "-", 2),          // 9: L8 front (C): pegged upper; no lower (same floors)
+            Sidedef("-", "-", "-", 3),              // 10: L8 back (door): nothing to draw
+            Sidedef("-", "-", "BRICK1", 2),         // 11: L9
+            Sidedef("-", "-", "BRICK1", 2, 0, 8),   // 12: L10, lower unpegged with a y offset
+            Sidedef("-", "-", "-", 3),              // 13: L11: "-", but no height while the door is closed
+            Sidedef("-", "-", "-", 3),              // 14: L12 front (door): nothing to draw
+            Sidedef("PANEL", "BRICK1", "-", 4, 16, 4), // 15: L12 back (A): unpegged upper and lower, offsets
+            Sidedef("-", "-", "BRICK1", 3),         // 16: L13
+            Sidedef("-", "-", "BRKPNL", 4),         // 17: L14
+            Sidedef("-", "BRKPNL", "GRATE", 4, 8, 8), // 18: L15 front (A): no upper (sky), lower, masked
+            Sidedef("-", "-", "GRATE", 5),          // 19: L15 back (B): masked only
+            Sidedef("-", "-", "BRKPNL", 4),         // 20: L16
+            Sidedef("-", "-", "BRICK1", 5),         // 21: L17
+            Sidedef("-", "-", "BRICK1", 5),         // 22: L18
+            Sidedef("-", "-", "BRICK1", 5)));       // 23: L19
         w.Lump("VERTEXES", Shorts(MapVertexes));
         const short East = 0, North = 0x4000, West = unchecked((short)0x8000), South = unchecked((short)0xC000);
         w.Lump("SEGS", Shorts( // v1, v2, angle (BAM >> 16), linedef, side (0 front, 1 back), offset along the linedef side
@@ -520,16 +599,41 @@ public static class SyntheticIwad
             2, 7, North, 1, 1, 0,
             7, 1, North, 1, 1, 128,  // seg 7-9: subsector 2, the east room's north half
             1, 4, East, 4, 0, 0,
-            4, 6, South, 5, 0, 0));
-        w.Lump("SSECTORS", Shorts(4, 0, 3, 4, 3, 7)); // seg count, first seg
+            4, 6, South, 5, 0, 0,
+            8, 9, East, 7, 0, 0,     // seg 10-13: subsector 3, room C
+            9, 14, South, 8, 0, 0,
+            14, 13, West, 9, 0, 0,
+            13, 8, North, 10, 0, 0,
+            9, 10, East, 11, 0, 0,   // seg 14-17: subsector 4, door D
+            10, 15, South, 12, 0, 0,
+            15, 14, West, 13, 0, 0,
+            14, 9, North, 8, 1, 0,
+            10, 11, East, 14, 0, 0,  // seg 18-21: subsector 5, courtyard A
+            11, 16, South, 15, 0, 0,
+            16, 15, West, 16, 0, 0,
+            15, 10, North, 12, 1, 0,
+            11, 12, East, 17, 0, 0,  // seg 22-25: subsector 6, ledge B
+            12, 17, South, 18, 0, 0,
+            17, 16, West, 19, 0, 0,
+            16, 11, North, 15, 1, 0));
+        w.Lump("SSECTORS", Shorts(4, 0, 3, 4, 3, 7, 4, 10, 4, 14, 4, 18, 4, 22)); // seg count, first seg
+        // Every partition points north, so its right (front, child 0) side is east.
         w.Lump("NODES", Shorts( // x, y, dx, dy, right bbox (top, bottom, left, right), left bbox, right child, left child
             128, 0, 256, 0, 0, -128, 128, 384, 128, 0, 128, 384, unchecked((short)0x8001), unchecked((short)0x8002),
-            128, -128, 0, 256, 128, -128, 128, 384, 128, -128, -128, 128, 0, unchecked((short)0x8000)));
+            128, -128, 0, 256, 128, -128, 128, 384, 128, -128, -128, 128, 0, unchecked((short)0x8000),
+            912, -128, 0, 256, 128, -128, 912, 1040, 128, -128, 656, 912, unchecked((short)0x8006), unchecked((short)0x8005), // 2: along L15
+            640, -128, 0, 256, 128, -128, 640, 656, 128, -128, 512, 640, unchecked((short)0x8004), unchecked((short)0x8003),   // 3: along L8
+            656, -128, 0, 256, 128, -128, 656, 1040, 128, -128, 512, 656, 2, 3,                                               // 4: along L12
+            448, -128, 0, 256, 128, -128, 512, 1040, 128, -128, -128, 384, 4, 1));                                            // 5 (root): x = 448
         w.Lump("SECTORS", Concat(
             Sector(0, 128, "FLOOR1", "FLOOR2", 160),
-            Sector(16, 112, "LAVA1", "FLOOR1", 208)));
-        w.Lump("REJECT", new byte[1]); // 2 × 2 bits, all clear: every sector sees every other
-        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 5, 3));
+            Sector(16, 112, "LAVA1", "FLOOR1", 208),
+            Sector(0, 128, "FLOOR1", "FLOOR2", 144),    // 2: room C
+            Sector(0, 0, "FLOOR2", "FLOOR2", 112),      // 3: door D, closed
+            Sector(-16, 256, "FLOOR2", "F_SKY1", 255),  // 4: courtyard A
+            Sector(24, 192, "FLOOR1", "F_SKY1", 192))); // 5: ledge B
+        w.Lump("REJECT", new byte[(6 * 6 + 7) / 8]); // all clear: every sector sees every other
+        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 10, 3));
     }
 
     private static byte[] Sidedef(string upper, string lower, string middle, short sector, short xOffset = 0, short yOffset = 0)
