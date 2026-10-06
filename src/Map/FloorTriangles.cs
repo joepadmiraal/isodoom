@@ -84,24 +84,53 @@ public sealed class FloorTriangles
 
     /// <summary>
     /// fixed_t: corners of different polygons this close (on both axes) are
-    /// one corner (1/32 map unit). Neighbouring polygons compute a shared
-    /// corner separately, each rounded to fixed_t, and corners where nearly
-    /// parallel lines cross can differ by a hundredth of a unit; welding them
-    /// first keeps a near-duplicate from being inserted as a T-junction on
-    /// both edges at that corner. Far above <see cref="OnEdgeEpsilon"/>, so a
-    /// corner can lie on at most one edge of a polygon.
+    /// one corner (1/8 map unit; 1/32 until T2.9). Neighbouring polygons
+    /// compute a shared corner separately, each rounded to fixed_t, and
+    /// corners where nearly parallel lines cross can differ by a hundredth of
+    /// a unit, in Doom II MAP29 (sector 201) by 0.08; welding them first keeps a
+    /// near-duplicate from being inserted as a T-junction on both edges at that
+    /// corner, or leaving a sliver no triangulation can cut without a corner
+    /// on a diagonal (MAP29 once T2.9 added the seg ends). Far above
+    /// <see cref="OnEdgeEpsilon"/>, so a corner can lie on at most one edge of
+    /// a polygon.
     /// </summary>
-    public const int WeldEpsilon = Fixed.FRACUNIT / 32;
+    public const int WeldEpsilon = Fixed.FRACUNIT / 8;
 
     // Grid cells of 64 map units for looking up corners near an edge.
     private const int CellShift = Fixed.FRACBITS + 6;
 
-    private FloorTriangles(PolygonVertex[][] rings, SectorFloor[] bySector, int[] floorSector)
+    private FloorTriangles(PolygonVertex[][] rings, SectorFloor[] bySector, int[] floorSector, PolygonVertex[][] segChains)
     {
         Rings = rings;
         BySector = bySector;
         FloorSectorOf = floorSector;
+        SegChains = segChains;
     }
+
+    /// <summary>
+    /// Per seg (indexed like <see cref="Level.Segs"/>), the corners of its
+    /// subsector's floor edge along it, from the seg's start to its end in
+    /// ring order (at least two), or empty when that subsector's polygon has
+    /// no edge along the seg (or the seg has no length). T2.9: walls are
+    /// built on these, so a wall's bottom edge (and a lower wall's top edge,
+    /// against the back floor) has exactly the floor's corners, with no crack
+    /// between them. The polygon's edge along a seg can be up to
+    /// <see cref="SubsectorPolygons.SegSnapEpsilon"/> off the seg (the seg is
+    /// then not clipped against, <see cref="SubsectorPolygons"/>), so each
+    /// seg end first goes to the nearest end of that edge when one is within
+    /// <see cref="PastEdgeDistance"/> (the floor's corner, where the next wall
+    /// starts), else is projected onto the edge (the nearest point, to the
+    /// nearest fixed_t, snapped to a corner within <see cref="SegEndSnap"/>)
+    /// and added as a corner there, and to every other polygon edge it lies
+    /// on, before the T-junction pass. Where a seg end
+    /// lies well past its subsector's edge (more than <see cref="PastEdgeDistance"/>:
+    /// the node builder left that part of the seg to another subsector's
+    /// floor), the chain continues to the end's
+    /// projection on the edge's line, through the corners on the way. When the
+    /// subsector's floor is hidden (<c>floorSector</c>), the chain is just the
+    /// two projected ends.
+    /// </summary>
+    public IReadOnlyList<PolygonVertex[]> SegChains { get; }
 
     /// <summary>
     /// Per subsector (indexed like <see cref="Level.Subsectors"/>), its polygon
@@ -144,6 +173,35 @@ public sealed class FloorTriangles
         var welded = new PolygonVertex[n][];
         for (int i = 0; i < n; i++)
             welded[i] = Weld(polygons.Polygons[i], grid);
+
+        // The seg ends projected onto their subsector's polygon edge along the seg (T2.9).
+        var segEnds = new (PolygonVertex Start, PolygonVertex End, PolygonVertex? Before, PolygonVertex? After)?[level.Segs.Length];
+        for (int i = 0; i < n; i++)
+        {
+            Subsector ss = level.Subsectors[i];
+            if (welded[i].Length == 0)
+                continue;
+            for (int k = 0; k < ss.NumLines; k++)
+            {
+                int segIndex = ss.FirstLine + k;
+                if (segIndex < 0 || segIndex >= level.Segs.Length)
+                    continue;
+                Seg seg = level.Segs[segIndex];
+                if (seg.V1.X == seg.V2.X && seg.V1.Y == seg.V2.Y)
+                    continue;
+                if (ProjectAlongEdges(welded[i], seg, seg.V1.X, seg.V1.Y) is not (PolygonVertex start, PolygonVertex before)
+                    || ProjectAlongEdges(welded[i], seg, seg.V2.X, seg.V2.Y) is not (PolygonVertex end, PolygonVertex after))
+                    continue;
+                start = grid.Snap(start, SegEndSnap);
+                end = grid.Snap(end, SegEndSnap);
+                // Well past the polygon's edge (another subsector's floor lies along that part of the
+                // seg): on to the projection on the edge's line, a corner for the neighbours too. Near
+                // the edge's end, the polygon's corner is where this wall meets the next one.
+                PolygonVertex? b = FarFrom(seg.V1, start) ? grid.Snap(before, SegEndSnap) : null, a = FarFrom(seg.V2, end) ? grid.Snap(after, SegEndSnap) : null;
+                if (start != end)
+                    segEnds[segIndex] = (start, end, b == start ? null : b, a == end ? null : a);
+            }
+        }
 
         var rings = new PolygonVertex[n][];
         var sectorOf = new int[n];
@@ -195,7 +253,167 @@ public sealed class FloorTriangles
             }
             bySector[s] = new SectorFloor(s, perSector[s].ToArray(), vertices.ToArray(), indices.ToArray());
         }
-        return new FloorTriangles(rings, bySector, sectorOf);
+        var segChains = new PolygonVertex[level.Segs.Length][];
+        for (int i = 0; i < n; i++)
+        {
+            Subsector ss = level.Subsectors[i];
+            for (int k = 0; k < ss.NumLines; k++)
+            {
+                int segIndex = ss.FirstLine + k;
+                if (segIndex < 0 || segIndex >= segChains.Length || segEnds[segIndex] is not { } ends)
+                    continue;
+                (PolygonVertex start, PolygonVertex end, PolygonVertex? before, PolygonVertex? after) = ends;
+                var chain = new List<PolygonVertex>();
+                if (before is PolygonVertex b)
+                {
+                    chain.Add(b);
+                    AddBetween(chain, grid, b, start);
+                }
+                chain.AddRange(Chain(rings[i], level.Segs[segIndex], start, end));
+                if (after is PolygonVertex a)
+                {
+                    AddBetween(chain, grid, end, a);
+                    chain.Add(a);
+                }
+                segChains[segIndex] = chain.ToArray();
+            }
+        }
+        for (int i = 0; i < segChains.Length; i++)
+            segChains[i] ??= Array.Empty<PolygonVertex>();
+        return new FloorTriangles(rings, bySector, sectorOf, segChains);
+    }
+
+    /// <summary>
+    /// Whether the polygon edge <paramref name="a"/>→<paramref name="b"/> runs
+    /// along <paramref name="seg"/>: in its direction, with both seg ends
+    /// within <see cref="SubsectorPolygons.SegSnapEpsilon"/> of its line (the
+    /// test with which <see cref="SubsectorPolygons"/> skips clipping by a seg).
+    /// </summary>
+    private static bool AlongSeg(PolygonVertex a, PolygonVertex b, Seg seg)
+    {
+        long sdx = (long)seg.V2.X - seg.V1.X, sdy = (long)seg.V2.Y - seg.V1.Y;
+        long ex = (long)b.X - a.X, ey = (long)b.Y - a.Y;
+        if ((Int128)ex * sdx + (Int128)ey * sdy <= 0)
+            return false;
+        Int128 tol = (Int128)SubsectorPolygons.SegSnapEpsilon * (Math.Abs(ex) + Math.Abs(ey));
+        Int128 s1 = (Int128)((long)seg.V1.X - a.X) * ey - (Int128)((long)seg.V1.Y - a.Y) * ex;
+        Int128 s2 = (Int128)((long)seg.V2.X - a.X) * ey - (Int128)((long)seg.V2.Y - a.Y) * ex;
+        return s1 <= tol && s1 >= -tol && s2 <= tol && s2 >= -tol;
+    }
+
+    /// <summary>Appends the corners (of any polygon) that lie on the edge <paramref name="a"/>→<paramref name="b"/> strictly between its ends, in order along it.</summary>
+    private static void AddBetween(List<PolygonVertex> chain, CornerGrid grid, PolygonVertex a, PolygonVertex b)
+    {
+        var onEdge = new List<(Int128 Along, PolygonVertex P)>();
+        grid.Near(a, b, p =>
+        {
+            if (OnEdge(a, b, p))
+                onEdge.Add((((Int128)p.X - a.X) * ((long)b.X - a.X) + ((Int128)p.Y - a.Y) * ((long)b.Y - a.Y), p));
+        });
+        onEdge.Sort((u, v) => u.Along != v.Along ? u.Along.CompareTo(v.Along)
+            : u.P.X != v.P.X ? u.P.X.CompareTo(v.P.X) : u.P.Y.CompareTo(v.P.Y));
+        foreach ((_, PolygonVertex p) in onEdge)
+            chain.Add(p);
+    }
+
+    /// <summary>
+    /// Where the wall along <paramref name="seg"/> ends near the seg's end
+    /// (<paramref name="x"/>, <paramref name="y"/>) on the polygon's edges along
+    /// the seg (<see cref="AlongSeg"/>): the nearest end of such an edge when
+    /// one is within <see cref="PastEdgeDistance"/> (a corner of the floor);
+    /// else the nearest point on those edges and its projection on that
+    /// edge's line (the same point unless it lies past the edge's ends), both
+    /// rounded to the nearest fixed_t; null when no edge runs along the seg.
+    /// </summary>
+    private static (PolygonVertex OnEdge, PolygonVertex OnLine)? ProjectAlongEdges(PolygonVertex[] polygon, Seg seg, int x, int y)
+    {
+        (PolygonVertex, PolygonVertex)? best = null;
+        Int128 bestDistance = Int128.MaxValue;
+        PolygonVertex? corner = null;
+        Int128 cornerDistance = (Int128)PastEdgeDistance * PastEdgeDistance;
+        for (int k = 0; k < polygon.Length; k++)
+        {
+            PolygonVertex a = polygon[k], b = polygon[(k + 1) % polygon.Length];
+            if (!AlongSeg(a, b, seg))
+                continue;
+            foreach (PolygonVertex c in new[] { a, b })
+            {
+                Int128 dc = (Int128)((long)c.X - x) * ((long)c.X - x) + (Int128)((long)c.Y - y) * ((long)c.Y - y);
+                if (dc <= cornerDistance)
+                {
+                    cornerDistance = dc;
+                    corner = c;
+                }
+            }
+            long ex = (long)b.X - a.X, ey = (long)b.Y - a.Y;
+            Int128 length2 = (Int128)ex * ex + (Int128)ey * ey;
+            Int128 along = (Int128)((long)x - a.X) * ex + (Int128)((long)y - a.Y) * ey;
+            Int128 clamped = along < 0 ? 0 : along > length2 ? length2 : along;
+            var p = new PolygonVertex((int)(a.X + RoundDiv(clamped * ex, length2)), (int)(a.Y + RoundDiv(clamped * ey, length2)));
+            var q = new PolygonVertex((int)(a.X + RoundDiv(along * ex, length2)), (int)(a.Y + RoundDiv(along * ey, length2)));
+            Int128 d = (Int128)((long)p.X - x) * ((long)p.X - x) + (Int128)((long)p.Y - y) * ((long)p.Y - y);
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = (p, q);
+            }
+        }
+        // An end of the edge near the seg's end is the polygon's corner where the next wall starts (or
+        // the next seg's subsector's floor): end there, so walls meet exactly at the floor's corners.
+        return corner is PolygonVertex cv ? (cv, cv) : best;
+    }
+
+    /// <summary>
+    /// fixed_t: a seg end further than this from the nearest point of its
+    /// subsector's edge along the seg lies past that edge's end (on a
+    /// neighbour's floor), not at the polygon's corner where the next wall
+    /// starts (the edge can be up to <see cref="SubsectorPolygons.SegSnapEpsilon"/>,
+    /// measured with the L1 length, off the seg: under 3 units at the corner).
+    /// </summary>
+    public const int PastEdgeDistance = 3 * Fixed.FRACUNIT;
+
+    /// <summary>
+    /// fixed_t: a projected seg end this close (on both axes) to a corner
+    /// already there becomes that corner (1/4 map unit), rather than a new
+    /// corner a hair away from it (neighbouring polygons can round a shared
+    /// corner a tenth of a unit apart, beyond <see cref="WeldEpsilon"/>).
+    /// </summary>
+    public const int SegEndSnap = Fixed.FRACUNIT / 4;
+
+    private static bool FarFrom(Vertex v, PolygonVertex p)
+    {
+        long dx = (long)p.X - v.X, dy = (long)p.Y - v.Y;
+        return (Int128)dx * dx + (Int128)dy * dy > (Int128)PastEdgeDistance * PastEdgeDistance;
+    }
+
+    /// <summary><paramref name="n"/> / <paramref name="d"/> rounded to the nearest integer, halves away from zero (<paramref name="d"/> &gt; 0).</summary>
+    private static Int128 RoundDiv(Int128 n, Int128 d) => n >= 0 ? (n + d / 2) / d : -((-n + d / 2) / d);
+
+    /// <summary>
+    /// The ring's corners from <paramref name="start"/> to <paramref name="end"/>
+    /// (both included, in ring order), when both are corners of the ring and
+    /// every corner between them lies along <paramref name="seg"/> (within
+    /// <see cref="SubsectorPolygons.SegSnapEpsilon"/> of its line); otherwise
+    /// (a hidden floor, or a chain that would leave the seg) just the two ends.
+    /// </summary>
+    private static PolygonVertex[] Chain(PolygonVertex[] ring, Seg seg, PolygonVertex start, PolygonVertex end)
+    {
+        int i0 = Array.IndexOf(ring, start), i1 = Array.IndexOf(ring, end);
+        if (i0 < 0 || i1 < 0)
+            return new[] { start, end };
+        long sdx = (long)seg.V2.X - seg.V1.X, sdy = (long)seg.V2.Y - seg.V1.Y;
+        Int128 tol = (Int128)SubsectorPolygons.SegSnapEpsilon * (Math.Abs(sdx) + Math.Abs(sdy));
+        var chain = new List<PolygonVertex> { start };
+        for (int k = (i0 + 1) % ring.Length; k != i1; k = (k + 1) % ring.Length)
+        {
+            PolygonVertex p = ring[k];
+            Int128 cross = (Int128)((long)p.X - seg.V1.X) * sdy - (Int128)((long)p.Y - seg.V1.Y) * sdx;
+            if (cross > tol || cross < -tol)
+                return new[] { start, end };
+            chain.Add(p);
+        }
+        chain.Add(end);
+        return chain.ToArray();
     }
 
     /// <summary>
@@ -304,9 +522,34 @@ public sealed class FloorTriangles
     /// no other remaining corner, not even on or within that tolerance of the
     /// diagonal (so no corner is left on a diagonal). The scan starts after the ring's
     /// first corner each time, so a polygon without extra corners becomes a
-    /// fan from its first corner. Appends three ring indices per triangle.
+    /// fan from its first corner. When only slivers are left (T2.9), it starts
+    /// again with a fan from the first corner that gives no sliver and no
+    /// corner on a diagonal, and failing that clips thin ears (any positive
+    /// area). Appends three ring indices per triangle.
     /// </summary>
     private static void Triangulate(PolygonVertex[] ring, List<int> output)
+    {
+        int start = output.Count;
+        if (EarClip(ring, output, relaxed: false))
+            return;
+        // Only slivers left (a polygon that is itself nearly a sliver, e.g. two corners a
+        // hair apart next to a run of collinear ones, T2.9): a fan from a corner from which
+        // every triangle has area and no corner lies on a diagonal, else thin ears.
+        output.RemoveRange(start, output.Count - start);
+        for (int k = 0; k < ring.Length; k++)
+        {
+            if (TryFan(ring, k, output))
+                return;
+        }
+        EarClip(ring, output, relaxed: true);
+    }
+
+    /// <summary>
+    /// Ear clipping (see <see cref="Triangulate"/>); false when only slivers
+    /// are left: then, if <paramref name="relaxed"/>, thin ears (any positive
+    /// area), and a fan of what has area when even those run out.
+    /// </summary>
+    private static bool EarClip(PolygonVertex[] ring, List<int> output, bool relaxed)
     {
         var rest = new List<int>(ring.Length);
         for (int i = 0; i < ring.Length; i++)
@@ -318,11 +561,19 @@ public sealed class FloorTriangles
             for (int k = 1; k <= rest.Count && ear < 0; k++)
             {
                 int j = k % rest.Count;
-                if (IsEar(ring, rest, j))
+                if (IsEar(ring, rest, j, sliverTolerance: true))
+                    ear = j;
+            }
+            for (int k = 1; relaxed && k <= rest.Count && ear < 0; k++)
+            {
+                int j = k % rest.Count;
+                if (IsEar(ring, rest, j, sliverTolerance: false))
                     ear = j;
             }
             if (ear < 0)
             {
+                if (!relaxed)
+                    return false;
                 // Only zero-area corners left (or a ring that is not simple, which the
                 // polygons' tolerances rule out): fan what has area and stop.
                 for (int k = 1; k + 1 < rest.Count; k++)
@@ -330,7 +581,7 @@ public sealed class FloorTriangles
                     if (TwiceArea(ring[rest[0]], ring[rest[k]], ring[rest[k + 1]]) > 0)
                         output.AddRange(new[] { rest[0], rest[k], rest[k + 1] });
                 }
-                return;
+                return true;
             }
             int prev = rest[(ear + rest.Count - 1) % rest.Count], next = rest[(ear + 1) % rest.Count];
             output.Add(prev);
@@ -338,15 +589,51 @@ public sealed class FloorTriangles
             output.Add(next);
             rest.RemoveAt(ear);
         }
+        return true;
     }
 
-    private static bool IsEar(PolygonVertex[] ring, List<int> rest, int j)
+    /// <summary>
+    /// A fan from corner <paramref name="apex"/> when each of its triangles has
+    /// every corner more than <see cref="OnEdgeEpsilon"/> (by the L1 length)
+    /// off the opposite side and no ring corner lies on a diagonal; false (and
+    /// nothing appended) otherwise.
+    /// </summary>
+    private static bool TryFan(PolygonVertex[] ring, int apex, List<int> output)
+    {
+        int n = ring.Length;
+        PolygonVertex a = ring[apex];
+        for (int i = 1; i + 1 < n; i++)
+        {
+            PolygonVertex b = ring[(apex + i) % n], c = ring[(apex + i + 1) % n];
+            long longest = Math.Max(L1(a, b), Math.Max(L1(b, c), L1(c, a)));
+            if (TwiceArea(a, b, c) <= (Int128)OnEdgeEpsilon * longest)
+                return false;
+        }
+        for (int i = 2; i + 1 < n; i++)
+        {
+            PolygonVertex d = ring[(apex + i) % n];
+            foreach (PolygonVertex q in ring)
+            {
+                if (q != a && q != d && OnEdge(a, d, q))
+                    return false;
+            }
+        }
+        for (int i = 1; i + 1 < n; i++)
+            output.AddRange(new[] { apex, (apex + i) % n, (apex + i + 1) % n });
+        return true;
+    }
+
+    private static long L1(PolygonVertex a, PolygonVertex b) => Math.Abs((long)a.X - b.X) + Math.Abs((long)a.Y - b.Y);
+
+    private static bool IsEar(PolygonVertex[] ring, List<int> rest, int j, bool sliverTolerance)
     {
         int pi = rest[(j + rest.Count - 1) % rest.Count], ci = rest[j], ni = rest[(j + 1) % rest.Count];
         PolygonVertex p = ring[pi], c = ring[ci], n = ring[ni];
         // Strictly convex: c further than OnEdgeEpsilon from the diagonal n→p (else the
-        // triangle is a sliver whose long edge runs through its own corner).
-        if (TwiceArea(p, c, n) <= (Int128)OnEdgeEpsilon * (Math.Abs((long)p.X - n.X) + Math.Abs((long)p.Y - n.Y)))
+        // triangle is a sliver whose long edge runs through its own corner); without the
+        // tolerance, any positive area.
+        Int128 area = TwiceArea(p, c, n);
+        if (area <= 0 || (sliverTolerance && area <= (Int128)OnEdgeEpsilon * (Math.Abs((long)p.X - n.X) + Math.Abs((long)p.Y - n.Y))))
             return false;
         foreach (int qi in rest)
         {
@@ -373,7 +660,10 @@ public sealed class FloorTriangles
         /// <paramref name="v"/> (on both axes; the first one found, cells and
         /// corners in a fixed order), or <paramref name="v"/> itself, added.
         /// </summary>
-        public PolygonVertex Snap(PolygonVertex v)
+        public PolygonVertex Snap(PolygonVertex v) => Snap(v, WeldEpsilon);
+
+        /// <summary>As <see cref="Snap(PolygonVertex)"/>, within <paramref name="epsilon"/> (at most the 64-unit cell size).</summary>
+        public PolygonVertex Snap(PolygonVertex v, int epsilon)
         {
             int cx = v.X >> CellShift, cy = v.Y >> CellShift;
             for (int dx = -1; dx <= 1; dx++)
@@ -384,7 +674,7 @@ public sealed class FloorTriangles
                         continue;
                     foreach (PolygonVertex w in near)
                     {
-                        if (Math.Abs((long)w.X - v.X) <= WeldEpsilon && Math.Abs((long)w.Y - v.Y) <= WeldEpsilon)
+                        if (Math.Abs((long)w.X - v.X) <= epsilon && Math.Abs((long)w.Y - v.Y) <= epsilon)
                             return w;
                     }
                 }

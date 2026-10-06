@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Threading.Tasks;
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Game;
 
@@ -20,7 +21,14 @@ namespace IsoDoom.Game;
 /// <c>look DX DY</c> (mouse motion in pixels); <c>wheel up|down [STEPS]</c>
 /// (Ctrl as currently held); <c>print</c> (the overlay text to stdout);
 /// <c>shot FILE.png</c> (capture, needs a real renderer; WAD-derived, keep it
-/// out of the repo); <c>quit</c> (also implied at the end).
+/// out of the repo); <c>view X Y ANGLE [Z]</c> (T2.9: put the free-fly camera
+/// at map point X, Y facing vanilla angle ANGLE in degrees, no pitch, at
+/// height Z or by default at eye level, floor + <c>VIEWHEIGHT</c>, as a
+/// vanilla player standing still); <c>fov DEGREES|vanilla</c> (the free-fly
+/// camera's vertical field of view; <c>vanilla</c> is
+/// <see cref="FreeFlyCamera.VanillaFov"/>, so a 16:10 window shows what
+/// vanilla's full-screen 320×200 view shows); <c>quit</c> (also implied at
+/// the end).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -63,6 +71,13 @@ public partial class LevelScript : Node
                         break;
                     case "print": GD.Print($"Level script: overlay:\n{_scene.OverlayText()}"); break;
                     case "shot": exit |= await Shot(w[1]); break;
+                    case "view":
+                        _scene.PlaceFreeFly(Int(w[1]), Int(w[2]), float.Parse(w[3], CultureInfo.InvariantCulture), w.Length > 4 ? Int(w[4]) : null);
+                        break;
+                    case "fov":
+                        if (_scene.FreeFly is { } fly)
+                            fly.Fov = w[1] == "vanilla" ? FreeFlyCamera.VanillaFov : float.Parse(w[1], CultureInfo.InvariantCulture);
+                        break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }

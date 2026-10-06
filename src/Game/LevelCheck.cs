@@ -15,7 +15,8 @@ namespace IsoDoom.Game;
 /// <see cref="WadViewerCheck"/>):
 /// <list type="number">
 /// <item><b>Every map</b> of the WAD is loaded in the level scene and its
-/// meshes built. For each: every sector's data texel (floor, ceiling, light)
+/// meshes built, each in under 1 s (SPEC §9; the first map with opening the
+/// WAD). For each: every sector's data texel (floor, ceiling, light)
 /// must equal the <see cref="Level"/>'s values; every drawn wall section's
 /// texture slot must name its texture and point (through <c>texture_info</c>)
 /// at an atlas rectangle holding exactly its composite, every floor's slot
@@ -53,6 +54,9 @@ public partial class LevelCheck : Godot.Node
 {
     /// <summary>Map units kept clear of section, sector and texel edges when picking pixels.</summary>
     private const int EdgeMargin = 1;
+
+    /// <summary>SPEC §9: a level loads (WAD parse, mesh build) in under 1 s (T2.9).</summary>
+    private const int LoadBudgetMilliseconds = 1000;
 
     /// <summary>How far the check raises the moved sector's floor (map units).</summary>
     private const int MoveUnits = 24;
@@ -127,11 +131,22 @@ public partial class LevelCheck : Godot.Node
         if (_scene.MapNames.Count == 0)
             Fail("the WAD has no maps");
         int sections = 0, sectors = 0, slots = 0, vertices = 0;
+        double slowest = 0;
+        string slowestMap = "";
+        bool first = true;
         foreach (string map in _scene.MapNames)
         {
             try
             {
                 _scene.LoadMap(map);
+                // SPEC §9: level load (WAD parse, mesh build) under 1 s per map; the first map also pays
+                // for opening the WAD (and the JIT).
+                double ms = _scene.LastLoadMilliseconds + (first ? _scene.OpenWadMilliseconds : 0);
+                first = false;
+                if (ms > slowest)
+                    (slowest, slowestMap) = (ms, map);
+                if (ms > LoadBudgetMilliseconds)
+                    Fail($"{map}: loading took {ms:F0} ms, over the {LoadBudgetMilliseconds} ms budget (SPEC §9)");
             }
             catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
             {
@@ -152,6 +167,8 @@ public partial class LevelCheck : Godot.Node
         }
         GD.Print($"Level check: {_scene.MapNames.Count} maps built: {sectors} sector data texels, {slots} texture slots, "
             + $"{sections} wall sections and {vertices} vertices checked against the levels");
+        GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
+            + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
     }
 
     /// <summary>Every sector's data texel (and, with a renderer, the GPU copy) against the level.</summary>
@@ -300,13 +317,9 @@ public partial class LevelCheck : Godot.Node
             SectorFloor? floor = floors[sector] is { TriangleCount: > 0 } f ? f : null;
             List<WallSection> sectorWalls = walls[sector] ?? new List<WallSection>();
             int floorVertices = floor?.Vertices.Count ?? 0;
-            var quadRuns = new List<List<(double From, double To, int Contrast)>>();
             int quadCount = 0;
             foreach (WallSection s in sectorWalls)
-            {
-                quadRuns.Add(m.WallQuadRuns(s));
-                quadCount += quadRuns[^1].Count;
-            }
+                quadCount += m.Pieces.Of(s.Line, s.Side).Count;
             int expectedVertices = floorVertices + 4 * quadCount;
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
             if (expectedVertices == 0)
@@ -365,23 +378,24 @@ public partial class LevelCheck : Godot.Node
                 }
             }
 
-            // Walls: one quad per contrast run of each drawn section, V1 bottom, V1 top, V2 top, V2 bottom.
+            // Walls: one quad per piece of each drawn section's side (T2.9), A bottom, A top, B top, B bottom.
             int quad = 0;
             for (int q = 0; q < sectorWalls.Count; q++)
             {
                 WallSection s = sectorWalls[q];
                 string sw = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind}";
                 sectionCount++;
-                double length = Math.Sqrt(Math.Pow((s.V2.X - (double)s.V1.X) / 65536.0, 2) + Math.Pow((s.V2.Y - (double)s.V1.Y) / 65536.0, 2));
-                CheckRuns(sideSegs[s.Line.Index * 2 + s.Side], quadRuns[q], length, sw);
-                foreach ((double from, double to, int contrast) in quadRuns[q])
+                IReadOnlyList<WallPiece> pieces = m.Pieces.Of(s.Line, s.Side);
+                CheckPieces(s, sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
+                foreach (WallPiece piece in pieces)
                 {
+                    int contrast = piece.Contrast;
                     int b = floorVertices + 4 * quad, bi = (floor?.Indices.Count ?? 0) + 6 * quad;
                     quad++;
-                    double u1 = s.TextureOffset / 65536.0;
-                    Vector3 p1 = LevelMesh.WallPoint(s, from / length), p2 = LevelMesh.WallPoint(s, to / length);
+                    Vector3 p1 = LevelMesh.ToGodot(piece.A.X, piece.A.Y, 0), p2 = LevelMesh.ToGodot(piece.B.X, piece.B.Y, 0);
                     Vector3[] corners = { p1, p1, p2, p2 };
-                    double[] us = { u1 + from, u1 + from, u1 + to, u1 + to };
+                    double ua = (s.TextureOffset + (long)piece.ColumnA) / 65536.0, ub = (s.TextureOffset + (long)piece.ColumnB) / 65536.0;
+                    double[] us = { ua, ua, ub, ub };
                     float[] vs = { 0, 1, 1, 0 };
                     for (int k = 0; k < 4; k++)
                     {
@@ -437,46 +451,75 @@ public partial class LevelCheck : Godot.Node
     }
 
     /// <summary>
-    /// A section's quads against vanilla's per-seg fake contrast: they cover
-    /// the side from 0 to its length without gaps, and the middle of each seg
-    /// of the side lies in a quad with that seg's contrast (r_segs.c).
+    /// fixed_t: how far a piece's corner may lie from its seg: the floor edge's
+    /// snap tolerance (<see cref="SubsectorPolygons.SegSnapEpsilon"/>, measured
+    /// with the L1 length, so up to √2 times that for a diagonal) plus rounding.
     /// </summary>
-    private void CheckRuns(List<Seg>? segs, List<(double From, double To, int Contrast)> runs, double length, string what)
+    private const long PieceTolerance = 3 * Fixed.FRACUNIT;
+
+    /// <summary>
+    /// A section's pieces (T2.9) against vanilla's segs: every seg of the side
+    /// has pieces, and the pieces of a seg join end to end along it (each
+    /// corner within <see cref="PieceTolerance"/> of the seg's line and
+    /// between its ends, the first and last near its ends), with the seg's
+    /// fake contrast (r_segs.c) and texture columns of the seg's
+    /// <c>offset</c> plus the distance along it (r_segs.c <c>rw_offset</c>).
+    /// Consecutive segs' pieces join, or a connector pair (both directions)
+    /// bridges them.
+    /// </summary>
+    private void CheckPieces(WallSection s, List<Seg>? segs, IReadOnlyList<WallPiece> pieces, string what)
     {
-        if (runs.Count == 0 || runs[0].From != 0 || Math.Abs(runs[^1].To - length) > 1e-9)
+        if (segs is null || pieces.Count == 0)
         {
-            Fail($"{what}: the wall quads don't cover the side");
+            Fail($"{what}: no seg or no wall piece along the side");
             return;
         }
-        for (int i = 1; i < runs.Count; i++)
+        var bySeg = new Dictionary<int, Seg>();
+        foreach (Seg seg in segs)
+            bySeg[seg.Index] = seg;
+        var seen = new HashSet<int>();
+        bool Reversed(int i, int j) => i >= 0 && j < pieces.Count && pieces[i].A == pieces[j].B && pieces[i].B == pieces[j].A;
+        for (int i = 0; i < pieces.Count; i++)
         {
-            if (runs[i].From != runs[i - 1].To || runs[i].Contrast == runs[i - 1].Contrast)
-                Fail($"{what}: wall quads {i - 1} and {i} don't join or have the same contrast");
-        }
-        if (segs is null)
-        {
-            Fail($"{what}: no seg runs along the side");
-            return;
+            WallPiece piece = pieces[i];
+            bool connector = Reversed(i, i + 1) || Reversed(i - 1, i);
+            if (!bySeg.TryGetValue(piece.Seg, out Seg? seg))
+            {
+                Fail($"{what}: piece {i} belongs to seg {piece.Seg}, not a seg of the side");
+                return;
+            }
+            seen.Add(seg.Index);
+            if (piece.Contrast != LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y))
+                Fail($"{what}: piece {i} has fake contrast {piece.Contrast}, its seg {seg.Index} {LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y)}");
+            // A connector pair p → q, q → p: only q (its seg's first corner) is on its seg; p ends the previous seg.
+            var corners = !connector ? new[] { (piece.A, piece.ColumnA), (piece.B, piece.ColumnB) }
+                : Reversed(i, i + 1) ? new[] { (piece.B, piece.ColumnB) } : new[] { (piece.A, piece.ColumnA) };
+            foreach ((PolygonVertex p, int column) in corners)
+            {
+                (double along, double off, double length) = OnSeg(seg, p);
+                if (off > PieceTolerance / 65536.0 || along < -PieceTolerance / 65536.0 || along > length + PieceTolerance / 65536.0)
+                    Fail($"{what}: piece {i} corner {p} is {off:F3} units off seg {seg.Index}, {along:F3} along it (length {length:F3})");
+                if (Math.Abs(column / 65536.0 - (seg.Offset / 65536.0 + along)) > 1.0 / 256)
+                    Fail($"{what}: piece {i} corner {p}: texture column {column / 65536.0:F3}, expected seg offset {seg.Offset / 65536.0} + {along:F3}");
+            }
+            // In order: ... → p, the connector p → q and back q → p, then q → ...
+            if (i > 0 && pieces[i - 1].B != piece.A && !Reversed(i - 1, i) && !(Reversed(i - 2, i - 1) && pieces[i - 1].A == piece.A))
+                Fail($"{what}: pieces {i - 1} and {i} don't join");
         }
         foreach (Seg seg in segs)
         {
-            double segLength = Math.Sqrt(Math.Pow((seg.V2.X - (double)seg.V1.X) / 65536.0, 2) + Math.Pow((seg.V2.Y - (double)seg.V1.Y) / 65536.0, 2));
-            double mid = seg.Offset / 65536.0 + segLength / 2;
-            int expected = LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y);
-            bool found = false;
-            foreach ((double from, double to, int contrast) in runs)
-            {
-                if (mid >= from && mid <= to)
-                {
-                    found = true;
-                    if (contrast != expected)
-                        Fail($"{what}: seg {seg.Index} has fake contrast {expected}, its wall quad {contrast}");
-                    break;
-                }
-            }
-            if (!found)
-                Fail($"{what}: seg {seg.Index} lies in no wall quad");
+            if (!seen.Contains(seg.Index) && (seg.V1.X != seg.V2.X || seg.V1.Y != seg.V2.Y))
+                Fail($"{what}: seg {seg.Index} has no wall piece");
         }
+    }
+
+    /// <summary>Point <paramref name="p"/> against <paramref name="seg"/>: its distance along the seg from V1, from the seg's line, and the seg's length (map units).</summary>
+    private static (double Along, double Off, double Length) OnSeg(Seg seg, PolygonVertex p)
+    {
+        double dx = (seg.V2.X - (double)seg.V1.X) / 65536.0, dy = (seg.V2.Y - (double)seg.V1.Y) / 65536.0;
+        double px = (p.X - (double)seg.V1.X) / 65536.0, py = (p.Y - (double)seg.V1.Y) / 65536.0;
+        double length = Math.Sqrt(dx * dx + dy * dy);
+        return length == 0 ? (0, Math.Sqrt(px * px + py * py), 0) : ((px * dx + py * dy) / length, Math.Abs(px * dy - py * dx) / length, length);
     }
 
     /// <summary>The shader's <c>plane_height</c> (IsoDoom.Map.WallPlane numbers).</summary>
@@ -879,6 +922,20 @@ public partial class LevelCheck : Godot.Node
         int textureTop = s.TextureTop.Evaluate(s.FrontSector, s.BackSector);
         int light = s.FrontSector.LightLevel;
         int contrast = LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y); // axis-aligned: every seg has it
+        // The pieces along the side (T2.9: per seg, vanilla's seg offsets) as distances from V1, columns
+        // interpolated between their ends as the GPU does; connector pairs stand across the floor.
+        var spans = new List<(double From, double To, long ColumnFrom, long ColumnTo)>();
+        IReadOnlyList<WallPiece> pieces = m.Pieces.Of(s.Line, s.Side);
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            WallPiece pc = pieces[i];
+            bool connector = (i + 1 < pieces.Count && pieces[i + 1].A == pc.B && pieces[i + 1].B == pc.A)
+                || (i > 0 && pieces[i - 1].A == pc.B && pieces[i - 1].B == pc.A);
+            double from = dirX * (pc.A.X / 65536.0 - v1x) + dirY * (pc.A.Y / 65536.0 - v1y);
+            double to = dirX * (pc.B.X / 65536.0 - v1x) + dirY * (pc.B.Y / 65536.0 - v1y);
+            if (!connector && to > from)
+                spans.Add((from, to, (long)s.TextureOffset + pc.ColumnA, (long)s.TextureOffset + pc.ColumnB));
+        }
         int compared = 0, bad = 0;
         bool differ = false;
         string first = "";
@@ -898,7 +955,17 @@ public partial class LevelCheck : Godot.Node
                 int d = dl + px; // pixel centre at d + 0.5
                 if (d < EdgeMargin || d + 1 > len - EdgeMargin)
                     continue;
-                int col = (int)(((long)s.TextureOffset + ((long)d << Fixed.FRACBITS) + Fixed.FRACUNIT / 2) >> Fixed.FRACBITS);
+                // The piece under the pixel centre, away from its ends (where a seg's column can jump).
+                double dPixel = d + 0.5, column = double.NaN;
+                foreach ((double from, double to, long cf, long ct) in spans)
+                {
+                    if (dPixel >= from + EdgeMargin && dPixel <= to - EdgeMargin)
+                        column = (cf + (ct - cf) * (dPixel - from) / (to - from)) / 65536.0;
+                }
+                // Not on one piece, or within 1/64 of a texel edge (a seg starting off a whole unit).
+                if (double.IsNaN(column) || Math.Abs(column - Math.Round(column)) < 1.0 / 64)
+                    continue;
+                int col = (int)Math.Floor(column);
                 (int tc, int tr) = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, tiling);
                 var other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height,
                     tiling == WallTextureTiling.Vanilla ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);

@@ -35,6 +35,15 @@ public partial class FreeFlyCamera : Camera3D
 
     public const float DefaultFov = 75f, MinFov = 10f, MaxFov = 120f;
 
+    /// <summary>
+    /// Vanilla's vertical field of view in degrees for the full-screen view:
+    /// r_main.c projects both axes with <c>projection = centerx</c> (160) on a
+    /// 320×200 view, so the horizontal field is 90° and the vertical one
+    /// 2·atan(100/160) ≈ 64.01° (in square view pixels; with a 16:10 window
+    /// the horizontal field is 90° too). For comparing renders with vanilla (T2.9).
+    /// </summary>
+    public static readonly float VanillaFov = (float)(2 * Math.Atan(100.0 / 160.0) * 180 / Math.PI);
+
     /// <summary>Default orthographic view height, map units (SPEC §7.1's iso camera shows about this much).</summary>
     public const float DefaultOrthoUnits = 768f;
 

@@ -33,6 +33,8 @@ namespace IsoDoom.Game;
 /// default player); <c>--level-light-origin=X,Y</c> (the player position light
 /// diminishing uses, in map units; by default the free-fly camera's pivot, or
 /// player 1's start under the overview camera);
+/// <c>--level-background=RRGGBB</c> (the void's colour, default black; a
+/// colour in no palette makes cracks easy to find, T2.9);
 /// <c>--level-check</c> (load every map and check the meshes, data textures
 /// and, with a real renderer, drawn pixels: <see cref="LevelCheck"/>).
 /// </para>
@@ -92,6 +94,18 @@ public partial class LevelScene : Node3D
 
     private static bool IsCheckRun => WadLocator.HasUserArg("--level-check");
 
+    /// <summary>
+    /// How long opening the WAD took (read, identify, texture table, palettes;
+    /// once per WAD), and how long the last <see cref="LoadMap"/> took (map
+    /// lumps, wall sections, floors, atlas, meshes, uploads and scene nodes),
+    /// in milliseconds. SPEC §9: under 1 s per map (T2.9; <c>--level-check</c>
+    /// checks every map).
+    /// </summary>
+    public double OpenWadMilliseconds { get; private set; }
+
+    /// <inheritdoc cref="OpenWadMilliseconds"/>
+    public double LastLoadMilliseconds { get; private set; }
+
     public override void _Ready()
     {
         _camera = new Camera3D { Current = true };
@@ -103,6 +117,8 @@ public partial class LevelScene : Node3D
             TonemapMode = Godot.Environment.ToneMapper.Linear,
             AmbientLightSource = Godot.Environment.AmbientSource.Disabled,
         };
+        if (WadLocator.GetUserArg("--level-background") is string bg && Color.HtmlIsValid(bg))
+            Environment.BackgroundColor = Color.FromHtml(bg); // T2.9: a colour in no palette shows cracks
         AddChild(new WorldEnvironment { Environment = Environment });
         Overlay = new CanvasLayer();
         _message = new Label
@@ -183,13 +199,24 @@ public partial class LevelScene : Node3D
             return;
         Level level = Mesh.Level;
         if (level.PlayerStart(player) is MapThing start)
-        {
-            Sector sector = level.R_PointInSubsector(start.X << Fixed.FRACBITS, start.Y << Fixed.FRACBITS).Sector;
-            float z = (sector.FloorHeight >> Fixed.FRACBITS) + VIEWHEIGHT;
-            FreeFly.Place(LevelMesh.ToGodot(start.X << Fixed.FRACBITS, start.Y << Fixed.FRACBITS, z), FreeFlyCamera.YawForMapAngle(start.Angle), 0);
-        }
+            PlaceFreeFly(start.X, start.Y, start.Angle);
         else
             FreeFly.Place(Mesh.Bounds.GetCenter(), 0, -30);
+    }
+
+    /// <summary>
+    /// Puts the free-fly camera at map point (<paramref name="x"/>, <paramref name="y"/>)
+    /// facing vanilla angle <paramref name="angle"/> (degrees) with no pitch, at height
+    /// <paramref name="z"/> (map units), or by default at <see cref="VIEWHEIGHT"/>
+    /// above the floor there, as vanilla's view of a player standing still.
+    /// </summary>
+    public void PlaceFreeFly(int x, int y, float angle, int? z = null)
+    {
+        if (FreeFly is null || Mesh is null)
+            return;
+        Sector sector = Mesh.Level.R_PointInSubsector(x << Fixed.FRACBITS, y << Fixed.FRACBITS).Sector;
+        float height = z ?? (sector.FloorHeight >> Fixed.FRACBITS) + VIEWHEIGHT;
+        FreeFly.Place(LevelMesh.ToGodot(x << Fixed.FRACBITS, y << Fixed.FRACBITS, height), FreeFlyCamera.YawForMapAngle(angle), 0);
     }
 
     /// <summary>Loads the map <paramref name="step"/> places after the current one in <see cref="MapNames"/> (wrapping).</summary>
@@ -360,6 +387,7 @@ public partial class LevelScene : Node3D
         if (found.Path is null)
             throw new IOException(found.Error ?? "No IWAD found (pass -- -iwad PATH or set ISODOOM_IWAD).");
 
+        var clock = Stopwatch.StartNew();
         var wad = WadArchive.Open(found.Path, [.. found.Pwads]);
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
         ModifiedGame.D_CheckModifiedGame(wad, info);
@@ -368,7 +396,8 @@ public partial class LevelScene : Node3D
         Colormap = Colormap.Load(wad);
         MapNames = FindMaps(wad);
         Wad = wad;
-        GD.Print($"Level: {found.Path}: {info}, {MapNames.Count} maps");
+        OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
+        GD.Print($"Level: {found.Path}: {info}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms");
     }
 
     /// <summary>The first of <c>E1M1</c>/<c>MAP01</c> the WAD has (else <c>MAP01</c>, which then fails to load).</summary>
@@ -424,6 +453,7 @@ public partial class LevelScene : Node3D
             Chunks[s] = node;
         }
         clock.Stop();
+        LastLoadMilliseconds = clock.Elapsed.TotalMilliseconds;
         Mesh = mesh;
 
         FrameCamera();

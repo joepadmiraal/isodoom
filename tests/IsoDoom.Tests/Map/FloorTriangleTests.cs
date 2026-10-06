@@ -150,8 +150,8 @@ public class FloorTriangleTests
         Assert.All(map.Subsectors.Where(ss => polys.Polygons[ss.Index].Length > 0), ss => Assert.Equal(ss.Sector.Index, floors.FloorSectorOf[ss.Index]));
         if (name == "E1M1")
         {
-            Assert.Equal(692, stats.Triangles);
-            Assert.Equal(239, stats.Inserted);
+            Assert.Equal(726, stats.Triangles);
+            Assert.Equal(273, stats.Inserted); // T2.9: 34 more (the seg ends projected onto the floor edges, for the walls)
         }
 
         // Deterministic: a second build is identical.

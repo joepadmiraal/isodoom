@@ -28,7 +28,7 @@ namespace IsoDoom.Render;
 /// <see cref="UpdateSectors"/> to move its floor and walls.</item>
 /// <item><b>Light</b> (T2.8): vanilla's <c>zlight</c>/<c>scalelight</c>
 /// (<see cref="LightTables"/>) in a small R8 texture, the fake contrast per
-/// wall quad (one quad per contrast run of a side, <see cref="SideContrasts"/>),
+/// wall quad (one quad per piece of a side, <see cref="WallPieces"/>: per seg, on the floor's corners),
 /// and the distance by <see cref="LightDiminishing"/> (uniforms set with
 /// <see cref="SetLightDiminishing"/>, <see cref="SetLightOrigin"/>,
 /// <see cref="SetLightReference"/>, <see cref="SetExtraLight"/>,
@@ -62,8 +62,8 @@ public sealed class LevelMesh
     {
         Level = level;
         Walls = walls;
-        Contrasts = SideContrasts.Build(level);
         Floors = floors;
+        Pieces = WallPieces.Build(level, floors);
         Textures = textures;
         _textureSlot = textureSlot;
         SlotNames = slotNames;
@@ -76,8 +76,8 @@ public sealed class LevelMesh
     public FloorTriangles Floors { get; }
     public Textures Textures { get; }
 
-    /// <summary>The fake contrast runs of every side (r_segs.c, per seg): one wall quad per run.</summary>
-    public SideContrasts Contrasts { get; }
+    /// <summary>The quads of every side (per seg, on the floor's corners, with each seg's fake contrast; T2.9): one wall quad per piece of each drawn section.</summary>
+    public WallPieces Pieces { get; }
 
     /// <summary>The light tables the shader reads (r_main.c, full-screen view; SPEC §12 T2.8).</summary>
     public LightTables Lights { get; } = LightTables.R_InitLightTables();
@@ -106,7 +106,7 @@ public sealed class LevelMesh
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
-    /// <summary>Number of wall quads in the meshes (one per contrast run of each drawn section), and of floor triangles.</summary>
+    /// <summary>Number of wall quads in the meshes (one per <see cref="WallPiece"/> of each drawn section), and of floor triangles.</summary>
     public int WallQuads { get; private set; }
     public int FloorTriangleCount { get; private set; }
 
@@ -324,15 +324,13 @@ public sealed class LevelMesh
             if (!IsDrawn(s))
                 continue;
             Chunk c = ChunkOf(s.FrontSector.Index);
-            double dx = (s.V2.X - (double)s.V1.X) / 65536.0, dy = (s.V2.Y - (double)s.V1.Y) / 65536.0;
-            double length = Math.Sqrt(dx * dx + dy * dy);
             var c0 = new Vector4(KindWall, TextureSlot(s.Texture), s.FrontSector.Index, s.BackSector?.Index ?? -1);
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
-            foreach ((double from, double to, int contrast) in WallQuadRuns(s))
+            foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
             {
-                var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), contrast, 0);
-                float u1 = (float)(s.TextureOffset / 65536.0 + from), u2 = (float)(s.TextureOffset / 65536.0 + to);
-                Vector3 p1 = WallPoint(s, from / length), p2 = WallPoint(s, to / length);
+                var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), piece.Contrast, 0);
+                (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
+                Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
                 int first = c.Vertices.Count;
                 c.Add(p1, new Vector2(u1, 0), c0, c1, c2); // V1 bottom
                 c.Add(p1, new Vector2(u1, 1), c0, c1, c2); // V1 top
@@ -388,37 +386,6 @@ public sealed class LevelMesh
 
     private static float Units(int fixedValue) => (float)(fixedValue / 65536.0);
 
-    /// <summary>
-    /// The quads a drawn section is split into: one per fake contrast run of
-    /// its side (<see cref="Contrasts"/>), as (from, to) distances from V1 in
-    /// map units (the float line length at the end) and the run's contrast.
-    /// </summary>
-    public List<(double From, double To, int Contrast)> WallQuadRuns(WallSection s)
-    {
-        double dx = (s.V2.X - (double)s.V1.X) / 65536.0, dy = (s.V2.Y - (double)s.V1.Y) / 65536.0;
-        double length = Math.Sqrt(dx * dx + dy * dy);
-        IReadOnlyList<ContrastRun> runs = Contrasts.Runs(s.Line, s.Side);
-        var quads = new List<(double, double, int)>();
-        if (runs.Count == 0) // T2.3 builds sections only for sides with segs; keep the linedef's contrast just in case
-            quads.Add((0, length, LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y)));
-        for (int i = 0; i < runs.Count; i++)
-        {
-            double from = i == 0 ? 0 : Math.Min(runs[i].Start / 65536.0, length);
-            double to = i + 1 < runs.Count ? Math.Min(runs[i + 1].Start / 65536.0, length) : length;
-            if (to > from)
-                quads.Add((from, to, runs[i].Contrast));
-        }
-        return quads;
-    }
-
-    /// <summary>The point a fraction <paramref name="t"/> of the way from the section's V1 to V2, at height 0, in Godot space.</summary>
-    public static Vector3 WallPoint(WallSection s, double t)
-    {
-        if (t <= 0)
-            return ToGodot(s.V1.X, s.V1.Y, 0);
-        if (t >= 1)
-            return ToGodot(s.V2.X, s.V2.Y, 0);
-        double x = s.V1.X + (s.V2.X - (double)s.V1.X) * t, y = s.V1.Y + (s.V2.Y - (double)s.V1.Y) * t;
-        return new Vector3((float)(x / 65536.0 / MapUnitsPerMetre), 0, (float)(-y / 65536.0 / MapUnitsPerMetre));
-    }
+    /// <summary>The texture column (map units, float) of a section's piece end: the sidedef's <c>textureoffset</c> plus the piece's column (<see cref="WallPiece"/>).</summary>
+    public static float Column(WallSection s, int pieceColumn) => (float)(((long)s.TextureOffset + pieceColumn) / 65536.0);
 }

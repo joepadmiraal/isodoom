@@ -222,7 +222,9 @@ public readonly record struct ContrastRun(int Start, int Contrast);
 /// the seg's own vertexes (r_segs.c <c>R_StoreWallRange</c>), and a seg of a
 /// diagonal line whose vertexes were rounded onto one axis gets the axis's
 /// contrast (DOOM1 E1M6 has one, Doom II a few): so a side is split into
-/// runs of segs with equal contrast, and the level mesh draws one quad per run.
+/// runs of segs with equal contrast. (T2.8 drew one quad per run; since T2.9
+/// the level mesh draws per seg, <see cref="WallPieces"/>, each piece with its
+/// seg's contrast, and this stays as the per-side summary its tests pin.)
 /// </summary>
 public sealed class SideContrasts
 {

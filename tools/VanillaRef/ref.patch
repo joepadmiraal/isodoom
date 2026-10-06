@@ -1,0 +1,36 @@
+diff --git a/doomgeneric/p_spec.c b/doomgeneric/p_spec.c
+--- a/doomgeneric/p_spec.c
++++ b/doomgeneric/p_spec.c
+@@ -1092,6 +1092,8 @@ int		levelTimeCount;
+ 
+ void P_UpdateSpecials (void)
+ {
++    if (getenv("DUMP_STATIC")) return; // IsoDoom reference: no animations or scrolling
++
+     anim_t*	anim;
+     int		pic;
+     int		i;
+diff --git a/doomgeneric/r_main.c b/doomgeneric/r_main.c
+--- a/doomgeneric/r_main.c
++++ b/doomgeneric/r_main.c
+@@ -884,7 +884,7 @@ void R_RenderPlayerView (player_t* player)
+     // Check for new console commands.
+     NetUpdate ();
+     
+-    R_DrawMasked ();
++    { extern int dump_noceil; if (!dump_noceil) R_DrawMasked (); } // IsoDoom reference: no sprites, masked middles
+ 
+     // Check for new console commands.
+     NetUpdate ();				
+diff --git a/doomgeneric/r_plane.c b/doomgeneric/r_plane.c
+--- a/doomgeneric/r_plane.c
++++ b/doomgeneric/r_plane.c
+@@ -382,6 +382,8 @@ void R_DrawPlanes (void)
+ 
+     for (pl = visplanes ; pl < lastvisplane ; pl++)
+     {
++	{ extern int dump_noceil; extern fixed_t viewz; // IsoDoom reference: no ceilings or sky
++	  if (dump_noceil && (pl->picnum == skyflatnum || pl->height > viewz)) continue; }
+ 	if (pl->minx > pl->maxx)
+ 	    continue;
+ 
