@@ -1,0 +1,328 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Godot;
+using IsoDoom.Map;
+using IsoDoom.Render;
+
+namespace IsoDoom.Game;
+
+/// <summary>
+/// The level check's cutaway part (T3.4, real renderer only): one view of the
+/// rendered map through the game camera's orthographic angle, at 1 map unit
+/// per pixel, with a cut centre just behind a tall one-sided wall facing the
+/// camera (it must be cut), then just in front of it (it must stay whole). Each pixel in the cut disc is classified on the CPU by casting its
+/// ray against every wall piece and floor (<see cref="Cutaway.Hides"/> for
+/// each surface it meets, with a margin around every edge and every boundary
+/// of the cut): pixels whose first surface is not cut must draw exactly as
+/// with the cutaway off (walls outside the cut region, below the cutoff, or
+/// in front of the centre, and every pixel outside the disc), and pixels where
+/// every surface on the ray is cut must show the background (the wall draws
+/// nothing above the cutoff there). The same view with the cursor ground point
+/// as the only centre must equal it, and the dither must keep the uncut pixels
+/// and clear about half of the cut ones.
+/// </summary>
+public partial class LevelCheck
+{
+    /// <summary>Map units (= pixels here) kept clear of surface edges and of the cut's boundaries when classifying a pixel.</summary>
+    private const float CutMargin = 1.5f;
+
+    private enum CutPixel : byte { Skip, Keep, Cleared }
+
+    /// <summary>A view's pixel classes over the disc's screen box; the cleared pixels (and those of them where a floor is cut); the kept pixels in the disc whose first surface is a wall, and those of them above the cutoff.</summary>
+    private sealed record CutClasses(CutPixel[] Classes, (int Left, int Top, int Right, int Bottom) Box, int Cleared, int KeptWalls, int KeptAbove, int ClearedFloors);
+
+    private readonly record struct CutQuad(Vector2 A, Vector2 Dir, float Length, Vector3 Normal, float Bottom, float Top, bool Masked, WallSection Section);
+
+    private async Task CutawayCheck(LevelMesh m)
+    {
+        string map = m.Level.Name;
+        var settings = new CutawaySettings { Style = CutawayStyle.Cut };
+        Basis basis = Basis.FromEuler(new Vector3(-Mathf.DegToRad(IsoCamera.DefaultPitch), Mathf.DegToRad(IsoCamera.Yaw), 0));
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        var toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
+
+        var quads = new List<CutQuad>();
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            if (!LevelMesh.IsDrawn(s))
+                continue;
+            (int sb, int st) = s.Span();
+            if (st <= sb)
+                continue;
+            foreach (WallPiece pc in m.Pieces.Of(s.Line, s.Side))
+            {
+                var a = new Vector2(pc.A.X / 65536f, pc.A.Y / 65536f);
+                var b = new Vector2(pc.B.X / 65536f, pc.B.Y / 65536f);
+                float len = a.DistanceTo(b);
+                if (len < 1e-3f)
+                    continue;
+                Vector2 dir = (b - a) / len;
+                quads.Add(new CutQuad(a, dir, len, new Vector3(dir.Y, -dir.X, 0), sb / 65536f, st / 65536f, LevelMesh.IsMasked(s), s));
+            }
+        }
+        var heights = new SortedSet<int>();
+        foreach (Sector s in m.Level.Sectors)
+            heights.Add(s.FloorHeight);
+        int[] floorHeights = new int[heights.Count];
+        heights.CopyTo(floorHeights);
+        Array.Reverse(floorHeights);
+
+        // Candidates: tall one-sided walls facing the camera; the centre 24 units behind the middle (the
+        // wall must be cut there) and 24 units in front of it (the wall must stay whole).
+        Vector2I size = ViewSize();
+        int w = size.X, h = size.Y;
+        CutClasses? behind = null, inFront = null;
+        Vector3 behindCentre = default, frontCentre = default;
+        string? chosen = null;
+        int tried = 0;
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            if (!LevelMesh.IsDrawn(s) || s.Kind != WallSectionKind.Middle || s.BackSector is not null)
+                continue;
+            (int sb, int st) = s.Span();
+            var v1 = new Vector2(s.V1.X / 65536f, s.V1.Y / 65536f);
+            var v2 = new Vector2(s.V2.X / 65536f, s.V2.Y / 65536f);
+            float len = v1.DistanceTo(v2);
+            if ((st - sb) / 65536f < settings.Height + 48 || len < 64)
+                continue;
+            Vector2 dir = (v2 - v1) / len, n = new(dir.Y, -dir.X);
+            if (n.Dot(toCameraFlat) < 0.5f)
+                continue;
+            if (tried++ >= 40)
+                break;
+            Vector2 mid = (v1 + v2) / 2;
+            float floor = s.FrontSector.FloorHeight / 65536f;
+            var back = new Vector3(mid.X - n.X * 24, mid.Y - n.Y * 24, floor);
+            var front = new Vector3(mid.X + n.X * 24, mid.Y + n.Y * 24, floor);
+            CutView(back, basis, toCamera);
+            CutClasses b = ClassifyCut(m, quads, floorHeights, back, settings, toCamera, w, h);
+            if (b.Cleared < 100 || b.KeptWalls < 50)
+                continue;
+            CutView(front, basis, toCamera);
+            CutClasses f = ClassifyCut(m, quads, floorHeights, front, settings, toCamera, w, h);
+            if (f.KeptAbove < 100)
+                continue;
+            (behind, inFront, behindCentre, frontCentre) = (b, f, back, front);
+            chosen = $"line {s.Line.Index} ({Textures.TextureDefs[s.Texture].Name})";
+            break;
+        }
+        if (behind is null || inFront is null || chosen is null)
+        {
+            Fail($"{map}: cutaway: no view found (a one-sided wall facing the game camera, {settings.Height + 48} units tall and 64 long, "
+                + "with at least 100 pixels cleared and 50 wall pixels kept in the cut disc from just behind it, and 100 wall pixels above the cutoff kept from just in front)");
+            return;
+        }
+        await CompareCutView(m, behindCentre, behind, settings, basis, toCamera, $"{map}: cutaway, centre ({behindCentre.X:F0}, {behindCentre.Y:F0}, {behindCentre.Z:F0}) behind {chosen}");
+        await CompareCutView(m, frontCentre, inFront, settings, basis, toCamera, $"{map}: cutaway, centre ({frontCentre.X:F0}, {frontCentre.Y:F0}, {frontCentre.Z:F0}) in front of {chosen}");
+    }
+
+    /// <summary>
+    /// Renders the view of <paramref name="centre"/> with the cutaway off, cut,
+    /// cut around the cursor centre instead, and dithered, and compares them by
+    /// the CPU classes.
+    /// </summary>
+    private async Task CompareCutView(LevelMesh m, Vector3 centre, CutClasses classes, CutawaySettings settings, Basis basis, Vector3 toCamera, string what)
+    {
+        Vector2I size = ViewSize();
+        int w = size.X, h = size.Y;
+        CutView(centre, basis, toCamera);
+        m.SetCutawayCentres(centre, null);
+        m.SetCutaway(settings with { Style = CutawayStyle.Off });
+        byte[]? off = await Capture($"{what}, off");
+        m.SetCutaway(settings);
+        byte[]? cut = await Capture($"{what}, cut");
+        m.SetCutawayCentres(null, centre);
+        byte[]? cursor = await Capture($"{what}, cursor centre");
+        m.SetCutawayCentres(centre, null);
+        m.SetCutaway(settings with { Style = CutawayStyle.Dither });
+        byte[]? dither = await Capture($"{what}, dither");
+        m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
+        m.SetCutawayCentres(null, null);
+        if (off is null || cut is null || cursor is null || dither is null)
+            return;
+
+        var box = classes.Box;
+        int bw = box.Right - box.Left;
+        long compared = 0;
+        int badKeep = 0, badClear = 0, badCursor = 0, badDither = 0, ditherCleared = 0, offShowsBackground = 0;
+        string firstKeep = "", firstClear = "";
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                int p = (py * w + px) * 4;
+                bool inBox = px >= box.Left && px < box.Right && py >= box.Top && py < box.Bottom;
+                CutPixel cls = inBox ? classes.Classes[(py - box.Top) * bw + (px - box.Left)] : CutPixel.Keep;
+                (int R, int G, int B) got = (cut[p], cut[p + 1], cut[p + 2]);
+                (int R, int G, int B) before = (off[p], off[p + 1], off[p + 2]);
+                if (cursor[p] != cut[p] || cursor[p + 1] != cut[p + 1] || cursor[p + 2] != cut[p + 2])
+                    badCursor++;
+                if (cls == CutPixel.Keep)
+                {
+                    compared++;
+                    if (got != before && badKeep++ == 0)
+                        firstKeep = $"pixel ({px}, {py}): drew {got}, {before} with the cutaway off";
+                    if (dither[p] != off[p] || dither[p + 1] != off[p + 1] || dither[p + 2] != off[p + 2])
+                        badDither++;
+                }
+                else if (cls == CutPixel.Cleared)
+                {
+                    compared++;
+                    if (NearBackground(before))
+                        offShowsBackground++;
+                    if (!NearBackground(got) && badClear++ == 0)
+                        firstClear = $"pixel ({px}, {py}): drew {got}, expected the background {_background}";
+                    if (NearBackground((dither[p], dither[p + 1], dither[p + 2])))
+                        ditherCleared++;
+                }
+            }
+        }
+        _pixels += compared;
+        if (badKeep > 0)
+            Fail($"{what}: {badKeep} pixel(s) whose first surface is not cut changed with the cutaway, first at {firstKeep}");
+        if (badClear > 0)
+            Fail($"{what}: {badClear} of {classes.Cleared} cut pixel(s) still draw a surface, first at {firstClear}");
+        if (offShowsBackground > 0)
+            Fail($"{what}: {offShowsBackground} pixel(s) classified as cut show the background with the cutaway off (no surface there)");
+        if (badCursor > 0)
+            Fail($"{what}: {badCursor} pixel(s) differ with the cursor ground point as the cut centre instead of the player");
+        if (badDither > 0)
+            Fail($"{what}: {badDither} uncut pixel(s) changed with the dither");
+        double share = classes.Cleared == 0 ? 0.5 : (double)ditherCleared / classes.Cleared;
+        if (share < 0.3 || share > 0.7)
+            Fail($"{what}: the dither cleared {share:P0} of the cut pixels, expected about half");
+        GD.Print($"Level check: {what}: {compared} pixels compared ({classes.Cleared} cut to the background, {classes.ClearedFloors} of them through a floor; uncut wall pixels in the disc: "
+            + $"{classes.KeptWalls}, {classes.KeptAbove} of them above the cutoff; the rest as with the cutaway off); cursor centre identical"
+            + (classes.Cleared > 0 ? $"; dither cleared {share:P0} of the cut pixels" : ""));
+    }
+
+    /// <summary>The scene camera looking along the game camera's direction at the cut centre's anchor, 1 map unit per pixel.</summary>
+    private void CutView(Vector3 centre, Basis basis, Vector3 toCamera)
+    {
+        const float back = 4096;
+        Vector3 anchor = centre + new Vector3(0, 0, Cutaway.Anchor);
+        Ortho(basis, anchor + toCamera * back, 1, 2 * back);
+    }
+
+    /// <summary>
+    /// Classifies the pixels of the cut disc's screen box (the rest is
+    /// <see cref="CutPixel.Keep"/>).
+    /// </summary>
+    private CutClasses ClassifyCut(
+        LevelMesh m, List<CutQuad> quads, int[] floorHeights, Vector3 centre, CutawaySettings settings, Vector3 toCamera, int w, int h)
+    {
+        Camera3D cam = _scene.Camera;
+        Vector3 anchor = centre + new Vector3(0, 0, Cutaway.Anchor);
+        Vector2 a = cam.UnprojectPosition(LevelMesh.ToGodot((int)(anchor.X * 65536), (int)(anchor.Y * 65536), anchor.Z));
+        int reach = (int)Math.Ceiling(settings.Radius + 4);
+        int left = Math.Max(0, (int)a.X - reach), right = Math.Min(w, (int)a.X + reach + 1);
+        int top = Math.Max(0, (int)a.Y - reach), bottom = Math.Min(h, (int)a.Y + reach + 1);
+        int bw = Math.Max(0, right - left), bh = Math.Max(0, bottom - top);
+        var classes = new CutPixel[bw * bh];
+        int cleared = 0, keptWalls = 0, keptAbove = 0, clearedFloors = 0;
+        var hits = new List<(float T, bool Definite, int Cut, bool Wall, float Z)>();
+        for (int py = top; py < bottom; py++)
+        {
+            for (int px = left; px < right; px++)
+            {
+                var screen = new Vector2(px + 0.5f, py + 0.5f);
+                Vector3 o = Cutaway.ToMapAxes(cam.ProjectRayOrigin(screen)) * LevelMesh.MapUnitsPerMetre;
+                Vector3 d = Cutaway.ToMapAxes(cam.ProjectRayNormal(screen)).Normalized();
+                hits.Clear();
+                foreach (CutQuad q in quads)
+                {
+                    float denom = d.X * q.Normal.X + d.Y * q.Normal.Y;
+                    if (denom >= -1e-6f)
+                        continue; // seen from behind: culled
+                    float t = ((q.A.X - o.X) * q.Normal.X + (q.A.Y - o.Y) * q.Normal.Y) / denom;
+                    if (t <= 0)
+                        continue;
+                    Vector3 p = o + d * t;
+                    float along = (p.X - q.A.X) * q.Dir.X + (p.Y - q.A.Y) * q.Dir.Y;
+                    float margin = Math.Min(Math.Min(along, q.Length - along), Math.Min(p.Z - q.Bottom, q.Top - p.Z));
+                    if (margin < -CutMargin)
+                        continue;
+                    hits.Add((t, margin > CutMargin && !q.Masked, CutState(p, q.Normal, centre, settings, toCamera), true, p.Z));
+                }
+                if (d.Z < 0)
+                {
+                    foreach (int fh in floorHeights)
+                    {
+                        float height = fh / 65536f;
+                        float t = (height - o.Z) / d.Z;
+                        if (t <= 0)
+                            continue;
+                        Vector3 p = o + d * t;
+                        int matches = 0;
+                        foreach ((float ox, float oy) in new[] { (0f, 0f), (CutMargin, 0f), (-CutMargin, 0f), (0f, CutMargin), (0f, -CutMargin) })
+                        {
+                            int s = CursorGround.DrawnSectorAt(m, (int)Math.Round((p.X + ox) * 65536.0), (int)Math.Round((p.Y + oy) * 65536.0));
+                            if (s >= 0 && m.Level.Sectors[s].FloorHeight == fh)
+                                matches++;
+                        }
+                        if (matches > 0)
+                            hits.Add((t, matches == 5, CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), false, p.Z));
+                    }
+                }
+                hits.Sort((x, y) => x.T.CompareTo(y.T));
+
+                // Keep: every surface up to the first definite one is definitely not cut.
+                bool keep = true;
+                bool firstIsWall = false, firstAbove = false;
+                foreach (var hit in hits)
+                {
+                    if (hit.Cut != 0)
+                    {
+                        keep = false;
+                        break;
+                    }
+                    if (hit.Definite)
+                    {
+                        firstIsWall = hit.Wall;
+                        firstAbove = hit.Z > centre.Z + settings.Height + CutMargin;
+                        break;
+                    }
+                }
+                // Cleared: something is on the ray, and every surface on it is definitely cut.
+                bool clear = hits.Count > 0 && hits.TrueForAll(x => x.Cut == 1) && hits.Exists(x => x.Definite);
+                CutPixel cls = keep ? CutPixel.Keep : clear ? CutPixel.Cleared : CutPixel.Skip;
+                classes[(py - top) * bw + (px - left)] = cls;
+                if (cls == CutPixel.Cleared)
+                {
+                    cleared++;
+                    if (hits.Exists(x => !x.Wall))
+                        clearedFloors++;
+                }
+                bool inDisc = Cutaway.Distance(o, anchor, toCamera) < settings.Radius; // the ray runs along the axis
+                if (cls == CutPixel.Keep && firstIsWall && inDisc)
+                {
+                    keptWalls++;
+                    if (firstAbove)
+                        keptAbove++;
+                }
+            }
+        }
+        return new CutClasses(classes, (left, top, right, bottom), cleared, keptWalls, keptAbove, clearedFloors);
+    }
+
+    /// <summary>Whether <see cref="Cutaway.Hides"/> cuts the surface point: 0 definitely not, 1 definitely, 2 within <see cref="CutMargin"/> of a boundary of the rule.</summary>
+    private static int CutState(Vector3 p, Vector3 normal, Vector3 centre, CutawaySettings settings, Vector3 toCamera)
+    {
+        if (normal.Dot(toCamera) < 0)
+            normal = -normal;
+        Vector3 a = centre + new Vector3(0, 0, Cutaway.Anchor);
+        float above = p.Z - (centre.Z + settings.Height);
+        float behind = -((a - p).Dot(normal) + Cutaway.PlaneMargin); // > 0: the centre is behind the plane by more than the margin
+        float inside = settings.Radius - Cutaway.Distance(p, a, toCamera);
+        if (above < -CutMargin || behind < -CutMargin || inside < -CutMargin)
+            return 0;
+        if (above > CutMargin && behind > CutMargin && inside > CutMargin)
+        {
+            if (!Cutaway.Hides(p, normal, centre, settings, toCamera))
+                throw new InvalidOperationException("Cutaway.Hides disagrees with the check's margins");
+            return 1;
+        }
+        return 2;
+    }
+}

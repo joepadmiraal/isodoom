@@ -1,7 +1,9 @@
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Godot;
+using SectorFloor = IsoDoom.Map.SectorFloor;
 using IsoDoom.Render;
 
 namespace IsoDoom.Game;
@@ -31,7 +33,16 @@ namespace IsoDoom.Game;
 /// the cursor to viewport pixel X, Y; the game camera's cursor ground point
 /// follows); <c>place X Y [ANGLE]</c> (T3.3: put the placeholder at map
 /// point X, Y, optionally facing ANGLE degrees, and centre the game camera on
-/// it); <c>quit</c> (also implied at the end).
+/// it); <c>visible [MIN]</c> (T3.4: print how much of the placeholder the
+/// game camera shows, in % of its pixels, and fail the script below MIN %,
+/// default 25; needs a real renderer); <c>walkto X Y [STEP] [MIN]</c> (T3.4:
+/// move the placeholder in a straight line, through walls, to map point X, Y,
+/// STEP units at a time (default 32), centring the camera and running
+/// <c>visible MIN</c> at every step, and print the least visible step);
+/// <c>tour [STEP] [MIN]</c> (T3.4: <c>walkto</c> a point inside every
+/// sector's floor of the map, nearest unvisited first from where the
+/// placeholder stands);
+/// <c>quit</c> (also implied at the end).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -87,6 +98,15 @@ public partial class LevelScript : Node
                     case "place":
                         _scene.PlacePlaceholder(Int(w[1]), Int(w[2]), w.Length > 3 ? float.Parse(w[3], CultureInfo.InvariantCulture) : null);
                         break;
+                    case "visible":
+                        exit |= await Visible(w.Length > 1 ? Int(w[1]) : DefaultMinVisible, true) is null ? 1 : 0;
+                        break;
+                    case "walkto":
+                        exit |= await WalkTo(Int(w[1]), Int(w[2]), w.Length > 3 ? Int(w[3]) : 32, w.Length > 4 ? Int(w[4]) : DefaultMinVisible);
+                        break;
+                    case "tour":
+                        exit |= await Tour(w.Length > 1 ? Int(w[1]) : 32, w.Length > 2 ? Int(w[2]) : DefaultMinVisible);
+                        break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -100,6 +120,89 @@ public partial class LevelScript : Node
             await Frames(1); // let the event reach the nodes
         }
         GetTree().Quit(exit);
+    }
+
+    /// <summary>The least share of the placeholder's pixels (%) <c>visible</c> and <c>walkto</c> accept by default.</summary>
+    public const int DefaultMinVisible = 25;
+
+    /// <summary>Measures the placeholder's visibility (%); null (and an error) when it is below <paramref name="min"/> or can't be measured.</summary>
+    private async Task<double?> Visible(int min, bool print)
+    {
+        if (await _scene.PlaceholderVisibilityAsync() is not (int visible, int total))
+        {
+            GD.PrintErr("Level script: visible needs a real renderer and the placeholder (run without --headless)");
+            return null;
+        }
+        double share = total == 0 ? 0 : 100.0 * visible / total;
+        Vector2 at = _scene.Placeholder!.MapPosition;
+        string where = $"placeholder at ({at.X:F0}, {at.Y:F0}), floor {_scene.Placeholder.FloorHeight:F0}";
+        if (total == 0 || share < min)
+        {
+            GD.PrintErr($"Level script: {where}: {visible} of {total} pixels visible ({share:F0}%), below {min}%");
+            return null;
+        }
+        if (print)
+            GD.Print($"Level script: {where}: {visible} of {total} pixels visible ({share:F0}%)");
+        return share;
+    }
+
+    private async Task<int> WalkTo(int x, int y, int step, int min)
+    {
+        if (_scene.Placeholder is not { } p)
+            throw new ArgumentException("no placeholder");
+        Vector2 from = p.MapPosition, to = new(x, y);
+        int steps = Math.Max(1, (int)Math.Ceiling(from.DistanceTo(to) / Math.Max(1, step)));
+        int failed = 0;
+        double least = double.MaxValue;
+        Vector2 leastAt = from;
+        for (int i = 1; i <= steps; i++)
+        {
+            Vector2 at = from.Lerp(to, (float)i / steps);
+            _scene.PlacePlaceholder(at.X, at.Y);
+            if (await Visible(min, false) is double share)
+            {
+                if (share < least)
+                    (least, leastAt) = (share, at);
+            }
+            else
+                failed++;
+        }
+        GD.Print(failed == 0
+            ? $"Level script: walked to ({x}, {y}) in {steps} steps; least visible {least:F0}% at ({leastAt.X:F0}, {leastAt.Y:F0})"
+            : $"Level script: walked to ({x}, {y}) in {steps} steps; {failed} step(s) below {min}%");
+        return failed == 0 ? 0 : 1;
+    }
+
+    private async Task<int> Tour(int step, int min)
+    {
+        if (_scene.Mesh is not { } m || _scene.Placeholder is not { } p)
+            throw new ArgumentException("no map or placeholder");
+        var points = new List<Vector2>();
+        foreach (SectorFloor floor in m.Floors.BySector)
+        {
+            if (floor.TriangleCount > 0)
+            {
+                (int x, int y) = floor.InteriorPoint();
+                points.Add(new Vector2(MathF.Round(x / 65536f), MathF.Round(y / 65536f)));
+            }
+        }
+        int exit = 0, legs = 0;
+        while (points.Count > 0)
+        {
+            Vector2 at = p.MapPosition;
+            int next = 0;
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (points[i].DistanceSquaredTo(at) < points[next].DistanceSquaredTo(at))
+                    next = i;
+            }
+            Vector2 to = points[next];
+            points.RemoveAt(next);
+            exit |= await WalkTo((int)to.X, (int)to.Y, step, min);
+            legs++;
+        }
+        GD.Print($"Level script: toured {legs} sector floors of {m.Level.Name}{(exit == 0 ? "" : " (some steps below the minimum)")}");
+        return exit;
     }
 
     private static int Int(string s) => int.Parse(s, CultureInfo.InvariantCulture);

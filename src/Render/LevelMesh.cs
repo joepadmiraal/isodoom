@@ -38,6 +38,10 @@ namespace IsoDoom.Render;
 /// <see cref="SetLightDiminishing"/>, <see cref="SetLightOrigin"/>,
 /// <see cref="SetLightReference"/>, <see cref="SetExtraLight"/>,
 /// <see cref="SetColormapOverride"/>).</item>
+/// <item><b>Cutaway</b> (T3.4): walls hiding the player (and optionally the
+/// cursor ground point) are cut above a height in both materials
+/// (<see cref="Render.Cutaway"/>, <see cref="SetCutaway"/>,
+/// <see cref="SetCutawayCentres"/>); off until set.</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -231,6 +235,37 @@ public sealed class LevelMesh
         SetParameter("extralight", extralight);
     }
 
+    /// <summary>The cutaway settings as last set (<see cref="SetCutaway"/>; off until set).</summary>
+    public CutawaySettings Cutaway { get; private set; } = new() { Style = CutawayStyle.Off };
+
+    /// <summary>The cut centres as last set (<see cref="SetCutawayCentres"/>), map units (x, y, floor height); null: none.</summary>
+    public Vector3? CutPlayer { get; private set; }
+    public Vector3? CutCursor { get; private set; }
+
+    /// <summary>Sets the wall cutaway's style, radius and cutoff height (T3.4, <see cref="IsoDoom.Render.Cutaway"/>).</summary>
+    public void SetCutaway(CutawaySettings settings)
+    {
+        Cutaway = settings;
+        SetParameter("cut_mode", Render.Cutaway.ShaderMode(settings.Style));
+        SetParameter("cut_radius", settings.Radius);
+        SetParameter("cut_height", settings.Height);
+        SetParameter("cut_anchor", Render.Cutaway.Anchor);
+    }
+
+    /// <summary>
+    /// Sets the cutaway's centres: the player's position on its floor and the
+    /// cursor ground point (map units x, y, floor height; null: that centre
+    /// cuts nothing). Whether the cursor is passed is the caller's choice
+    /// (<see cref="CutawaySettings.Cursor"/>).
+    /// </summary>
+    public void SetCutawayCentres(Vector3? player, Vector3? cursor)
+    {
+        CutPlayer = player;
+        CutCursor = cursor;
+        SetParameter("cut_player", player is Vector3 p ? new Vector4(p.X, p.Y, p.Z, 1) : Vector4.Zero);
+        SetParameter("cut_cursor", cursor is Vector3 c ? new Vector4(c.X, c.Y, c.Z, 1) : Vector4.Zero);
+    }
+
     /// <summary>Selects the PLAYPAL palette.</summary>
     public void SetPalette(int palette) => SetParameter("palette_index", palette);
 
@@ -298,6 +333,8 @@ public sealed class LevelMesh
         SetLightReference(LightTables.DefaultReferenceDistance);
         SetExtraLight(0);
         SetWallTiling(WallTextureTiling.Vanilla);
+        SetCutaway(Cutaway);
+        SetCutawayCentres(null, null);
     }
 
     private sealed class Chunk
@@ -356,7 +393,7 @@ public sealed class LevelMesh
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
             foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
             {
-                var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), piece.Contrast, 0);
+                var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), piece.Contrast, PieceAngle(piece));
                 (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
                 Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
                 int first = c.Vertices.Count;
@@ -419,6 +456,13 @@ public sealed class LevelMesh
         }
         Bounds = bounds ?? new Aabb();
     }
+
+    /// <summary>
+    /// The direction of a wall piece from its end A to B, radians (map space,
+    /// counterclockwise from +x): the shader's <c>CUSTOM2.w</c>, from which the
+    /// cutaway (T3.4) takes the wall's normal, (sin, −cos), towards the front sector.
+    /// </summary>
+    public static float PieceAngle(WallPiece piece) => (float)Math.Atan2((double)piece.B.Y - piece.A.Y, (double)piece.B.X - piece.A.X);
 
     private static float Units(int fixedValue) => (float)(fixedValue / 65536.0);
 

@@ -35,6 +35,21 @@ public class FloorTriangleTests
     private static (PolygonVertex, PolygonVertex, PolygonVertex)[] Triangles(SectorFloor f) =>
         Enumerable.Range(0, f.TriangleCount).Select(t => (f.Corner(t, 0), f.Corner(t, 1), f.Corner(t, 2))).ToArray();
 
+    /// <summary>T3.4: <see cref="SectorFloor.InteriorPoint"/> lies on its sector's floor, and is the west room's largest triangle's centroid.</summary>
+    [Fact]
+    public void InteriorPointsLieOnTheirFloors()
+    {
+        Level map = LoadSynthetic();
+        FloorTriangles floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
+        foreach (SectorFloor f in floors.BySector.Where(f => f.TriangleCount > 0))
+        {
+            (int x, int y) = f.InteriorPoint();
+            Assert.Equal(f.Sector, floors.SectorAt(x, y));
+        }
+        // West room: (-128, -128), (-128, 128), (128, 128) is its largest triangle.
+        Assert.Equal((-(128 << FRACBITS) / 3, (128 << FRACBITS) / 3), floors.BySector[0].InteriorPoint());
+    }
+
     [Fact]
     public void SyntheticMapTrianglesAreExact()
     {

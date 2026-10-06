@@ -37,6 +37,23 @@ public sealed class SectorFloor
 
     /// <summary>Corner <paramref name="corner"/> (0–2) of triangle <paramref name="triangle"/>.</summary>
     public PolygonVertex Corner(int triangle, int corner) => Vertices[Indices[triangle * 3 + corner]];
+
+    /// <summary>A point well inside the floor (fixed_t): the centroid of its largest triangle (the first on ties). Throws without triangles.</summary>
+    public (int X, int Y) InteriorPoint()
+    {
+        if (TriangleCount == 0)
+            throw new InvalidOperationException($"sector {Sector} has no floor triangles");
+        int best = 0;
+        Int128 bestArea = -1;
+        for (int t = 0; t < TriangleCount; t++)
+        {
+            Int128 area = FloorTriangles.TwiceArea(Corner(t, 0), Corner(t, 1), Corner(t, 2));
+            if (area > bestArea)
+                (best, bestArea) = (t, area);
+        }
+        PolygonVertex a = Corner(best, 0), b = Corner(best, 1), c = Corner(best, 2);
+        return ((int)(((long)a.X + b.X + c.X) / 3), (int)(((long)a.Y + b.Y + c.Y) / 3));
+    }
 }
 
 /// <summary>

@@ -1,7 +1,7 @@
 // Level shader body (SPEC §7.2, §7.4, §12 T2.5, T3.1), included by
 // level.gdshader (floors and solid walls) and level_masked.gdshader (masked
-// middles, with MASKED_PASS defined: the only variant that discards, so the
-// solid pass keeps early depth testing).
+// middles, with MASKED_PASS defined: the only variant with the opacity mask).
+// Both discard the fragments the cutaway removes (T3.4).
 //
 // Each material draws its kinds for every sector of a level. Textures and
 // flats sit in one RG8 index atlas (R = palette index, G = opacity), looked
@@ -32,7 +32,8 @@
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   walls:     UV.x = texture column (textureoffset + distance from V1), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
-//              CUSTOM2 = texture-top plane, texture-top offset, fake contrast (-1, 0, +1), -
+//              CUSTOM2 = texture-top plane, texture-top offset, fake contrast (-1, 0, +1),
+//                        direction from end A to B (radians; LevelMesh.PieceAngle)
 //              planes are IsoDoom.Map.WallPlane: 0 front floor, 1 front ceiling,
 //              2 back floor, 3 back ceiling, 4 higher floor, 5 lower ceiling
 //
@@ -44,6 +45,22 @@
 // texture top as WallSection.Span (drawn once: no vertical tiling; the height
 // is the slot's texture_info height) and lit as the other walls, with the fake
 // contrast. Columns wrap as solid walls' (TextureWrap.MaskedTexel).
+//
+// Cutaway (SPEC §7.3, §12 T3.4; the CPU reference is IsoDoom.Render.Cutaway):
+// a fragment at map point p is cut when, for a cut centre c (`cut_player`,
+// and `cut_cursor` when its w is 1; map x, y, floor height), all of these hold:
+//   - p is more than `cut_height` above c's floor (so c's own floor, steps
+//     and anything else up to that height are never cut);
+//   - c is behind the surface's plane, seen from the camera, by more than
+//     CUT_PLANE_MARGIN (the surface can hide it; walls behind the centre, or
+//     in line with it, keep their full height). A floor above the cutoff,
+//     the top of a block whose walls are cut, is always in front;
+//   - p is within `cut_radius` of the line from the anchor a = c + `cut_anchor`
+//     up towards the camera (the view direction in orthographic, the camera
+//     position in perspective): a disc around the centre on screen.
+// `cut_mode` 0 draws everything, 1 discards cut fragments, 2 discards half of
+// them in a 4x4 ordered dither. Discarded fragments write no depth, so
+// whatever is behind (lower floors, sprites) shows.
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -55,6 +72,8 @@ const int MAXLIGHTZ = 128;
 const int LIGHTZSHIFT = 20;
 // IsoDoom.Map.LightTables.MaxDistanceUnits
 const float MAX_DISTANCE = 4096.0;
+// IsoDoom.Render.Cutaway.PlaneMargin (map units).
+const float CUT_PLANE_MARGIN = 1.0;
 
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
@@ -77,12 +96,23 @@ uniform int light_centerx = 160;
 uniform int extralight = 0;
 // IsoDoom.Map.WallTextureTiling: 0 vanilla (width mask, & 127, tutti-frutti), 1 texture size.
 uniform int wall_tiling = 0;
+// The cutaway (T3.4): 0 off, 1 cut, 2 dither.
+uniform int cut_mode = 0;
+// Cut centres, map units (x, y, floor height, w = 1 active).
+uniform vec4 cut_player = vec4(0.0);
+uniform vec4 cut_cursor = vec4(0.0);
+uniform float cut_radius = 96.0;
+uniform float cut_height = 32.0;
+uniform float cut_anchor = 28.0;
 
 varying flat ivec4 v_rect;
 varying flat int v_kind;
 varying flat int v_lightnum;
 varying vec2 v_texcoord;
 varying vec2 v_map;
+varying float v_height;
+// The surface's normal (map axes): towards the front sector for walls, up for floors.
+varying flat vec3 v_normal;
 varying float v_depth;
 
 vec4 data_texel(sampler2D tex, int id) {
@@ -132,6 +162,8 @@ void vertex() {
 	}
 	VERTEX.y = z / MAP_UNITS_PER_METRE;
 	v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+	v_height = z;
+	v_normal = kind == 0 ? vec3(0.0, 0.0, 1.0) : vec3(sin(CUSTOM2.w), -cos(CUSTOM2.w), 0.0);
 	v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
 }
 
@@ -156,11 +188,52 @@ int floor_mod(int a, int n) {
 	return m < 0 ? m + n : m;
 }
 
+// IsoDoom.Render.Cutaway.Hides: whether centre c cuts wall point p (map units).
+// n: the surface's normal, turned towards the camera; to_camera: the unit
+// direction from the anchor towards the camera, null for perspective (then
+// computed from cam, the camera position).
+bool cut_hides(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
+	if (c.w < 0.5 || p.z <= c.z + cut_height) {
+		return false;
+	}
+	vec3 a = vec3(c.xy, c.z + cut_anchor);
+	if (dot(a - p, n) > -CUT_PLANE_MARGIN) {
+		return false;
+	}
+	vec3 axis = ortho ? to_camera : normalize(cam - a);
+	vec3 d = p - a;
+	return length(d - axis * dot(d, axis)) < cut_radius;
+}
+
+// 4x4 ordered dither threshold (0-1) of a pixel.
+float bayer4(ivec2 q) {
+	const int m[16] = int[](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+	return (float(m[(q.y & 3) * 4 + (q.x & 3)]) + 0.5) / 16.0;
+}
+
 vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
 }
 
 void fragment() {
+	vec3 p = vec3(v_map, v_height);
+	if (cut_mode != 0) {
+		// Godot space (x, height, -y, metres) to map units (x, y, height).
+		vec3 cam = vec3(CAMERA_POSITION_WORLD.x, -CAMERA_POSITION_WORLD.z, CAMERA_POSITION_WORLD.y) * MAP_UNITS_PER_METRE;
+		// The camera's +Z axis: from the scene towards the camera.
+		vec3 back = normalize(INV_VIEW_MATRIX[2].xyz);
+		vec3 to_camera = vec3(back.x, -back.z, back.y);
+		bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
+		vec3 n = v_normal;
+		if (dot(n, ortho ? to_camera : cam - p) < 0.0) {
+			n = -n;
+		}
+		if (cut_hides(p, n, cut_player, ortho, to_camera, cam) || cut_hides(p, n, cut_cursor, ortho, to_camera, cam)) {
+			if (cut_mode == 1 || bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
+				discard;
+			}
+		}
+	}
 	ivec2 t = ivec2(floor(v_texcoord));
 	int w = v_rect.z;
 	int h = v_rect.w;

@@ -35,6 +35,11 @@ namespace IsoDoom.Game;
 /// (its pitch, 45–60, default 55); <c>--level-zoom=UNITS</c> (its view height
 /// in map units, 320–1600, default 640);
 /// <c>--level-script=COMMANDS</c> (feed scripted input: <see cref="LevelScript"/>);
+/// <c>--level-cutaway=cut|dither|off</c> (the wall cutaway's style, T3.4,
+/// <see cref="Cutaway"/>; default cut), <c>--level-cutaway-radius=UNITS</c>
+/// (default 80), <c>--level-cutaway-height=UNITS</c> (the cutoff above the
+/// player's floor, default 32), <c>--level-cutaway-cursor=on|off</c> (the
+/// cursor ground point cuts too; default off);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-origin=X,Y</c> (the player position light
 /// diminishing uses, in map units; by default the free-fly camera's pivot, or
@@ -53,7 +58,8 @@ namespace IsoDoom.Game;
 /// (<see cref="IsoCamera"/>); Home puts the placeholder (or, in free-fly, the
 /// free-fly camera) at player 1's start, Page
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
-/// diminishing mode, F1 shows the controls, F3 hides the overlay.
+/// diminishing mode, X cycles the cutaway style (cut, dither, off), F1 shows
+/// the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
 public partial class LevelScene : Node3D
@@ -65,6 +71,9 @@ public partial class LevelScene : Node3D
     private bool _showHelp;
     private readonly List<MeshInstance3D> _chunks = new();
     private LightDiminishing _lightMode = LightDiminishing.Player;
+
+    /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
+    public CutawaySettings Cutaway { get; set; } = new();
 
     /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
     public LevelMesh? Mesh { get; private set; }
@@ -90,6 +99,9 @@ public partial class LevelScene : Node3D
     /// <summary>The player stand-in the game camera follows (T3.3, until T4.7's player mobj); null under <c>--level-check</c>.</summary>
     public PlayerPlaceholder? Placeholder { get; private set; }
 
+    /// <summary>While true the game camera does not follow the placeholder (scripted measurements keep the view still).</summary>
+    public bool HoldCamera { get; set; }
+
     /// <summary>The cursor ground point (<see cref="CursorGround"/>) under the game camera, updated every frame while it is current.</summary>
     public CursorGround.Hit? Cursor { get; private set; }
 
@@ -100,7 +112,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -169,6 +181,7 @@ public partial class LevelScene : Node3D
                     "player" => LightDiminishing.Player,
                     _ => throw new ArgumentException($"--level-light: unknown mode \"{light}\" (player, none or camera)"),
                 };
+            Cutaway = ParseCutaway();
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
@@ -273,6 +286,29 @@ public partial class LevelScene : Node3D
         };
         _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_cursorMarker);
+    }
+
+    /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c> and <c>--level-cutaway-cursor</c>.</summary>
+    private static CutawaySettings ParseCutaway()
+    {
+        var settings = new CutawaySettings();
+        if (WadLocator.GetUserArg("--level-cutaway") is string style)
+            settings = settings with { Style = Render.Cutaway.ParseStyle(style) };
+        if (WadLocator.GetUserArg("--level-cutaway-radius") is string radius)
+            settings = settings with { Radius = Math.Max(0, ParseFloat(radius, "--level-cutaway-radius")) };
+        if (WadLocator.GetUserArg("--level-cutaway-height") is string height)
+            settings = settings with { Height = ParseFloat(height, "--level-cutaway-height") };
+        if (WadLocator.GetUserArg("--level-cutaway-cursor") is string cursor)
+            settings = settings with
+            {
+                Cursor = cursor switch
+                {
+                    "on" => true,
+                    "off" => false,
+                    _ => throw new ArgumentException($"--level-cutaway-cursor: \"{cursor}\" (on or off)"),
+                },
+            };
+        return settings;
     }
 
     private static float ParseFloat(string s, string what) =>
@@ -395,6 +431,9 @@ public partial class LevelScene : Node3D
                 _lightMode = (LightDiminishing)(((int)_lightMode + 1) % 3);
                 Mesh?.SetLightDiminishing(_lightMode);
                 break;
+            case Key.X:
+                Cutaway = Cutaway with { Style = Cutaway.Style switch { CutawayStyle.Cut => CutawayStyle.Dither, CutawayStyle.Dither => CutawayStyle.Off, _ => CutawayStyle.Cut } };
+                break;
             case Key.F1:
                 _showHelp = !_showHelp;
                 break;
@@ -413,6 +452,7 @@ public partial class LevelScene : Node3D
         {
             UpdateGameCamera(delta);
             Mesh.SetLightOrigin(LightOrigin());
+            UpdateCutaway();
         }
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
@@ -447,7 +487,8 @@ public partial class LevelScene : Node3D
                 if (toCursor.LengthSquared() > 1f)
                     Placeholder.Angle = Mathf.PosMod(Mathf.RadToDeg(MathF.Atan2(toCursor.Y, toCursor.X)), 360f);
             }
-            Iso.Follow(Placeholder.Foot, Cursor?.Point, delta);
+            if (!HoldCamera)
+                Iso.Follow(Placeholder.Foot, Cursor?.Point, delta);
         }
         else
             Cursor = null;
@@ -459,6 +500,25 @@ public partial class LevelScene : Node3D
             if (Cursor is { } c)
                 _cursorMarker.Position = c.Point + new Vector3(0, 0.5f / LevelMesh.MapUnitsPerMetre, 0);
         }
+    }
+
+    /// <summary>
+    /// The cutaway (T3.4) follows the placeholder (and the cursor ground point
+    /// when <see cref="CutawaySettings.Cursor"/>) under the game camera; the
+    /// overview and free-fly cameras show the walls whole.
+    /// </summary>
+    public void UpdateCutaway()
+    {
+        if (Mesh is null)
+            return;
+        bool on = IsoActive && Placeholder is not null;
+        CutawaySettings settings = on ? Cutaway : Cutaway with { Style = CutawayStyle.Off };
+        if (Mesh.Cutaway != settings)
+            Mesh.SetCutaway(settings);
+        Vector3? player = on ? new Vector3(Placeholder!.MapPosition.X, Placeholder.MapPosition.Y, Placeholder.FloorHeight) : null;
+        Vector3? cursor = on && Cutaway.Cursor && Cursor is { } hit ? hit.MapUnits : null;
+        if (Mesh.CutPlayer != player || Mesh.CutCursor != cursor)
+            Mesh.SetCutawayCentres(player, cursor);
     }
 
     private static float Axis(Key positive, Key negative) =>
@@ -525,6 +585,10 @@ public partial class LevelScene : Node3D
             text.Append($"cursor x {c.X:F0}  y {c.Y:F0}  z {c.Z:F0}   ");
             text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the placeholder's floor)\n");
         }
+        if (Iso is { Current: true })
+            text.Append(Cutaway.Style == CutawayStyle.Off
+                ? "cutaway: off\n"
+                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}\n");
         if (Mesh is not null)
         {
             Vector2 o = Mesh.LightOrigin;
@@ -707,6 +771,53 @@ public partial class LevelScene : Node3D
             }
         }
         return box ?? new Aabb();
+    }
+
+    /// <summary>
+    /// How much of the placeholder the game camera shows (T3.4; needs a real
+    /// renderer, else null): the pixels that change when the placeholder is
+    /// hidden, against the pixels it covers with the level hidden. The camera
+    /// holds still and the overlay is hidden while the four frames render.
+    /// </summary>
+    public async Task<(int Visible, int Total)?> PlaceholderVisibilityAsync()
+    {
+        if (Placeholder is null || DisplayServer.GetName() == "headless")
+            return null;
+        bool overlay = Overlay.Visible, hold = HoldCamera;
+        Overlay.Visible = false;
+        HoldCamera = true;
+        byte[] shown = await CaptureAsync();
+        Placeholder.Visible = false;
+        byte[] hidden = await CaptureAsync();
+        foreach (MeshInstance3D chunk in _chunks)
+            chunk.Visible = false;
+        byte[] empty = await CaptureAsync();
+        Placeholder.Visible = true;
+        byte[] alone = await CaptureAsync();
+        foreach (MeshInstance3D chunk in _chunks)
+            chunk.Visible = true;
+        Overlay.Visible = overlay;
+        HoldCamera = hold;
+        int visible = 0, total = 0;
+        for (int i = 0; i + 3 < shown.Length; i += 4)
+        {
+            if (shown[i] != hidden[i] || shown[i + 1] != hidden[i + 1] || shown[i + 2] != hidden[i + 2])
+                visible++;
+            if (alone[i] != empty[i] || alone[i + 1] != empty[i + 1] || alone[i + 2] != empty[i + 2])
+                total++;
+        }
+        return (visible, total);
+    }
+
+    /// <summary>Renders a frame and reads it back as RGBA8 bytes.</summary>
+    private async Task<byte[]> CaptureAsync()
+    {
+        for (int i = 0; i < 2; i++)
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        Image frame = GetViewport().GetTexture().GetImage();
+        if (frame.GetFormat() != Image.Format.Rgba8)
+            frame.Convert(Image.Format.Rgba8);
+        return frame.GetData();
     }
 
     private async Task ScreenshotAsync(string path)

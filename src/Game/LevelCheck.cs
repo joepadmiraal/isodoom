@@ -57,7 +57,8 @@ namespace IsoDoom.Game;
 /// top-down floors again with no diminishing (and <c>extralight</c> 1), by
 /// camera depth, and (one tile) with a fixed colormap. Pixels whose distance
 /// is within <see cref="LightMargin"/> of a table step are skipped; at least
-/// two sector light levels and both fake contrasts must be compared.</item>
+/// two sector light levels and both fake contrasts must be compared. The
+/// cutaway (T3.4) from the game camera's angle: see LevelCheck.Cutaway.cs.</item>
 /// </list>
 /// Prints a summary and quits with exit code 1 on any failure.
 /// </summary>
@@ -209,16 +210,7 @@ public partial class LevelCheck : Godot.Node
             {
                 if (floor.TriangleCount == 0)
                     continue;
-                int best = 0;
-                Int128 bestArea = -1;
-                for (int t = 0; t < floor.TriangleCount; t++)
-                {
-                    Int128 area = FloorTriangles.TwiceArea(floor.Corner(t, 0), floor.Corner(t, 1), floor.Corner(t, 2));
-                    if (area > bestArea)
-                        (best, bestArea) = (t, area);
-                }
-                PolygonVertex a = floor.Corner(best, 0), b = floor.Corner(best, 1), c = floor.Corner(best, 2);
-                int cx = (int)(((long)a.X + b.X + c.X) / 3), cy = (int)(((long)a.Y + b.Y + c.Y) / 3);
+                (int cx, int cy) = floor.InteriorPoint();
                 Sector sector = m.Level.Sectors[floor.Sector];
                 float height = sector.FloorHeight / 65536f;
                 Vector3 p = LevelMesh.ToGodot(cx, cy, height);
@@ -544,6 +536,8 @@ public partial class LevelCheck : Godot.Node
                         Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected {kind}, slot {m.TextureSlot(s.Texture)}, {sector}, {s.BackSector?.Index ?? -1}");
                     if (c2[(b + k) * 4 + 2] != contrast)
                         Fail($"{sw}: corner {k}: fake contrast {c2[(b + k) * 4 + 2]}, expected {contrast}");
+                    if (c2[(b + k) * 4 + 3] != LevelMesh.PieceAngle(piece))
+                        Fail($"{sw}: corner {k}: direction {c2[(b + k) * 4 + 3]}, expected {LevelMesh.PieceAngle(piece)} (T3.4)");
                 }
                 int[] quadIndices = { b, b + 1, b + 2, b, b + 2, b + 3 };
                 for (int k = 0; k < 6; k++)
@@ -775,6 +769,8 @@ public partial class LevelCheck : Godot.Node
             wallPixels += (await CheckWall(m, s, WallTextureTiling.TextureSize, map)).Pixels;
         m.SetWallTiling(WallTextureTiling.Vanilla);
         GD.Print($"Level check: {map}: {sizeTiling.Count} wall sections where the tilings differ, again in texture-size tiling: {wallPixels} drawn pixels compared");
+
+        await CutawayCheck(m);
 
         if (move is { } mv)
             await MoveCheck(m, mv.Lower, mv.Sector);
