@@ -1,0 +1,49 @@
+namespace IsoDoom.Game;
+
+/// <summary>
+/// The presses <see cref="GameInput"/> holds between tics (T4.6), in plain C#
+/// so the tests can link it. Held buttons (fire, use) latch on every poll;
+/// edges (the run toggle, a weapon key) only on the first poll of a frame:
+/// Godot's "just pressed" stays true for the whole frame, and a frame that
+/// runs several tics polls once per tic, so without this a frame running two
+/// tics flipped the run toggle twice (T4.9: the toggle was lost at 17–25 fps).
+/// </summary>
+public sealed class InputLatches
+{
+    private ulong? _frame;
+
+    /// <summary>Fire was held at a poll since the last <see cref="Clear"/>.</summary>
+    public bool Attack { get; private set; }
+
+    /// <summary>Use was held at a poll since the last <see cref="Clear"/>.</summary>
+    public bool Use { get; private set; }
+
+    /// <summary>The run toggle was pressed in a frame since the last <see cref="Clear"/>.</summary>
+    public bool RunToggle { get; private set; }
+
+    /// <summary>The weapon slot pressed since the last <see cref="Clear"/> (1–8), or 0.</summary>
+    public int Weapon { get; private set; }
+
+    /// <summary>
+    /// Latches one poll in process frame <paramref name="frame"/>: the held
+    /// buttons, and on the frame's first poll only, the edges pressed in it.
+    /// </summary>
+    public void Poll(ulong frame, bool attackHeld, bool useHeld, bool runTogglePressed, int weaponPressed)
+    {
+        Attack |= attackHeld;
+        Use |= useHeld;
+        if (_frame == frame)
+            return;
+        _frame = frame;
+        RunToggle |= runTogglePressed;
+        if (weaponPressed != 0)
+            Weapon = weaponPressed;
+    }
+
+    /// <summary>Drops the latched presses (a tic took them).</summary>
+    public void Clear()
+    {
+        Attack = Use = RunToggle = false;
+        Weapon = 0;
+    }
+}

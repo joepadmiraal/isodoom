@@ -23,6 +23,7 @@
        compiled in here too so it is tested without the engine. -->
   <ItemGroup>
     <Compile Include="../../src/Game/TiccmdBuilder.cs" Link="Game/TiccmdBuilder.cs" />
+    <Compile Include="../../src/Game/InputLatches.cs" Link="Game/InputLatches.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />

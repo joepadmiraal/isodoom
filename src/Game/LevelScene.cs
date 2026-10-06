@@ -755,10 +755,20 @@ public partial class LevelScene : Node3D
     /// <summary>Runs one tic of <paramref name="cmd"/> (the game loop's, and the level check's).</summary>
     public void Tic(in ticcmd_t cmd)
     {
-        World!.G_Ticker(cmd);
+        if (TicTimes is { } times)
+        {
+            long start = Stopwatch.GetTimestamp();
+            World!.G_Ticker(cmd);
+            times.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        }
+        else
+            World!.G_Ticker(cmd);
         LastTiccmd = cmd;
         TicsRun++;
     }
+
+    /// <summary>While not null, each tic's <see cref="World.G_Ticker(in ticcmd_t)"/> wall-clock time in ms is added (T4.9: the level script's <c>tictime</c>, SPEC §9's budget).</summary>
+    public List<double>? TicTimes { get; set; }
 
     /// <summary>Sets <see cref="TicFraction"/> (the level check draws the world between two tics; the game loop sets it every frame).</summary>
     public void SetTicFraction(double fraction) => TicFraction = Math.Clamp(fraction, 0, 1);

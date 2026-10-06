@@ -70,6 +70,16 @@ namespace IsoDoom.Game;
 /// input every 1/35 s, as the game). <c>tics N</c> waits until N more tics
 /// ran (or the queue is empty). <c>checksum</c> waits until the queue is empty and
 /// prints <c>leveltime</c>, <c>World.Checksum()</c> and the player mobj.
+/// <c>tictime TICS</c> (T4.9) times <c>World.G_Ticker</c> over the next TICS
+/// tics (or until the scripted queue is empty) and prints the mean, median,
+/// 95th percentile and worst in ms (SPEC §9's budget is 2 ms).
+/// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
+/// name (<c>LeftX</c>, <c>LeftY</c>: the move stick, <c>RightX</c>,
+/// <c>RightY</c>: the aim stick, <c>TriggerRight</c>: fire; Y down is
+/// positive) to VALUE (−1 to 1); <c>joybutton BUTTON down|up</c> presses or
+/// releases a gamepad button by <c>JoyButton</c> name (e.g. <c>A</c> use,
+/// <c>LeftStick</c> run toggle). Both go through <see cref="Input.ParseInputEvent"/>
+/// as device 0, as a real pad.
 /// <c>smooth FRAMES</c> records where the player is drawn on each of the next
 /// FRAMES frames and prints the steps between frames (interpolation: even
 /// steps while moving at a steady speed).
@@ -202,6 +212,13 @@ public partial class LevelScript : Node
                         PrintChecksum();
                         break;
                     case "smooth": await Smooth(Int(w[1])); break;
+                    case "tictime": await TicTime(Int(w[1])); break;
+                    case "joy":
+                        Input.ParseInputEvent(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
+                        break;
+                    case "joybutton":
+                        Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = Enum.Parse<JoyButton>(w[1], true), Pressed = w[2] == "down", Pressure = w[2] == "down" ? 1 : 0 });
+                        break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -261,6 +278,34 @@ public partial class LevelScript : Node
             sum += s;
         string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
         GD.Print($"Level script: smooth: {n} frames, {_scene.TicsRun - tics} tics; player step per frame min {F(steps[0])} median {F(steps[steps.Count / 2])} max {F(steps[^1])} mean {F(sum / steps.Count)} units, largest change between consecutive steps {F(jerk)}");
+    }
+
+    /// <summary>
+    /// Times <see cref="World.G_Ticker(in ticcmd_t)"/> over the next
+    /// <paramref name="n"/> tics (T4.9, SPEC §9: under 2 ms a tic) and prints
+    /// the mean, median, 95th percentile and worst in ms.
+    /// </summary>
+    private async Task TicTime(int n)
+    {
+        if (_scene.World is not { } world)
+            throw new ArgumentException("no world");
+        var times = new List<double>(n);
+        _scene.TicTimes = times;
+        while (times.Count < n && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.PlayerMobj is not null)
+            await Frames(1);
+        _scene.TicTimes = null;
+        if (times.Count == 0)
+        {
+            GD.PrintErr("Level script: tictime: no tic ran");
+            return;
+        }
+        double mean = 0;
+        foreach (double t in times)
+            mean += t;
+        mean /= times.Count;
+        times.Sort();
+        string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
+        GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: mean {F(mean)} ms, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])}");
     }
 
     /// <summary>The least share of the player's pixels (%) <c>visible</c> and <c>walkto</c> accept by default.</summary>

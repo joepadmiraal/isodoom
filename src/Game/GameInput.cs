@@ -38,8 +38,8 @@ public sealed class GameInput
     /// <summary>The actions missing from the <see cref="InputMap"/>.</summary>
     public static string[] MissingActions() => Array.FindAll(Actions(), a => !InputMap.HasAction(a));
 
-    private bool _attack, _use, _runToggle, _cursorMoved;
-    private int _weapon;
+    private readonly InputLatches _latches = new();
+    private bool _cursorMoved;
 
     /// <summary>The move axes, screen-relative (X right, Y up), each in [−1, 1]; keys give whole steps (W+D = (1, 1)).</summary>
     public static Vector2 Move() => new(Input.GetAxis(MoveLeft, MoveRight), Input.GetAxis(MoveDown, MoveUp));
@@ -50,20 +50,19 @@ public sealed class GameInput
     /// <summary>Records mouse motion (call from <c>_Input</c>): the cursor takes over the aim.</summary>
     public void CursorMoved() => _cursorMoved = true;
 
-    /// <summary>Latches this frame's presses (call every frame while the game reads input).</summary>
+    /// <summary>Latches this frame's presses (call every frame while the game reads input; again per tic is fine, <see cref="InputLatches"/>).</summary>
     public void Poll()
     {
-        _attack |= Input.IsActionPressed(Attack);
-        _use |= Input.IsActionPressed(Use);
-        _runToggle |= Input.IsActionJustPressed(RunToggle);
+        int weapon = 0;
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
         {
             if (Input.IsActionJustPressed(Weapon(i)))
             {
-                _weapon = i;
+                weapon = i;
                 break;
             }
         }
+        _latches.Poll(Engine.GetProcessFrames(), Input.IsActionPressed(Attack), Input.IsActionPressed(Use), Input.IsActionJustPressed(RunToggle), weapon);
     }
 
     /// <summary>
@@ -81,17 +80,17 @@ public sealed class GameInput
             AimX = Input.GetAxis(AimLeft, AimRight),
             AimY = Input.GetAxis(AimDown, AimUp),
             Run = RunHeld(),
-            RunToggle = _runToggle,
+            RunToggle = _latches.RunToggle,
             TurnLeft = Input.IsActionPressed(TurnLeft),
             TurnRight = Input.IsActionPressed(TurnRight),
             CursorMoved = _cursorMoved,
             Cursor = cursor,
-            Attack = _attack,
-            Use = _use,
-            Weapon = _weapon,
+            Attack = _latches.Attack,
+            Use = _latches.Use,
+            Weapon = _latches.Weapon,
         };
-        _attack = _use = _runToggle = _cursorMoved = false;
-        _weapon = 0;
+        _latches.Clear();
+        _cursorMoved = false;
         return input;
     }
 
