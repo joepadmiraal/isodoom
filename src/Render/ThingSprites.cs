@@ -46,6 +46,9 @@ public partial class ThingSprites : MultiMeshInstance3D
 {
     public const string ShaderPath = "res://shaders/sprite.gdshader";
 
+    /// <summary>The sprite shader with the upright hiding (T3.6a, <see cref="SpriteHidden.Upright"/>).</summary>
+    public const string HiddenShaderPath = "res://shaders/sprite_hidden.gdshader";
+
     /// <summary>How far above the floor plane (map units, along the view ray) the rows below a sprite's origin are drawn (the shader's <c>PULL_MARGIN</c>).</summary>
     public const float PullMargin = 1f;
 

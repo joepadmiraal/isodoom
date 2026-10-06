@@ -351,10 +351,14 @@ public sealed class LevelMesh
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
     public SpriteSettings Sprites { get; private set; } = new();
 
-    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6) and wall pull (T3.5a; <see cref="SpriteSettings"/>).</summary>
+    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6), wall pull (T3.5a) and upright hiding (T3.6a; <see cref="SpriteSettings"/>).</summary>
     public void SetSprites(SpriteSettings settings)
     {
         Sprites = settings;
+        // The upright hiding (T3.6a) is a shader variant; the parameters stay on the material.
+        Shader shader = GD.Load<Shader>(settings.Hidden == SpriteHidden.Upright ? ThingSprites.HiddenShaderPath : ThingSprites.ShaderPath);
+        if (SpriteMaterial.Shader != shader)
+            SpriteMaterial.Shader = shader;
         SpriteMaterial.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
         SpriteMaterial.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
         SpriteMaterial.SetShaderParameter("outline", settings.Outline);

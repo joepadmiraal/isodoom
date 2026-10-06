@@ -20,6 +20,29 @@ public enum SpriteTiltDepth
     Tilted = 1,
 }
 
+/// <summary>
+/// What hides a tilted billboard besides its own depth (T3.6a, a presentation
+/// option; SPEC §12).
+/// </summary>
+public enum SpriteHidden
+{
+    /// <summary>
+    /// The default: only each pixel's depth (<see cref="SpriteTiltDepth"/>).
+    /// A fully tilted billboard is drawn 1.74× as tall on screen as an
+    /// upright one at the default pitch, so a thing behind a wall can show
+    /// its head above it where the upright billboard stays hidden.
+    /// </summary>
+    Depth = 0,
+
+    /// <summary>
+    /// Also dropped whole when the level would hide its upright billboard
+    /// whole (opaque texels on a grid tested against the level's depth in the
+    /// vertex shader; <c>shaders/sprite_hidden.gdshader</c>, drawn in the
+    /// transparent pass). A thing partly visible keeps its whole tilted image.
+    /// </summary>
+    Upright = 1,
+}
+
 /// <summary>How blob shadows under actors are drawn (T3.6, SPEC §7.5; the shadow shader's <c>shadow_mode</c>).</summary>
 public enum SpriteShadowStyle
 {
@@ -35,8 +58,8 @@ public enum SpriteShadowStyle
 
 /// <summary>
 /// The thing sprites' readability options (T3.6, SPEC §7.5, §12, §13 Q3):
-/// billboard tilt towards the camera, blob shadows and outlines, and the
-/// pull away from walls behind (T3.5a). Each is a presentation option; the
+/// billboard tilt towards the camera, blob shadows and outlines, the
+/// pull away from walls behind (T3.5a) and the upright hiding (T3.6a). Each is a presentation option; the
 /// defaults are the ones chosen in T3.6 and T3.5a.
 /// </summary>
 public sealed record SpriteSettings
@@ -58,6 +81,9 @@ public sealed record SpriteSettings
 
     /// <summary>What depth a tilted billboard has.</summary>
     public SpriteTiltDepth TiltDepth { get; init; } = SpriteTiltDepth.Upright;
+
+    /// <summary>What hides a tilted billboard besides its depth (T3.6a).</summary>
+    public SpriteHidden Hidden { get; init; } = SpriteHidden.Depth;
 
     /// <summary>
     /// The default wall pull (SPEC §12 T3.5a): <c>MT_PLAYER</c>'s radius, the
@@ -108,6 +134,14 @@ public sealed record SpriteSettings
         "upright" => SpriteTiltDepth.Upright,
         "tilted" => SpriteTiltDepth.Tilted,
         _ => throw new ArgumentException($"--level-sprite-tilt-depth: \"{s}\" (upright or tilted)"),
+    };
+
+    /// <summary>Parses what hides a tilted billboard: <c>depth</c> or <c>upright</c>.</summary>
+    public static SpriteHidden ParseHidden(string s) => s switch
+    {
+        "depth" or "off" => SpriteHidden.Depth,
+        "upright" or "on" => SpriteHidden.Upright,
+        _ => throw new ArgumentException($"--level-sprite-hidden: \"{s}\" (depth or upright)"),
     };
 
     /// <summary>Parses a wall pull: <c>off</c> (0), or the most units a billboard is pulled, 0–64.</summary>

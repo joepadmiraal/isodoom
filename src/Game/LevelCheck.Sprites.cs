@@ -297,6 +297,7 @@ public partial class LevelCheck
         await CheckRowsBelowOrigin(m, things, atlas);
         await CheckTiltDepth(m, things, atlas);
         await CheckWallPull(m, things, atlas);
+        await CheckUprightHidden(m, things, atlas);
         await CheckThingCutaway(m, things, atlas);
         things.Isolate(null);
         things.Visible = false;
@@ -615,7 +616,11 @@ public partial class LevelCheck
     /// floor (only that sector, no other line) for 96 units towards the camera
     /// across the billboard's width.
     /// </summary>
-    private static WallSpot? FacingWall(LevelMesh m, Vector2 ground, Vector2 right, float halfSpan, Func<Vector2, float> distance)
+    private static WallSpot? FacingWall(LevelMesh m, Vector2 ground, Vector2 right, float halfSpan, Func<Vector2, float> distance) =>
+        FacingWalls(m, ground, right, halfSpan, distance).Cast<WallSpot?>().FirstOrDefault();
+
+    /// <summary>Every wall <see cref="FacingWall"/> accepts, in line order, in sectors at least <paramref name="minHeight"/> units high.</summary>
+    private static IEnumerable<WallSpot> FacingWalls(LevelMesh m, Vector2 ground, Vector2 right, float halfSpan, Func<Vector2, float> distance, int minHeight = 96)
     {
         foreach (Line line in m.Level.Lines)
         {
@@ -626,7 +631,7 @@ public partial class LevelCheck
             float length = a.DistanceTo(b);
             Vector2 normal = new Vector2(b.Y - a.Y, a.X - b.X) / length; // the front (right) side
             float facing = normal.Dot(ground);
-            if (facing < 0.5f || length < 2 * halfSpan + 128 || (sector.CeilingHeight - sector.FloorHeight) >> Fixed.FRACBITS < 96)
+            if (facing < 0.5f || length < 2 * halfSpan + 128 || (sector.CeilingHeight - sector.FloorHeight) >> Fixed.FRACBITS < minHeight)
                 continue;
             float d = distance(normal);
             Vector2 at = (a + b) / 2 + normal * d;
@@ -648,9 +653,174 @@ public partial class LevelCheck
                 }
             }
             if (open)
-                return new WallSpot(at, sector, line, normal, facing, d);
+                yield return new WallSpot(at, sector, line, normal, facing, d);
         }
-        return null;
+    }
+
+    /// <summary>
+    /// T3.6a: the upright hiding (<see cref="SpriteHidden.Upright"/>). A thing
+    /// standing on its floor, at most 160 rows above its origin, is put behind
+    /// a one-sided wall facing the game camera in a sector at least 24 units
+    /// taller than it, seen along the game camera's direction at 1 unit per
+    /// pixel with full tilt, upright depth and the default wall pull:
+    /// <list type="bullet">
+    /// <item><b>Hidden:</b> as far behind the wall as the level still hides
+    /// every opaque texel of its upright billboard (4 units to spare, also
+    /// after the pull), but near enough that a column's tilted top shows above
+    /// the wall: with <see cref="SpriteHidden.Depth"/> some pixels must differ
+    /// from the frame without things (the tilted billboard peeks over the
+    /// wall), with <see cref="SpriteHidden.Upright"/> none may.</item>
+    /// <item><b>Partly hidden:</b> further back, so that the upright top of
+    /// its tallest column clears the wall by 16 units: both settings must
+    /// draw the same frame (the tilted billboard is kept whole), which shows
+    /// the thing.</item>
+    /// <item><b>In front</b> of the same wall on open floor: the same frame
+    /// with both settings.</item>
+    /// </list>
+    /// Walls whose view does not test it (nothing peeks with depth only, as
+    /// when geometry behind the wall hides the thing) are skipped, up to 8 per
+    /// thing and 4 things.
+    /// </summary>
+    private async Task CheckUprightHidden(LevelMesh m, ThingSprites things, SpriteAtlas atlas)
+    {
+        string map = m.Level.Name;
+        double pitch = Mathf.DegToRad(IsoCamera.DefaultPitch);
+        double tan = Math.Tan(pitch), cos = Math.Cos(pitch);
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector3 screenRight = Cutaway.ToMapAxes(basis.X);
+        var right = new Vector2(screenRight.X, screenRight.Y).Normalized();
+        things.UpdateRotations(true, -basis.Z, Vector3.Zero);
+        SpriteSettings settings = m.Sprites;
+        SpriteSettings With(SpriteHidden hidden) => settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = SpriteSettings.DefaultWallPull, Hidden = hidden };
+
+        // Things on their floor, the tallest first, one per frame.
+        var candidates = Enumerable.Range(0, things.Entries.Count)
+            .Where(i => things.ShownFrames[i].Slot >= 0
+                && things.Entries[i].MapPosition.Z == m.Level.Sectors[things.Entries[i].Sector].FloorHeight / 65536f
+                && atlas.Images[things.ShownFrames[i].Slot].TopOffset is >= 24 and <= 160)
+            .GroupBy(i => things.ShownFrames[i].Slot).Select(g => g.First())
+            .OrderByDescending(i => atlas.Images[things.ShownFrames[i].Slot].TopOffset).Take(4).ToList();
+        bool tested = false;
+        foreach (int thing in candidates)
+        {
+            ThingSprites.Entry original = things.Entries[thing];
+            ThingSprites.Shown shown = things.ShownFrames[thing];
+            IndexedImage patch = atlas.Images[shown.Slot];
+            float pull = Math.Min(original.Radius, SpriteSettings.DefaultWallPull);
+            float grow = settings.Outline >= 0 ? 1 : 0;
+            float halfSpan = Math.Max(patch.LeftOffset, patch.Width - patch.LeftOffset) + grow + 2;
+            // Each screen column's opaque top above the foot (map units) and its offset along the screen's right.
+            var columns = new List<(float S, int Top)>();
+            for (int c = 0; c < patch.Width; c++)
+            {
+                int ci = shown.Flip ? patch.Width - 1 - c : c;
+                for (int row = 0; row < patch.Height; row++)
+                {
+                    if (patch.IsOpaque(ci, row))
+                    {
+                        columns.Add((c + 0.5f - patch.LeftOffset, Math.Max(patch.TopOffset - row, 0)));
+                        break;
+                    }
+                }
+            }
+            if (columns.Count == 0)
+                continue;
+            int attempts = 0;
+            foreach (WallSpot wall in FacingWalls(m, ground, right, halfSpan, normal => 8 + halfSpan * MathF.Abs(right.Dot(normal)), patch.TopOffset + 24))
+            {
+                if (attempts++ >= 8)
+                    break;
+                double f = wall.Facing, rn = right.Dot(wall.Normal);
+                double height = (wall.Sector.CeilingHeight - wall.Sector.FloorHeight) / 65536.0;
+                // A column at offset s is b - s·rn behind the wall when the foot is b behind it. Its upright top is
+                // hidden while top + tan·(behind)/f < the wall's height, its tilted top (screen height top/cos) shows above it otherwise.
+                double hidden = columns.Min(c => (height - c.Top - 4) * f / tan + c.S * rn) - 1;
+                double behindAll = columns.Max(c => pull * f + 4 + c.S * rn);
+                bool peeks = columns.Any(c => hidden - c.S * rn > (height - c.Top / cos + 4) * f / tan);
+                if (hidden <= behindAll || !peeks)
+                    continue;
+                (float S, int Top) tallest = columns.MaxBy(c => c.Top);
+                double partly = (height - tallest.Top + 16) * f / tan + tallest.S * rn;
+                Vector2 mid = wall.Spot - wall.Normal * wall.Distance;
+                var views = new (string Label, Vector2 At, bool Hidden)[]
+                {
+                    ("hidden behind a wall", mid - wall.Normal * (float)hidden, true),
+                    ("partly hidden behind a wall", mid - wall.Normal * (float)partly, false),
+                    ("in front of a wall", wall.Spot, false),
+                };
+                var frames = new List<(string What, byte[]? Depth, byte[]? Upright, byte[]? Level, bool Hidden)>();
+                foreach ((string label, Vector2 at, bool isHidden) in views)
+                {
+                    ThingSprites.Entry moved = original with { MapPosition = new Vector3(at.X, at.Y, wall.Sector.FloorHeight / 65536f), Sector = wall.Sector.Index };
+                    things.SetEntry(thing, moved);
+                    things.Isolate(thing);
+                    const float back = 4096;
+                    Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
+                    string what = $"{map}: thing {thing} ({SpriteName(original)}, {patch.TopOffset} rows) at ({at.X:F0}, {at.Y:F0}), {label} (line {wall.Line.Index}, {height:F0} high), full tilt";
+                    m.SetSprites(With(SpriteHidden.Depth));
+                    byte[]? depth = await Capture(what);
+                    m.SetSprites(With(SpriteHidden.Upright));
+                    byte[]? upright = await Capture($"{what}, upright hiding");
+                    things.Visible = false;
+                    byte[]? level = await Capture($"{what}, no things");
+                    things.Visible = true;
+                    frames.Add((what, depth, upright, level, isHidden));
+                }
+                m.SetSprites(settings);
+                things.SetEntry(thing, original);
+                if (frames.Exists(v => v.Depth is null || v.Upright is null || v.Level is null))
+                    return;
+                static int Differ(byte[] a, byte[] b)
+                {
+                    int n = 0;
+                    for (int p = 0; p < a.Length; p += 4)
+                    {
+                        if (a[p] != b[p] || a[p + 1] != b[p + 1] || a[p + 2] != b[p + 2])
+                            n++;
+                    }
+                    return n;
+                }
+                // The view tests the hiding only when the tilted billboard peeks over the wall with depth alone.
+                int peeking = Differ(frames[0].Depth!, frames[0].Level!);
+                if (peeking == 0)
+                {
+                    GD.Print($"Level check: {frames[0].What}: nothing peeks over the wall with depth only; trying another wall");
+                    continue;
+                }
+                tested = true;
+                foreach ((string what, byte[]? depth, byte[]? upright, byte[]? level, bool isHidden) in frames)
+                {
+                    int shownDepth = Differ(depth!, level!);
+                    _pixels += shownDepth;
+                    if (isHidden)
+                    {
+                        int left = Differ(upright!, level!);
+                        if (left > 0)
+                            Fail($"{what}: {left} pixels still drawn with the upright hiding ({shownDepth} with depth only)");
+                        else
+                            GD.Print($"Level check: {what}: {shownDepth} pixels peek over the wall with depth only, none with the upright hiding");
+                    }
+                    else
+                    {
+                        int changed = Differ(upright!, depth!);
+                        if (shownDepth == 0)
+                            Fail($"{what}: the thing is not drawn");
+                        else if (changed > 0)
+                            Fail($"{what}: {changed} of {shownDepth} pixels differ with the upright hiding (it must keep a partly visible billboard whole)");
+                        else
+                            GD.Print($"Level check: {what}: all {shownDepth} pixels the same with the upright hiding");
+                    }
+                }
+                break;
+            }
+            if (tested)
+                break;
+        }
+        things.Isolate(null);
+        if (!tested)
+            Fail($"{map}: no thing and wall for the upright hiding view (a one-sided wall facing the game camera, taller than the thing, that hides its upright billboard but not its tilted one)");
     }
 
     /// <summary>

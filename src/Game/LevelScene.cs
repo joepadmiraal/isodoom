@@ -61,6 +61,9 @@ namespace IsoDoom.Game;
 /// <c>--level-sprite-wall-pull=UNITS|off</c> (T3.5a, <see cref="SpriteSettings.WallPull"/>:
 /// billboards are pulled towards the camera by the thing's radius, at most
 /// UNITS, so walls they touch behind them do not cut them; default 16);
+/// <c>--level-sprite-hidden=depth|upright</c> (T3.6a, <see cref="SpriteSettings.Hidden"/>:
+/// with upright, a tilted billboard is also dropped whole when the level would
+/// hide its upright billboard whole; default depth);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-near=UNITS</c> (the shortest distance the
 /// player mode uses, T3.7; default 80, 0 for the tables down to the player);
@@ -84,7 +87,7 @@ namespace IsoDoom.Game;
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
 /// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), P
-/// the sprite wall pull (on, off), M
+/// the sprite wall pull (on, off), H the upright hiding (depth, upright), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
 /// cap (dark, flat, off), V the things it cuts (decor, all, off), F1 shows
 /// the controls, F3 hides the overlay.
@@ -167,7 +170,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -394,7 +397,7 @@ public partial class LevelScene : Node3D
         _ => throw new ArgumentException($"--level-masked-back: \"{value}\" (mirror or off)"),
     };
 
-    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), and <c>--level-sprite-wall-pull</c> (T3.5a).</summary>
+    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), <c>--level-sprite-wall-pull</c> (T3.5a) and <c>--level-sprite-hidden</c> (T3.6a).</summary>
     private static SpriteSettings ParseSprites()
     {
         var settings = new SpriteSettings();
@@ -408,6 +411,8 @@ public partial class LevelScene : Node3D
             settings = settings with { Outline = SpriteSettings.ParseOutline(outline) };
         if (WadLocator.GetUserArg("--level-sprite-wall-pull") is string pull)
             settings = settings with { WallPull = SpriteSettings.ParseWallPull(pull) };
+        if (WadLocator.GetUserArg("--level-sprite-hidden") is string hidden)
+            settings = settings with { Hidden = SpriteSettings.ParseHidden(hidden) };
         return settings;
     }
 
@@ -548,6 +553,9 @@ public partial class LevelScene : Node3D
                 break;
             case Key.P:
                 SpriteOptions = SpriteOptions with { WallPull = SpriteOptions.WallPull > 0 ? 0 : _wallPull };
+                break;
+            case Key.H:
+                SpriteOptions = SpriteOptions with { Hidden = SpriteOptions.Hidden == SpriteHidden.Depth ? SpriteHidden.Upright : SpriteHidden.Depth };
                 break;
             case Key.M:
                 MaskedBacks = MaskedBacks == MaskedBackFaces.Mirrored ? MaskedBackFaces.Off : MaskedBackFaces.Mirrored;
