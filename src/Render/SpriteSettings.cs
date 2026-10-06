@@ -35,8 +35,9 @@ public enum SpriteShadowStyle
 
 /// <summary>
 /// The thing sprites' readability options (T3.6, SPEC §7.5, §12, §13 Q3):
-/// billboard tilt towards the camera, blob shadows and outlines. Each is a
-/// presentation option; the defaults are the ones chosen in T3.6.
+/// billboard tilt towards the camera, blob shadows and outlines, and the
+/// pull away from walls behind (T3.5a). Each is a presentation option; the
+/// defaults are the ones chosen in T3.6 and T3.5a.
 /// </summary>
 public sealed record SpriteSettings
 {
@@ -57,6 +58,29 @@ public sealed record SpriteSettings
 
     /// <summary>What depth a tilted billboard has.</summary>
     public SpriteTiltDepth TiltDepth { get; init; } = SpriteTiltDepth.Upright;
+
+    /// <summary>
+    /// The default wall pull (SPEC §12 T3.5a): <c>MT_PLAYER</c>'s radius, the
+    /// smallest of any monster or the player, so every actor is pulled alike
+    /// and they keep their order by depth.
+    /// </summary>
+    public const float DefaultWallPull = 16f;
+
+    /// <summary>The longest wall pull along the view ray, in horizontal pulls (the shader's <c>MAX_WALL_PULL</c>; a view nearly straight down).</summary>
+    public const float MaxWallPullFactor = 4f;
+
+    /// <summary>
+    /// The wall pull (T3.5a), map units; 0 for none. Every vertex of a
+    /// billboard moves along its view ray towards the camera until it is
+    /// min(the thing's <c>radius</c>, this) nearer horizontally (at most
+    /// <see cref="MaxWallPullFactor"/> times that along the ray): the same
+    /// place on screen, but a wall the thing stands against behind it no
+    /// longer cuts the billboard (vanilla draws such a sprite whole). A wall
+    /// in front that the thing collides with is at least its radius away (box
+    /// distance, at least radius × √2 along the camera's horizontal direction
+    /// at the 45° yaw), so it still hides it.
+    /// </summary>
+    public float WallPull { get; init; } = DefaultWallPull;
 
     /// <summary>Blob shadows under actors (things with <c>MF_SHOOTABLE</c>, and the player).</summary>
     public SpriteShadowStyle Shadow { get; init; } = SpriteShadowStyle.Off;
@@ -85,6 +109,13 @@ public sealed record SpriteSettings
         "tilted" => SpriteTiltDepth.Tilted,
         _ => throw new ArgumentException($"--level-sprite-tilt-depth: \"{s}\" (upright or tilted)"),
     };
+
+    /// <summary>Parses a wall pull: <c>off</c> (0), or the most units a billboard is pulled, 0–64.</summary>
+    public static float ParseWallPull(string s) => s == "off"
+        ? 0f
+        : float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float f) && f >= 0 && f <= 64
+            ? f
+            : throw new ArgumentException($"--level-sprite-wall-pull: \"{s}\" (off or 0-64 map units)");
 
     /// <summary>Parses a shadow style: <c>off</c>, <c>blend</c> or <c>dither</c>.</summary>
     public static SpriteShadowStyle ParseShadow(string s) => s switch

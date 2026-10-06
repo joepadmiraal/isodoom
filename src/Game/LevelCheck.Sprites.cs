@@ -22,8 +22,9 @@ namespace IsoDoom.Game;
 /// at the thing's position, with its sector and full-bright flag, and showing
 /// the lump and mirror r_things.c <c>R_ProjectSprite</c> picks
 /// (<see cref="Sprites.R_ProjectSpriteRotation"/>) for an orthographic view
-/// along the game camera's direction and for a perspective camera; the sprite
-/// material shares the level material's parameters.</item>
+/// along the game camera's direction and for a perspective camera, and its
+/// radius (the wall pull, T3.5a); the sprite material shares the level
+/// material's parameters.</item>
 /// <item><b>Drawn pixels</b> (rendered map, real renderer): each thing of a
 /// distinct sprite frame, rotation and mirror (all of them on the synthetic
 /// map) alone, with the level hidden, seen horizontally along the game
@@ -35,7 +36,9 @@ namespace IsoDoom.Game;
 /// with no diminishing and <c>extralight</c> 1, one with a fixed colormap
 /// (which beats full bright, as vanilla). Then one thing on open floor from
 /// the game camera's angle with the level shown: the rows below its origin
-/// must draw over the floor (SPEC §12 T3.5).</item>
+/// must draw over the floor (SPEC §12 T3.5). The tilt depth (T3.6), the wall
+/// pull (T3.5a, <see cref="CheckWallPull"/>) and the things' cutaway (T3.4b)
+/// in front of and behind a one-sided wall.</item>
 /// </list>
 /// </summary>
 public partial class LevelCheck
@@ -179,7 +182,8 @@ public partial class LevelCheck
                 int rot = frame.Rotate ? Sprites.R_ProjectSpriteRotation(ThingSprites.BamOfMap(d.X, -d.Z), t.angle) : 0;
                 int slot = atlas.SlotOf(frame.Lump[rot]);
                 var custom = new Color(slot, (frame.Flip[rot] ? ThingSprites.FlagFlip : 0) | (t.fullbright ? ThingSprites.FlagFullBright : 0)
-                    | ((Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHOOTABLE) != 0 ? ThingSprites.FlagActor : 0), t.Sector.Index, 0);
+                    | ((Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHOOTABLE) != 0 ? ThingSprites.FlagActor : 0), t.Sector.Index,
+                    Info.mobjinfo[(int)t.Spawn.Type].radius / 65536f); // the wall pull's radius (T3.5a)
                 if (things.CustomData(i) != custom || things.ShownFrames[i].Rot != rot || (CanCapture && things.Multimesh.GetInstanceCustomData(i) != custom))
                     Fail($"{what}, {(ortho ? "orthographic" : "perspective")}: custom data {things.CustomData(i)} ({things.Multimesh.GetInstanceCustomData(i)} on the GPU, "
                         + $"rotation slot {things.ShownFrames[i].Rot}), expected {custom} (slot {rot})");
@@ -292,6 +296,7 @@ public partial class LevelCheck
         }
         await CheckRowsBelowOrigin(m, things, atlas);
         await CheckTiltDepth(m, things, atlas);
+        await CheckWallPull(m, things, atlas);
         await CheckThingCutaway(m, things, atlas);
         things.Isolate(null);
         things.Visible = false;
@@ -531,53 +536,16 @@ public partial class LevelCheck
         IndexedImage patch = atlas.Images[things.ShownFrames[thing].Slot];
         float halfSpan = Math.Max(patch.LeftOffset, patch.Width - patch.LeftOffset) + 2;
 
-        // A one-sided wall facing the camera, long and high enough, with open floor in front of the spot.
-        Vector2? spot = null;
-        Sector? front = null;
-        float along = 0;
-        foreach (Line line in m.Level.Lines)
-        {
-            if (line.BackSector is not null || line.FrontSector is not Sector sector)
-                continue;
-            var a = new Vector2(line.V1.X / 65536f, line.V1.Y / 65536f);
-            var b = new Vector2(line.V2.X / 65536f, line.V2.Y / 65536f);
-            float length = a.DistanceTo(b);
-            Vector2 normal = new Vector2(b.Y - a.Y, a.X - b.X) / length; // the front (right) side
-            float facing = normal.Dot(ground);
-            if (facing < 0.5f || length < 2 * halfSpan + 128 || (sector.CeilingHeight - sector.FloorHeight) >> Fixed.FRACBITS < 96)
-                continue;
-            // Far enough that no column of the upright billboard reaches the wall.
-            float distance = 8 + halfSpan * MathF.Abs(right.Dot(normal));
-            Vector2 at = (a + b) / 2 + normal * distance;
-            if (m.Level.R_PointInSubsector((int)(at.X * 65536), (int)(at.Y * 65536)).Sector != sector)
-                continue;
-            bool open = true;
-            foreach (float side in new[] { -halfSpan, 0, halfSpan })
-            {
-                Vector2 start = at + right * side, end = start + ground * 96;
-                for (int k = 0; k <= 96 && open; k += 4)
-                {
-                    Vector2 p = start + ground * k;
-                    open = m.Level.R_PointInSubsector((int)(p.X * 65536), (int)(p.Y * 65536)).Sector == sector;
-                }
-                foreach (Line other in sector.Lines)
-                {
-                    if (open && other != line && SegmentDistance(start.X, start.Y, end.X, end.Y, other.V1.X / 65536.0, other.V1.Y / 65536.0, other.V2.X / 65536.0, other.V2.Y / 65536.0) < 2)
-                        open = false;
-                }
-            }
-            if (!open)
-                continue;
-            spot = at;
-            front = sector;
-            along = distance / facing;
-            break;
-        }
-        if (spot is not Vector2 where || front is null)
+        // A one-sided wall facing the camera, long and high enough, with open floor in front of the spot,
+        // far enough that no column of the upright billboard reaches the wall.
+        if (FacingWall(m, ground, right, halfSpan, normal => 8 + halfSpan * MathF.Abs(right.Dot(normal))) is not { } wall)
         {
             Fail($"{map}: no one-sided wall facing the game camera with open floor in front for the tilt depth view");
             return;
         }
+        Vector2 where = wall.Spot;
+        Sector front = wall.Sector;
+        float along = wall.Distance / wall.Facing;
         // A billboard leaning back hides behind the wall above this screen height (map units).
         double hiddenAbove = along / Math.Sin(pitch);
         if (patch.TopOffset < hiddenAbove + 4)
@@ -593,16 +561,17 @@ public partial class LevelCheck
         const float back = 4096;
         Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
         string what = $"{map}: thing {thing} ({SpriteName(original)}) at ({where.X:F0}, {where.Y:F0}), {along:F0} units in front of a wall, full tilt";
-        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
+        // Without the wall pull (T3.5a), which would move both quads nearer: the tilt depth alone.
+        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = 0 });
         byte[]? upright = await Capture(what);
-        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Tilted });
+        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Tilted, WallPull = 0 });
         byte[]? tilted = await Capture($"{what}, tilted depth");
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
             if (chunk is not null)
                 chunk.Visible = false;
         }
-        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
+        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = 0 });
         byte[]? alone = await Capture($"{what}, alone");
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
@@ -632,5 +601,236 @@ public partial class LevelCheck
         if (hiddenTilted == 0)
             Fail($"{what}: with tilted depth no sprite pixel is hidden by the wall behind (the view does not test the depth)");
         GD.Print($"Level check: {what}: all {drawn} sprite pixels drawn with upright depth ({hiddenTilted} hidden by the wall with tilted depth)");
+    }
+
+    /// <summary>A spot in front of a one-sided wall facing the game camera (<see cref="FacingWall"/>).</summary>
+    private readonly record struct WallSpot(Vector2 Spot, Sector Sector, Line Line, Vector2 Normal, float Facing, float Distance);
+
+    /// <summary>
+    /// The first one-sided wall facing the game camera (its front normal within
+    /// 60° of <paramref name="ground"/>, the horizontal direction towards the
+    /// camera), at least 2 × <paramref name="halfSpan"/> + 128 units long, in a
+    /// sector at least 96 units high, and the spot <paramref name="distance"/>
+    /// (of the wall's normal) in front of its middle, in its sector, with open
+    /// floor (only that sector, no other line) for 96 units towards the camera
+    /// across the billboard's width.
+    /// </summary>
+    private static WallSpot? FacingWall(LevelMesh m, Vector2 ground, Vector2 right, float halfSpan, Func<Vector2, float> distance)
+    {
+        foreach (Line line in m.Level.Lines)
+        {
+            if (line.BackSector is not null || line.FrontSector is not Sector sector)
+                continue;
+            var a = new Vector2(line.V1.X / 65536f, line.V1.Y / 65536f);
+            var b = new Vector2(line.V2.X / 65536f, line.V2.Y / 65536f);
+            float length = a.DistanceTo(b);
+            Vector2 normal = new Vector2(b.Y - a.Y, a.X - b.X) / length; // the front (right) side
+            float facing = normal.Dot(ground);
+            if (facing < 0.5f || length < 2 * halfSpan + 128 || (sector.CeilingHeight - sector.FloorHeight) >> Fixed.FRACBITS < 96)
+                continue;
+            float d = distance(normal);
+            Vector2 at = (a + b) / 2 + normal * d;
+            if (m.Level.R_PointInSubsector((int)(at.X * 65536), (int)(at.Y * 65536)).Sector != sector)
+                continue;
+            bool open = true;
+            foreach (float side in new[] { -halfSpan, 0, halfSpan })
+            {
+                Vector2 start = at + right * side, end = start + ground * 96;
+                for (int k = 0; k <= 96 && open; k += 4)
+                {
+                    Vector2 p = start + ground * k;
+                    open = m.Level.R_PointInSubsector((int)(p.X * 65536), (int)(p.Y * 65536)).Sector == sector;
+                }
+                foreach (Line other in sector.Lines)
+                {
+                    if (open && other != line && SegmentDistance(start.X, start.Y, end.X, end.Y, other.V1.X / 65536.0, other.V1.Y / 65536.0, other.V2.X / 65536.0, other.V2.Y / 65536.0) < 2)
+                        open = false;
+                }
+            }
+            if (open)
+                return new WallSpot(at, sector, line, normal, facing, d);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// T3.5a: the wall pull (<see cref="SpriteSettings.WallPull"/>). The widest
+    /// thing standing on its floor whose radius exceeds the default pull (so
+    /// the cap is tested) is seen along the game camera's direction at 1 unit
+    /// per pixel, full tilt, upright depth.
+    /// <list type="bullet">
+    /// <item><b>Against a wall behind:</b> its foot in front of a one-sided
+    /// wall facing the camera, near enough that the columns towards the wall
+    /// reach 2 units less than the pull clears: with the pull every sprite
+    /// pixel must equal the thing drawn alone; without it some must be hidden
+    /// (or the view does not test it).</item>
+    /// <item><b>Behind a wall:</b> its columns towards the camera 2 units
+    /// further behind the same wall than the pull moves them (in the void
+    /// beyond, as a thing the wall stops is at least its radius away): every
+    /// pixel whose ray meets that wall must stay as without the thing, also
+    /// with the thing's radius set to 64 (the pull is capped); with a 64-unit
+    /// pull some must not.</item>
+    /// </list>
+    /// </summary>
+    private async Task CheckWallPull(LevelMesh m, ThingSprites things, SpriteAtlas atlas)
+    {
+        string map = m.Level.Name;
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        // The screen's right (the sprite's +x), horizontal.
+        Vector3 screenRight = Cutaway.ToMapAxes(basis.X);
+        var right = new Vector2(screenRight.X, screenRight.Y).Normalized();
+        things.UpdateRotations(true, -basis.Z, Vector3.Zero);
+        const float pull = SpriteSettings.DefaultWallPull;
+
+        // The widest thing standing on its floor, with a radius over the pull (+ 4) and at most 140 rows above its origin.
+        int thing = -1;
+        float widest = 0;
+        for (int i = 0; i < things.Entries.Count; i++)
+        {
+            ThingSprites.Entry e = things.Entries[i];
+            ThingSprites.Shown s = things.ShownFrames[i];
+            if (s.Slot < 0 || e.Radius < pull + 4 || e.MapPosition.Z != m.Level.Sectors[e.Sector].FloorHeight / 65536f)
+                continue;
+            IndexedImage image = atlas.Images[s.Slot];
+            float span = Math.Max(image.LeftOffset, image.Width - image.LeftOffset);
+            if (image.TopOffset <= 140 && span > widest)
+            {
+                widest = span;
+                thing = i;
+            }
+        }
+        if (thing < 0)
+        {
+            Fail($"{map}: no thing on a floor with a radius over {pull + 4} for the wall pull view");
+            return;
+        }
+        ThingSprites.Entry original = things.Entries[thing];
+        IndexedImage patch = atlas.Images[things.ShownFrames[thing].Slot];
+        float grow = m.Sprites.Outline >= 0 ? 1 : 0;
+        // Sprite x runs from -leftoffset to width - leftoffset along the screen's right (the outline adds a texel).
+        float leftReach = patch.LeftOffset + grow, rightReach = patch.Width - patch.LeftOffset + grow;
+        float halfSpan = Math.Max(leftReach, rightReach) + 2;
+        // The columns towards the wall reach `reach` (along the billboard) × |right · normal| behind the foot;
+        // the pull moves the billboard pull × facing nearer: 2 units short of that.
+        float Reach(Vector2 normal) => (right.Dot(normal) < 0 ? rightReach : leftReach) * MathF.Abs(right.Dot(normal));
+        if (FacingWall(m, ground, right, halfSpan, normal => Reach(normal) - pull * normal.Dot(ground) + 2) is not { } wall)
+        {
+            Fail($"{map}: no one-sided wall facing the game camera with open floor in front for the wall pull view");
+            return;
+        }
+        if (wall.Distance < 1)
+        {
+            Fail($"{map}: the wall pull view's thing ({SpriteName(original)}) is too narrow to reach the wall ({wall.Distance:F1} units in front)");
+            return;
+        }
+
+        SpriteSettings settings = m.Sprites;
+        SpriteSettings Pulled(float units) => settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = units };
+        float forward = (right.Dot(wall.Normal) > 0 ? rightReach : leftReach) * MathF.Abs(right.Dot(wall.Normal));
+        // Behind: the columns towards the camera end 2 units behind the wall after the pull.
+        Vector2 behindSpot = wall.Spot - wall.Normal * (wall.Distance + forward + pull * wall.Facing + 2);
+        // Other settings and radii: whether each must give the same pixels as the default pull (else some must differ).
+        var views = new (string Label, Vector2 At, bool Behind, (string Name, SpriteSettings Sprites, float Radius, bool Same)[] Others)[]
+        {
+            ("against a wall behind it", wall.Spot, false, new[] { ("no pull", Pulled(0), original.Radius, false), ("radius 0", Pulled(pull), 0f, false) }),
+            ("behind a wall", behindSpot, true, new[] { ("radius 64", Pulled(pull), 64f, true), ("a 64-unit pull and radius", Pulled(64), 64f, false) }),
+        };
+        foreach ((string label, Vector2 at, bool behind, var others) in views)
+        {
+            ThingSprites.Entry moved = original with { MapPosition = new Vector3(at.X, at.Y, wall.Sector.FloorHeight / 65536f), Sector = wall.Sector.Index };
+            things.SetEntry(thing, moved);
+            things.Isolate(thing);
+            const float back = 4096;
+            Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
+            string what = $"{map}: thing {thing} ({SpriteName(original)}, radius {original.Radius:F0}) at ({at.X:F0}, {at.Y:F0}), {label} (line {wall.Line.Index}), full tilt";
+            m.SetSprites(Pulled(pull));
+            byte[]? pulled = await Capture(what);
+            var otherFrames = new List<byte[]?>();
+            foreach ((string name, SpriteSettings sprites, float radius, bool _) in others)
+            {
+                things.SetEntry(thing, moved with { Radius = radius });
+                m.SetSprites(sprites);
+                otherFrames.Add(await Capture($"{what}, {name}"));
+            }
+            things.SetEntry(thing, moved);
+            m.SetSprites(Pulled(pull));
+            things.Visible = false;
+            byte[]? level = await Capture($"{what}, no things");
+            things.Visible = true;
+            foreach (MeshInstance3D? chunk in _scene.Chunks)
+            {
+                if (chunk is not null)
+                    chunk.Visible = false;
+            }
+            byte[]? alone = await Capture($"{what}, alone");
+            foreach (MeshInstance3D? chunk in _scene.Chunks)
+            {
+                if (chunk is not null)
+                    chunk.Visible = true;
+            }
+            m.SetSprites(settings);
+            if (pulled is null || level is null || alone is null || otherFrames.Contains(null))
+                continue;
+            // In front: every sprite pixel must show. Behind: every pixel whose ray meets the wall (1.5 units
+            // inside its edges) must stay as without the thing (whatever is in front of the wall is in front of the thing too).
+            byte[] want = behind ? level : alone;
+            int drawn = 0, bad = 0;
+            var badOthers = new int[others.Length];
+            Vector2I size = ViewSize();
+            Camera3D cam = _scene.Camera;
+            var wallA = new Vector3(wall.Line.V1.X / 65536f, wall.Line.V1.Y / 65536f, wall.Sector.FloorHeight / 65536f);
+            var wallDir = new Vector3(wall.Line.Dx / 65536f, wall.Line.Dy / 65536f, 0);
+            float wallLength = wallDir.Length();
+            wallDir /= wallLength;
+            var wallNormal = new Vector3(wall.Normal.X, wall.Normal.Y, 0);
+            float wallHeight = (wall.Sector.CeilingHeight - wall.Sector.FloorHeight) / 65536f;
+            bool OnWall(int px, int py)
+            {
+                var screen = new Vector2(px + 0.5f, py + 0.5f);
+                Vector3 o = Cutaway.ToMapAxes(cam.ProjectRayOrigin(screen)) * LevelMesh.MapUnitsPerMetre;
+                Vector3 d = Cutaway.ToMapAxes(cam.ProjectRayNormal(screen)).Normalized();
+                Vector3 q = o + d * ((wallA - o).Dot(wallNormal) / d.Dot(wallNormal)) - wallA;
+                float u = q.Dot(wallDir);
+                return u > 1.5f && u < wallLength - 1.5f && q.Z > 1.5f && q.Z < wallHeight - 1.5f;
+            }
+            for (int p = 0; p < alone.Length; p += 4)
+            {
+                if (NearBackground((alone[p], alone[p + 1], alone[p + 2])) || (behind && !OnWall(p / 4 % size.X, p / 4 / size.X)))
+                    continue;
+                drawn++;
+                if (pulled[p] != want[p] || pulled[p + 1] != want[p + 1] || pulled[p + 2] != want[p + 2])
+                    bad++;
+                for (int k = 0; k < others.Length; k++)
+                {
+                    byte[] o = otherFrames[k]!;
+                    if (o[p] != want[p] || o[p + 1] != want[p + 1] || o[p + 2] != want[p + 2])
+                        badOthers[k]++;
+                }
+            }
+            _pixels += drawn;
+            if (drawn == 0)
+            {
+                Fail($"{what}: no pixel to compare");
+                continue;
+            }
+            if (bad > 0)
+                Fail(behind
+                    ? $"{what}: the sprite covers {bad} of the {drawn} pixels of the wall in front of it it overlaps (pulled through the wall)"
+                    : $"{what}: {bad} of {drawn} sprite pixels hidden (the wall behind cut the pulled billboard)");
+            for (int k = 0; k < others.Length; k++)
+            {
+                if (others[k].Same && badOthers[k] > 0)
+                    Fail($"{what}: with {others[k].Name}, {badOthers[k]} of {drawn} pixels {(behind ? "covered (the pull is not capped)" : "hidden")}");
+                else if (!others[k].Same && badOthers[k] == 0)
+                    Fail($"{what}: with {others[k].Name} too every pixel is as with the {pull:F0}-unit pull (the view does not test it)");
+            }
+            string counts = string.Join(", ", others.Select((o, k) => $"{badOthers[k]} {(behind ? "covered" : "hidden")} with {o.Name}"));
+            GD.Print(behind
+                ? $"Level check: {what}: with a {pull:F0}-unit pull the wall in front still hides it on all {drawn} pixels it overlaps ({counts})"
+                : $"Level check: {what}: all {drawn} sprite pixels drawn with a {pull:F0}-unit pull ({counts})");
+        }
+        things.SetEntry(thing, original);
     }
 }

@@ -4,7 +4,7 @@
 // One MultiMesh instance per thing (IsoDoom.Render.ThingSprites):
 //   instance transform  the thing's position (Godot space; basis identity)
 //   INSTANCE_CUSTOM     atlas slot (-1: draw nothing), flags (1 flip, 2 full
-//                       bright, 4 actor), sector (light), unused
+//                       bright, 4 actor), sector (light), radius (map units)
 //   VERTEX              sprite space: x 0 left / 1 right; y 0 bottom row,
 //                       1 the patch origin's height, 2 top row; z 1 for the
 //                       lower quad (the rows below the origin)
@@ -31,6 +31,16 @@
 // PULL_MARGIN above the thing's floor plane (at most MAX_PULL), so they stay in
 // place on screen and pass the depth test against the floor.
 //
+// Wall pull (T3.5a, IsoDoom.Render.SpriteSettings.WallPull; `wall_pull`
+// default 16): last, every vertex moves along its view ray towards the camera
+// until it is min(the thing's radius, `wall_pull`) nearer horizontally (at
+// most MAX_WALL_PULL times that along the ray): the same place on screen, but
+// a wall touching the thing behind it no longer cuts the billboard (vanilla
+// draws such a sprite whole, clipping it only by walls in front), while a
+// wall in front that the thing cannot pass (it keeps its radius away) still
+// hides it. Every actor has a radius of at least 16, so they all move alike
+// and keep their order by depth.
+//
 // Outline (T3.6, `outline` >= 0; default palette index 0): the quad grows by a
 // texel on every side, and transparent texels next to an opaque one (4-way)
 // draw that palette index through the sprite's colormap.
@@ -43,7 +53,8 @@
 // behind that plane (the whole thing is in front of the centre), and it lies
 // within `cut_radius` of the anchor's line towards the camera. The point is
 // where the fragment writes its depth (on the upright quad with upright tilt
-// depth). `cut_mode` 1 discards it, 2 dithers it as walls; the uniforms are
+// depth) before the wall pull (T3.5a), which is undone along the view ray
+// first. `cut_mode` 1 discards it, 2 dithers it as walls; the uniforms are
 // the level shader's (set on every material by IsoDoom.Render.LevelMesh).
 //
 // Light: one colormap per instance, as vanilla's per vissprite: the
@@ -71,6 +82,9 @@ const float PULL_MARGIN = 1.0;
 const float MAX_PULL = 64.0;
 // The longest move back onto the upright plane (T3.6), map units.
 const float MAX_UPRIGHT = 256.0;
+// The longest wall pull along the view ray, in horizontal pulls (T3.5a,
+// IsoDoom.Render.SpriteSettings.MaxWallPullFactor).
+const float MAX_WALL_PULL = 4.0;
 
 uniform sampler2D sprite_atlas : filter_nearest, repeat_disable;
 uniform sampler2D sprite_info : filter_nearest, repeat_disable;
@@ -90,6 +104,7 @@ uniform int extralight = 0;
 uniform float tilt = 0.0;
 uniform int tilt_depth = 0;
 uniform int outline = -1;
+uniform float wall_pull = 0.0;
 // The cutaway (T3.4, T3.4b): the level shader's uniforms, and which things it
 // cuts (0 none, 1 all but actors, 2 all).
 uniform int cut_mode = 0;
@@ -109,6 +124,8 @@ varying vec2 v_texcoord;
 // Whether the cutaway may cut this thing (T3.4b), and its foot (map units).
 varying flat int v_cuttable;
 varying flat vec3 v_foot;
+// The wall pull's horizontal distance (T3.5a; 0: none), map units.
+varying flat float v_pull;
 
 vec4 data_texel(sampler2D tex, int id) {
 	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
@@ -133,12 +150,21 @@ int sprite_colormap(int flags, int sector, vec3 foot_world, mat4 view) {
 	return int(texelFetch(light_tables, ivec2(scale, LIGHTLEVELS + lightnum), 0).r * 255.0 + 0.5);
 }
 
+// How far along a view ray (map units) the wall pull moves a point (T3.5a):
+// the ray's horizontal part is `pull`, at most MAX_WALL_PULL times that.
+// `up` is the ray's vertical component (unit ray towards the camera).
+float wall_pull_length(float up, float pull) {
+	float horizontal = sqrt(max(1.0 - up * up, 0.0));
+	return min(pull / max(horizontal, 1e-4), MAX_WALL_PULL * pull);
+}
+
 void vertex() {
 	int slot = int(round(INSTANCE_CUSTOM.x));
 	int flags = int(round(INSTANCE_CUSTOM.y));
 	int sector = int(round(INSTANCE_CUSTOM.z));
 	vec3 foot = MODEL_MATRIX[3].xyz;
 	v_foot = vec3(foot.x, -foot.z, foot.y) * MAP_UNITS_PER_METRE;
+	v_pull = clamp(INSTANCE_CUSTOM.w, 0.0, max(wall_pull, 0.0));
 	v_cuttable = cut_mode != 0 && (cut_things == 2 || (cut_things == 1 && (flags & 4) == 0)) ? 1 : 0;
 	if (slot < 0) {
 		// Nothing to draw: a degenerate quad.
@@ -196,6 +222,11 @@ void vertex() {
 				offset += to_camera * (pull / MAP_UNITS_PER_METRE);
 			}
 		}
+		if (v_pull > 0.0) {
+			// The wall pull (T3.5a): along the view ray, the radius nearer horizontally.
+			vec3 to_camera = ortho ? normalize(INV_VIEW_MATRIX[2].xyz) : normalize(CAMERA_POSITION_WORLD - (foot + offset));
+			offset += to_camera * (wall_pull_length(to_camera.y, v_pull) / MAP_UNITS_PER_METRE);
+		}
 		VERTEX = offset;
 		v_colormap = sprite_colormap(flags, sector, foot, VIEW_MATRIX);
 	}
@@ -251,6 +282,11 @@ void fragment() {
 		vec3 back = normalize(INV_VIEW_MATRIX[2].xyz);
 		vec3 to_camera = vec3(back.x, -back.z, back.y);
 		bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
+		if (v_pull > 0.0) {
+			// Undo the wall pull (T3.5a): the cut is tested where the pixel's depth was before it.
+			vec3 ray = ortho ? to_camera : normalize(cam - p);
+			p -= ray * wall_pull_length(ray.z, v_pull);
+		}
 		// The billboard's normal: the camera's right axis, flattened, turned up (as the vertex shader).
 		vec3 right = vec3(INV_VIEW_MATRIX[0].x, 0.0, INV_VIEW_MATRIX[0].z);
 		right = dot(right, right) > 1e-8 ? normalize(right) : vec3(1.0, 0.0, 0.0);

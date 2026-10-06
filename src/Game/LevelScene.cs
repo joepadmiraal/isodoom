@@ -57,7 +57,10 @@ namespace IsoDoom.Game;
 /// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
 /// upright), <c>--level-sprite-shadow=off|blend|dither</c> (blob shadows under
 /// actors; default off), <c>--level-sprite-outline=off|INDEX</c> (a one-texel
-/// outline in palette index INDEX; default 0, black);
+/// outline in palette index INDEX; default 0, black),
+/// <c>--level-sprite-wall-pull=UNITS|off</c> (T3.5a, <see cref="SpriteSettings.WallPull"/>:
+/// billboards are pulled towards the camera by the thing's radius, at most
+/// UNITS, so walls they touch behind them do not cut them; default 16);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-near=UNITS</c> (the shortest distance the
 /// player mode uses, T3.7; default 80, 0 for the tables down to the player);
@@ -80,7 +83,8 @@ namespace IsoDoom.Game;
 /// free-fly camera) at player 1's start, Page
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
-/// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), M
+/// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), P
+/// the sprite wall pull (on, off), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
 /// cap (dark, flat, off), V the things it cuts (decor, all, off), F1 shows
 /// the controls, F3 hides the overlay.
@@ -104,6 +108,9 @@ public partial class LevelScene : Node3D
 
     /// <summary>The thing sprites' readability options (T3.6: tilt, blob shadows, outline); applied to every level.</summary>
     public SpriteSettings SpriteOptions { get; set; } = new();
+
+    /// <summary>The wall pull key P turns back on (T3.5a): <c>--level-sprite-wall-pull</c>'s, or the default.</summary>
+    private float _wallPull = SpriteSettings.DefaultWallPull;
 
     /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
     public LevelMesh? Mesh { get; private set; }
@@ -160,7 +167,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -242,6 +249,8 @@ public partial class LevelScene : Node3D
                 };
             Cutaway = ParseCutaway();
             SpriteOptions = ParseSprites();
+            if (SpriteOptions.WallPull > 0)
+                _wallPull = SpriteOptions.WallPull;
             if (WadLocator.GetUserArg("--level-masked-back") is string backs)
                 MaskedBacks = ParseMaskedBacks(backs);
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
@@ -385,7 +394,7 @@ public partial class LevelScene : Node3D
         _ => throw new ArgumentException($"--level-masked-back: \"{value}\" (mirror or off)"),
     };
 
-    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6).</summary>
+    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), and <c>--level-sprite-wall-pull</c> (T3.5a).</summary>
     private static SpriteSettings ParseSprites()
     {
         var settings = new SpriteSettings();
@@ -397,6 +406,8 @@ public partial class LevelScene : Node3D
             settings = settings with { Shadow = SpriteSettings.ParseShadow(shadow) };
         if (WadLocator.GetUserArg("--level-sprite-outline") is string outline)
             settings = settings with { Outline = SpriteSettings.ParseOutline(outline) };
+        if (WadLocator.GetUserArg("--level-sprite-wall-pull") is string pull)
+            settings = settings with { WallPull = SpriteSettings.ParseWallPull(pull) };
         return settings;
     }
 
@@ -534,6 +545,9 @@ public partial class LevelScene : Node3D
                 break;
             case Key.G:
                 SpriteOptions = SpriteOptions with { Shadow = (SpriteShadowStyle)(((int)SpriteOptions.Shadow + 1) % 3) };
+                break;
+            case Key.P:
+                SpriteOptions = SpriteOptions with { WallPull = SpriteOptions.WallPull > 0 ? 0 : _wallPull };
                 break;
             case Key.M:
                 MaskedBacks = MaskedBacks == MaskedBackFaces.Mirrored ? MaskedBackFaces.Off : MaskedBackFaces.Mirrored;
@@ -892,10 +906,10 @@ public partial class LevelScene : Node3D
             GD.PushWarning($"Level: {level.Name}: {Things.MissingFrames} thing(s) whose spawn frame the WAD lacks are not drawn");
     }
 
-    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>) and marked as an actor (<see cref="IsActor"/>, T3.4b).</summary>
+    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>), marked as an actor (<see cref="IsActor"/>, T3.4b), and its radius (the wall pull, T3.5a).</summary>
     public static ThingSprites.Entry ThingEntry(SpawnedThing t) =>
         new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright,
-            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]), IsActor(Info.mobjinfo[(int)t.Spawn.Type]));
+            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]), IsActor(Info.mobjinfo[(int)t.Spawn.Type]), Info.mobjinfo[(int)t.Spawn.Type].radius / 65536f);
 
     /// <summary>
     /// Whether a thing of <paramref name="info"/> is an actor the cutaway keeps

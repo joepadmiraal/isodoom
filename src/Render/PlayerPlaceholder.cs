@@ -23,7 +23,7 @@ public partial class PlayerPlaceholder : Node3D
     /// <summary>info.c <c>SPR_PLAY</c>'s index in <c>sprnames</c>.</summary>
     private static readonly int SprPlay = Array.IndexOf(SpriteNames.sprnames, "PLAY");
 
-    /// <summary>info.c <c>MT_PLAYER</c>'s radius (map units): its blob shadow's (T3.6).</summary>
+    /// <summary>info.c <c>MT_PLAYER</c>'s radius (map units): its blob shadow's (T3.6) and its wall pull (T3.5a).</summary>
     public static readonly float ShadowRadius = IsoDoom.Sim.Info.mobjinfo[(int)IsoDoom.Sim.mobjtype_t.MT_PLAYER].radius / 65536f;
 
     private readonly ThingSprites _sprite = new() { Name = "Sprite" };
@@ -118,7 +118,7 @@ public partial class PlayerPlaceholder : Node3D
     }
 
     private ThingSprites.Entry Entry() =>
-        new(new Vector3(MapPosition.X, MapPosition.Y, FloorHeight), ThingSprites.BamOfDegrees(Angle), Sector?.Index ?? 0, SprPlay, 0, false, ShadowRadius, Actor: true);
+        new(new Vector3(MapPosition.X, MapPosition.Y, FloorHeight), ThingSprites.BamOfDegrees(Angle), Sector?.Index ?? 0, SprPlay, 0, false, ShadowRadius, Actor: true, Radius: ShadowRadius);
 
     private void UpdateEntry()
     {

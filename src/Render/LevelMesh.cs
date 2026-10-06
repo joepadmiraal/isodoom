@@ -351,13 +351,14 @@ public sealed class LevelMesh
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
     public SpriteSettings Sprites { get; private set; } = new();
 
-    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6, <see cref="SpriteSettings"/>).</summary>
+    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6) and wall pull (T3.5a; <see cref="SpriteSettings"/>).</summary>
     public void SetSprites(SpriteSettings settings)
     {
         Sprites = settings;
         SpriteMaterial.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
         SpriteMaterial.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
         SpriteMaterial.SetShaderParameter("outline", settings.Outline);
+        SpriteMaterial.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
         ShadowMaterial.SetShaderParameter("shadow_mode", (int)settings.Shadow);
         ShadowMaterial.SetShaderParameter("shadow_opacity", settings.ShadowOpacity);
     }
