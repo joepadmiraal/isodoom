@@ -55,15 +55,7 @@ diff --git a/doomgeneric/p_spec.c b/doomgeneric/p_spec.c
 index 17446b5..bf73223 100644
 --- a/doomgeneric/p_spec.c
 +++ b/doomgeneric/p_spec.c
-@@ -507,6 +507,7 @@ P_CrossSpecialLine
-     line_t*	line;
-     int		ok;
- 
-+    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials, as the sim of M4
-     line = &lines[linenum];
-     
-     //	Triggers that other things can activate
-@@ -1020,6 +1021,7 @@ void P_PlayerInSpecialSector (player_t* player)
+@@ -1020,6 +1020,7 @@ void P_PlayerInSpecialSector (player_t* player)
  {
      sector_t*	sector;
  	
@@ -71,7 +63,7 @@ index 17446b5..bf73223 100644
      sector = player->mo->subsector->sector;
  
      // Falling, not all the way down yet?
-@@ -1092,6 +1094,9 @@ int		levelTimeCount;
+@@ -1092,6 +1093,9 @@ int		levelTimeCount;
  
  void P_UpdateSpecials (void)
  {
@@ -81,7 +73,7 @@ index 17446b5..bf73223 100644
      anim_t*	anim;
      int		pic;
      int		i;
-@@ -1376,6 +1381,8 @@ void P_SpawnSpecials (void)
+@@ -1376,6 +1380,8 @@ void P_SpawnSpecials (void)
      sector_t*	sector;
      int		i;
  

@@ -746,6 +746,13 @@ public static class SyntheticIwad
     // (the lowest), alcove 23 320 (the highest). Lights 96-152, alcove 23 64.
     // Alcoves 3, 7 and 12 have tag 5. Nodes: the root splits along y = 0
     // (the corridor in front), then a chain along the alcove boundaries.
+    //
+    // T5.2, line triggers (their effects are stubs until T5.3-T5.8): the
+    // corridor's walls are use lines facing it, line 0 an SR button (63, tag
+    // 5), line 1 an S1 switch (103, tag 5), line 2 an S1 switch whose tag (9)
+    // no sector has; the openings of alcove 0 (line 3, floor 16) and alcove 22
+    // (line 25, floor 8) are walk-over lines, a WR lift (88, which monsters
+    // trigger too) and a W1 floor (38, players only), both tag 5.
 
     /// <summary>The number of alcoves on E1M2 (T5.1).</summary>
     public const int SpecialsAlcoves = 24;
@@ -780,17 +787,22 @@ public static class SyntheticIwad
             sides.Add(Sidedef(upper, lower, middle, (short)sector));
             return sides.Count - 1;
         }
-        void OneSided(int v1, int v2, int sector, string middle, int tag = 0) =>
-            lines.Add(new[] { (short)v1, (short)v2, (short)1, (short)0, (short)tag, (short)Side("-", "-", middle, sector), (short)-1 });
-        void TwoSided(int v1, int v2, int front, int back) =>
-            lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)0, (short)0,
+        void OneSided(int v1, int v2, int sector, string middle, int special = 0, int tag = 0) =>
+            lines.Add(new[] { (short)v1, (short)v2, (short)1, (short)special, (short)tag, (short)Side("-", "-", middle, sector), (short)-1 });
+        void TwoSided(int v1, int v2, int front, int back, int special = 0, int tag = 0) =>
+            lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)special, (short)tag,
                 (short)Side("BRICK1", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", back) });
 
-        OneSided(0, 1, 0, "BRICK1", tag: 5);  // L0: corridor south (westwards)
-        OneSided(1, Mid(0), 0, "BRICK1");     // L1: corridor west
-        OneSided(Mid(n), 0, 0, "BRICK1");     // L2: corridor east
+        OneSided(0, 1, 0, "BRICK1", special: 63, tag: 5);  // L0: corridor south (westwards), SR raise door
+        OneSided(1, Mid(0), 0, "BRICK1", special: 103, tag: 5); // L1: corridor west, S1 open door
+        OneSided(Mid(n), 0, 0, "BRICK1", special: 103, tag: 9); // L2: corridor east, S1 open door of no sector
         for (int i = 0; i < n; i++)
-            TwoSided(Mid(i + 1), Mid(i), 1 + i, 0); // L3 + i: alcove i's opening (westwards: the alcove in front)
+        {
+            // L3 + i: alcove i's opening (westwards: the alcove in front); alcove 0's a WR lift
+            // (monsters too), alcove 22's a W1 floor (players only).
+            (int special, int tag) = i switch { 0 => (88, 5), 22 => (38, 5), _ => (0, 0) };
+            TwoSided(Mid(i + 1), Mid(i), 1 + i, 0, special, tag);
+        }
         for (int i = 0; i < n; i++)
             OneSided(Top(i), Top(i + 1), 1 + i, i == 0 ? "SW1BRCOM" : "BRICK1"); // L27 + i: alcove north walls
         OneSided(Mid(0), Top(0), 1, "BRICK1");       // L51: the row's west end

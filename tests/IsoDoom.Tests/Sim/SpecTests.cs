@@ -171,7 +171,7 @@ public class SpecTests
         Assert.Equal(1 + 12, world.P_FindSectorFromLineTag(tagged, 8));
         Assert.Equal(-1, world.P_FindSectorFromLineTag(tagged, 13));
         // Tag 0 finds the untagged sectors (vanilla doesn't skip them).
-        Assert.Equal(0, world.P_FindSectorFromLineTag(world.lines[1], -1));
+        Assert.Equal(0, world.P_FindSectorFromLineTag(world.lines[4], -1));
     }
 
     [Fact]

@@ -173,9 +173,10 @@ public sealed partial class World
     /// cheat, the chainsaw's run forward (<see cref="mobjflag_t.MF_JUSTATTACKED"/>),
     /// <see cref="P_MovePlayer"/> (not while <see cref="mobj_t.reactiontime"/>
     /// counts down after a teleport), <see cref="P_CalcHeight"/>, the power-up
-    /// and palette counters and the fixed colormaps. Still to come:
-    /// <c>P_DeathThink</c> (T6.12), <c>P_PlayerInSpecialSector</c> (T5.8), the
-    /// weapon change and <c>P_MovePsprites</c> (T6.6), the use button (T5.2).
+    /// and palette counters and the fixed colormaps, and the use button
+    /// (<see cref="P_UseLines"/> once per press, <see cref="player_t.usedown"/>).
+    /// Still to come: <c>P_DeathThink</c> (T6.12), <c>P_PlayerInSpecialSector</c>
+    /// (T5.8), the weapon change and <c>P_MovePsprites</c> (T6.6).
     /// </summary>
     public void P_PlayerThink(player_t player)
     {
@@ -225,7 +226,17 @@ public sealed partial class World
 
         // Check for weapon change. (T6.6)
 
-        // check for use (T5.2)
+        // check for use
+        if ((cmd.buttons & buttoncode_t.BT_USE) != 0)
+        {
+            if (!player.usedown)
+            {
+                P_UseLines(player);
+                player.usedown = true;
+            }
+        }
+        else
+            player.usedown = false;
 
         // cycle psprites: P_MovePsprites (player); (T6.6)
 

@@ -5,8 +5,9 @@ namespace IsoDoom.Sim;
 
 // p_map.c, movement part: position checks (P_CheckPosition, PIT_CheckLine, PIT_CheckThing),
 // P_TryMove and wall sliding (P_SlideMove, PTR_SlideTraverse, P_HitSlideLine), and sector
-// height changes (P_ChangeSector, PIT_ChangeSector, P_ThingHeightClip; T5.1).
-// Teleport moves come with M5, aiming, shooting, use lines and radius attacks with M5/M6.
+// height changes (P_ChangeSector, PIT_ChangeSector, P_ThingHeightClip; T5.1), and
+// the use action (P_UseLines, PTR_UseTraverse, with the use fallback of SPEC §6.3 #3; T5.2).
+// Teleport moves come with M5, aiming, shooting and radius attacks with M6.
 public sealed partial class World
 {
     // ---- p_local.h ----
@@ -288,15 +289,6 @@ public sealed partial class World
 
     /// <summary>p_inter.c <c>P_TouchSpecialThing</c>: a stub until T5.8 (keys) and T6.8 (the other pickups).</summary>
     public void P_TouchSpecialThing(mobj_t special, mobj_t toucher)
-    {
-    }
-
-    /// <summary>
-    /// p_spec.c <c>P_CrossSpecialLine</c>: a stub until M5 (T5.2). Called by
-    /// <see cref="P_TryMove"/> for each special line in <see cref="spechit"/>
-    /// whose side the thing changed.
-    /// </summary>
-    public void P_CrossSpecialLine(int linenum, int side, mobj_t thing)
     {
     }
 
@@ -775,5 +767,225 @@ public sealed partial class World
         }
 
         return nofit;
+    }
+
+    // ---- the use action (T5.2) ----
+
+    /// <summary>p_local.h <c>USERANGE</c>: how far a player reaches to use a line (fixed_t).</summary>
+    public const int USERANGE = 64 * Fixed.FRACUNIT;
+
+    /// <summary>p_map.c <c>usething</c>: the thing <see cref="P_UseLines"/> uses lines for.</summary>
+    public mobj_t? usething;
+
+    /// <summary>
+    /// Not vanilla: whether the last <see cref="P_UseLines"/> trace ran a use
+    /// special (<see cref="IsUseSpecial"/>) from its front side; when it did not,
+    /// <see cref="Tweaks.UseFallback"/> looks for another line (SPEC §12 T5.2).
+    /// </summary>
+    public bool usetraceused;
+
+    // The use fallback's candidates (line, squared distance) and the one its trace looks for.
+    private readonly System.Collections.Generic.List<(line_t line, long dist2)> _useCandidates = new();
+    private line_t? _useFallbackTarget;
+    private bool _useFallbackReached;
+
+    private traverser_t? _ptrUseTraverse;
+    private traverser_t? _ptrUseFallbackTraverse;
+    private Func<line_t, bool>? _pitAddUseCandidate;
+
+    /// <summary>
+    /// p_map.c <c>PTR_UseTraverse</c>: the first special line on the trace is
+    /// used (<see cref="P_UseSpecialLine"/>, from whichever side the thing is
+    /// on) and stops it; a closed line (no opening) stops it first ("can't use
+    /// through a wall", vanilla's <c>sfx_noway</c>).
+    /// </summary>
+    public bool PTR_UseTraverse(intercept_t @in)
+    {
+        line_t line = @in.line!;
+        if (line.special == 0)
+        {
+            P_LineOpening(line);
+            if (openrange <= 0)
+            {
+                // S_StartSound (usething, sfx_noway); (T6.10; with the use fallback,
+                // only when it finds no line either, SPEC §12 T5.2)
+
+                // can't use through a wall
+                return false;
+            }
+            // not a special line, but keep checking
+            return true;
+        }
+
+        int side = 0;
+        if (P_PointOnLineSide(usething!.x, usething.y, line) == 1)
+            side = 1;
+
+        //	return false;		// don't use back side
+
+        if (side == 0 && IsUseSpecial(line.special))
+            usetraceused = true; // not vanilla: for the use fallback
+
+        P_UseSpecialLine(usething, line, side);
+
+        // can't use for than one special line in a row
+        return false;
+    }
+
+    /// <summary>
+    /// p_map.c <c>P_UseLines</c>: looks for special lines in front of the
+    /// player to activate: a trace of <see cref="USERANGE"/> along its angle
+    /// (with <see cref="Tweaks.AbsoluteAiming"/> the aim), <see cref="PTR_UseTraverse"/>.
+    /// With <see cref="Tweaks.UseFallback"/>, when the trace ran no use
+    /// special, <see cref="UseFallbackLine"/>'s line is used instead (SPEC
+    /// §6.3 #3, §12 T5.2).
+    /// </summary>
+    public void P_UseLines(player_t player)
+    {
+        _ptrUseTraverse ??= PTR_UseTraverse;
+        mobj_t mo = player.mo!;
+        usething = mo;
+
+        int angle = (int)(mo.angle >> Tables.ANGLETOFINESHIFT);
+
+        int x1 = mo.x;
+        int y1 = mo.y;
+        int x2 = x1 + (USERANGE >> Fixed.FRACBITS) * Tables.finecosine[angle];
+        int y2 = y1 + (USERANGE >> Fixed.FRACBITS) * Tables.finesine[angle];
+
+        usetraceused = false;
+        P_PathTraverse(x1, y1, x2, y2, PT_ADDLINES, _ptrUseTraverse);
+
+        if (tweaks.UseFallback && !usetraceused)
+        {
+            line_t? line = UseFallbackLine(mo);
+            if (line != null)
+                P_UseSpecialLine(mo, line, 0);
+            // else S_StartSound (usething, sfx_noway) if the trace met a wall (T6.10)
+        }
+    }
+
+    /// <summary>
+    /// Not vanilla: the use fallback (SPEC §6.3 #3, tuned in §12 T5.2): the
+    /// nearest line within <see cref="USERANGE"/> of <paramref name="mo"/>'s
+    /// centre (to the nearest point of the line, kept 1/64 of its length off
+    /// its ends) that has a use special (<see cref="IsUseSpecial"/>), has
+    /// <paramref name="mo"/> on its front side, is not behind it (that point
+    /// within 90° of its angle) and can be reached: a trace to it crosses no
+    /// closed line (two-sided lines with an opening let it through, special
+    /// or not). Ties go to the lower line number. Null when there is none.
+    /// Deterministic: fixed-point maths, blockmap order, a stable sort.
+    /// </summary>
+    public line_t? UseFallbackLine(mobj_t mo)
+    {
+        _pitAddUseCandidate ??= PIT_AddUseCandidate;
+        _ptrUseFallbackTraverse ??= PTR_UseFallbackTraverse;
+        usething = mo;
+        _useCandidates.Clear();
+
+        int xl = (mo.x - USERANGE - bmaporgx) >> Blockmap.MAPBLOCKSHIFT;
+        int xh = (mo.x + USERANGE - bmaporgx) >> Blockmap.MAPBLOCKSHIFT;
+        int yl = (mo.y - USERANGE - bmaporgy) >> Blockmap.MAPBLOCKSHIFT;
+        int yh = (mo.y + USERANGE - bmaporgy) >> Blockmap.MAPBLOCKSHIFT;
+
+        validcount++;
+        for (int bx = xl; bx <= xh; bx++)
+        {
+            for (int by = yl; by <= yh; by++)
+                P_BlockLinesIterator(bx, by, _pitAddUseCandidate);
+        }
+
+        // Nearest first, then by line number (insertion sort: stable and allocation free).
+        for (int i = 1; i < _useCandidates.Count; i++)
+        {
+            var c = _useCandidates[i];
+            int j = i - 1;
+            while (j >= 0 && (_useCandidates[j].dist2 > c.dist2
+                || (_useCandidates[j].dist2 == c.dist2 && _useCandidates[j].line.Index > c.line.Index)))
+            {
+                _useCandidates[j + 1] = _useCandidates[j];
+                j--;
+            }
+            _useCandidates[j + 1] = c;
+        }
+
+        foreach ((line_t line, long _) in _useCandidates)
+        {
+            UseFallbackPoint(mo, line, out int qx, out int qy);
+            // A trace through the point to as far beyond it: the line is crossed halfway.
+            _useFallbackTarget = line;
+            _useFallbackReached = false;
+            P_PathTraverse(mo.x, mo.y, qx + (qx - mo.x), qy + (qy - mo.y), PT_ADDLINES, _ptrUseFallbackTraverse);
+            if (_useFallbackReached)
+                return line;
+        }
+        return null;
+    }
+
+    // UseFallbackLine's blockmap iterator: lists the lines that qualify but for the trace.
+    private bool PIT_AddUseCandidate(line_t ld)
+    {
+        mobj_t mo = usething!;
+        if (ld.special == 0 || !IsUseSpecial(ld.special))
+            return true;
+        if (P_PointOnLineSide(mo.x, mo.y, ld) != 0)
+            return true; // not facing it
+        if (!UseFallbackPoint(mo, ld, out int qx, out int qy))
+            return true;
+
+        long dx = (long)qx - mo.x;
+        long dy = (long)qy - mo.y;
+        if (dx > USERANGE || dx < -USERANGE || dy > USERANGE || dy < -USERANGE)
+            return true;
+        long dist2 = dx * dx + dy * dy;
+        if (dist2 > (long)USERANGE * USERANGE)
+            return true;
+
+        // Not behind: within 90 degrees of the facing.
+        int angle = (int)(mo.angle >> Tables.ANGLETOFINESHIFT);
+        if (dx * Tables.finecosine[angle] + dy * Tables.finesine[angle] < 0)
+            return true;
+
+        _useCandidates.Add((ld, dist2));
+        return true;
+    }
+
+    // UseFallbackLine's trace: stops at the line looked for (reached) or at a closed line.
+    private bool PTR_UseFallbackTraverse(intercept_t @in)
+    {
+        line_t line = @in.line!;
+        if (line == _useFallbackTarget)
+        {
+            _useFallbackReached = true;
+            return false;
+        }
+        P_LineOpening(line);
+        return openrange > 0;
+    }
+
+    /// <summary>
+    /// The point of <paramref name="line"/> nearest to <paramref name="mo"/>'s
+    /// centre (fixed_t), kept 1/64 of the line's length off its ends so a
+    /// trace to it crosses the line; false for a line of no length. In
+    /// 1/16-unit steps (64-bit), exact enough for whole-unit vertices.
+    /// </summary>
+    private static bool UseFallbackPoint(mobj_t mo, line_t line, out int qx, out int qy)
+    {
+        long ldx = line.dx >> 12;
+        long ldy = line.dy >> 12;
+        long len2 = ldx * ldx + ldy * ldy;
+        qx = qy = 0;
+        if (len2 == 0)
+            return false;
+        long num = ((long)(mo.x >> 12) - (line.v1.X >> 12)) * ldx + ((long)(mo.y >> 12) - (line.v1.Y >> 12)) * ldy;
+        long margin = len2 / 64;
+        if (num < margin)
+            num = margin;
+        if (num > len2 - margin)
+            num = len2 - margin;
+        long f = (num << Fixed.FRACBITS) / len2;
+        qx = line.v1.X + (int)(((long)line.dx * f) >> Fixed.FRACBITS);
+        qy = line.v1.Y + (int)(((long)line.dy * f) >> Fixed.FRACBITS);
+        return true;
     }
 }

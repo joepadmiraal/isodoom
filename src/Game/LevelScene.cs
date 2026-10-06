@@ -804,8 +804,24 @@ public partial class LevelScene : Node3D
             World!.G_Ticker(cmd);
         if (_planeMoves.Count > 0)
             MovePlanes();
+        PrintUnported();
         LastTiccmd = cmd;
         TicsRun++;
+    }
+
+    // How many of the world's World.unported calls are printed (or were there at its start).
+    private int _unportedPrinted;
+
+    /// <summary>
+    /// Prints the calls the last tic made to specials not ported yet
+    /// (<see cref="World.unported"/>: a line triggered by walking or use, T5.2),
+    /// so a trigger can be seen to fire until its effect exists (T5.3-T5.8).
+    /// </summary>
+    private void PrintUnported()
+    {
+        List<string> calls = World!.unported;
+        for (; _unportedPrinted < calls.Count; _unportedPrinted++)
+            GD.Print($"Level: tic {World.leveltime}: {calls[_unportedPrinted]} (not ported yet)");
     }
 
     /// <summary>While not null, each tic's <see cref="World.G_Ticker(in ticcmd_t)"/> wall-clock time in ms is added (T4.9: the level script's <c>tictime</c>, SPEC §9's budget).</summary>
@@ -1225,6 +1241,7 @@ public partial class LevelScene : Node3D
             var world = new World(new SpawnSettings(GameMode, Skill), Tweaks);
             world.G_DoLoadLevel(level);
             World = world;
+            _unportedPrinted = world.unported.Count; // the level's start (P_SpawnSpecials) is not news
         }
         catch (WadFormatException e)
         {

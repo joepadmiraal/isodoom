@@ -12,8 +12,9 @@ namespace IsoDoom.Sim;
 /// the random index carry over between levels); <see cref="G_DoLoadLevel"/>
 /// starts each level. The partial files follow vanilla's: World.Tick.cs is
 /// p_tick.c, World.Mobj.cs p_mobj.c, World.MapUtl.cs p_maputl.c, World.Map.cs p_map.c,
-/// World.User.cs p_user.c (and <c>G_Ticker</c>),
-/// World.Checksum.cs the per-tic state checksum (SPEC §6.1).
+/// World.User.cs p_user.c (and <c>G_Ticker</c>), World.Spec.cs p_spec.c,
+/// World.Switch.cs p_switch.c, World.Unported.cs the stubs of the specials
+/// still to port, World.Checksum.cs the per-tic state checksum (SPEC §6.1).
 /// <para>
 /// The <see cref="level"/>'s sectors are changed in place (heights, light,
 /// flats), so the presentation reads the moving geometry from the same
@@ -159,7 +160,7 @@ public sealed partial class World
     /// <paramref name="level"/> (<see cref="Level.Load"/>, which this world
     /// then owns and changes): clears the counts and the thinker list,
     /// links the sectors and blocks, spawns the things (<c>P_LoadThings</c>)
-    /// and clears the item respawn queue. <c>P_SpawnSpecials</c> comes in M5.
+    /// clears the item respawn queue and runs <see cref="P_SpawnSpecials"/>.
     /// </summary>
     public void P_SetupLevel(Level level)
     {
@@ -215,6 +216,10 @@ public sealed partial class World
 
         // clear special respawning que
         iquehead = iquetail = 0;
+
+        // set up world state
+        unported.Clear(); // not vanilla (T5.2)
+        P_SpawnSpecials();
     }
 
     /// <summary>
