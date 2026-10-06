@@ -68,13 +68,16 @@ Legend: `[ ]` todo, `[x]` done.
   *Done when:* `ENDOOM` and unknown lumps have a preview in the viewer.
 - [ ] **T1.6d Viewer sometimes hangs on quit with a window.** Found in T1.6a: `godot -- -iwad wads/doom2.wad --viewer-screenshots=DIR` (windowed, Wayland) prints "WAD viewer check: OK" and calls `Quit`, but the process often doesn't exit; it happens before T1.6a too (reproduced on the T1.5a commit), not with DOOM1 and not headless. Find the cause (pending frame-post-draw awaits, `SavePng`, display server shutdown) and make check/screenshot runs always exit, or add a watchdog that force-quits after the summary.
   *Done when:* ten windowed Doom II screenshot runs in a row all exit with the right code.
+  *Note (from T1.6b):* CI now runs `--viewer-check` windowed (exported build, Xvfb + lavapipe, synthetic IWAD) under a 600 s `timeout`, so a hang on quit there would fail the job; it didn't happen in local runs of the same command.
 - [ ] **T1.6b Viewer check in CI.** `--viewer-check` needs a WAD, so CI can't run it against DOOM1. Run it headlessly in CI against a small synthetic IWAD (built by a test helper or a script; PLAYPAL, COLORMAP, PNAMES/TEXTURE1, a few patches, flats and sprites), or against Freedoom if its BSD licence and download size are acceptable.
   *Done when:* CI runs the viewer check and fails on a broken upload.
+  *Status:* synthetic IWAD generator `tools/SyntheticIwad` (generated content only, no download; tested by `SyntheticIwadTests`) and two CI steps in `export-linux` added (branch `t1.6b-viewer-check-ci`): the editor runs `--viewer-check` headlessly (uploads), then the exported build runs it under Xvfb with Mesa's software Vulkan driver (uploads and drawn pixels). Every workflow command passes locally, a deliberately broken RG8 upload makes both checks fail (exit 1), a broken palette shader makes the windowed one fail, and `actionlint` (with shellcheck) is clean. Not ticked: the repo has no remote yet, so CI has not run. Tick after the first push shows a green run. See SPEC §12.
 
 ## M2 — Static level render
 
 - [ ] **T2.1 Map lump parsing.** Parse `THINGS`, `LINEDEFS`, `SIDEDEFS`, `VERTEXES`, `SEGS`, `SSECTORS`, `NODES`, `SECTORS`, `BLOCKMAP` and `REJECT` into fixed-point structures in `Map/`.
   *Done when:* tests assert the E1M1 element counts and the player 1 start position.
+  *Note (from T1.6b):* the synthetic CI IWAD (`tools/SyntheticIwad`) has a structurally valid one-room `E1M1` (4 lines, 1 sector, 1 subsector, no nodes, player 1 start and a barrel). Extend it as needed (a map with real BSP nodes) so map parsing and the level renderer can be checked in CI too, as the viewer is.
 - [ ] **T2.2 Subsector polygons.** Build convex subsector polygons by clipping against the BSP partition lines, then group them per sector. SPEC §7.2.
   *Done when:* for every map in E1, the polygon area per sector matches the sector area within tolerance, and there are no gaps in a debug 2D render.
 - **T2.3 onward:** break these down when M1 is nearly done (wall mesh, floor mesh, per-sector height data, palette lighting, free-fly camera).

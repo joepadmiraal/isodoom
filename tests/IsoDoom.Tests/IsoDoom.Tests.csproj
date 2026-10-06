@@ -23,5 +23,6 @@
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
     <ProjectReference Include="../../src/Map/IsoDoom.Map.csproj" />
     <ProjectReference Include="../../src/Sim/IsoDoom.Sim.csproj" />
+    <ProjectReference Include="../../tools/SyntheticIwad/IsoDoom.SyntheticIwad.csproj" />
   </ItemGroup>
 </Project>

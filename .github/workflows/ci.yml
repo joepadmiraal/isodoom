@@ -1,5 +1,8 @@
 # CI: build + test the .NET solution, then export the Godot project for
-# Linux x86_64 headlessly and upload the build. Toolchain versions are pinned
+# Linux x86_64 headlessly, run the WAD viewer check (T1.6b) against a
+# generated synthetic IWAD (tools/SyntheticIwad: no id data, no download) in
+# the editor and in the exported build, and upload the build. Toolchain
+# versions are pinned
 # in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
 # IsoDoom.csproj; the .NET SDK comes from global.json).
 name: CI
@@ -114,7 +117,7 @@ jobs:
       - name: Put godot on PATH
         run: |
           mkdir -p ~/.local/bin
-          ln -sf ~/godot/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_mono_linux.x86_64 ~/.local/bin/godot
+          ln -sf ~/godot/"Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_mono_linux.x86_64" ~/.local/bin/godot
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Godot version
@@ -124,6 +127,21 @@ jobs:
       # every resource, then export (Godot runs `dotnet publish` itself).
       - name: Import
         run: godot --headless --import
+
+      # The viewer check needs an IWAD; DOOM1.WAD can't be in the repo, so
+      # generate one (outside the checkout, never uploaded).
+      - name: Generate the synthetic IWAD
+        run: |
+          iwad="$RUNNER_TEMP/isodoom-synthetic.wad"
+          dotnet run --project tools/SyntheticIwad --configuration Debug -- "$iwad"
+          echo "ISODOOM_CI_IWAD=$iwad" >> "$GITHUB_ENV"
+
+      # Editor run, headless (dummy renderer): every graphic view and every
+      # lump-list row, checking the RG8 uploads. Exits 1 on a failure.
+      - name: Viewer check (editor, headless)
+        run: |
+          timeout 300 godot --headless -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check-editor.log
+          grep -q "WAD viewer check: OK" viewer-check-editor.log
 
       - name: Export
         run: |
@@ -136,6 +154,23 @@ jobs:
         run: |
           timeout 120 export/linux/IsoDoom.x86_64 --headless --quit-after 60 2>&1 | tee smoke.log
           grep -q "IsoDoom started" smoke.log
+
+      # The exported build with a real renderer: Xvfb plus Mesa's software
+      # Vulkan driver (lavapipe), so the check also reads every drawn pixel
+      # back and compares it with the CPU palette conversion.
+      - name: Install Xvfb and lavapipe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb xauth mesa-vulkan-drivers libvulkan1
+
+      - name: Viewer check (exported build, software Vulkan)
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          timeout 600 xvfb-run -a -s "-screen 0 1280x720x24" \
+            export/linux/IsoDoom.x86_64 --audio-driver Dummy -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check-export.log
+          grep -q "drawn pixels compared" viewer-check-export.log
+          grep -q "WAD viewer check: OK" viewer-check-export.log
 
       - uses: actions/upload-artifact@v5
         with:

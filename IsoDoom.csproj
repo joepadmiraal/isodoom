@@ -11,9 +11,9 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- The SDK globs every .cs file below the project root; the plain
-         libraries and tests are compiled by their own projects. -->
-    <Compile Remove="src/Wad/**;src/Map/**;src/Sim/**;tests/**" />
-    <None Remove="src/Wad/**;src/Map/**;src/Sim/**;tests/**" />
+         libraries, tests and tools are compiled by their own projects. -->
+    <Compile Remove="src/Wad/**;src/Map/**;src/Sim/**;tests/**;tools/**" />
+    <None Remove="src/Wad/**;src/Map/**;src/Sim/**;tests/**;tools/**" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="src/Wad/IsoDoom.Wad.csproj" />
