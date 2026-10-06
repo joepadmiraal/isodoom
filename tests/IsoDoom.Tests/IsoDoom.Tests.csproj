@@ -19,6 +19,11 @@
     <PackageReference Include="xunit.v3" Version="4.0.1" />
     <PackageReference Include="Mono.Cecil" Version="0.11.6" />
   </ItemGroup>
+  <!-- T4.6: the ticcmd builder is plain C# in the Godot project's src/Game;
+       compiled in here too so it is tested without the engine. -->
+  <ItemGroup>
+    <Compile Include="../../src/Game/TiccmdBuilder.cs" Link="Game/TiccmdBuilder.cs" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
     <ProjectReference Include="../../src/Map/IsoDoom.Map.csproj" />

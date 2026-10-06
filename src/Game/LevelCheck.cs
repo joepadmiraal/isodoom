@@ -151,6 +151,8 @@ public partial class LevelCheck : Godot.Node
     {
         if (_scene.MapNames.Count == 0)
             Fail("the WAD has no maps");
+        foreach (string action in GameInput.MissingActions())
+            Fail($"input action {action} is not defined in project.godot (T4.6)");
         int sections = 0, sectors = 0, slots = 0, vertices = 0;
         double slowest = 0;
         string slowestMap = "";

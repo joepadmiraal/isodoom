@@ -165,6 +165,12 @@ public partial class LevelScene : Node3D
 
     private MeshInstance3D? _cursorMarker;
 
+    /// <summary>The game's input actions (T4.6): the placeholder walks by them; <see cref="BuildTiccmd"/> turns them into a <c>ticcmd</c>.</summary>
+    public GameInput GameInput { get; } = new();
+
+    /// <summary>The <c>ticcmd</c> builder (T4.6); T4.7 runs it once per tic for the sim.</summary>
+    public TiccmdBuilder TiccmdBuilder { get; } = new();
+
     /// <summary>p_local.h <c>VIEWHEIGHT</c>: eye height above the floor, map units (where Home puts the free-fly camera).</summary>
     public const int VIEWHEIGHT = 41;
 
@@ -603,12 +609,13 @@ public partial class LevelScene : Node3D
         if (Iso.Current)
         {
             Cursor = CursorGround.Pick(Mesh, Iso, Iso.CursorOrCentre, Placeholder.FloorHeight);
-            var move = new Vector2(Axis(Key.D, Key.A), Axis(Key.W, Key.S));
+            GameInput.Poll();
+            Vector2 move = GameInput.Move().LimitLength(1f); // the move actions: keys and left stick (T4.6)
             if (move != Vector2.Zero)
             {
-                float speed = Input.IsPhysicalKeyPressed(Key.Shift) ? PlayerPlaceholder.RunSpeed : PlayerPlaceholder.WalkSpeed;
+                float speed = GameInput.RunHeld() != TiccmdBuilder.RunToggled ? PlayerPlaceholder.RunSpeed : PlayerPlaceholder.WalkSpeed;
                 Vector3 dir = Iso.GroundRight * move.X + Iso.GroundUp * move.Y; // Godot XZ: map x = X, map y = −Z
-                var step = new Vector2(dir.X, -dir.Z).Normalized() * speed * (float)delta;
+                var step = new Vector2(dir.X, -dir.Z) * speed * (float)delta;
                 Placeholder.Move(step.X, step.Y);
             }
             if (Cursor is { } hit)
@@ -652,8 +659,26 @@ public partial class LevelScene : Node3D
             Mesh.SetCutawayCentres(player, cursor);
     }
 
-    private static float Axis(Key positive, Key negative) =>
-        (Input.IsPhysicalKeyPressed(positive) ? 1f : 0f) - (Input.IsPhysicalKeyPressed(negative) ? 1f : 0f);
+    public override void _Input(InputEvent e)
+    {
+        if (e is InputEventMouseMotion && !IsCheckRun)
+            GameInput.CursorMoved();
+    }
+
+    /// <summary>
+    /// T4.6: the <c>ticcmd</c> <see cref="TiccmdBuilder"/> makes from the input
+    /// since the last call for the placeholder under the game camera, with
+    /// <paramref name="tweaks"/> (the level script's <c>ticcmd</c>; T4.7 calls
+    /// it once per tic for the player mobj instead).
+    /// </summary>
+    public ticcmd_t BuildTiccmd(Tweaks tweaks)
+    {
+        TiccmdInput input = GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null);
+        if (Placeholder is null || Iso is null)
+            return TiccmdBuilder.G_BuildTiccmd(input, tweaks, Tables.ANG90, 0, 0, Tables.ANG90);
+        return TiccmdBuilder.G_BuildTiccmd(input, tweaks, GameInput.ScreenUp(Iso.GroundUp),
+            ToFixed(Placeholder.MapPosition.X), ToFixed(Placeholder.MapPosition.Y), ThingSprites.BamOfDegrees(Placeholder.Angle));
+    }
 
     /// <summary>A small cross at the screen centre (the free-fly camera's view direction; straight down it marks the floor the overlay names).</summary>
     private static Control Crosshair()
@@ -842,6 +867,7 @@ public partial class LevelScene : Node3D
         Things?.QueueFree();
         Things = null;
         SpawnedThings = Array.Empty<SpawnedThing>();
+        TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)
 
         var clock = Stopwatch.StartNew();
         Level level = Level.Load(wad, map);

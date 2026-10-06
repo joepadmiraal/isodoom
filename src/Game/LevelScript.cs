@@ -45,7 +45,9 @@ namespace IsoDoom.Game;
 /// time of the next FRAMES frames, default 300, and print the mean, median, 95th
 /// percentile and worst in ms; run with <c>--disable-vsync</c> before <c>--</c>);
 /// <c>things on|off</c> (T3.8: show or hide the thing billboards, e.g. to
-/// measure what they cost);
+/// measure what they cost); <c>ticcmd [vanilla]</c> (T4.6: print the
+/// <c>ticcmd</c> the builder makes from the input since the last
+/// <c>ticcmd</c> for the placeholder, with the twin-stick tweaks or vanilla's);
 /// <c>quit</c> (also implied at the end).
 /// </para>
 /// </summary>
@@ -116,6 +118,12 @@ public partial class LevelScript : Node
                         if (_scene.Things is { } things)
                             things.Visible = things.Shadows.Visible = w[1] == "on";
                         break;
+                    case "ticcmd":
+                        {
+                            var cmd = _scene.BuildTiccmd(w.Length > 1 && w[1] == "vanilla" ? IsoDoom.Sim.Tweaks.Vanilla : IsoDoom.Sim.Tweaks.TopDown);
+                            GD.Print($"Level script: ticcmd forwardmove {cmd.forwardmove} sidemove {cmd.sidemove} angleturn {cmd.angleturn} ({(ushort)cmd.angleturn * 360.0 / 65536:0.##} deg) buttons {cmd.buttons}");
+                            break;
+                        }
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }

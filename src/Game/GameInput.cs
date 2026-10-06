@@ -1,0 +1,100 @@
+using System;
+using Godot;
+
+namespace IsoDoom.Game;
+
+/// <summary>
+/// The game's input actions (T4.6, SPEC §6.2), defined in <c>project.godot</c>'s
+/// <c>[input]</c> section so M7's rebinding can change them, and their reading
+/// into a <see cref="TiccmdInput"/> for <see cref="TiccmdBuilder"/>.
+/// <see cref="Poll"/> runs every frame and latches presses (fire, use, a weapon
+/// key, the run toggle, mouse motion) so a tap between two tics is not lost;
+/// <see cref="Take"/> hands one tic's input over and clears the latches.
+/// </summary>
+public sealed class GameInput
+{
+    public const string MoveLeft = "move_left", MoveRight = "move_right", MoveUp = "move_up", MoveDown = "move_down";
+    public const string AimLeft = "aim_left", AimRight = "aim_right", AimUp = "aim_up", AimDown = "aim_down";
+    public const string Run = "run", RunToggle = "run_toggle";
+    public const string TurnLeft = "turn_left", TurnRight = "turn_right";
+    public const string Attack = "attack", Use = "use";
+
+    /// <summary>The weapon slot actions <c>weapon_1</c>–<c>weapon_8</c>.</summary>
+    public static string Weapon(int slot) => "weapon_" + slot;
+
+    /// <summary>Every action the game reads (the level check fails when one is missing).</summary>
+    public static string[] Actions()
+    {
+        var actions = new System.Collections.Generic.List<string>
+        {
+            MoveLeft, MoveRight, MoveUp, MoveDown, AimLeft, AimRight, AimUp, AimDown,
+            Run, RunToggle, TurnLeft, TurnRight, Attack, Use,
+        };
+        for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
+            actions.Add(Weapon(i));
+        return actions.ToArray();
+    }
+
+    /// <summary>The actions missing from the <see cref="InputMap"/>.</summary>
+    public static string[] MissingActions() => Array.FindAll(Actions(), a => !InputMap.HasAction(a));
+
+    private bool _attack, _use, _runToggle, _cursorMoved;
+    private int _weapon;
+
+    /// <summary>The move axes, screen-relative (X right, Y up), each in [−1, 1]; keys give whole steps (W+D = (1, 1)).</summary>
+    public static Vector2 Move() => new(Input.GetAxis(MoveLeft, MoveRight), Input.GetAxis(MoveDown, MoveUp));
+
+    /// <summary>The run key is held.</summary>
+    public static bool RunHeld() => Input.IsActionPressed(Run);
+
+    /// <summary>Records mouse motion (call from <c>_Input</c>): the cursor takes over the aim.</summary>
+    public void CursorMoved() => _cursorMoved = true;
+
+    /// <summary>Latches this frame's presses (call every frame while the game reads input).</summary>
+    public void Poll()
+    {
+        _attack |= Input.IsActionPressed(Attack);
+        _use |= Input.IsActionPressed(Use);
+        _runToggle |= Input.IsActionJustPressed(RunToggle);
+        for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
+        {
+            if (Input.IsActionJustPressed(Weapon(i)))
+            {
+                _weapon = i;
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// One tic's input: the held actions now, the presses latched since the
+    /// last call, and <paramref name="cursor"/> (the cursor ground point, map units, or null).
+    /// </summary>
+    public TiccmdInput Take((float X, float Y)? cursor)
+    {
+        Poll();
+        Vector2 move = Move();
+        var input = new TiccmdInput
+        {
+            MoveX = move.X,
+            MoveY = move.Y,
+            AimX = Input.GetAxis(AimLeft, AimRight),
+            AimY = Input.GetAxis(AimDown, AimUp),
+            Run = RunHeld(),
+            RunToggle = _runToggle,
+            TurnLeft = Input.IsActionPressed(TurnLeft),
+            TurnRight = Input.IsActionPressed(TurnRight),
+            CursorMoved = _cursorMoved,
+            Cursor = cursor,
+            Attack = _attack,
+            Use = _use,
+            Weapon = _weapon,
+        };
+        _attack = _use = _runToggle = _cursorMoved = false;
+        _weapon = 0;
+        return input;
+    }
+
+    /// <summary>The world direction (BAM) of screen up for a camera whose ground-up vector is <paramref name="groundUp"/> (Godot space; map x = X, map y = −Z).</summary>
+    public static uint ScreenUp(Vector3 groundUp) => TiccmdBuilder.BamOf(groundUp.X, -groundUp.Z);
+}
