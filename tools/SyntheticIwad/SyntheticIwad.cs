@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
+using IsoDoom.Map;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
@@ -23,7 +24,7 @@ namespace IsoDoom.Tools.SyntheticIwad;
 /// sprites in <c>S_START</c> with a fully rotated frame (mirrored pairs) and
 /// two rotation-0 frames, plus a sprite lump no sprite uses; global graphics
 /// (title, status bar, menu, font glyphs, with offsets and transparency); a
-/// one-room map; ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
+/// two-room map with a real BSP tree (see <c>BuildMap</c>); ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
 /// speaker sounds, a demo and a plain text lump.
 /// </para>
 /// </summary>
@@ -122,6 +123,16 @@ public static class SyntheticIwad
         }
         if (!overridden)
             problems.Add("no overridden lump");
+        try
+        {
+            Level map = Level.Load(wad, "E1M1");
+            if (map.Nodes.Length < 2 || map.Sectors.Length < 2)
+                problems.Add($"E1M1 has {map.Nodes.Length} nodes and {map.Sectors.Length} sectors, expected a BSP tree over several sectors");
+        }
+        catch (WadFormatException e)
+        {
+            problems.Add($"E1M1 does not load: {e.Message}");
+        }
         return problems;
     }
 
@@ -438,48 +449,150 @@ public static class SyntheticIwad
         return lump;
     }
 
-    // ---- Map: one square room, a single subsector (no nodes), the player 1 start and a barrel ----
+    // ---- Map: two rooms, three subsectors under two BSP nodes ----
+    //
+    //  (-128,128) v0 ---L0--- v1 (128,128) ---L4--- v4 (384,128)
+    //       |                  |                       |
+    //       L3   west room     L1   east room, north   L5      y = 0: partition of
+    //       |    sector 0      |    subsector 2        |       node 0 (no linedef),
+    //       |    subsector 0   v7 - - - - - - - - - -  v6      split vertices v6, v7
+    //       |                  |    east room, south   |
+    //       |                  |    subsector 1        |
+    // (-128,-128) v3 ---L2--- v2 (128,-128) ---L6--- v5 (384,-128)
+    //
+    // L1 is two-sided (the east room is raised 16 and its ceiling 16 lower, so
+    // the west side has upper and lower textures). Node 1 (the root) splits
+    // along L1, node 0 splits the east room at y = 0, so the east subsectors
+    // each have an edge with no seg on it, as real node builders make them.
+    // Linedefs run clockwise around each room, so their right (front) sides face in.
+
+    private static readonly short[] MapVertexes =
+    {
+        -128, 128, 128, 128, 128, -128, -128, -128, // v0-v3: west room
+        384, 128, 384, -128,                        // v4, v5: east room
+        384, 0, 128, 0,                             // v6, v7: where node 0's partition splits L5 and L1
+    };
+
+    // v1, v2, flags, special, tag, right side, left side (-1: none)
+    private static readonly short[,] MapLinedefs =
+    {
+        { 0, 1, 1, 0, 0, 0, -1 }, // L0: west room north
+        { 1, 2, 4, 0, 0, 1, 2 },  // L1: two-sided, west room in front, east room behind
+        { 2, 3, 1, 0, 0, 3, -1 }, // L2: west room south
+        { 3, 0, 1, 0, 0, 4, -1 }, // L3: west room west
+        { 1, 4, 1, 0, 0, 5, -1 }, // L4: east room north
+        { 4, 5, 1, 0, 0, 6, -1 }, // L5: east room east
+        { 5, 2, 1, 0, 0, 7, -1 }, // L6: east room south
+    };
 
     private static void BuildMap(Writer w)
     {
         w.Markers("E1M1");
-        w.Lump("THINGS", Shorts(0, 0, 90, 1, 7, 64, 64, 0, 2035, 7)); // x, y, angle, type, flags
-        w.Lump("LINEDEFS", Shorts( // v1, v2, flags (impassable), special, tag, right side, left side (none)
-            0, 1, 1, 0, 0, 0, -1,
-            1, 2, 1, 0, 0, 1, -1,
-            2, 3, 1, 0, 0, 2, -1,
-            3, 0, 1, 0, 0, 3, -1));
-        var sides = new List<byte>();
-        for (int i = 0; i < 4; i++)
+        w.Lump("THINGS", Shorts( // x, y, angle, type, flags (all skills)
+            0, 0, 90, 1, 7,           // player 1 start
+            64, 64, 0, 2035, 7,       // barrel (BAR1)
+            320, 64, 180, 3001, 7));  // imp (TROO), in the east room's north subsector
+        var linedefs = new List<short>();
+        for (int i = 0; i < MapLinedefs.GetLength(0); i++)
         {
-            byte[] side = new byte[30]; // x/y offset, upper, lower, middle, sector
-            Encoding.ASCII.GetBytes("-", side.AsSpan(4));
-            Encoding.ASCII.GetBytes("-", side.AsSpan(12));
-            Encoding.ASCII.GetBytes(i % 2 == 0 ? "BRICK1" : "BRKPNL", side.AsSpan(20));
-            sides.AddRange(side);
+            for (int j = 0; j < MapLinedefs.GetLength(1); j++)
+                linedefs.Add(MapLinedefs[i, j]);
         }
-        w.Lump("SIDEDEFS", sides.ToArray());
-        w.Lump("VERTEXES", Shorts(-128, 128, 128, 128, 128, -128, -128, -128)); // clockwise: the right sides face in
-        w.Lump("SEGS", Shorts( // v1, v2, angle (BAM >> 16), linedef, direction, offset
-            0, 1, 0, 0, 0, 0,
-            1, 2, unchecked((short)0xC000), 1, 0, 0,
-            2, 3, unchecked((short)0x8000), 2, 0, 0,
-            3, 0, 0x4000, 3, 0, 0));
-        w.Lump("SSECTORS", Shorts(4, 0));
-        w.Lump("NODES");
+        w.Lump("LINEDEFS", Shorts(linedefs.ToArray()));
+        w.Lump("SIDEDEFS", Concat(
+            Sidedef("-", "-", "BRICK1", 0),         // 0: L0
+            Sidedef("PANEL", "PANEL", "-", 0),      // 1: L1 front (west room): upper and lower
+            Sidedef("-", "-", "-", 1),              // 2: L1 back (east room)
+            Sidedef("-", "-", "BRKPNL", 0, 32),     // 3: L2, with an x offset
+            Sidedef("-", "-", "BRICK1", 0),         // 4: L3
+            Sidedef("-", "-", "BRKPNL", 1),         // 5: L4
+            Sidedef("-", "-", "BRICK1", 1, 0, 8),   // 6: L5, with a y offset
+            Sidedef("-", "-", "BRKPNL", 1)));       // 7: L6
+        w.Lump("VERTEXES", Shorts(MapVertexes));
+        const short East = 0, North = 0x4000, West = unchecked((short)0x8000), South = unchecked((short)0xC000);
+        w.Lump("SEGS", Shorts( // v1, v2, angle (BAM >> 16), linedef, side (0 front, 1 back), offset along the linedef side
+            0, 1, East, 0, 0, 0,     // seg 0-3: subsector 0, the west room
+            1, 2, South, 1, 0, 0,
+            2, 3, West, 2, 0, 0,
+            3, 0, North, 3, 0, 0,
+            6, 5, South, 5, 0, 128,  // seg 4-6: subsector 1, the east room's south half
+            5, 2, West, 6, 0, 0,
+            2, 7, North, 1, 1, 0,
+            7, 1, North, 1, 1, 128,  // seg 7-9: subsector 2, the east room's north half
+            1, 4, East, 4, 0, 0,
+            4, 6, South, 5, 0, 0));
+        w.Lump("SSECTORS", Shorts(4, 0, 3, 4, 3, 7)); // seg count, first seg
+        w.Lump("NODES", Shorts( // x, y, dx, dy, right bbox (top, bottom, left, right), left bbox, right child, left child
+            128, 0, 256, 0, 0, -128, 128, 384, 128, 0, 128, 384, unchecked((short)0x8001), unchecked((short)0x8002),
+            128, -128, 0, 256, 128, -128, 128, 384, 128, -128, -128, 128, 0, unchecked((short)0x8000)));
+        w.Lump("SECTORS", Concat(
+            Sector(0, 128, "FLOOR1", "FLOOR2", 160),
+            Sector(16, 112, "LAVA1", "FLOOR1", 208)));
+        w.Lump("REJECT", new byte[1]); // 2 × 2 bits, all clear: every sector sees every other
+        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 5, 3));
+    }
+
+    private static byte[] Sidedef(string upper, string lower, string middle, short sector, short xOffset = 0, short yOffset = 0)
+    {
+        byte[] side = new byte[30];
+        BinaryPrimitives.WriteInt16LittleEndian(side, xOffset);
+        BinaryPrimitives.WriteInt16LittleEndian(side.AsSpan(2), yOffset);
+        Encoding.ASCII.GetBytes(upper, side.AsSpan(4));
+        Encoding.ASCII.GetBytes(lower, side.AsSpan(12));
+        Encoding.ASCII.GetBytes(middle, side.AsSpan(20));
+        BinaryPrimitives.WriteInt16LittleEndian(side.AsSpan(28), sector);
+        return side;
+    }
+
+    private static byte[] Sector(short floor, short ceiling, string floorFlat, string ceilingFlat, short light)
+    {
         byte[] sector = new byte[26]; // floor, ceiling, floor flat, ceiling flat, light, special, tag
-        BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(2), 128);
-        Encoding.ASCII.GetBytes("FLOOR1", sector.AsSpan(4));
-        Encoding.ASCII.GetBytes("FLOOR2", sector.AsSpan(12));
-        BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(20), 160);
-        w.Lump("SECTORS", sector);
-        w.Lump("REJECT", new byte[1]);
-        // 3x3 blocks of 128 from (-136, -136); every block shares one list holding all four lines.
-        var blockmap = new List<short> { -136, -136, 3, 3 };
-        for (int i = 0; i < 9; i++)
-            blockmap.Add(13);
-        blockmap.AddRange(new short[] { 0, 0, 1, 2, 3, -1 });
-        w.Lump("BLOCKMAP", Shorts(blockmap.ToArray()));
+        BinaryPrimitives.WriteInt16LittleEndian(sector, floor);
+        BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(2), ceiling);
+        Encoding.ASCII.GetBytes(floorFlat, sector.AsSpan(4));
+        Encoding.ASCII.GetBytes(ceilingFlat, sector.AsSpan(12));
+        BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(20), light);
+        return sector;
+    }
+
+    /// <summary>
+    /// A blockmap of <paramref name="width"/> × <paramref name="height"/> blocks
+    /// of 128 from the origin: each block lists (after the customary 0) the
+    /// linedefs whose bounding box touches it, which is exact for these
+    /// axis-aligned lines.
+    /// </summary>
+    private static byte[] BuildBlockmap(short originX, short originY, short width, short height)
+    {
+        var offsets = new List<short> { originX, originY, width, height };
+        var lists = new List<short>();
+        int listStart = 4 + width * height;
+        for (int by = 0; by < height; by++)
+        {
+            for (int bx = 0; bx < width; bx++)
+            {
+                offsets.Add((short)(listStart + lists.Count));
+                int left = originX + bx * 128, bottom = originY + by * 128;
+                lists.Add(0);
+                for (int i = 0; i < MapLinedefs.GetLength(0); i++)
+                {
+                    short v1 = MapLinedefs[i, 0], v2 = MapLinedefs[i, 1];
+                    int x1 = MapVertexes[2 * v1], y1 = MapVertexes[2 * v1 + 1], x2 = MapVertexes[2 * v2], y2 = MapVertexes[2 * v2 + 1];
+                    if (Math.Max(x1, x2) >= left && Math.Min(x1, x2) <= left + 128 && Math.Max(y1, y2) >= bottom && Math.Min(y1, y2) <= bottom + 128)
+                        lists.Add((short)i);
+                }
+                lists.Add(-1);
+            }
+        }
+        offsets.AddRange(lists);
+        return Shorts(offsets.ToArray());
+    }
+
+    private static byte[] Concat(params byte[][] parts)
+    {
+        var all = new List<byte>();
+        foreach (byte[] part in parts)
+            all.AddRange(part);
+        return all.ToArray();
     }
 
     private static byte[] Shorts(params short[] values)
