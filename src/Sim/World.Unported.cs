@@ -3,29 +3,21 @@ using System.Collections.Generic;
 namespace IsoDoom.Sim;
 
 // Stubs for the specials the line triggers and P_SpawnSpecials call that M5's
-// later tasks port (T5.2): teleports (p_telept.c, T5.6), lights (p_lights.c,
-// T5.7) and exits (g_game.c, T5.8). Each records its call in unported and does
+// later tasks port (T5.2): lights (p_lights.c, T5.7) and exits (g_game.c,
+// T5.8). Each records its call in unported and does
 // nothing else; each task moves its functions to their own file and deletes
 // their stubs here (doors: World.Doors.cs, T5.3; floors, lifts, ceilings and
-// stairs: World.Floor.cs, World.Plats.cs, World.Ceiling.cs, T5.5).
+// stairs: World.Floor.cs, World.Plats.cs, World.Ceiling.cs, T5.5;
+// teleports: World.Telept.cs, T5.6).
 public sealed partial class World
 {
     /// <summary>
     /// Not vanilla: the calls to specials not ported yet, in order, as
-    /// <c>EV_Teleport(line 5, side 0, MT_PLAYER)</c> (T5.2), so tests can see which
+    /// <c>EV_LightTurnOn(line 5, 0)</c> (T5.2), so tests can see which
     /// special a trigger ran. Cleared by <see cref="P_SetupLevel"/>; not sim
     /// state (outside the checksum).
     /// </summary>
     public readonly List<string> unported = new();
-
-    // ---- p_telept.c (T5.6) ----
-
-    /// <summary>p_telept.c <c>EV_Teleport</c>: a stub until T5.6 (returns 0: not teleported).</summary>
-    public int EV_Teleport(line_t line, int side, mobj_t thing)
-    {
-        unported.Add($"EV_Teleport(line {line.Index}, side {side}, {thing.type})");
-        return 0;
-    }
 
     // ---- p_lights.c (T5.7) ----
 

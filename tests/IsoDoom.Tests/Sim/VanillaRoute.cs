@@ -21,7 +21,9 @@ namespace IsoDoom.Tests.Sim;
 /// A <c>.route</c> file (in <c>Routes/</c>) is text: <c>#</c> starts a
 /// comment; header lines <c>iwad synthetic|doom1|testmap</c> (required),
 /// <c>map ExMy</c> (default <c>E1M1</c>; for <c>testmap</c> the name of a
-/// <see cref="RouteTestMaps"/> map, required, T4.8a) and <c>skill 1-5</c> (default 3);
+/// <see cref="RouteTestMaps"/> map, required, T4.8a), <c>skill 1-5</c> (default 3) and
+/// <c>start X Y ANGLE</c> (T5.6: player 1 starts at map point X, Y facing ANGLE
+/// degrees instead of at its map start: <see cref="RouteStart.Place"/>);
 /// then one line per <c>ticcmd</c>: <c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>,
 /// <c>forwardmove</c> and <c>sidemove</c> as signed bytes, <c>TURN</c> the
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
@@ -39,7 +41,9 @@ namespace IsoDoom.Tests.Sim;
 /// commas, or <c>-</c> for none (doors, lifts), then (T5.4) the
 /// <c>textures</c> of sidedefs that differ from the map's <c>SIDEDEFS</c>
 /// lump, as <c>SIDE:PART:NAME</c> (<c>PART</c> <c>t</c>, <c>m</c> or
-/// <c>b</c>) joined by commas, or <c>-</c> for none (switches). For the synthetic
+/// <c>b</c>) joined by commas, or <c>-</c> for none (switches), then (T5.6) the
+/// teleport <c>fogs</c> (<c>MT_TFOG</c> mobjs) in thinker order as
+/// <c>X:Y:Z:STATE</c> joined by commas, or <c>-</c> for none. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -52,7 +56,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs" };
 
     public string Name { get; }
     public string Path { get; }
@@ -60,10 +64,13 @@ public sealed class VanillaRoute
     public string Iwad { get; }
     public string Map { get; }
     public skill_t Skill { get; }
+    /// <summary>The <c>start</c> header (map units, degrees), or null for the map's player 1 start (T5.6).</summary>
+    public (int X, int Y, int Angle)? Start { get; }
     public IReadOnlyList<ticcmd_t> Cmds { get; }
 
-    private VanillaRoute(string path, string iwad, string map, skill_t skill, List<ticcmd_t> cmds)
+    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, List<ticcmd_t> cmds)
     {
+        Start = start;
         Name = System.IO.Path.GetFileNameWithoutExtension(path);
         Path = path;
         Iwad = iwad;
@@ -88,6 +95,7 @@ public sealed class VanillaRoute
         string? iwad = null;
         string? map = null;
         int skill = 3;
+        (int, int, int)? start = null;
         var cmds = new List<ticcmd_t>();
         int n = 0;
         foreach (string raw in File.ReadLines(path))
@@ -108,6 +116,11 @@ public sealed class VanillaRoute
                     continue;
                 case "skill":
                     skill = int.Parse(f[1], CultureInfo.InvariantCulture);
+                    continue;
+                case "start":
+                    if (f.Length != 4)
+                        throw new FormatException($"{where}: expected start X Y ANGLE");
+                    start = (int.Parse(f[1], CultureInfo.InvariantCulture), int.Parse(f[2], CultureInfo.InvariantCulture), int.Parse(f[3], CultureInfo.InvariantCulture));
                     continue;
             }
             int count = 1;
@@ -142,7 +155,7 @@ public sealed class VanillaRoute
         {
             map = (map ?? "E1M1").ToUpperInvariant();
         }
-        return new VanillaRoute(path, iwad, map, (skill_t)(skill - 1), cmds);
+        return new VanillaRoute(path, iwad, map, (skill_t)(skill - 1), start, cmds);
     }
 
     /// <summary>
@@ -183,6 +196,8 @@ public sealed class VanillaRoute
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
         world.G_DoLoadLevel(Level.Load(wad, Iwad == "testmap" ? "E1M1" : Map));
+        if (Start is { } s)
+            RouteStart.Place(world, s.X, s.Y, s.Angle);
         return world;
     }
 
@@ -216,7 +231,14 @@ public sealed class VanillaRoute
             if (!string.Equals(textures[i], mapTextures[i], StringComparison.OrdinalIgnoreCase))
                 changed.Add(string.Create(CultureInfo.InvariantCulture, $"{i / 3}:{"tmb"[i % 3]}:{textures[i].ToUpperInvariant()}"));
         }
-        return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed));
+        var fogs = new List<string>();
+        foreach (mobj_t m in world.Mobjs())
+        {
+            if (m.type == mobjtype_t.MT_TFOG)
+                fogs.Add(string.Create(CultureInfo.InvariantCulture, $"{m.x}:{m.y}:{m.z}:{(int)m.state}"));
+        }
+        return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
+            + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs));
     }
 
     /// <summary>The sidedefs' textures, top, middle and bottom of each in sidedef order (before the first tic: the map's).</summary>

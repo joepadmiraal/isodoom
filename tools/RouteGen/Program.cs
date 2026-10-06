@@ -39,7 +39,7 @@ public static class Program
     private static WadArchive TestMapWad(string name) =>
         new(new[] { WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad") });
 
-    private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run);
+    private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null);
 
     /// <summary>The steering scripts by route name.</summary>
     private static readonly SortedDictionary<string, Script> Scripts = new(StringComparer.Ordinal)
@@ -225,6 +225,40 @@ map E1M3
             g.Wait(20);
             Log("lift 4 lowering " + g.Heights(168));
         }),
+        ["e1m5-teleport"] = new(Doom1, "E1M5", """
+# DOOM1.WAD E1M5 (T5.6): its teleporter (sector 56, the star of WR
+# teleport lines 787-796, tag 5) lies in a closet whose door (sector 52)
+# opens from inside only (monsters teleport out), so the route starts in
+# the closet's room (sector 54): run north onto the star, crossing its
+# lines from their front: to the destination (thing 281, sector 63) facing
+# north, fog at both ends; forward held through the 18-tic freeze and 6
+# tics more, then wait for the fog to fade. Written by tools/RouteGen
+# (e1m5-teleport).
+iwad doom1
+map E1M5
+""", (g, Log) =>
+        {
+            g.Teleport(-800, 1510, 50, hold: 24);
+            Log("teleported");
+            g.Wait(80);
+            Log("fog gone: " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
+        }, (-800, 1400, 90)),
+        ["e1m8-teleport"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 (T5.6): the exit teleporter (the square of WR teleport
+# lines 299-306, tag 3) is reached once the barons die (sector 30, tag
+# 666), so the route starts south of it (sector 52): walk north across
+# line 299 from its front: to the destination (thing 105, sector 66, the
+# damage-and-exit sector of T5.8) facing north, fog at both ends; wait for
+# the fog to fade. Written by tools/RouteGen (e1m8-teleport).
+iwad doom1
+map E1M8
+""", (g, Log) =>
+        {
+            g.Teleport(448, 5120);
+            Log("teleported");
+            g.Wait(80);
+            Log("fog gone: " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
+        }, (448, 4980, 90)),
         ["testmap-lifts"] = new(() => TestMapWad("lifts"), "E1M1", """
 # The lifts test map (T5.5, RouteTestMaps): east into the perpetual lift P
 # across its W1 line (53: P_Random picks its first direction) and back;
@@ -269,6 +303,36 @@ map lifts
             Log("lift idle " + g.Heights(1, 3));
             g.Wait(50);
         }),
+        ["testmap-teleport"] = new(() => TestMapWad("teleport"), "E1M1", """
+# The teleport test map (T5.6, RouteTestMaps): run west from S across the
+# WR teleport P1 | S (boundary 2, from its front): to B, facing west, fog
+# at both ends; forward held through the 18-tic freeze. Walk west across
+# the W1 teleport P2 | B (boundary 4): to A (its first destination), 48
+# units up. East through P1, S (boundary 2 from behind: no teleport) into
+# P2 (boundary 3 from behind), then west across boundary 3 from its
+# front: to B. West again: across the spent W1 line into P2 and boundary 3:
+# to B again. Wait for the fog to fade. Written by tools/RouteGen
+# (testmap-teleport).
+iwad testmap
+map teleport
+
+""", (g, Log) =>
+        {
+            g.Teleport(250, 128, 50, hold: 20);
+            Log("in B");
+            g.Teleport(500, 128);
+            Log("in A");
+            g.GoTo(450, 128);
+            Log("in S");
+            g.GoTo(608, 128);
+            Log("in P2");
+            g.Teleport(500, 128);
+            Log("in B again");
+            g.Teleport(500, 128, 50);
+            Log("in B (3)");
+            g.Wait(80);
+            Log("fog " + string.Join(",", g.w.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG).Select(m => $"{m.x >> 16}:{m.y >> 16}")));
+        }),
         ["testmap-stairs"] = new(() => TestMapWad("stairs"), "E1M1", """
 # The stairs test map (T5.5, RouteTestMaps): west across the W1 stairs
 # line (8, boundary 7): the four steps rise by 8 a step at a quarter unit
@@ -302,13 +366,13 @@ map stairs
         }
         string name = args[0];
         string path = args.Length > 1 ? args[1] : Path.Combine(RepoRoot(), "tests", "IsoDoom.Tests", "Sim", "Routes", name + ".route");
-        var g = new Steer(script.Wad(), script.Map);
+        var g = new Steer(script.Wad(), script.Map, script.Start);
         void Log(string s) => Console.Error.WriteLine($"[{g.w.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
         script.Run(g, Log);
         Log($"done, {g.Cmds.Count} tics");
 
         // The planning must not have changed the play: replay the ticcmds in a fresh world.
-        var replay = new Steer(script.Wad(), script.Map);
+        var replay = new Steer(script.Wad(), script.Map, script.Start);
         foreach (var c in g.Cmds)
             replay.w.G_Ticker(new IsoDoom.Sim.ticcmd_t { forwardmove = (sbyte)c.Forward, sidemove = (sbyte)c.Side, angleturn = (short)(c.Turn << 8), buttons = (byte)c.Buttons });
         if (replay.w.Checksum() != g.w.Checksum())
@@ -316,7 +380,8 @@ map stairs
             Console.Error.WriteLine("The replayed ticcmds end in another state: the planning changed the play.");
             return 1;
         }
-        File.WriteAllText(path, g.Route(script.Header));
+        string header = script.Start is { } st ? script.Header.TrimEnd('\n') + $"\nstart {st.X} {st.Y} {st.Angle}\n\n" : script.Header;
+        File.WriteAllText(path, g.Route(header));
         Console.WriteLine($"Wrote {path} ({g.Cmds.Count} tics)");
         return 0;
     }

@@ -19,14 +19,19 @@ SKILLS = range(1, 6)
 
 
 def parse(path):
-    """The route's header (iwad, map, skill) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
-    head = {'iwad': None, 'map': None, 'skill': 3}
+    """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
+    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None}
     cmds = []
     for n, line in enumerate(open(path), 1):
         line = line.split('#', 1)[0].split()
         if not line:
             continue
         where = f'{path}:{n}'
+        if line[0] == 'start':  # T5.6: X Y ANGLE, player 1's start instead of the map's
+            if len(line) != 4:
+                sys.exit(f'{where}: expected start X Y ANGLE')
+            head['start'] = ' '.join(str(int(v)) for v in line[1:])
+            continue
         if line[0] in head:
             head[line[0]] = line[1] if line[0] != 'skill' else int(line[1])
             continue
@@ -78,6 +83,9 @@ def main():
                 args[3:3] = ['-file', os.path.abspath(pwad)]
             env = dict(os.environ, DUMP_TICS=out)
             env.pop('VIEWS', None)
+            env.pop('DUMP_START', None)
+            if head['start']:
+                env['DUMP_START'] = head['start']
             r = subprocess.run(args, cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         finally:  # (no shutil: the dev container's Python is minimal)
             for root, dirs, files in os.walk(tmp, topdown=False):

@@ -190,7 +190,8 @@ public partial class LevelCheck : Godot.Node
             vertices += v;
             CheckTextureChangeData(m, map);
             CheckSectorInterpolation(m, map);
-            CheckGameLoop(map); // last: it moves the player and spawns a mobj
+            CheckGameLoop(map); // it moves the player and spawns a mobj
+            CheckTeleport(map); // last: it moves the player through a teleporter
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
                 GD.PrintErr($"Level check: {map}: {_failures - failures} failure(s)");
@@ -201,6 +202,8 @@ public partial class LevelCheck : Godot.Node
             + "positions, sectors and the rotations of an orthographic and a perspective camera");
         GD.Print($"Level check: game loop: {_loopMaps} maps ran {GameLoopTics} tics each with the player walking; the billboards follow the mobjs "
             + "at tic fractions 0, ½ and 1 (interpolated between the last two tics), a mobj spawned between tics is drawn where it is, and one removed is dropped");
+        GD.Print($"Level check: teleports (T5.6): {_teleportMaps} maps teleported the player across a teleport line in a tic: drawn where it lands "
+            + "(not interpolated), the camera snap asked for, fog drawn at both ends");
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");

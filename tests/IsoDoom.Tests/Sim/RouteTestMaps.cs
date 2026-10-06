@@ -45,7 +45,24 @@ public static class RouteTestMaps
         // the steps rise to 32, 24, 16 and 8 westwards; step 1 | E (boundary 2) a W1 fast crusher
         // (6). The player in A facing west.
         ["stairs"] = Stairs,
+        // T5.6: teleporters. West to east: a room A (floor 32, tag 1; two teleport destinations,
+        // the first at (64, 64) facing east, the second at (192, 192) facing north), a room P1, the
+        // start room S, a room P2 (floors 0) and a room B (-16, tag 2; a destination at (800, 128)
+        // facing west). P1 | S (boundary 2) and S | P2 (boundary 3) are WR teleports (97, tag 2:
+        // to B) from their east sides, P2 | B (boundary 4) a W1 teleport (39, tag 1: to A) from B.
+        // The player in S facing west.
+        ["teleport"] = Teleport,
     };
+
+    private static TestMap Teleport()
+    {
+        TestMap map = TestMap.Strip(0, 0, 256,
+            new TestMap.Room(256, 32, 160), new TestMap.Room(64, 0, 160), new TestMap.Room(256, 0, 160),
+            new TestMap.Room(64, 0, 160), new TestMap.Room(256, -16, 160));
+        map.SectorTag(0, 1).SectorTag(4, 2);
+        map.Special(map.Boundaries[2], 97, 2).Special(map.Boundaries[3], 97, 2).Special(map.Boundaries[4], 39, 1);
+        return map.Thing(64, 64, 14, 0).Thing(192, 192, 14, 90).Thing(800, 128, 14, 180).Player(448, 128, 180);
+    }
 
     private static TestMap Lifts()
     {

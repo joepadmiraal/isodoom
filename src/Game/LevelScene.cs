@@ -157,7 +157,7 @@ public partial class LevelScene : Node3D
     /// <summary>Whether the billboards and the player are drawn (<c>--level-things</c>, T3.8).</summary>
     private bool _showThings = true;
 
-    /// <summary>The billboards of the loaded map's mobjs but the player (T3.5; from the world's mobjs since T4.7, in thinker order: <see cref="DrawnMobjs"/>).</summary>
+    /// <summary>The billboards of the loaded map's mobjs but the player (T3.5; from the world's mobjs since T4.7, in thinker order, without <c>MF_NOSECTOR</c> ones since T5.6: <see cref="DrawnMobjs"/>, <see cref="IsDrawn"/>).</summary>
     public ThingSprites? Things { get; private set; }
 
     /// <summary>The mobj of each entry of <see cref="Things"/>.</summary>
@@ -805,6 +805,9 @@ public partial class LevelScene : Node3D
         }
         else
             World!.G_Ticker(cmd);
+        // T5.6: a player mobj the tic did not let interpolate (a teleport) takes the camera with it.
+        if (PlayerMobj is { interp: false })
+            SnapPending = true;
         if (_planeMoves.Count > 0)
             MovePlanes();
         PrintUnported();
@@ -896,7 +899,7 @@ public partial class LevelScene : Node3D
         _scratch.Clear();
         foreach (mobj_t mo in world.Mobjs())
         {
-            if (mo != me)
+            if (mo != me && IsDrawn(mo))
                 _scratch.Add(mo);
         }
         bool same = _scratch.Count == _drawn.Count;
@@ -916,12 +919,42 @@ public partial class LevelScene : Node3D
             Things.SetEntry(i, ThingEntry(_drawn[i], Interpolated(_drawn[i])));
     }
 
+    /// <summary>
+    /// T5.6: whether a tic moved the player mobj without interpolation (a
+    /// teleport: <see cref="mobj_t.interp"/> false after the tic), so the game
+    /// camera snaps to it (<see cref="SnapCameraIfPending"/>) instead of
+    /// sliding across the map.
+    /// </summary>
+    public bool SnapPending { get; private set; }
+
+    /// <summary>How many times the game camera snapped to a teleported player (T5.6; the level script's <c>print</c>).</summary>
+    public int TeleportSnaps { get; private set; }
+
+    /// <summary>T5.6: snaps the game camera to the drawn player when a tic teleported it (<see cref="SnapPending"/>); true when it did.</summary>
+    public bool SnapCameraIfPending()
+    {
+        if (!SnapPending || Player is null || Iso is null)
+            return false;
+        SnapPending = false;
+        Iso.Snap(Player.Foot);
+        TeleportSnaps++;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a mobj is drawn (T5.6): not with <c>MF_NOSECTOR</c>, which keeps
+    /// it out of its sector's thing list, the list vanilla's renderer draws
+    /// from (r_things.c <c>R_AddSprites</c>): teleport destinations
+    /// (<c>MT_TELEPORTMAN</c>, whose state has no sprite of its own).
+    /// </summary>
+    public static bool IsDrawn(mobj_t mo) => (mo.flags & mobjflag_t.MF_NOSECTOR) == 0;
+
     /// <summary>The game camera follows the player (T3.3) with its look-ahead towards the cursor ground point; the player's billboard turns to the current camera.</summary>
     private void FollowPlayer(double delta)
     {
         if (Player is null)
             return;
-        if (Iso is { Current: true } iso && !HoldCamera)
+        if (!SnapCameraIfPending() && Iso is { Current: true } iso && !HoldCamera)
             iso.Follow(Player.Foot, Cursor?.Point, delta);
         if (GetViewport().GetCamera3D() is Camera3D current)
             Player.FaceCamera(current);
@@ -1030,7 +1063,8 @@ public partial class LevelScene : Node3D
         }
         if (World is { } world)
             text.Append($"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
-                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}\n");
+                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}"
+                + $"{(TeleportSnaps > 0 ? $"   teleports {TeleportSnaps}" : "")}\n");
         if (Cursor is { } hit)
         {
             Vector3 c = hit.MapUnits;
@@ -1165,6 +1199,8 @@ public partial class LevelScene : Node3D
         _drawn.Clear();
         World = null;
         _planeMoves.Clear();
+        SnapPending = false;
+        TeleportSnaps = 0;
         TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)
         ClearQueuedTics();
         _ticTime = 0;

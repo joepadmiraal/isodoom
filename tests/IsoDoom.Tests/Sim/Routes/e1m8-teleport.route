@@ -1,0 +1,13 @@
+# DOOM1.WAD E1M8 (T5.6): the exit teleporter (the square of WR teleport
+# lines 299-306, tag 3) is reached once the barons die (sector 30, tag
+# 666), so the route starts south of it (sector 52): walk north across
+# line 299 from its front: to the destination (thing 105, sector 66, the
+# damage-and-exit sector of T5.8) facing north, fog at both ends; wait for
+# the fog to fade. Written by tools/RouteGen (e1m8-teleport).
+iwad doom1
+map E1M8
+start 448 4980 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+25 0 0 0 x17
+0 0 0 0 x80

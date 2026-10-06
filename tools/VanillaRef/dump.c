@@ -24,7 +24,12 @@
 // SECTOR:FLOOR:CEILING (fixed_t) joined by commas in sector order, or - for
 // none; then (T5.4) the sidedef textures that differ from the map's SIDEDEFS
 // lump (switches), as SIDE:PART:NAME (PART t, m or b; NAME upper case)
-// joined by commas in sidedef and part order, or - for none.
+// joined by commas in sidedef and part order, or - for none; then (T5.6)
+// the teleport fogs (MT_TFOG mobjs) in thinker order as X:Y:Z:STATE
+// (fixed_t, statenum_t) joined by commas, or - for none. With $DUMP_START
+// ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
+// of at its map start: before the first tic it is moved with P_TeleportMove
+// onto the floor, facing ANGLE (no fog, nothing else changed).
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
@@ -75,6 +80,19 @@ static byte *map_lump(int lump);
 // r_data.c's textures: each starts with its name (char[8], not terminated when 8 long).
 extern char **textures;
 
+// Called by the patched p_tick.c before the players think in every P_Ticker (T5.6).
+void dump_pretic(void)
+{
+    char *start = getenv("DUMP_START");
+    int x, y, angle;
+    if (!ticfile || leveltime != 0 || !start || sscanf(start, "%d %d %d", &x, &y, &angle) != 3)
+        return;
+    mobj_t *mo = players[consoleplayer].mo;
+    P_TeleportMove(mo, x << FRACBITS, y << FRACBITS);
+    mo->z = mo->floorz;
+    mo->angle = (angle_t)((long long)angle * 0x100000000LL / 360);
+}
+
 // Called by the patched p_tick.c at the end of every P_Ticker.
 void dump_tic(void)
 {
@@ -115,7 +133,18 @@ void dump_tic(void)
                 fputc(toupper((unsigned char)textures[now[k]][c]), ticfile);
         }
     }
-    fprintf(ticfile, "%s\n", changed ? "" : "-");
+    fprintf(ticfile, "%s ", changed ? "" : "-");
+    // The teleport fogs (T5.6).
+    int fogs = 0;
+    for (thinker_t *th = thinkercap.next; th != &thinkercap; th = th->next)
+    {
+        if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+            continue;
+        mobj_t *m = (mobj_t *)th;
+        if (m->type == MT_TFOG)
+            fprintf(ticfile, "%s%d:%d:%d:%d", fogs++ ? "," : "", m->x, m->y, m->z, (int)(m->state - states));
+    }
+    fprintf(ticfile, "%s\n", fogs ? "" : "-");
     fflush(ticfile);
 }
 

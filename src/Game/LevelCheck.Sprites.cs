@@ -136,7 +136,9 @@ public partial class LevelCheck
             Fail($"{map}: no thing billboards");
             return;
         }
-        SpawnedThing[] expected = SpawnedThings.Build(m.Level, MapThingSpawning.SpawnList(m.Level.Things, new SpawnSettings(_scene.GameMode, _scene.Skill)));
+        // T5.6: without the MF_NOSECTOR things (teleport destinations), which vanilla never draws.
+        SpawnedThing[] expected = SpawnedThings.Build(m.Level, MapThingSpawning.SpawnList(m.Level.Things, new SpawnSettings(_scene.GameMode, _scene.Skill)))
+            .Where(t => (Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_NOSECTOR) == 0).ToArray();
         // T4.7: the billboards are the world's mobjs but the player's, in
         // thinker order: the spawn list in THINGS order, plus voodoo dolls
         // (MT_PLAYER mobjs of extra player 1 starts), which T3.2's list leaves out.
@@ -145,8 +147,9 @@ public partial class LevelCheck
         var spawned = new List<int>();
         for (int i = 0; i < mobjs.Count; i++)
             (mobjs[i].type == mobjtype_t.MT_PLAYER ? dolls : spawned).Add(i);
-        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || world.Mobjs().Count() != mobjs.Count + 1 || mobjs.Contains(me))
-            Fail($"{map}: the billboards' mobjs are not the world's mobjs but the player's ({mobjs.Count} drawn, player {(_scene.PlayerMobj is null ? "missing" : "present")})");
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || world.Mobjs().Count(LevelScene.IsDrawn) != mobjs.Count + 1 || mobjs.Contains(me)
+            || mobjs.Any(mo => !LevelScene.IsDrawn(mo)))
+            Fail($"{map}: the billboards' mobjs are not the world's mobjs but the player's and the MF_NOSECTOR ones ({mobjs.Count} drawn, player {(_scene.PlayerMobj is null ? "missing" : "present")})");
         if (things.Entries.Count != mobjs.Count || things.Multimesh.InstanceCount != mobjs.Count || spawned.Count != expected.Length)
         {
             Fail($"{map}: {things.Entries.Count} billboards ({things.Multimesh.InstanceCount} instances) for {mobjs.Count} mobjs ({dolls.Count} voodoo dolls), the spawn list has {expected.Length} things");
@@ -274,6 +277,101 @@ public partial class LevelCheck
             Fail($"{map}: a removed barrel is still drawn");
         CheckEntriesFollowMobjs(map, things, "after a removal");
         _scene.SetTicFraction(1);
+    }
+
+    private int _teleportMaps;
+
+    /// <summary>
+    /// T5.6: on a map with a walk-over teleport line (39 or 97) whose tagged
+    /// sector holds a destination, puts the player 24 units in front of the
+    /// line's middle (or 16 or 8, inside its front sector) and runs it across (<see cref="LevelScene.Tic"/>): the
+    /// tic must teleport it, leave it not interpolated (drawn where it is at
+    /// tic fractions 0 and ½), ask for the camera snap
+    /// (<see cref="LevelScene.SnapPending"/>), and spawn two teleport fogs
+    /// drawn as billboards, one where the player crossed and one 20 units in
+    /// front of the destination (at the player's height, or on the floor there
+    /// when that is higher). The first line that works is enough.
+    /// </summary>
+    private void CheckTeleport(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || _scene.Things is not { } things)
+            return;
+        foreach (line_t line in world.lines)
+        {
+            if (line.special is not (39 or 97) || line.backsector is null)
+                continue;
+            mobj_t? dest = null;
+            for (int i = 0; i < world.sectors.Length && dest is null; i++)
+            {
+                if (world.sectors[i].tag == line.tag)
+                    dest = world.Mobjs().FirstOrDefault(mo => mo.type == mobjtype_t.MT_TELEPORTMAN && mo.subsector.sector.Index == i);
+            }
+            if (dest is null)
+                continue;
+            // 24 units in front of the middle (the front is on the right of v1 -> v2), facing the line.
+            double dx = line.dx / 65536.0, dy = line.dy / 65536.0, len = Math.Sqrt(dx * dx + dy * dy);
+            double nx = dy / len, ny = -dx / len;
+            double sx = 0, sy = 0;
+            int fx = 0, fy = 0;
+            bool found = false;
+            foreach (int d in new[] { 24, 16, 8 })
+            {
+                sx = line.v1.X / 65536.0 + dx / 2 + nx * d;
+                sy = line.v1.Y / 65536.0 + dy / 2 + ny * d;
+                (fx, fy) = ((int)Math.Round(sx * 65536), (int)Math.Round(sy * 65536));
+                if (found = world.R_PointInSubsector(fx, fy).sector == line.frontsector)
+                    break;
+            }
+            if (!found || Math.Abs(dest.x - fx) + Math.Abs((long)dest.y - fy) < 128L * Fixed.FRACUNIT)
+                continue;
+            uint facing = (uint)(long)Math.Round(Math.Atan2(-ny, -nx) / (2 * Math.PI) * 4294967296.0);
+            world.PlaceMobj(me, fx, fy, facing);
+            var cmd = new ticcmd_t
+            {
+                // with absolute movement (SPEC §6.3) forwardmove is north and sidemove east
+                forwardmove = (sbyte)(_scene.Tweaks.AbsoluteMovement ? Math.Round(-ny * 50) : 50),
+                sidemove = (sbyte)(_scene.Tweaks.AbsoluteMovement ? Math.Round(-nx * 50) : 0),
+                angleturn = _scene.Tweaks.AbsoluteAiming ? Ticcmds.AbsoluteAngle(facing) : (short)0,
+            };
+            bool teleported = false;
+            for (int t = 0; t < 20 && !teleported; t++)
+            {
+                _scene.Tic(cmd);
+                teleported = Math.Abs((long)me.x - dest.x) + Math.Abs((long)me.y - dest.y) < 64L * Fixed.FRACUNIT;
+            }
+            if (!teleported)
+                continue; // something in the way: try another line
+            _teleportMaps++;
+            if (me.interp || !_scene.SnapPending || me.angle != dest.angle || me.z != me.floorz || me.reactiontime != 18)
+                Fail($"{map}: line {line.Index}'s teleport: interp {me.interp}, camera snap {_scene.SnapPending}, angle {me.angle} (destination {dest.angle}), z {me.z} (floor {me.floorz}), reactiontime {me.reactiontime}");
+            _scene.SetTicFraction(0);
+            _scene.PresentWorld();
+            List<mobj_t> fogs = _scene.DrawnMobjs.Where(mo => mo.type == mobjtype_t.MT_TFOG).ToList();
+            int an = (int)(dest.angle >> Tables.ANGLETOFINESHIFT);
+            (int X, int Y) front = (dest.x + 20 * Tables.finecosine[an], dest.y + 20 * Tables.finesine[an]);
+            if (fogs.Count < 2 || fogs.Any(f => f.interp)
+                || Math.Abs((long)fogs[^2].x - fx) + Math.Abs((long)fogs[^2].y - fy) > 64L * Fixed.FRACUNIT
+                || (fogs[^1].x, fogs[^1].y) != front || (fogs[^1].z != me.z && fogs[^1].z != fogs[^1].floorz))
+                Fail($"{map}: line {line.Index}'s teleport: {fogs.Count} fogs drawn ({string.Join(", ", fogs.Select(f => $"({f.x / 65536.0:F1}, {f.y / 65536.0:F1}, {f.z / 65536.0:F1})"))}), "
+                    + $"expected one near ({sx:F1}, {sy:F1}) and one at ({front.X / 65536.0:F1}, {front.Y / 65536.0:F1}, {me.z / 65536.0:F1})");
+            foreach (double f in new[] { 0.0, 0.5 })
+            {
+                _scene.SetTicFraction(f);
+                _scene.PresentWorld();
+                (Vector3 p, _) = _scene.Interpolated(me);
+                if ((p - new Vector3(me.x / 65536f, me.y / 65536f, me.z / 65536f)).Length() > 1e-3f)
+                    Fail($"{map}: the teleported player is drawn at {p} at tic fraction {f}, not where it is");
+                CheckEntriesFollowMobjs(map, things, $"a teleport, tic fraction {f}");
+                foreach (mobj_t fog in fogs.TakeLast(2))
+                {
+                    int i = _scene.DrawnMobjs.ToList().IndexOf(fog);
+                    if (i < 0 || things.Entries[i].Sprite != (int)spritenum_t.SPR_TFOG || !things.Entries[i].FullBright)
+                        Fail($"{map}: a teleport fog is not drawn as a full-bright TFOG billboard ({(i < 0 ? "missing" : things.Entries[i].ToString())})");
+                }
+            }
+            _scene.SetTicFraction(1);
+            return;
+        }
     }
 
     private void CheckEntriesFollowMobjs(string map, ThingSprites things, string when)

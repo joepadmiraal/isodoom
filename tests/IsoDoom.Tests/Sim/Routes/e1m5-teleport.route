@@ -1,0 +1,15 @@
+# DOOM1.WAD E1M5 (T5.6): its teleporter (sector 56, the star of WR
+# teleport lines 787-796, tag 5) lies in a closet whose door (sector 52)
+# opens from inside only (monsters teleport out), so the route starts in
+# the closet's room (sector 54): run north onto the star, crossing its
+# lines from their front: to the destination (thing 281, sector 63) facing
+# north, fog at both ends; forward held through the 18-tic freeze and 6
+# tics more, then wait for the fog to fade. Written by tools/RouteGen
+# (e1m5-teleport).
+iwad doom1
+map E1M5
+start -800 1400 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x36
+0 0 0 0 x114

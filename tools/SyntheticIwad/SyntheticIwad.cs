@@ -169,6 +169,11 @@ public static class SyntheticIwad
                 problems.Add($"E1M2 has {specials.Sectors.Length} sectors, its corridor {specials.Sectors[0].Lines.Count} lines; expected {SpecialsSectors} and {3 + SpecialsAlcoves}");
             if (specials.Sectors[DoorSector].Lines.Count != 4 || specials.R_PointInSubsector(144 << 16, 196 << 16).Sector.Index != DoorSector)
                 problems.Add("E1M2's door sector is not between its rooms");
+            if (specials.R_PointInSubsector(352 << 16, 196 << 16).Sector.Index != TeleportRoom
+                || specials.R_PointInSubsector(416 << 16, 196 << 16).Sector.Index != TeleportPad
+                || specials.R_PointInSubsector(TeleportDestX << 16, TeleportDestY << 16).Sector.Tag != TeleportTag
+                || specials.Lines[TeleportLine].Special != 97 || specials.Lines[TeleportLine].FrontSector?.Index != TeleportRoom)
+                problems.Add("E1M2's teleporter is not set up (room T, the pad, line 86, the destination in room R)");
             WallSections walls = WallSections.Build(specials, catalog.Textures);
             if (walls.Missing.Count > 0)
                 problems.Add($"E1M2 has missing wall textures: {string.Join(", ", walls.Missing)}");
@@ -767,9 +772,28 @@ public static class SyntheticIwad
     // T5.4, switches: lines 0 (SR) and 1 (S1) draw the switch texture
     // SW1BRCOM, line 27 (alcove 0's north wall, SW1BRCOM since T5.1) is an SR
     // raise-door button (63) of the door (tag 6). Line 2 stays BRICK1.
+    //
+    // T5.6, teleporters: east of room S and apart from it (y = 152..240), room
+    // T (sector 28, x = 320..384, floor 0) and a teleporter pad P (sector 29,
+    // x = 384..448, floor 8), ceilings 128. Line 86 (T | P, T in front) is a
+    // WR teleport (97, tag 11) into room R (sector 25, tag 11 since T5.6), whose
+    // teleport destination (thing 1, MT_TELEPORTMAN) stands at (64, 196)
+    // facing east; 87-89 T's walls (south, west, north), 90-92 P's (south,
+    // north, east). Subsectors 28 and 29; node n + 2 splits T from P along
+    // x = 384, node n + 3 the door area from T along x = 304, and the root
+    // (now n + 4) along y = 144.
 
-    /// <summary>E1M2's sector count: the corridor, the alcoves, and rooms R and S with the door between (T5.3).</summary>
-    public const int SpecialsSectors = 1 + SpecialsAlcoves + 3;
+    /// <summary>E1M2's sector count: the corridor, the alcoves, rooms R and S with the door between (T5.3), room T and its teleporter pad (T5.6).</summary>
+    public const int SpecialsSectors = 1 + SpecialsAlcoves + 3 + 2;
+
+    /// <summary>E1M2's teleporter room T and pad P (T5.6): sectors 28 and 29, line 86 (T | P, T in front) a WR teleport (97) of tag <see cref="TeleportTag"/>.</summary>
+    public const int TeleportRoom = SpecialsAlcoves + 4, TeleportPad = SpecialsAlcoves + 5, TeleportLine = 86;
+
+    /// <summary>The tag of E1M2's teleport line and of room R (sector 25), where its destination stands (T5.6).</summary>
+    public const short TeleportTag = 11;
+
+    /// <summary>E1M2's teleport destination (T5.6): an <c>MT_TELEPORTMAN</c> in room R at (64, 196) facing east (angle 0).</summary>
+    public const int TeleportDestX = 64, TeleportDestY = 196;
 
     /// <summary>E1M2's door sector (T5.3), between rooms R (sector 25) and S (27).</summary>
     public const int DoorSector = SpecialsAlcoves + 2;
@@ -861,6 +885,20 @@ public static class SyntheticIwad
         OneSided(c2, e2, room2, "BRICK1");
         OneSided(e2, e, room2, "BRICK1");
 
+        // T5.6: room T (west) and the teleporter pad P (east), apart from the rest.
+        int teleV = vertexes.Count / 2;
+        vertexes.AddRange(new short[] { 320, 152, 384, 152, 448, 152, 320, 240, 384, 240, 448, 240 });
+        int f = teleV, g = teleV + 1, h = teleV + 2, f2 = teleV + 3, g2 = teleV + 4, h2 = teleV + 5;
+        const int teleRoom = TeleportRoom, pad = TeleportPad;
+        lines.Add(new[] { (short)g2, (short)g, TwoSidedFlag, (short)97, TeleportTag,
+            (short)Side("BRICK1", "BRICK1", "-", teleRoom), (short)Side("BRICK1", "BRICK1", "-", pad) }); // L86: T | P (southwards: T in front), WR teleport
+        OneSided(g, f, teleRoom, "BRICK1");    // L87-L89: T's south, west and north walls
+        OneSided(f, f2, teleRoom, "BRICK1");
+        OneSided(f2, g2, teleRoom, "BRICK1");
+        OneSided(h, g, pad, "BRICK1");         // L90-L92: P's south, north and east walls
+        OneSided(g2, h2, pad, "BRICK1");
+        OneSided(h2, h, pad, "BRICK1");
+
         var segs = new List<short>();
         var subsectors = new List<short>();
         void Seg(int v1, int v2, int line, int side)
@@ -913,6 +951,17 @@ public static class SyntheticIwad
         Seg(c2, e2, 84, 0);
         Seg(e2, e, 85, 0);
         Subsector(segs.Count / 6 - 4);
+        // Subsectors 28 and 29 (T5.6): room T and the pad, each clockwise.
+        Seg(g, f, 87, 0);
+        Seg(f, f2, 88, 0);
+        Seg(f2, g2, 89, 0);
+        Seg(g2, g, TeleportLine, 0);
+        Subsector(segs.Count / 6 - 4);
+        Seg(h, g, 90, 0);
+        Seg(g, g2, TeleportLine, 1);
+        Seg(g2, h2, 91, 0);
+        Seg(h2, h, 92, 0);
+        Subsector(segs.Count / 6 - 4);
 
         // Nodes: boundary j (northwards at x = 32 j, the east in front) at index n - 1 - j, its back child
         // alcove j - 1, its front child the node of boundary j + 1 (or the last alcove); the root (last)
@@ -943,15 +992,20 @@ public static class SyntheticIwad
         {
             160, 152, 0, 88, 240, 152, 160, 288, 240, 152, 128, 160, unchecked((short)(0x8000 | room2)), unchecked((short)(0x8000 | door)),
             128, 152, 0, 88, 240, 152, 128, 288, 240, 152, 0, 128, (short)n, unchecked((short)(0x8000 | room)),
-            0, 144, (short)(n * width), 0, 128, -128, 0, (short)(n * width), 240, 152, 0, 288, (short)(n - 1), (short)(n + 1),
+            // T5.6: node n + 2 along x = 384 (T west, the pad east), n + 3 along x = 304 (the door area west, T east).
+            384, 152, 0, 88, 240, 152, 384, 448, 240, 152, 320, 384, unchecked((short)(0x8000 | pad)), unchecked((short)(0x8000 | teleRoom)),
+            304, 152, 0, 88, 240, 152, 320, 448, 240, 152, 0, 288, (short)(n + 2), (short)(n + 1),
+            0, 144, (short)(n * width), 0, 128, -128, 0, (short)(n * width), 240, 152, 0, 448, (short)(n - 1), (short)(n + 3),
         });
 
         var sectors = new List<byte[]> { Sector(0, 128, "FLOOR1", "FLOOR2", 160) };
         for (int i = 0; i < n; i++)
             sectors.Add(Sector((short)AlcoveFloor(i), (short)AlcoveCeiling(i), i % 2 == 0 ? "FLOOR2" : "LAVA1", "FLOOR1", (short)AlcoveLight(i), (short)AlcoveTag(i)));
-        sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 160));              // 25: room R
+        sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 160, TeleportTag)); // 25: room R (the teleport destination's, T5.6)
         sectors.Add(Sector(0, 0, "FLOOR2", "FLOOR2", 128, DoorTag));      // 26: the door, closed
         sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 144));              // 27: room S
+        sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 176));              // 28: room T (T5.6)
+        sectors.Add(Sector(8, 128, "LAVA1", "FLOOR2", 208));               // 29: the teleporter pad
 
         var linedefs = new short[lines.Count, 7];
         for (int i = 0; i < lines.Count; i++)
@@ -964,7 +1018,7 @@ public static class SyntheticIwad
             flat.AddRange(l);
 
         w.Markers("E1M2");
-        w.Lump("THINGS", Shorts(64, -64, 90, 1, 7)); // player 1 start in the corridor
+        w.Lump("THINGS", Shorts(64, -64, 90, 1, 7, TeleportDestX, TeleportDestY, 0, 14, 7)); // player 1 start in the corridor; the teleport destination (T5.6)
         w.Lump("LINEDEFS", Shorts(flat.ToArray()));
         w.Lump("SIDEDEFS", Concat(sides.ToArray()));
         w.Lump("VERTEXES", Shorts(vertexes.ToArray()));

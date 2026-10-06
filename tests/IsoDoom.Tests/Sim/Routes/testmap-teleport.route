@@ -1,0 +1,69 @@
+# The teleport test map (T5.6, RouteTestMaps): run west from S across the
+# WR teleport P1 | S (boundary 2, from its front): to B, facing west, fog
+# at both ends; forward held through the 18-tic freeze. Walk west across
+# the W1 teleport P2 | B (boundary 4): to A (its first destination), 48
+# units up. East through P1, S (boundary 2 from behind: no teleport) into
+# P2 (boundary 3 from behind), then west across boundary 3 from its
+# front: to B. West again: across the spent W1 line into P2 and boundary 3:
+# to B again. Wait for the fog to fade. Written by tools/RouteGen
+# (testmap-teleport).
+iwad testmap
+map teleport
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x36
+0 0 0 0 x25
+25 0 0 0 x24
+25 2 7 0 x5
+0 0 0 0
+25 2 7 0 x5
+0 0 0 0
+25 2 7 0 x5
+0 0 0 0
+25 2 7 0
+25 0 0 0 x3
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x6
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x5
+8 0 0 0 x7
+8 1 0 0
+25 0 0 0 x4
+21 0 0 0
+-3 0 0 0
+-2 0 0 0 x3
+-1 0 0 0 x2
+-2 0 0 0
+-1 0 0 0 x4
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+0 0 -1 0
+-1 0 0 0
+0 0 0 0 x14
+25 1 -6 0
+25 0 0 0 x18
+16 0 0 0
+-2 0 0 0 x2
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x7
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x14
+25 0 127 0
+25 0 1 0
+25 0 0 0 x8
+50 0 0 0 x40
+0 0 0 0 x80

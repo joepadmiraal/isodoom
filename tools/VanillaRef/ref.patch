@@ -96,7 +96,15 @@ diff --git a/doomgeneric/p_tick.c b/doomgeneric/p_tick.c
 index 2289350..00b5cc3 100644
 --- a/doomgeneric/p_tick.c
 +++ b/doomgeneric/p_tick.c
-@@ -148,4 +148,5 @@ void P_Ticker (void)
+@@ -138,6 +138,7 @@ void P_Ticker (void)
+     }
+     
+ 		
++    { extern void dump_pretic(void); dump_pretic(); } // IsoDoom reference (T5.6): a route's start
+     for (i=0 ; i<MAXPLAYERS ; i++)
+ 	if (playeringame[i])
+ 	    P_PlayerThink (&players[i]);
+@@ -148,4 +149,5 @@ void P_Ticker (void)
  
      // for par times
      leveltime++;	

@@ -14,7 +14,7 @@ namespace IsoDoom.Sim;
 /// p_tick.c, World.Mobj.cs p_mobj.c, World.MapUtl.cs p_maputl.c, World.Map.cs p_map.c,
 /// World.User.cs p_user.c (and <c>G_Ticker</c>), World.Spec.cs p_spec.c,
 /// World.Switch.cs p_switch.c, World.Doors.cs p_doors.c, World.Floor.cs p_floor.c,
-/// World.Plats.cs p_plats.c, World.Ceiling.cs p_ceilng.c, World.Sound.cs the sound events, World.Unported.cs the stubs of the specials
+/// World.Plats.cs p_plats.c, World.Ceiling.cs p_ceilng.c, World.Telept.cs p_telept.c, World.Sound.cs the sound events, World.Unported.cs the stubs of the specials
 /// still to port, World.Checksum.cs the per-tic state checksum (SPEC §6.1).
 /// <para>
 /// The <see cref="level"/>'s sectors are changed in place (heights, light,
@@ -124,6 +124,13 @@ public sealed partial class World
     /// <summary>p_setup.c <c>deathmatchstarts</c> up to <c>deathmatch_p</c> (at most <see cref="MapThingSpawning.MAX_DM_STARTS"/>).</summary>
     public readonly List<MapThing> deathmatchstarts = new();
 
+    /// <summary>
+    /// doomstat.h <c>gamemap</c>: the level's map number, from its name
+    /// (<c>ExMy</c>: y, <c>MAPxx</c>: xx; 0 for another name). Read by
+    /// <see cref="PIT_StompThing"/> (T5.6: anything telefrags on map 30).
+    /// </summary>
+    public int gamemap;
+
     /// <summary>The level's tic count (p_tick.c <c>leveltime</c>).</summary>
     public int leveltime;
 
@@ -182,6 +189,7 @@ public sealed partial class World
         leveltime = 0;
 
         this.level = level;
+        gamemap = MapNumber(level.Name);
         sectors = new sector_t[level.Sectors.Length];
         for (int i = 0; i < sectors.Length; i++)
             sectors[i] = new sector_t(level.Sectors[i]);
@@ -236,6 +244,17 @@ public sealed partial class World
     {
         foreach (MapThingSpawn spawn in MapThingSpawning.SpawnList(level.Things, settings))
             P_SpawnMapThing(spawn);
+    }
+
+    /// <summary>The map number of a map lump name: <c>ExMy</c> → y, <c>MAPxx</c> → xx, anything else 0 (<see cref="gamemap"/>).</summary>
+    public static int MapNumber(string name)
+    {
+        name = name.ToUpperInvariant();
+        if (name.Length == 4 && name[0] == 'E' && name[2] == 'M' && char.IsAsciiDigit(name[1]) && char.IsAsciiDigit(name[3]))
+            return name[3] - '0';
+        if (name.Length == 5 && name.StartsWith("MAP", StringComparison.Ordinal) && char.IsAsciiDigit(name[3]) && char.IsAsciiDigit(name[4]))
+            return (name[3] - '0') * 10 + (name[4] - '0');
+        return 0;
     }
 
     /// <summary>Every mobj in thinker list order (removed ones not yet unlinked are skipped).</summary>

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using IsoDoom.Map;
 using IsoDoom.Sim;
+using IsoDoom.Tests.Sim;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
@@ -44,6 +45,13 @@ public sealed class Steer
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
         w.G_DoLoadLevel(Level.Load(wad, map));
+    }
+
+    /// <summary>T5.6: a route's <c>start X Y ANGLE</c> (<see cref="RouteStart.Place"/>), before the first tic.</summary>
+    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start) : this(wad, map)
+    {
+        if (start is { } s)
+            RouteStart.Place(w, s.X, s.Y, s.Angle);
     }
 
     public mobj_t Mo => w.players[0].mo!;
@@ -331,6 +339,33 @@ public sealed class Steer
         throw new InvalidOperationException($"GoTo ({x}, {y}): stuck at ({X:F1}, {Y:F1}) at tic {w.leveltime}");
     }
 
+    /// <summary>
+    /// T5.6: walks (<paramref name="speed"/> 25) or runs (50) straight
+    /// towards (x, y) until the player teleports (moves over 64 units in a
+    /// tic), then keeps pressing forward for <paramref name="hold"/> tics (the
+    /// <c>reactiontime</c> freeze ignores them for 18) and settles. Fails
+    /// after <paramref name="max"/> tics without a teleport.
+    /// </summary>
+    public void Teleport(double x, double y, int speed = 25, int hold = 0, int max = 300)
+    {
+        for (int i = 0; i < max; i++)
+        {
+            int ox = Mo.x, oy = Mo.y;
+            Tic(speed, 0, TurnTo(x, y), 0);
+            if (Math.Abs((long)Mo.x - ox) + Math.Abs((long)Mo.y - oy) > 64L * FU)
+            {
+                for (int k = 0; k < hold; k++)
+                    Tic(speed, 0, 0, 0);
+                Settle();
+                return;
+            }
+        }
+        throw new InvalidOperationException($"Teleport towards ({x}, {y}): no teleport at ({X:F1}, {Y:F1}) by tic {w.leveltime}");
+    }
+
+    /// <summary>T5.6: door sectors <see cref="GoToDoors"/> must not plan through (e.g. a door that opens from the other side only).</summary>
+    public readonly HashSet<int> ShutDoors = new();
+
     private static readonly int[] ManualDoors = { 1, 31, 117, 118 };
 
     /// <summary>
@@ -346,7 +381,7 @@ public sealed class Steer
             AssumeCeil.Clear();
             foreach (line_t l in w.lines)
             {
-                if (ManualDoors.Contains(l.special) && l.backsector is { } d && doors.Add(d.Index))
+                if (ManualDoors.Contains(l.special) && l.backsector is { } d && !ShutDoors.Contains(d.Index) && doors.Add(d.Index))
                     AssumeCeil[d.Index] = (World.P_FindLowestCeilingSurrounding(d) >> 16) - 4;
             }
             List<(double X, double Y)> path = Plan(x, y);
@@ -366,6 +401,7 @@ public sealed class Steer
             var before = path[Math.Max(0, hit - 5)];
             if (Dist(before) > 4)
                 GoTo(before.X, before.Y, 6, speed);
+            Console.Error.WriteLine($"    [{w.leveltime}] ({X:F0},{Y:F0}) opening door {door} at ({path[hit].X:F0},{path[hit].Y:F0})");
             Door(door, path[hit].X, path[hit].Y);
         }
         throw new InvalidOperationException("GoToDoors: more than 20 doors");
