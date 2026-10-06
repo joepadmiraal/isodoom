@@ -9,7 +9,8 @@ public sealed partial class World
     /// <see cref="leveltime"/>, <c>prndindex</c>, every mobj in thinker order
     /// (type, x, y, z, momx, momy, momz, angle, health, state, tics, flags),
     /// every sector (floor height, ceiling height, light level) and every
-    /// player in the game (player state, health, armor points). Only sim state
+    /// player in the game (player state, health, armor points, view z,
+    /// view height and its delta). Only sim state
     /// goes in: <c>M_Random</c>'s index does not.
     /// </summary>
     public ulong Checksum()
@@ -50,6 +51,9 @@ public sealed partial class World
             Add(ref h, (int)p.playerstate);
             Add(ref h, p.health);
             Add(ref h, p.armorpoints);
+            Add(ref h, p.viewz);
+            Add(ref h, p.viewheight);
+            Add(ref h, p.deltaviewheight);
         }
         return h;
     }

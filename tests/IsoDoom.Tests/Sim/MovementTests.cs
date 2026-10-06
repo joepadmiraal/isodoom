@@ -11,8 +11,10 @@ namespace IsoDoom.Tests.Sim;
 /// momentum movement, on small test maps (<see cref="TestMap"/>), tic by
 /// tic against values worked out by hand from vanilla's arithmetic (the
 /// derivations are in the comments; T4.8 adds vanilla-generated routes).
-/// The player is pushed by setting its momentum: <c>P_PlayerThink</c> is a
-/// stub until T4.5, so each <c>P_Ticker</c> only runs <c>P_MobjThinker</c>.
+/// Most tests push the player by setting its momentum, so the values test
+/// p_map.c and p_mobj.c alone: with an empty <c>ticcmd</c>, <c>P_PlayerThink</c>
+/// (T4.5) does not thrust, it only moves the view height. Walking by
+/// <c>ticcmd</c> is in <see cref="PlayerTests"/>; the E1M1 wander here uses it.
 /// </summary>
 public class MovementTests
 {
@@ -197,7 +199,21 @@ public class MovementTests
 
         w.P_Ticker();
         AssertPos(mo, F(244) + Mom8F1, F(128), F(24), Mom8F2, 0, 0, "tic 2");
-        Assert.Equal(F(17), p.viewheight); // P_CalcHeight raises it again (T4.5)
+        // P_CalcHeight (T4.5, before the mobj moves) raises the view again: below VIEWHEIGHT / 2
+        // (20.5) it is clamped there, then it rises by deltaviewheight, which grows by 1/4 a
+        // tic: 20.5 (3.25), 23.75 (3.5), 27.25 (3.75), 31 (4), 35 (4.25), 39.25 (4.5), then 41 (0).
+        Assert.Equal(F(41) / 2, p.viewheight);
+        Assert.Equal(F(3) + FRACUNIT / 4, p.deltaviewheight);
+        int[] heights = { F(23) + 3 * FRACUNIT / 4, F(27) + FRACUNIT / 4, F(31), F(35), F(39) + FRACUNIT / 4, F(41) };
+        int[] deltas = { F(3) + FRACUNIT / 2, F(3) + 3 * FRACUNIT / 4, F(4), F(4) + FRACUNIT / 4, F(4) + FRACUNIT / 2, 0 };
+        for (int t = 0; t < heights.Length; t++)
+        {
+            w.P_Ticker();
+            Assert.True((p.viewheight, p.deltaviewheight) == (heights[t], deltas[t]),
+                $"tic {t + 3}: viewheight {p.viewheight}, deltaviewheight {p.deltaviewheight}");
+        }
+        w.P_Ticker();
+        Assert.Equal((player_t.VIEWHEIGHT, 0), (p.viewheight, p.deltaviewheight));
     }
 
     [Fact]
@@ -416,11 +432,14 @@ public class MovementTests
         AssertPos(mo, F(100) + World.STOPSPEED - 1, F(100) - (World.STOPSPEED - 1), 0, 0, 0, 0, "stop");
         Assert.Equal(statenum_t.S_PLAY, mo.state);
 
-        // With move input it slows down by friction instead.
+        // With move input it slows down by friction instead (after P_MovePlayer's thrust east,
+        // T4.5: FixedMul(25 * 2048, finecosine[0]) = 51199, finesine[0] gives 19 north), and walks.
         p.cmd.forwardmove = 25;
         mo.momx = World.STOPSPEED - 1;
         w.P_Ticker();
-        Assert.Equal(Fixed.FixedMul(World.STOPSPEED - 1, World.FRICTION), mo.momx);
+        Assert.Equal(Fixed.FixedMul(World.STOPSPEED - 1 + 51199, World.FRICTION), mo.momx);
+        Assert.Equal(Fixed.FixedMul(19, World.FRICTION), mo.momy);
+        Assert.Equal(statenum_t.S_PLAY_RUN1, mo.state);
 
         // At STOPSPEED friction applies (the test is strict).
         p.cmd.forwardmove = 0;
@@ -546,9 +565,10 @@ public class MovementTests
     [Fact]
     public void Doom1E1M1PlayerWandersDeterministically()
     {
-        // The player pushed every tic (a thrust of 2 units turning 4° a tic, P_Thrust-like) for
-        // 20 seconds bounces around the start room and beyond: two worlds stay identical, the
-        // links hold, and it always stands where P_CheckPosition allows, on or above its floor.
+        // The player walking by ticcmd (forwardmove 64: a thrust of 2 units, turning by
+        // angleturn 728, about 4° a tic) for 20 seconds bounces around the start room and
+        // beyond: two worlds stay identical, the links hold, and it always stands where
+        // P_CheckPosition allows, on or above its floor.
         WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
         World Load()
         {
@@ -558,18 +578,12 @@ public class MovementTests
         }
         World a = Load(), b = Load();
         int startx = Player(a).x, starty = Player(a).y;
-        uint angle = 0;
+        var cmd = new ticcmd_t { forwardmove = 64, angleturn = 728 };
         int far = 0;
         for (int tic = 0; tic < 700; tic++)
         {
-            foreach (World w in new[] { a, b })
-            {
-                mobj_t mo = Player(w);
-                mo.momx += Fixed.FixedMul(F(2), Tables.finecosine[(int)(angle >> Tables.ANGLETOFINESHIFT)]);
-                mo.momy += Fixed.FixedMul(F(2), Tables.finesine[(int)(angle >> Tables.ANGLETOFINESHIFT)]);
-                w.P_Ticker();
-            }
-            angle = unchecked(angle + Tables.ANG45 / 45 * 4);
+            a.G_Ticker(cmd);
+            b.G_Ticker(cmd);
             Assert.Equal(a.Checksum(), b.Checksum());
             mobj_t p = Player(a);
             Assert.True(p.z >= p.floorz && p.z + p.height <= p.ceilingz, $"tic {tic}: z {p.z} outside {p.floorz}–{p.ceilingz}");

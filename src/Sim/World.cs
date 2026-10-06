@@ -12,6 +12,7 @@ namespace IsoDoom.Sim;
 /// the random index carry over between levels); <see cref="G_DoLoadLevel"/>
 /// starts each level. The partial files follow vanilla's: World.Tick.cs is
 /// p_tick.c, World.Mobj.cs p_mobj.c, World.MapUtl.cs p_maputl.c, World.Map.cs p_map.c,
+/// World.User.cs p_user.c (and <c>G_Ticker</c>),
 /// World.Checksum.cs the per-tic state checksum (SPEC §6.1).
 /// <para>
 /// The <see cref="level"/>'s sectors are changed in place (heights, light,

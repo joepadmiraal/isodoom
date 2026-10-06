@@ -74,7 +74,7 @@ public enum playerstate_t
 
 /// <summary>
 /// d_player.h <c>player_t</c>: the player's state beyond its mobj. The
-/// <c>ticcmd</c> is here since T4.4 (T4.5 drives the player with it); the psprites (T6.6) come with their task.
+/// <c>ticcmd</c> drives it (<see cref="World.P_PlayerThink"/>); the psprites (T6.6) come with their task.
 /// </summary>
 public sealed class player_t
 {

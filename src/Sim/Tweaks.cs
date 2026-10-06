@@ -18,6 +18,7 @@ public sealed record Tweaks
     public static Tweaks TopDown { get; } = new()
     {
         AbsoluteAiming = true,
+        AbsoluteMovement = true,
         AimAssist = true,
         UseFallback = true,
     };
@@ -27,6 +28,15 @@ public sealed record Tweaks
     /// sets the player's angle, instead of vanilla's relative <c>angleturn</c> (T4.5).
     /// </summary>
     public bool AbsoluteAiming { get; init; }
+
+    /// <summary>
+    /// SPEC §6.2, §6.3 #1: movement independent of facing. The <c>ticcmd</c>'s
+    /// <c>forwardmove</c> thrusts north (+y) and <c>sidemove</c> east (+x),
+    /// as for a vanilla player facing north, whatever the player's angle; the
+    /// builder turns the screen-relative input into that world vector and
+    /// normalises its length (<see cref="Ticcmds.AbsoluteMove"/>, SPEC §12 T4.5).
+    /// </summary>
+    public bool AbsoluteMovement { get; init; }
 
     /// <summary>SPEC §6.3 #2: hitscans and projectiles snap horizontally to the nearest target in a small cone (T6.7).</summary>
     public bool AimAssist { get; init; }

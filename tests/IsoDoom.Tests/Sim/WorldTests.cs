@@ -252,6 +252,10 @@ public class WorldTests
         Changes(() => world.random.prndindex++, () => world.random.prndindex--);
         Changes(() => world.sectors[3].ceilingheight += FRACUNIT, () => world.sectors[3].ceilingheight -= FRACUNIT);
         Changes(() => world.sectors[0].lightlevel++, () => world.sectors[0].lightlevel--);
+        player_t p = world.players[0];
+        Changes(() => p.viewz++, () => p.viewz--);
+        Changes(() => p.viewheight++, () => p.viewheight--);
+        Changes(() => p.deltaviewheight++, () => p.deltaviewheight--);
         world.random.M_Random(); // not sim state
         Assert.Equal(sum, world.Checksum());
     }

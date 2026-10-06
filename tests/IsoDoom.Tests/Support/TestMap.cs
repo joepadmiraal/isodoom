@@ -247,11 +247,11 @@ public sealed class TestMap
             .Build();
     }
 
-    /// <summary>Loads the map in a new world (vanilla, no tweaks) and spawns its things.</summary>
-    public World Load(skill_t skill = skill_t.sk_medium)
+    /// <summary>Loads the map in a new world (vanilla, no tweaks, unless <paramref name="tweaks"/> says otherwise) and spawns its things.</summary>
+    public World Load(skill_t skill = skill_t.sk_medium, Tweaks? tweaks = null)
     {
         var wad = new WadArchive(new[] { WadFile.FromBytes(Build(), "testmap.wad") });
-        var world = new World(new SpawnSettings(GameMode.shareware, skill), Tweaks.Vanilla);
+        var world = new World(new SpawnSettings(GameMode.shareware, skill), tweaks ?? Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         return world;
     }
