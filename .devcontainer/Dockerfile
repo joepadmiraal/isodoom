@@ -1,6 +1,7 @@
 # Dev image for IsoDoom: .NET 10 SDK + Godot 4 (.NET build), with the
 # libraries the editor needs to open a window on the host's Wayland/X11
-# display, render through Mesa (Vulkan/GL) and play audio through PulseAudio.
+# display, render through Mesa (Vulkan/GL) and play audio through PulseAudio,
+# plus Xvfb for running windowed checks without a display.
 FROM mcr.microsoft.com/devcontainers/dotnet:2-10.0-noble
 
 ARG GODOT_VERSION=4.7.2
@@ -20,6 +21,9 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list \
         libgl1 libegl1 libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers vulkan-tools \
         # Audio, fonts, misc runtime deps
         libasound2t64 libpulse0 libfontconfig1 libdbus-1-3 libudev1 \
+        # Offscreen display for the windowed viewer check (xvfb-run + Mesa's
+        # lavapipe, as in CI) and shellcheck for linting ci.yml's scripts
+        xvfb xauth shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

@@ -1,10 +1,10 @@
 # IsoDoom
 
-An isometric top-down remake of Doom in Godot 4 + C#. It loads the original WAD at runtime. The full design is in `SPEC.md`. Read only the sections your task cites.
+An isometric top-down remake of Doom in Godot 4 + C#. It loads the original WAD at runtime. The full design is in `docs/SPEC.md`. Read only the sections your task cites.
 
 ## Session workflow
 
-Each session completes **one task** from `TASKS.md`:
+Each session completes **one task** from `docs/TASKS.md`:
 
 1. Read the task and the `SPEC.md` sections it cites.
 2. Do the work. The task is done when its *Done when* criterion holds and all tests pass.
@@ -14,13 +14,16 @@ Each session completes **one task** from `TASKS.md`:
 
 ## Commands
 
-Run from the repo root. Versions are pinned in `SPEC.md` §12; the .NET SDK comes from `global.json`.
+Run from the repo root. Versions are pinned in `docs/SPEC.md` §12; the .NET SDK comes from `global.json`.
 
 - **Build:** `dotnet build IsoDoom.sln`
-- **Test:** `dotnet test`. Tests that need `wads/DOOM1.WAD` skip themselves without it (as in CI); set `ISODOOM_DOOM1_WAD=/path/to/DOOM1.WAD` to use a WAD elsewhere.
-- **Run:** `godot` opens the editor (F5 runs the main scene). `godot --headless --quit-after 60` runs the main scene headlessly for 60 frames; drop `--headless` for a window. On a fresh checkout, run `godot --headless --import` first.
+- **Test:** `dotnet test`. Tests that need a real WAD skip themselves without it (as in CI); see *Test data*.
+- **Run:** `godot` opens the editor (F5 runs the main scene, currently the WAD viewer). `godot --headless --quit-after 60` runs the main scene headlessly for 60 frames; drop `--headless` for a window. On a fresh checkout, run `godot --headless --import` first.
+  - Game arguments go after `--`: `godot -- -iwad wads/doom2.wad -file my.wad`. Without `-iwad` (or `ISODOOM_IWAD`), the IWAD search of `src/Wad/IwadLocator.cs` runs (saved path, working dir, `wads/`, `DOOMWADDIR`, Steam/GOG, …; SPEC §12) and a file picker opens when nothing is found. The shareware IWAD refuses `-file`, as in vanilla.
+- **Viewer check:** `godot --headless -- --viewer-check` walks every graphic and every lump in the viewer and checks the uploads; it exits 1 on a failure. With a real renderer it also compares every drawn pixel: run it windowed, or offscreen with `WAYLAND_DISPLAY= VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x24" godot -- --viewer-check`. Add `--viewer-screenshots=DIR` to save captures (never commit WAD-derived images).
+- **Synthetic IWAD:** `dotnet run --project tools/SyntheticIwad -- OUT.wad` writes a small IWAD of generated, non-id content covering every lump kind; CI runs the viewer check against it.
 - **Export (Linux x86_64):** `mkdir -p export/linux && godot --headless --export-release "Linux" export/linux/IsoDoom.x86_64`. Needs the 4.7.2 .NET export templates in `~/.local/share/godot/export_templates/4.7.2.stable.mono/` (build the dev container with `INSTALL_EXPORT_TEMPLATES=true`, or see `.github/workflows/ci.yml`). Smoke test: `export/linux/IsoDoom.x86_64 --headless --quit-after 60`.
-- **CI:** `.github/workflows/ci.yml` runs build + test, then the export and smoke test, and uploads `export/linux/` as the `IsoDoom-linux-x86_64` artifact.
+- **CI:** `.github/workflows/ci.yml` runs build + test, generates the synthetic IWAD, runs the viewer check in the editor (headless), exports and smoke-tests the Linux build, runs the viewer check on the exported build under Xvfb + lavapipe, and uploads `export/linux/` as the `IsoDoom-linux-x86_64` artifact. Lint it with `actionlint` if you have it (it runs `shellcheck` on the scripts).
 
 ## Invariants
 
@@ -38,7 +41,7 @@ Run from the repo root. Versions are pinned in `SPEC.md` §12; the .NET SDK come
 
 ## Test data
 
-`wads/DOOM1.WAD` is the shareware v1.9 WAD (MD5 `f0cefca49926d00903cf57551d901abe`). Tests that need it skip themselves when the file is absent.
+`wads/DOOM1.WAD` is the shareware v1.9 WAD (MD5 `f0cefca49926d00903cf57551d901abe`; set `ISODOOM_DOOM1_WAD=/path/to/DOOM1.WAD` to use one elsewhere). Tests that need it skip themselves when the file is absent.
 
 `wads/doom2.wad` (any Doom II version; set `ISODOOM_DOOM2_WAD=/path/to/DOOM2.WAD` to use one elsewhere) enables the Doom II tests, which skip themselves without it.
 
