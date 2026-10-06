@@ -98,6 +98,9 @@ public sealed partial class World
     /// <summary>The level's subsectors, in <c>SSECTORS</c> order.</summary>
     public subsector_t[] subsectors { get; private set; } = Array.Empty<subsector_t>();
 
+    /// <summary>The level's lines, in <c>LINEDEFS</c> order.</summary>
+    public line_t[] lines { get; private set; } = Array.Empty<line_t>();
+
     /// <summary>p_setup.c <c>blocklinks</c>: the first mobj of each block's list (through <see cref="mobj_t.bnext"/>), row by row from the bottom left.</summary>
     public mobj_t?[] blocklinks { get; private set; } = Array.Empty<mobj_t?>();
 
@@ -176,6 +179,14 @@ public sealed partial class World
         subsectors = new subsector_t[level.Subsectors.Length];
         for (int i = 0; i < subsectors.Length; i++)
             subsectors[i] = new subsector_t(level.Subsectors[i], sectors[level.Subsectors[i].Sector.Index]);
+        lines = new line_t[level.Lines.Length];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            Line ld = level.Lines[i];
+            lines[i] = new line_t(ld,
+                ld.FrontSector is null ? null : sectors[ld.FrontSector.Index],
+                ld.BackSector is null ? null : sectors[ld.BackSector.Index]);
+        }
         // P_LoadBlockMap: clear out mobj chains
         blocklinks = new mobj_t?[bmapwidth * bmapheight];
 

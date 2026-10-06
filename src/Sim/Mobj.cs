@@ -142,3 +142,60 @@ public sealed class subsector_t
 
     public override string ToString() => map.ToString();
 }
+
+/// <summary>
+/// r_defs.h <c>line_t</c>, the sim's view: the map's <see cref="Line"/>
+/// (whose flags, special and tag the sim changes in place) with its sectors
+/// as <see cref="sector_t"/>, plus the sim's <see cref="validcount"/>.
+/// Vertices are the map's <see cref="Vertex"/> (<c>v1.X</c> for vanilla's
+/// <c>v1-&gt;x</c>).
+/// </summary>
+public sealed class line_t
+{
+    internal line_t(Line map, sector_t? frontsector, sector_t? backsector)
+    {
+        this.map = map;
+        this.frontsector = frontsector;
+        this.backsector = backsector;
+    }
+
+    /// <summary>The level's line, shared with the presentation.</summary>
+    public readonly Line map;
+
+    public int Index => map.Index;
+
+    public Vertex v1 => map.V1;
+    public Vertex v2 => map.V2;
+
+    /// <summary>fixed_t, <c>v2-&gt;x - v1-&gt;x</c>.</summary>
+    public int dx => map.Dx;
+
+    /// <summary>fixed_t, <c>v2-&gt;y - v1-&gt;y</c>.</summary>
+    public int dy => map.Dy;
+
+    /// <summary>The <c>ML_*</c> flags (<see cref="Line.ML_BLOCKING"/>…).</summary>
+    public short flags { get => map.Flags; set => map.Flags = value; }
+
+    public short special { get => map.Special; set => map.Special = value; }
+
+    public short tag { get => map.Tag; set => map.Tag = value; }
+
+    /// <summary>Front and back sidedef numbers, -1 for none.</summary>
+    public int[] sidenum => map.SideNum;
+
+    /// <summary>fixed_t bounding box, indexed by <see cref="BBox"/>.</summary>
+    public int[] bbox => map.BBox;
+
+    public SlopeType slopetype => map.SlopeType;
+
+    /// <summary>The front side's sector, null without a front side.</summary>
+    public readonly sector_t? frontsector;
+
+    /// <summary>The back side's sector, null without a back side (one-sided).</summary>
+    public readonly sector_t? backsector;
+
+    /// <summary>If == <see cref="World.validcount"/>, already checked.</summary>
+    public int validcount;
+
+    public override string ToString() => map.ToString();
+}
