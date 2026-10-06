@@ -24,13 +24,21 @@ namespace IsoDoom.Render;
 /// seg offsets). Vertices hold map x/y and plane references, not
 /// heights: the vertex shader places them from the per-sector data texture.</item>
 /// <item><b>Textures:</b> every wall texture and flat the level uses goes into
-/// one RG8 index atlas (<see cref="TextureAtlas"/>); a texture slot's atlas
+/// one RG8 index atlas (<see cref="TextureAtlas"/>), with every texture it
+/// may change to at run time (the other textures of a group one of its
+/// textures is in: switch pairs, SPEC §12 T5.1); a texture slot's atlas
 /// rectangle sits in the <c>texture_info</c> data texture, so animated textures
 /// can later re-point a slot without touching the meshes.</item>
 /// <item><b>Per-sector data:</b> an RGBA float texture (<see cref="DataWidth"/>
-/// texels per row): floor height, ceiling height (map units), light level.
-/// Change a <see cref="Sector"/> of <see cref="Level"/> and call
-/// <see cref="UpdateSectors"/> to move its floor and walls.</item>
+/// texels per row): floor height, ceiling height (map units), light level,
+/// the floor flat's slot. Change a <see cref="Sector"/> of <see cref="Level"/>
+/// (the sim does, T5.1) and call <see cref="UpdateSectors"/> to move its floor
+/// and walls (at heights interpolated between tics when given) and change its flat.</item>
+/// <item><b>Per-side textures</b> (T5.1): an R float texture (<c>side_textures</c>,
+/// same layout) with the texture slot of each sidedef's upper, lower and middle
+/// texture (texel <c>3 × side + </c><see cref="SidePart"/>; -1 for <c>-</c>), which
+/// wall vertices refer to, so a switch changes a wall's texture through
+/// <see cref="IsoDoom.Map.Side"/> and <see cref="UpdateSectors"/> without touching the meshes.</item>
 /// <item><b>Light</b> (T2.8): vanilla's <c>zlight</c>/<c>scalelight</c>
 /// (<see cref="LightTables"/>) in a small R8 texture, the fake contrast per
 /// wall quad (one quad per piece of a side, <see cref="WallPieces"/>: per seg, on the floor's corners),
@@ -78,14 +86,37 @@ public sealed class LevelMesh
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
 
+    /// <summary>
+    /// A wall texture of a sidedef (<c>side_textures</c> texel <c>3 × side + part</c>, T5.1):
+    /// the upper (<c>toptexture</c>), lower (<c>bottomtexture</c>) or middle texture.
+    /// </summary>
+    public const int PartTop = 0, PartBottom = 1, PartMiddle = 2;
+
+    /// <summary>
+    /// The texture-top plane flag (<c>CUSTOM2.x</c>, T5.1): the vertex shader
+    /// adds the slot's texture height to the texture top, for sections whose
+    /// texture bottom is pegged to a plane (<see cref="WallSection.BottomPegged"/>).
+    /// </summary>
+    public const int PlaneAddsTextureHeight = 8;
+
     /// <summary>Half the height range of a chunk's culling box, in metres (any fixed_t height fits).</summary>
     private const float HeightRange = 32768f / MapUnitsPerMetre;
 
     private readonly Image _sectorImage;
     private Image _infoImage = null!;
+    private readonly Image _sideImage;
     private readonly int[] _textureSlot; // texture number → slot, -1 if unused
     private readonly Dictionary<string, int> _flatSlot = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(int Line, int Side)> _maskedSides = new();
+
+    // What the data textures hold (T5.1): per sector its texel and the floor
+    // flat name it was resolved from, per side part the texture name and slot.
+    private readonly Color[] _sectorTexels;
+    private readonly string?[] _sectorFlats;
+    private readonly string?[] _sideNames;
+    private readonly int[] _sideSlots;
+    private readonly bool[] _sidePartDrawn;
+    private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
 
     private LevelMesh(Level level, WallSections walls, FloorTriangles floors, Textures textures, int[] textureSlot, List<string> slotNames,
         TextureAtlas atlas, Image sectorImage)
@@ -104,6 +135,17 @@ public sealed class LevelMesh
         SlotNames = slotNames;
         Atlas = atlas;
         _sectorImage = sectorImage;
+        _sectorTexels = new Color[level.Sectors.Length];
+        _sectorFlats = new string?[level.Sectors.Length];
+        _sideImage = Image.CreateEmpty(DataWidth, Rows(3 * level.Sides.Length), false, Image.Format.Rf);
+        _sideNames = new string?[3 * level.Sides.Length];
+        _sideSlots = new int[3 * level.Sides.Length];
+        _sidePartDrawn = new bool[3 * level.Sides.Length];
+        foreach (WallSection s in walls.Sections)
+        {
+            if (IsDrawn(s))
+                _sidePartDrawn[SidePartId(s)] = true;
+        }
     }
 
     public Level Level { get; }
@@ -129,8 +171,22 @@ public sealed class LevelMesh
     /// <summary>The texture atlas; slot <c>i</c>'s rectangle is <c>Atlas.Rects[i]</c>.</summary>
     public TextureAtlas Atlas { get; }
 
-    /// <summary>The name of each texture slot: wall textures first, then flats.</summary>
+    /// <summary>The name of each texture slot: wall textures first (the drawn sections', then the ones only reachable at run time), then flats.</summary>
     public IReadOnlyList<string> SlotNames { get; }
+
+    /// <summary>
+    /// The wall textures in the atlas that no drawn section uses at load: the
+    /// other textures of the texture groups (switch pairs) the level uses,
+    /// which the sim may change a wall to (SPEC §12 T5.1).
+    /// </summary>
+    public IReadOnlyCollection<string> RuntimeTextures { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Run-time texture or flat changes to a name the atlas lacks (SPEC §12
+    /// T5.1): the wall or floor keeps its previous texture (a warning per name).
+    /// Zero unless a group of <see cref="Build"/> missed a texture.
+    /// </summary>
+    public int RuntimeMisses { get; private set; }
 
     /// <summary>The chunk of each sector (null when the sector has no floor and no wall).</summary>
     public ArrayMesh?[] SectorMeshes { get; private set; } = Array.Empty<ArrayMesh?>();
@@ -159,6 +215,9 @@ public sealed class LevelMesh
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
+    /// <summary>The per-side texture slots (T5.1, <c>side_textures</c>).</summary>
+    public ImageTexture SideTexturesTexture { get; private set; } = null!;
+
     /// <summary>Number of solid wall quads in the meshes (one per <see cref="WallPiece"/> of each drawn section), of masked middle quads, and of floor triangles.</summary>
     public int WallQuads { get; private set; }
     public int MaskedQuads { get; private set; }
@@ -176,9 +235,15 @@ public sealed class LevelMesh
     /// <summary>The slot of flat <paramref name="name"/>, or -1 when the level does not use it.</summary>
     public int FlatSlot(string name) => _flatSlot.TryGetValue(name, out int slot) ? slot : -1;
 
-    /// <summary>Builds the meshes, atlas, data textures and material of <paramref name="level"/>.</summary>
+    /// <summary>
+    /// Builds the meshes, atlas, data textures and material of <paramref name="level"/>.
+    /// <paramref name="textureGroups"/> are wall textures that change into each
+    /// other at run time (switch pairs, <c>IsoDoom.Sim.Switches</c>): when the
+    /// level draws one texture of a group, the atlas gets all of them (the
+    /// ones the WAD has; SPEC §12 T5.1).
+    /// </summary>
     public static LevelMesh Build(WadArchive wad, Level level, Textures textures, Playpal playpal, Colormap colormap,
-        TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla)
+        TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla, IEnumerable<IReadOnlyList<string>>? textureGroups = null)
     {
         WallSections walls = WallSections.Build(level, textures);
         FloorTriangles floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
@@ -195,6 +260,31 @@ public sealed class LevelMesh
             textureSlot[s.Texture] = images.Count;
             images.Add(textures.R_GenerateComposite(s.Texture, compositeMode));
             names.Add(textures.TextureDefs[s.Texture].Name);
+        }
+        var runtime = new List<string>();
+        foreach (IReadOnlyList<string> group in textureGroups ?? Array.Empty<IReadOnlyList<string>>())
+        {
+            var nums = new List<int>();
+            bool used = false;
+            foreach (string name in group)
+            {
+                int num = textures.R_CheckTextureNumForName(name);
+                if (num <= 0)
+                    continue;
+                nums.Add(num);
+                used |= textureSlot[num] >= 0;
+            }
+            if (!used)
+                continue;
+            foreach (int num in nums)
+            {
+                if (textureSlot[num] >= 0)
+                    continue;
+                textureSlot[num] = images.Count;
+                images.Add(textures.R_GenerateComposite(num, compositeMode));
+                names.Add(textures.TextureDefs[num].Name);
+                runtime.Add(textures.TextureDefs[num].Name);
+            }
         }
         var flatSlot = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (Sector sector in level.Sectors)
@@ -213,6 +303,7 @@ public sealed class LevelMesh
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
         foreach (var (name, slot) in flatSlot)
             mesh._flatSlot[name] = slot;
+        mesh.RuntimeTextures = runtime;
         mesh.CreateTextures(playpal, colormap);
         mesh.BuildChunks();
         return mesh;
@@ -371,19 +462,52 @@ public sealed class LevelMesh
     /// <summary>Selects the PLAYPAL palette.</summary>
     public void SetPalette(int palette) => SetParameter("palette_index", palette);
 
+    /// <summary>A sector's floor and ceiling heights to draw, in map units (T5.1: interpolated between tics).</summary>
+    public delegate (float Floor, float Ceiling) SectorHeights(Sector sector);
+
     /// <summary>
-    /// Copies every sector's current floor and ceiling height and light level
-    /// from <see cref="Level"/> into the sector data texture, so the meshes follow.
+    /// Copies every sector's floor and ceiling height (its current ones, or
+    /// <paramref name="heights"/>'), light level and floor flat from
+    /// <see cref="Level"/> into the sector data texture, and every sidedef's
+    /// texture names into the side texture slots, so the meshes follow (T5.1).
+    /// Uploads only what changed. A flat or texture the atlas lacks keeps the
+    /// previous one (<see cref="RuntimeMisses"/>).
     /// </summary>
-    public void UpdateSectors()
+    public void UpdateSectors(SectorHeights? heights = null)
     {
+        bool dirty = false;
         foreach (Sector s in Level.Sectors)
-            WriteSector(s);
-        SectorDataTexture.Update(_sectorImage);
+            dirty |= WriteSector(s, heights);
+        if (dirty)
+            SectorDataTexture.Update(_sectorImage);
+        if (WriteSides())
+            SideTexturesTexture.Update(_sideImage);
     }
 
-    /// <summary>The sector data texel of <paramref name="sector"/> as uploaded: floor, ceiling (map units), light.</summary>
+    /// <summary>The sector data texel of <paramref name="sector"/> as uploaded: floor, ceiling (map units), light, floor flat slot.</summary>
     public Color SectorData(int sector) => _sectorImage.GetPixel(sector % DataWidth, sector / DataWidth);
+
+    /// <summary>The <c>side_textures</c> texel of a sidedef's texture (<see cref="PartTop"/>…) as uploaded: its slot, -1 for none.</summary>
+    public int SideTextureSlot(int side, int part) => (int)MathF.Round(_sideImage.GetPixel((3 * side + part) % DataWidth, (3 * side + part) / DataWidth).R);
+
+    /// <summary>The <c>side_textures</c> texel a section's quads read (<c>CUSTOM0.y</c>): its sidedef and part.</summary>
+    public static int SidePartId(WallSection s) => 3 * s.SideDef.Index + Part(s.Kind);
+
+    /// <summary>The sidedef texture a section of <paramref name="kind"/> draws (<see cref="PartTop"/>…).</summary>
+    public static int Part(WallSectionKind kind) => kind switch
+    {
+        WallSectionKind.Upper => PartTop,
+        WallSectionKind.Lower => PartBottom,
+        _ => PartMiddle,
+    };
+
+    /// <summary>A sidedef's texture name of <paramref name="part"/>.</summary>
+    public static string PartTexture(IsoDoom.Map.Side side, int part) => part switch
+    {
+        PartTop => side.TopTexture,
+        PartBottom => side.BottomTexture,
+        _ => side.MidTexture,
+    };
 
     /// <summary>The <c>texture_info</c> texel of texture slot <paramref name="slot"/> as uploaded: atlas x, y, width, height.</summary>
     public Color TextureInfo(int slot) => _infoImage.GetPixel(slot % DataWidth, slot / DataWidth);
@@ -395,9 +519,72 @@ public sealed class LevelMesh
             material.SetShaderParameter(name, value);
     }
 
-    private void WriteSector(Sector s) =>
-        _sectorImage.SetPixel(s.Index % DataWidth, s.Index / DataWidth,
-            new Color((float)(s.FloorHeight / 65536.0), (float)(s.CeilingHeight / 65536.0), s.LightLevel, 0));
+    // One sector's texel; returns whether it changed.
+    private bool WriteSector(Sector s, SectorHeights? heights)
+    {
+        (float floor, float ceiling) = heights?.Invoke(s) ?? ((float)(s.FloorHeight / 65536.0), (float)(s.CeilingHeight / 65536.0));
+        int i = s.Index;
+        float flat = _sectorTexels[i].A;
+        if (!ReferenceEquals(_sectorFlats[i], s.FloorPic))
+        {
+            int slot = FlatSlot(s.FloorPic);
+            if (slot >= 0)
+                flat = slot;
+            else
+                Miss($"flat {s.FloorPic} (sector {i})");
+            _sectorFlats[i] = s.FloorPic;
+        }
+        var texel = new Color(floor, ceiling, s.LightLevel, flat);
+        if (texel == _sectorTexels[i])
+            return false;
+        _sectorTexels[i] = texel;
+        _sectorImage.SetPixel(i % DataWidth, i / DataWidth, texel);
+        return true;
+    }
+
+    // Every side part's texture slot; returns whether one changed.
+    private bool WriteSides()
+    {
+        bool dirty = false;
+        foreach (IsoDoom.Map.Side side in Level.Sides)
+        {
+            for (int part = 0; part < 3; part++)
+            {
+                int id = 3 * side.Index + part;
+                string name = PartTexture(side, part);
+                if (ReferenceEquals(_sideNames[id], name))
+                    continue;
+                bool first = _sideNames[id] is null;
+                _sideNames[id] = name;
+                int texnum = Textures.R_CheckTextureNumForName(name);
+                int slot = texnum == 0 ? -1 : TextureSlot(texnum);
+                if (slot < 0 && texnum != 0)
+                {
+                    // Not in the atlas: at load a part with nothing drawn; later a miss on a drawn one.
+                    if (first || !_sidePartDrawn[id])
+                        slot = -1;
+                    else
+                    {
+                        Miss($"texture {name} (side {side.Index})");
+                        continue;
+                    }
+                }
+                if (!first && slot == _sideSlots[id])
+                    continue;
+                _sideSlots[id] = slot;
+                _sideImage.SetPixel(id % DataWidth, id / DataWidth, new Color(slot, 0, 0));
+                dirty = true;
+            }
+        }
+        return dirty;
+    }
+
+    private void Miss(string what)
+    {
+        RuntimeMisses++;
+        if (_warned.Add(what))
+            GD.PushWarning($"Level: {Level.Name}: {what} is not in the level's atlas; kept the previous one (SPEC §12 T5.1)");
+    }
 
     private static int Rows(int count) => Math.Max(1, (count + DataWidth - 1) / DataWidth);
 
@@ -413,9 +600,12 @@ public sealed class LevelMesh
         }
         TextureInfoTexture = ImageTexture.CreateFromImage(info);
 
+        Array.Fill(_sectorTexels, new Color(float.NaN, 0, 0, 0)); // nothing written yet
         foreach (Sector s in Level.Sectors)
-            WriteSector(s);
+            WriteSector(s, null);
         SectorDataTexture = ImageTexture.CreateFromImage(_sectorImage);
+        WriteSides();
+        SideTexturesTexture = ImageTexture.CreateFromImage(_sideImage);
 
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
@@ -424,6 +614,7 @@ public sealed class LevelMesh
         SetParameter("atlas", AtlasTexture);
         SetParameter("texture_info", TextureInfoTexture);
         SetParameter("sector_data", SectorDataTexture);
+        SetParameter("side_textures", SideTexturesTexture);
         SetParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
         SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
         LightTablesTexture = ImageTexture.CreateFromImage(
@@ -482,7 +673,7 @@ public sealed class LevelMesh
             Sector sector = Level.Sectors[floor.Sector];
             Chunk c = ChunkOf(floor.Sector);
             int first = c.Vertices.Count;
-            var c0 = new Vector4(KindFloor, FlatSlot(sector.FloorPic), floor.Sector, -1);
+            var c0 = new Vector4(KindFloor, 0, floor.Sector, -1); // the flat's slot is the sector data's A (T5.1)
             foreach (PolygonVertex v in floor.Vertices)
                 c.Add(ToGodot(v.X, v.Y, 0), new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)), c0, Vector4.Zero, Vector4.Zero);
             foreach (int i in floor.Indices)
@@ -496,11 +687,11 @@ public sealed class LevelMesh
                 continue;
             bool masked = IsMasked(s);
             Chunk c = masked ? maskedChunks[s.FrontSector.Index] ??= new Chunk() : ChunkOf(s.FrontSector.Index);
-            var c0 = new Vector4(masked ? KindMasked : KindWall, TextureSlot(s.Texture), s.FrontSector.Index, s.BackSector?.Index ?? -1);
+            var c0 = new Vector4(masked ? KindMasked : KindWall, SidePartId(s), s.FrontSector.Index, s.BackSector?.Index ?? -1);
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
             foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
             {
-                var c2 = new Vector4((int)s.TextureTop.Plane, Units(s.TextureTop.Offset), piece.Contrast, PieceAngle(piece));
+                var c2 = new Vector4(TexturePlane(s, s.TextureTop.Plane), TextureTopOffset(s), piece.Contrast, PieceAngle(piece));
                 (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
                 Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
                 int first = c.Vertices.Count;
@@ -524,11 +715,11 @@ public sealed class LevelMesh
                 continue;
             Sector back = s.BackSector!;
             Chunk bc = maskedChunks[back.Index] ??= new Chunk();
-            var b0 = new Vector4(KindMaskedBack, TextureSlot(s.Texture), back.Index, s.FrontSector.Index);
+            var b0 = new Vector4(KindMaskedBack, SidePartId(s), back.Index, s.FrontSector.Index);
             var b1 = new Vector4((int)OtherSide(s.Bottom.Plane), Units(s.Bottom.Offset), (int)OtherSide(s.Top.Plane), Units(s.Top.Offset));
             foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
             {
-                var c2 = new Vector4((int)OtherSide(s.TextureTop.Plane), Units(s.TextureTop.Offset), piece.Contrast, PieceAngle(piece));
+                var c2 = new Vector4(TexturePlane(s, OtherSide(s.TextureTop.Plane)), TextureTopOffset(s), piece.Contrast, PieceAngle(piece));
                 (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
                 Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
                 int first = bc.Vertices.Count;
@@ -551,7 +742,7 @@ public sealed class LevelMesh
             foreach (int centre in new[] { CapPlayer, CapCursor })
             {
                 int first = c.Vertices.Count;
-                var c0 = new Vector4(KindCap, FlatSlot(Level.Sectors[floor.Sector].FloorPic), floor.Sector, centre);
+                var c0 = new Vector4(KindCap, 0, floor.Sector, centre);
                 foreach (PolygonVertex v in floor.Vertices)
                     c.Add(ToGodot(v.X, v.Y, 0), new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)), c0, Vector4.Zero, Vector4.Zero);
                 foreach (int i in floor.Indices)
@@ -616,6 +807,12 @@ public sealed class LevelMesh
     public static float PieceAngle(WallPiece piece) => (float)Math.Atan2((double)piece.B.Y - piece.A.Y, (double)piece.B.X - piece.A.X);
 
     private static float Units(int fixedValue) => (float)(fixedValue / 65536.0);
+
+    /// <summary>A section's texture-top plane reference as <c>CUSTOM2.x</c>: the plane, plus <see cref="PlaneAddsTextureHeight"/> when its texture bottom is pegged (T5.1).</summary>
+    public static int TexturePlane(WallSection s, WallPlane plane) => (int)plane + (s.BottomPegged ? PlaneAddsTextureHeight : 0);
+
+    /// <summary>A section's texture-top offset as <c>CUSTOM2.y</c> (map units): without the texture height when the shader adds the slot's (T5.1).</summary>
+    public static float TextureTopOffset(WallSection s) => Units(s.TextureTop.Offset - (s.BottomPegged ? s.TextureHeight : 0));
 
     /// <summary>The texture column (map units, float) of a section's piece end: the sidedef's <c>textureoffset</c> plus the piece's column (<see cref="WallPiece"/>).</summary>
     public static float Column(WallSection s, int pieceColumn) => (float)(((long)s.TextureOffset + pieceColumn) / 65536.0);

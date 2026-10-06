@@ -108,7 +108,7 @@ public readonly record struct PlaneRef(WallPlane Plane, int Offset)
 public sealed class WallSection
 {
     internal WallSection(Line line, int side, Side sidedef, Sector? back, WallSectionKind kind, int texture, int textureHeight,
-        PlaneRef bottom, PlaneRef top, PlaneRef textureTop)
+        PlaneRef bottom, PlaneRef top, PlaneRef textureTop, bool bottomPegged)
     {
         Line = line;
         Side = side;
@@ -121,6 +121,7 @@ public sealed class WallSection
         Bottom = bottom;
         Top = top;
         TextureTop = textureTop;
+        BottomPegged = bottomPegged;
     }
 
     public Line Line { get; }
@@ -162,6 +163,19 @@ public sealed class WallSection
 
     /// <summary>The height of the texture's row 0 (see the class remarks).</summary>
     public PlaneRef TextureTop { get; }
+
+    /// <summary>
+    /// Whether the texture's bottom is pegged to a plane, so <see cref="TextureTop"/>'s
+    /// offset includes <see cref="TextureHeight"/> (r_segs.c's <c>textureheight[] + rowoffset</c>
+    /// cases: a lower-unpegged middle or masked middle, a pegged upper). A
+    /// renderer whose texture changes at run time (switches, SPEC §12 T5.1)
+    /// adds the new texture's height instead: <see cref="TextureTopFor"/>.
+    /// </summary>
+    public bool BottomPegged { get; }
+
+    /// <summary>fixed_t: <see cref="TextureTop"/> for the current planes with a texture of <paramref name="textureHeight"/> (fixed_t) in place of this one.</summary>
+    public int TextureTopFor(int textureHeight) =>
+        TextureTop.Evaluate(FrontSector, BackSector) + (BottomPegged ? textureHeight - TextureHeight : 0);
 
     /// <summary>Whether the texture repeats vertically (all kinds but <see cref="WallSectionKind.MaskedMiddle"/>).</summary>
     public bool TilesVertically => Kind != WallSectionKind.MaskedMiddle;
@@ -302,16 +316,17 @@ public sealed class WallSections
         int toptexture, int bottomtexture, int midtexture, List<WallSection> sections)
     {
         int rowoffset = sidedef.RowOffset;
-        WallSection Section(WallSectionKind kind, int texnum, WallPlane bottom, WallPlane top, PlaneRef texturemid) =>
+        WallSection Section(WallSectionKind kind, int texnum, WallPlane bottom, WallPlane top, PlaneRef texturemid, bool bottomPegged = false) =>
             new(linedef, side, sidedef, backsector, kind, texnum, TextureHeight(textures, texnum),
-                new PlaneRef(bottom, 0), new PlaneRef(top, 0), texturemid);
+                new PlaneRef(bottom, 0), new PlaneRef(top, 0), texturemid, bottomPegged);
         if (backsector is null)
         {
             // single sided line
             PlaneRef texturemid = (linedef.Flags & Line.ML_DONTPEGBOTTOM) != 0
                 ? new PlaneRef(WallPlane.FrontFloor, TextureHeight(textures, midtexture) + rowoffset) // bottom of texture at floor
                 : new PlaneRef(WallPlane.FrontCeiling, rowoffset); // top of texture at ceiling
-            sections.Add(Section(WallSectionKind.Middle, midtexture, WallPlane.FrontFloor, WallPlane.FrontCeiling, texturemid));
+            sections.Add(Section(WallSectionKind.Middle, midtexture, WallPlane.FrontFloor, WallPlane.FrontCeiling, texturemid,
+                (linedef.Flags & Line.ML_DONTPEGBOTTOM) != 0));
             return;
         }
 
@@ -328,7 +343,8 @@ public sealed class WallSections
             PlaneRef toptexturemid = (linedef.Flags & Line.ML_DONTPEGTOP) != 0
                 ? new PlaneRef(WallPlane.FrontCeiling, rowoffset) // top of texture at top
                 : new PlaneRef(WallPlane.BackCeiling, TextureHeight(textures, toptexture) + rowoffset); // bottom of texture at bottom
-            sections.Add(Section(WallSectionKind.Upper, toptexture, WallPlane.BackCeiling, WallPlane.FrontCeiling, toptexturemid));
+            sections.Add(Section(WallSectionKind.Upper, toptexture, WallPlane.BackCeiling, WallPlane.FrontCeiling, toptexturemid,
+                (linedef.Flags & Line.ML_DONTPEGTOP) == 0));
         }
 
         // lower: worldlow > worldbottom
@@ -343,7 +359,8 @@ public sealed class WallSections
             PlaneRef maskedtexturemid = (linedef.Flags & Line.ML_DONTPEGBOTTOM) != 0
                 ? new PlaneRef(WallPlane.HigherFloor, TextureHeight(textures, midtexture) + rowoffset)
                 : new PlaneRef(WallPlane.LowerCeiling, rowoffset);
-            sections.Add(Section(WallSectionKind.MaskedMiddle, midtexture, WallPlane.HigherFloor, WallPlane.LowerCeiling, maskedtexturemid));
+            sections.Add(Section(WallSectionKind.MaskedMiddle, midtexture, WallPlane.HigherFloor, WallPlane.LowerCeiling, maskedtexturemid,
+                (linedef.Flags & Line.ML_DONTPEGBOTTOM) != 0));
         }
     }
 

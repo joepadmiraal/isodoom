@@ -102,6 +102,9 @@ public sealed partial class World
     /// <summary>The level's lines, in <c>LINEDEFS</c> order.</summary>
     public line_t[] lines { get; private set; } = Array.Empty<line_t>();
 
+    /// <summary>The level's sidedefs, in <c>SIDEDEFS</c> order.</summary>
+    public side_t[] sides { get; private set; } = Array.Empty<side_t>();
+
     /// <summary>p_setup.c <c>blocklinks</c>: the first mobj of each block's list (through <see cref="mobj_t.bnext"/>), row by row from the bottom left.</summary>
     public mobj_t?[] blocklinks { get; private set; } = Array.Empty<mobj_t?>();
 
@@ -187,6 +190,18 @@ public sealed partial class World
             lines[i] = new line_t(ld,
                 ld.FrontSector is null ? null : sectors[ld.FrontSector.Index],
                 ld.BackSector is null ? null : sectors[ld.BackSector.Index]);
+        }
+        sides = new side_t[level.Sides.Length];
+        for (int i = 0; i < sides.Length; i++)
+            sides[i] = new side_t(level.Sides[i], sectors[level.Sides[i].Sector.Index]);
+        // P_GroupLines: the sectors' line lists
+        foreach (sector_t sector in sectors)
+        {
+            IReadOnlyList<Line> sectorLines = sector.map.Lines;
+            sector.lines = new line_t[sectorLines.Count];
+            for (int i = 0; i < sector.lines.Length; i++)
+                sector.lines[i] = lines[sectorLines[i].Index];
+            sector.StoreInterpolation(); // not vanilla (T5.1)
         }
         // P_LoadBlockMap: clear out mobj chains
         blocklinks = new mobj_t?[bmapwidth * bmapheight];

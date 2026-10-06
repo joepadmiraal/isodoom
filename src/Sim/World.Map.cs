@@ -4,9 +4,9 @@ using IsoDoom.Map;
 namespace IsoDoom.Sim;
 
 // p_map.c, movement part: position checks (P_CheckPosition, PIT_CheckLine, PIT_CheckThing),
-// P_TryMove and wall sliding (P_SlideMove, PTR_SlideTraverse, P_HitSlideLine).
-// Teleport moves come with M5, aiming, shooting, use lines, radius attacks and P_ChangeSector
-// with M5/M6.
+// P_TryMove and wall sliding (P_SlideMove, PTR_SlideTraverse, P_HitSlideLine), and sector
+// height changes (P_ChangeSector, PIT_ChangeSector, P_ThingHeightClip; T5.1).
+// Teleport moves come with M5, aiming, shooting, use lines and radius attacks with M5/M6.
 public sealed partial class World
 {
     // ---- p_local.h ----
@@ -642,5 +642,138 @@ public sealed partial class World
     stairstep:
         if (!P_TryMove(mo, mo.x, mo.y + mo.momy))
             P_TryMove(mo, mo.x + mo.momx, mo.y);
+    }
+
+    // ---- p_map.c: sector height changing (T5.1) ----
+
+    /// <summary>p_map.c <c>crushchange</c>: whether <see cref="P_ChangeSector"/>'s move crushes (damages things that don't fit).</summary>
+    public bool crushchange;
+
+    /// <summary>p_map.c <c>nofit</c>: set by <see cref="PIT_ChangeSector"/> when a shootable thing no longer fits.</summary>
+    public bool nofit;
+
+    private Func<mobj_t, bool>? _pitChangeSector;
+
+    /// <summary>
+    /// p_map.c <c>P_ThingHeightClip</c>: takes a valid thing and adjusts the
+    /// thing->floorz, thing->ceilingz, and possibly thing->z. This is called
+    /// for all nearby monsters whenever a sector changes height. If the thing
+    /// doesn't fit, the z will be set to the lowest value and false will be
+    /// returned.
+    /// </summary>
+    public bool P_ThingHeightClip(mobj_t thing)
+    {
+        bool onfloor = thing.z == thing.floorz;
+
+        P_CheckPosition(thing, thing.x, thing.y);
+        // what about stranding a monster partially off an edge?
+
+        thing.floorz = tmfloorz;
+        thing.ceilingz = tmceilingz;
+
+        if (onfloor)
+        {
+            // walking monsters rise and fall with the floor
+            thing.z = thing.floorz;
+        }
+        else
+        {
+            // don't adjust a floating monster unless forced to
+            if (thing.z + thing.height > thing.ceilingz)
+                thing.z = thing.ceilingz - thing.height;
+        }
+
+        if (thing.ceilingz - thing.floorz < thing.height)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// p_map.c <c>PIT_ChangeSector</c>: fits <paramref name="thing"/> to the
+    /// new heights (<see cref="P_ThingHeightClip"/>). One that doesn't fit is
+    /// crunched to gibs when dead, removed when a dropped item, left alone
+    /// unless shootable; a shootable one sets <see cref="nofit"/> and, while
+    /// <see cref="crushchange"/> on every fourth tic, takes 10 damage
+    /// (<see cref="P_DamageMobj"/>: the hook stays a stub until M6, T6.3) and
+    /// sprays blood. Always keeps checking.
+    /// </summary>
+    public bool PIT_ChangeSector(mobj_t thing)
+    {
+        if (P_ThingHeightClip(thing))
+        {
+            // keep checking
+            return true;
+        }
+
+        // crunch bodies to giblets
+        if (thing.health <= 0)
+        {
+            P_SetMobjState(thing, statenum_t.S_GIBS);
+
+            thing.flags &= ~mobjflag_t.MF_SOLID;
+            thing.height = 0;
+            thing.radius = 0;
+
+            // keep checking
+            return true;
+        }
+
+        // crunch dropped items
+        if ((thing.flags & mobjflag_t.MF_DROPPED) != 0)
+        {
+            P_RemoveMobj(thing);
+
+            // keep checking
+            return true;
+        }
+
+        if ((thing.flags & mobjflag_t.MF_SHOOTABLE) == 0)
+        {
+            // assume it is bloody gibs or something
+            return true;
+        }
+
+        nofit = true;
+
+        if (crushchange && (leveltime & 3) == 0)
+        {
+            P_DamageMobj(thing, null, null, 10);
+
+            // spray blood in a random direction
+            mobj_t mo = P_SpawnMobj(thing.x, thing.y, thing.z + thing.height / 2, mobjtype_t.MT_BLOOD);
+
+            // (left operand first, as Boom's order-independent rewrite and C#)
+            mo.momx = (P_Random() - P_Random()) << 12;
+            mo.momy = (P_Random() - P_Random()) << 12;
+        }
+
+        // keep checking (crush other things)
+        return true;
+    }
+
+    /// <summary>
+    /// p_map.c <c>P_ChangeSector</c>: after <paramref name="sector"/>'s floor
+    /// or ceiling moved, re-checks heights for all things near it (the
+    /// blocks of its <see cref="sector_t.blockbox"/>), crushing with
+    /// <paramref name="crunch"/>. Returns <see cref="nofit"/>: whether a
+    /// shootable thing no longer fits (a door or crusher then reverses or
+    /// stops, T5.3/T5.5).
+    /// </summary>
+    public bool P_ChangeSector(sector_t sector, bool crunch)
+    {
+        _pitChangeSector ??= PIT_ChangeSector;
+
+        nofit = false;
+        crushchange = crunch;
+
+        // re-check heights for all things near the moving sector
+        for (int x = sector.blockbox[BBox.BOXLEFT]; x <= sector.blockbox[BBox.BOXRIGHT]; x++)
+        {
+            for (int y = sector.blockbox[BBox.BOXBOTTOM]; y <= sector.blockbox[BBox.BOXTOP]; y++)
+                P_BlockThingsIterator(x, y, _pitChangeSector);
+        }
+
+        return nofit;
     }
 }

@@ -10,10 +10,14 @@
 //
 // Per-sector data (`sector_data`, RGBA float, SECTOR_DATA_WIDTH texels per
 // row, one per sector): R = floor height, G = ceiling height (map units),
-// B = light level (0-255). The vertex shader places every vertex from it, so
-// changing a sector's heights moves its floor and walls without a rebuild.
-// `texture_info` (RGBA float, same layout, one texel per texture slot):
-// atlas x, y, width, height.
+// B = light level (0-255), A = the floor flat's texture slot. The vertex
+// shader places every vertex from it, so changing a sector's heights moves
+// its floor and walls without a rebuild (T5.1: the sim's, interpolated).
+// `side_textures` (R float, same layout, three texels per sidedef: upper,
+// lower, middle; IsoDoom.Render.LevelMesh.SidePartId): the texture slot of
+// each sidedef texture, -1 for none, so a switch changes a wall's texture
+// without a rebuild (T5.1). `texture_info` (RGBA float, same layout, one
+// texel per texture slot): atlas x, y, width, height.
 //
 // Light (SPEC §7.4, §12 T2.8): vanilla's tables (IsoDoom.Map.LightTables,
 // the CPU reference) in `light_tables` (R8, 128 x 32): row i = r_main.c
@@ -30,13 +34,15 @@
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
-//              4 a floor's cutaway cap), texture slot, front sector, back sector (-1: none;
-//              for a cap its cut centre, 0 player, 1 cursor)
+//              4 a floor's cutaway cap), side part (walls: the side_textures texel; floors 0,
+//              their slot is the sector's), front sector, back sector (-1: none; for a cap
+//              its cut centre, 0 player, 1 cursor)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   walls:     UV.x = texture column (textureoffset + distance from V1), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
-//              CUSTOM2 = texture-top plane, texture-top offset, fake contrast (-1, 0, +1),
-//                        direction from end A to B (radians; LevelMesh.PieceAngle)
+//              CUSTOM2 = texture-top plane (+ 8: add the slot's texture height, for a texture
+//                        whose bottom is pegged; T5.1), texture-top offset, fake contrast
+//                        (-1, 0, +1), direction from end A to B (radians; LevelMesh.PieceAngle)
 //              planes are IsoDoom.Map.WallPlane: 0 front floor, 1 front ceiling,
 //              2 back floor, 3 back ceiling, 4 higher floor, 5 lower ceiling
 //
@@ -99,6 +105,7 @@ const int CAP_DARKEN = 4;
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
 uniform sampler2D sector_data : filter_nearest, repeat_disable;
+uniform sampler2D side_textures : filter_nearest, repeat_disable;
 // PLAYPAL: RGB8, 256 x palettes. COLORMAP: R8, 256 x maps (as palette.gdshader).
 uniform sampler2D playpal : filter_nearest, repeat_disable;
 uniform sampler2D colormap : filter_nearest, repeat_disable;
@@ -174,7 +181,8 @@ void vertex() {
 	int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
 	vec4 front = data_texel(sector_data, front_id);
 	vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
-	ivec4 rect = ivec4(data_texel(texture_info, int(CUSTOM0.y)) + 0.5);
+	int slot = kind == 0 ? int(front.a + 0.5) : int(floor(data_texel(side_textures, int(CUSTOM0.y)).r + 0.5));
+	ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
 	v_rect = rect;
 	v_kind = kind;
 	int light = clamp(int(front.b + 0.5), 0, 255);
@@ -199,14 +207,16 @@ void vertex() {
 		// WallSection.Span: clipped to the front sector, empty when top <= bottom.
 		float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);
 		float top = min(plane_height(int(CUSTOM1.z), front, back) + CUSTOM1.w, front.g);
-		float texture_top = plane_height(int(CUSTOM2.x), front, back) + CUSTOM2.y;
+		int texture_plane = int(CUSTOM2.x);
+		float texture_top = plane_height(texture_plane & 7, front, back) + CUSTOM2.y + ((texture_plane & 8) != 0 ? float(rect.w) : 0.0);
 		if (kind == 2) {
 			// Drawn once: only the texture's rows, texture_top down by its height.
 			top = min(top, texture_top);
 			bottom = max(bottom, texture_top - float(rect.w));
 		}
 		top = max(top, bottom);
-		if (back_face && masked_backs == 0) {
+		if ((back_face && masked_backs == 0) || slot < 0) {
+			// Collapsed: a back face turned off, or a texture changed to none.
 			top = bottom;
 		}
 		z = UV.y > 0.5 ? top : bottom;

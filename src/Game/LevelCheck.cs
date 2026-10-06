@@ -16,9 +16,9 @@ namespace IsoDoom.Game;
 /// <list type="number">
 /// <item><b>Every map</b> of the WAD is loaded in the level scene and its
 /// meshes built, each in under 1 s (SPEC §9; the first map with opening the
-/// WAD). For each: every sector's data texel (floor, ceiling, light)
+/// WAD). For each: every sector's data texel (floor, ceiling, light, flat slot)
 /// must equal the <see cref="Level"/>'s values; every drawn wall section's
-/// texture slot must name its texture and point (through <c>texture_info</c>)
+/// texture slot (through its sidedef's <c>side_textures</c> texel, T5.1) must name its texture and point (through <c>texture_info</c>)
 /// at an atlas rectangle holding exactly its composite, every floor's slot
 /// exactly its flat; every chunk's vertex arrays must hold the sector's floor
 /// triangles and its wall quads in order (masked middles in a second surface
@@ -60,6 +60,8 @@ namespace IsoDoom.Game;
 /// two sector light levels and both fake contrasts must be compared. The
 /// cutaway (T3.4) from the game camera's angle: see LevelCheck.Cutaway.cs.
 /// These views hide the things.</item>
+/// <item><b>Run-time data from the sim</b> (T5.1, every map; the changed wall
+/// side-on with a renderer): see LevelCheck.Runtime.cs.</item>
 /// <item><b>Thing sprites</b> (T3.5; the atlas and every map's billboards
 /// headless, drawn sprites with a renderer): see LevelCheck.Sprites.cs.</item>
 /// </list>
@@ -186,6 +188,8 @@ public partial class LevelCheck : Godot.Node
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
+            CheckTextureChangeData(m, map);
+            CheckSectorInterpolation(m, map);
             CheckGameLoop(map); // last: it moves the player and spawns a mobj
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
@@ -197,6 +201,9 @@ public partial class LevelCheck : Godot.Node
             + "positions, sectors and the rotations of an orthographic and a perspective camera");
         GD.Print($"Level check: game loop: {_loopMaps} maps ran {GameLoopTics} tics each with the player walking; the billboards follow the mobjs "
             + "at tic fractions 0, ½ and 1 (interpolated between the last two tics), a mobj spawned between tics is drawn where it is, and one removed is dropped");
+        GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
+            + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
+            + $"{_switchPairs} switch pairs drawn with both textures in the atlas");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
@@ -269,7 +276,7 @@ public partial class LevelCheck : Godot.Node
             Fail($"{map}: the sector data texture can't be read back as RGBAF");
         foreach (Sector s in m.Level.Sectors)
         {
-            var expected = new Color((float)(s.FloorHeight / 65536.0), (float)(s.CeilingHeight / 65536.0), s.LightLevel, 0);
+            var expected = new Color((float)(s.FloorHeight / 65536.0), (float)(s.CeilingHeight / 65536.0), s.LightLevel, m.FlatSlot(s.FloorPic));
             if (m.SectorData(s.Index) != expected)
                 Fail($"{map}: sector {s.Index}: data texel {m.SectorData(s.Index)}, expected {expected}");
             if (gpu is not null && gpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth) != expected)
@@ -318,18 +325,49 @@ public partial class LevelCheck : Godot.Node
             }
         }
 
+        // Walls through their sidedef's side_textures texel (T5.1), floors through their sector data's A.
         foreach (WallSection s in m.Walls.Sections)
         {
-            if (LevelMesh.IsDrawn(s))
-                CheckSlot(m.TextureSlot(s.Texture), Textures.TextureDefs[s.Texture].Name, Composite(s.Texture), $"line {s.Line.Index} side {s.Side} {s.Kind}");
+            if (!LevelMesh.IsDrawn(s))
+                continue;
+            int sideSlot = m.SideTextureSlot(s.SideDef.Index, LevelMesh.Part(s.Kind));
+            if (sideSlot != m.TextureSlot(s.Texture))
+                Fail($"{map}: line {s.Line.Index} side {s.Side} {s.Kind}: side_textures texel {sideSlot}, the texture's slot is {m.TextureSlot(s.Texture)}");
+            CheckSlot(sideSlot, Textures.TextureDefs[s.Texture].Name, Composite(s.Texture), $"line {s.Line.Index} side {s.Side} {s.Kind}");
         }
         foreach (Sector s in m.Level.Sectors)
-            CheckSlot(m.FlatSlot(s.FloorPic), s.FloorPic, FlatImage(s.FloorPic), $"sector {s.Index} floor");
+            CheckSlot((int)m.SectorData(s.Index).A, s.FloorPic, FlatImage(s.FloorPic), $"sector {s.Index} floor");
+        // T5.1: the textures only reachable at run time (switch pairs) have slots of their own, and
+        // every texture of a switch pair the level draws is in the atlas.
+        var runtime = new HashSet<string>(m.RuntimeTextures, StringComparer.OrdinalIgnoreCase);
+        foreach (string name in runtime)
+        {
+            int texnum = Textures.R_CheckTextureNumForName(name);
+            if (texnum <= 0)
+                Fail($"{map}: run-time texture {name} is not in the WAD");
+            else
+                CheckSlot(m.TextureSlot(texnum), name, Composite(texnum), $"run-time texture {name}");
+        }
+        foreach (IReadOnlyList<string> group in LevelScene.SwitchGroups(_scene.GameMode))
+        {
+            bool drawn = false;
+            foreach (string name in group)
+                drawn |= Textures.R_CheckTextureNumForName(name) is > 0 and var t && m.TextureSlot(t) >= 0 && !runtime.Contains(name);
+            foreach (string name in group)
+            {
+                if (drawn && Textures.R_CheckTextureNumForName(name) is > 0 and var t && m.TextureSlot(t) < 0)
+                    Fail($"{map}: switch texture {name} has no slot, though the level draws its pair ({string.Join(", ", group)})");
+            }
+            if (drawn)
+                _switchPairs++;
+        }
         for (int i = 0; i < used.Length; i++)
         {
             if (!used[i])
                 Fail($"{map}: slot {i} ({m.SlotNames[i]}) is used by nothing");
         }
+        if (m.RuntimeMisses != 0)
+            Fail($"{map}: {m.RuntimeMisses} run-time texture or flat change(s) missed the atlas");
 
         // The uploads: the atlas as RG8, texture_info as RGBAF (read back from the GPU when there is one).
         byte[] rg8 = IndexedTextures.ToRg8(m.Atlas.Image);
@@ -351,9 +389,12 @@ public partial class LevelCheck : Godot.Node
             if (info is null)
                 Fail($"{map}: texture_info can't be read back");
         }
+        if (CanCapture)
+            CheckSideTexturesUpload(m, map);
         if (m.Material.GetShaderParameter("atlas").As<Texture2D>() != m.AtlasTexture
             || m.Material.GetShaderParameter("texture_info").As<Texture2D>() != m.TextureInfoTexture
-            || m.Material.GetShaderParameter("sector_data").As<Texture2D>() != m.SectorDataTexture)
+            || m.Material.GetShaderParameter("sector_data").As<Texture2D>() != m.SectorDataTexture
+            || m.Material.GetShaderParameter("side_textures").As<Texture2D>() != m.SideTexturesTexture)
             Fail($"{map}: the material doesn't bind the level's atlas and data textures");
         // The masked middles' material (T3.1) gets every parameter the level material has.
         foreach (Godot.Collections.Dictionary parameter in m.Material.Shader.GetShaderUniformList())
@@ -512,7 +553,7 @@ public partial class LevelCheck : Godot.Node
         // Floor: its corners, the flat's slot, the triangle list.
         if (floor is not null)
         {
-            int flatSlot = m.FlatSlot(level.Sectors[sector].FloorPic);
+            const int flatSlot = 0; // the slot is the sector data's (T5.1)
             for (int i = 0; i < floorVertices; i++)
             {
                 PolygonVertex v = floor.Vertices[i];
@@ -589,13 +630,14 @@ public partial class LevelCheck : Godot.Node
                         Fail($"{sw}: corner {k} at {pos[b + k]}, expected {corners[k]}");
                     if (Math.Abs(uv[b + k].X - us[k]) > 1e-3 || uv[b + k].Y != vs[k])
                         Fail($"{sw}: corner {k} texture coordinate {uv[b + k]}, expected ({us[k]}, {vs[k]})");
-                    if (!Custom(c0, b + k, kind, m.TextureSlot(s.Texture), ownSector, otherSector))
-                        Fail($"{sw}: corner {k}: kind/slot/sectors ({Custom4(c0, b + k)}), expected {kind}, slot {m.TextureSlot(s.Texture)}, {ownSector}, {otherSector}");
+                    if (!Custom(c0, b + k, kind, LevelMesh.SidePartId(s), ownSector, otherSector))
+                        Fail($"{sw}: corner {k}: kind/side part/sectors ({Custom4(c0, b + k)}), expected {kind}, part {LevelMesh.SidePartId(s)}, {ownSector}, {otherSector}");
                     WallPlane Plane(WallPlane p) => backFace ? LevelMesh.OtherSide(p) : p;
+                    int texturePlane = (int)Plane(s.TextureTop.Plane) + (s.BottomPegged ? LevelMesh.PlaneAddsTextureHeight : 0);
                     if ((int)c1[(b + k) * 4] != (int)Plane(s.Bottom.Plane) || (int)c1[(b + k) * 4 + 2] != (int)Plane(s.Top.Plane)
-                        || (int)c2[(b + k) * 4] != (int)Plane(s.TextureTop.Plane))
-                        Fail($"{sw}: corner {k}: plane references {(WallPlane)(int)c1[(b + k) * 4]}, {(WallPlane)(int)c1[(b + k) * 4 + 2]}, {(WallPlane)(int)c2[(b + k) * 4]}"
-                            + $", expected {Plane(s.Bottom.Plane)}, {Plane(s.Top.Plane)}, {Plane(s.TextureTop.Plane)}");
+                        || (int)c2[(b + k) * 4] != texturePlane)
+                        Fail($"{sw}: corner {k}: plane references {(WallPlane)(int)c1[(b + k) * 4]}, {(WallPlane)(int)c1[(b + k) * 4 + 2]}, {(int)c2[(b + k) * 4]}"
+                            + $", expected {Plane(s.Bottom.Plane)}, {Plane(s.Top.Plane)}, {texturePlane}");
                     if (c2[(b + k) * 4 + 2] != contrast)
                         Fail($"{sw}: corner {k}: fake contrast {c2[(b + k) * 4 + 2]}, expected {contrast}");
                     if (c2[(b + k) * 4 + 3] != LevelMesh.PieceAngle(piece))
@@ -624,16 +666,24 @@ public partial class LevelCheck : Godot.Node
                     Color fd = m.SectorData(front), bd = back >= 0 ? m.SectorData(back) : fd;
                     float bottom = Math.Max(PlaneHeight((int)c1[(b + k) * 4], fd, bd) + c1[(b + k) * 4 + 1], fd.R);
                     float top = Math.Min(PlaneHeight((int)c1[(b + k) * 4 + 2], fd, bd) + c1[(b + k) * 4 + 3], fd.G);
-                    float textureTop = PlaneHeight((int)c2[(b + k) * 4], fd, bd) + c2[(b + k) * 4 + 1];
+                    // The slot through the side part's texel (T5.1), its height added for a pegged texture bottom.
+                    int partId = (int)c0[(b + k) * 4 + 1];
+                    int slot = m.SideTextureSlot(partId / 3, partId % 3);
+                    float slotHeight = slot >= 0 ? m.TextureInfo(slot).A : 0;
+                    int tp = (int)c2[(b + k) * 4];
+                    float textureTop = PlaneHeight(tp & 7, fd, bd) + c2[(b + k) * 4 + 1] + ((tp & LevelMesh.PlaneAddsTextureHeight) != 0 ? slotHeight : 0);
                     if ((int)c0[(b + k) * 4] is LevelMesh.KindMasked or LevelMesh.KindMaskedBack)
                     {
                         top = Math.Min(top, textureTop);
-                        bottom = Math.Max(bottom, textureTop - m.TextureInfo((int)c0[(b + k) * 4 + 1]).A);
+                        bottom = Math.Max(bottom, textureTop - slotHeight);
                     }
                     top = Math.Max(top, bottom);
-                    (int sb, int st) = s.Span();
+                    if (slot < 0)
+                        continue; // a texture changed to none: the shader collapses the quad
+                    // The section as drawn with its sidedef's current texture (T5.1: changed at run time or not).
+                    (int sb, int st) = SpanFor(s, (int)slotHeight << Fixed.FRACBITS);
                     float eb = (float)(sb / 65536.0), et = (float)(Math.Max(st, sb) / 65536.0);
-                    float ett = (float)(s.TextureTop.Evaluate(s.FrontSector, s.BackSector) / 65536.0);
+                    float ett = (float)(s.TextureTopFor((int)slotHeight << Fixed.FRACBITS) / 65536.0);
                     if (Math.Abs(bottom - eb) > 1e-3 || Math.Abs(top - et) > 1e-3 || Math.Abs(textureTop - ett) > 1e-3)
                     {
                         Fail($"{sw}: corner {k}: the attributes give span {bottom}..{top}, row 0 at {textureTop}; expected {eb}..{et}, row 0 at {ett}");
@@ -715,6 +765,24 @@ public partial class LevelCheck : Godot.Node
         double px = (p.X - (double)seg.V1.X) / 65536.0, py = (p.Y - (double)seg.V1.Y) / 65536.0;
         double length = Math.Sqrt(dx * dx + dy * dy);
         return length == 0 ? (0, Math.Sqrt(px * px + py * py), 0) : ((px * dx + py * dy) / length, Math.Abs(px * dy - py * dx) / length, length);
+    }
+
+    /// <summary>
+    /// fixed_t: <see cref="WallSection.Span"/> with a texture of <paramref name="textureHeight"/>
+    /// (fixed_t) in place of the section's (T5.1: a texture changed at run time;
+    /// the masked middle's rows and a pegged texture bottom follow its height).
+    /// </summary>
+    private static (int Bottom, int Top) SpanFor(WallSection s, int textureHeight)
+    {
+        int bottom = Math.Max(s.Bottom.Evaluate(s.FrontSector, s.BackSector), s.FrontSector.FloorHeight);
+        int top = Math.Min(s.Top.Evaluate(s.FrontSector, s.BackSector), s.FrontSector.CeilingHeight);
+        if (s.Kind == WallSectionKind.MaskedMiddle)
+        {
+            int texTop = s.TextureTopFor(textureHeight);
+            top = Math.Min(top, texTop);
+            bottom = Math.Max(bottom, texTop - textureHeight);
+        }
+        return (bottom, top);
     }
 
     /// <summary>The shader's <c>plane_height</c> (IsoDoom.Map.WallPlane numbers).</summary>
@@ -863,6 +931,8 @@ public partial class LevelCheck : Godot.Node
 
         if (move is { } mv)
             await MoveCheck(m, mv.Lower, mv.Sector);
+
+        await CheckTextureChangeDrawn(m);
 
         GD.Print($"Level check: {map}: light compared at sector light levels {string.Join(" ", _lightLevels)} (>> 4), "
             + $"wall contrasts {string.Join(" ", _contrasts)}, colormaps {string.Join(" ", _colormaps)}; "
@@ -1131,11 +1201,15 @@ public partial class LevelCheck : Godot.Node
     /// at the same map points (so mirrored on screen) lit by the back sector,
     /// with <see cref="MaskedBackFaces.Off"/> the background over the whole opening.
     /// </summary>
-    private async Task<(int Pixels, bool TilingsDiffer)> CheckWall(LevelMesh m, WallSection s, WallTextureTiling tiling, string map, bool behind = false)
+    private async Task<(int Pixels, bool TilingsDiffer)> CheckWall(LevelMesh m, WallSection s, WallTextureTiling tiling, string map, bool behind = false,
+        int? texture = null)
     {
         bool masked = LevelMesh.IsMasked(s);
         bool allClear = behind && m.MaskedBacks == MaskedBackFaces.Off;
-        (int sb, int st) = s.Span();
+        // T5.1: with texture, the side's texture was changed to it at run time (its height may differ).
+        int texnum = texture ?? s.Texture;
+        int textureHeight = Textures.TextureDefs[texnum].Height << Fixed.FRACBITS;
+        (int sb, int st) = SpanFor(s, textureHeight);
         // The rows compared: the span, or a masked middle's whole opening.
         (int cb, int ct) = masked
             ? (Math.Max(s.Bottom.Evaluate(s.FrontSector, s.BackSector), s.FrontSector.FloorHeight),
@@ -1173,13 +1247,13 @@ public partial class LevelCheck : Godot.Node
             }
         }
 
-        string what = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({Textures.TextureDefs[s.Texture].Name}, {tiling} tiling)"
+        string what = $"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({Textures.TextureDefs[texnum].Name}{(texture is null ? "" : ", changed at run time")}, {tiling} tiling)"
             + (behind ? $", from behind ({m.MaskedBacks})" : "");
         byte[]? frame = await Capture(what);
         if (frame is null)
             return (0, false);
-        IndexedImage tex = Composite(s.Texture);
-        int textureTop = s.TextureTop.Evaluate(s.FrontSector, s.BackSector);
+        IndexedImage tex = Composite(texnum);
+        int textureTop = s.TextureTopFor(textureHeight);
         int light = (behind ? s.BackSector! : s.FrontSector).LightLevel;
         int contrast = LightTables.FakeContrast(s.V1.X, s.V1.Y, s.V2.X, s.V2.Y); // axis-aligned: every seg has it
         // The pieces along the side (T2.9: per seg, vanilla's seg offsets) as distances from V1, columns

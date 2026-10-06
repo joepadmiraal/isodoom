@@ -142,6 +142,76 @@ public sealed class sector_t
     /// <summary>List of mobjs in sector (through <see cref="mobj_t.snext"/>).</summary>
     public mobj_t? thinglist;
 
+    /// <summary>
+    /// The lines with this sector on either side (<c>lines</c>, <c>linecount</c>
+    /// is its length), in line order, as <c>P_GroupLines</c> lists them (the
+    /// map's <see cref="Sector.Lines"/>).
+    /// </summary>
+    public line_t[] lines = System.Array.Empty<line_t>();
+
+    /// <summary><c>linecount</c>.</summary>
+    public int linecount => lines.Length;
+
+    /// <summary>Mapblock bounding box for height changes (<c>blockbox</c>, indexed by <see cref="BBox"/>).</summary>
+    public int[] blockbox => map.BlockBox;
+
+    // ---- Interpolation (not vanilla: presentation state, as source ports'
+    // interpolated sector planes; SPEC §12 T4.7, T5.1). Not in the checksum
+    // and never read by the sim.
+
+    /// <summary>Floor and ceiling heights (fixed_t) at the start of the last tic (<see cref="World.P_StoreInterpolation"/>).</summary>
+    public int oldfloorheight, oldceilingheight;
+
+    /// <summary>
+    /// Not vanilla: remembers the current heights as the start of the tic, so
+    /// the presentation draws them as they are until the sim moves them
+    /// (<see cref="World.P_StoreInterpolation"/>, and after a debug move).
+    /// </summary>
+    public void StoreInterpolation()
+    {
+        oldfloorheight = floorheight;
+        oldceilingheight = ceilingheight;
+    }
+
+    public override string ToString() => map.ToString();
+}
+
+/// <summary>
+/// r_defs.h <c>side_t</c>, the sim's view: the map's <see cref="Side"/>
+/// (whose texture names and offsets the sim changes in place: switches
+/// T5.4, scrolling walls T5.7; the presentation reads them, SPEC §12 T5.1)
+/// with its <see cref="sector"/> as a <see cref="sector_t"/>. Textures are
+/// names, as the map's flats (vanilla's texture numbers; <c>-</c> is none).
+/// </summary>
+public sealed class side_t
+{
+    internal side_t(Side map, sector_t sector)
+    {
+        this.map = map;
+        this.sector = sector;
+    }
+
+    /// <summary>The level's sidedef, shared with the presentation.</summary>
+    public readonly Side map;
+
+    public int Index => map.Index;
+
+    /// <summary>fixed_t: add this to the calculated texture column.</summary>
+    public int textureoffset { get => map.TextureOffset; set => map.TextureOffset = value; }
+
+    /// <summary>fixed_t: add this to the calculated texture top.</summary>
+    public int rowoffset { get => map.RowOffset; set => map.RowOffset = value; }
+
+    /// <summary>Texture name (vanilla's texture number); <c>-</c> is none.</summary>
+    public string toptexture { get => map.TopTexture; set => map.TopTexture = value; }
+
+    public string bottomtexture { get => map.BottomTexture; set => map.BottomTexture = value; }
+
+    public string midtexture { get => map.MidTexture; set => map.MidTexture = value; }
+
+    /// <summary>Sector the SideDef is facing.</summary>
+    public readonly sector_t sector;
+
     public override string ToString() => map.ToString();
 }
 

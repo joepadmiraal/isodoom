@@ -97,11 +97,15 @@ public sealed partial class World
     /// Not vanilla (SPEC §12 T4.7, as source ports): before a tic, every mobj
     /// remembers its position and facing (<see cref="mobj_t.oldx"/>…) and may
     /// be interpolated (<see cref="mobj_t.interp"/>); mobjs spawned, teleported
-    /// or moved by <see cref="PlaceMobj"/> during the tic clear it. The
+    /// or moved by <see cref="PlaceMobj"/> during the tic clear it. Every
+    /// sector remembers its floor and ceiling heights
+    /// (<see cref="sector_t.oldfloorheight"/>, T5.1; light levels step). The
     /// presentation draws between the two. Changes nothing the sim reads.
     /// </summary>
     public void P_StoreInterpolation()
     {
+        foreach (sector_t sector in sectors)
+            sector.StoreInterpolation();
         for (thinker_t th = thinkercap.next; th != thinkercap; th = th.next)
         {
             if (th is mobj_t mo)

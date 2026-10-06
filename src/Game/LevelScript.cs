@@ -82,7 +82,12 @@ namespace IsoDoom.Game;
 /// as device 0, as a real pad.
 /// <c>smooth FRAMES</c> records where the player is drawn on each of the next
 /// FRAMES frames and prints the steps between frames (interpolation: even
-/// steps while moving at a steady speed).
+/// steps while moving at a steady speed); <c>smooth FRAMES SECTOR</c> (T5.1)
+/// does the same for sector SECTOR's drawn floor and ceiling.
+/// <c>plane SECTOR floor|ceiling HEIGHT [SPEED]</c> (T5.1, a debug move) moves
+/// the sector's floor or ceiling towards HEIGHT by SPEED units (default 2, a
+/// door's speed) at the end of each tic, as a mover thinker would, with
+/// <c>P_ChangeSector</c>; it runs with the tics (queue some, or <c>sim live</c>).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -211,7 +216,20 @@ public partial class LevelScript : Node
                         await Drain();
                         PrintChecksum();
                         break;
-                    case "smooth": await Smooth(Int(w[1])); break;
+                    case "smooth":
+                        if (w.Length > 2)
+                            await SmoothSector(Int(w[1]), Int(w[2]));
+                        else
+                            await Smooth(Int(w[1]));
+                        break;
+                    case "plane":
+                        _scene.MovePlane(Int(w[1]), w[2] switch
+                        {
+                            "floor" => false,
+                            "ceiling" => true,
+                            _ => throw new ArgumentException($"plane: \"{w[2]}\" (floor or ceiling)"),
+                        }, Int(w[3]), w.Length > 4 ? Int(w[4]) : 2);
+                        break;
                     case "tictime": await TicTime(Int(w[1])); break;
                     case "joy":
                         Input.ParseInputEvent(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
@@ -278,6 +296,34 @@ public partial class LevelScript : Node
             sum += s;
         string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
         GD.Print($"Level script: smooth: {n} frames, {_scene.TicsRun - tics} tics; player step per frame min {F(steps[0])} median {F(steps[steps.Count / 2])} max {F(steps[^1])} mean {F(sum / steps.Count)} units, largest change between consecutive steps {F(jerk)}");
+    }
+
+    /// <summary>
+    /// T5.1: records sector <paramref name="sector"/>'s drawn floor and ceiling
+    /// (its data texel) over <paramref name="n"/> frames and prints the steps
+    /// between frames (interpolation: even steps while a plane moves at a steady speed).
+    /// </summary>
+    private async Task SmoothSector(int n, int sector)
+    {
+        if (_scene.Mesh is not { } mesh || sector < 0 || sector >= mesh.Level.Sectors.Length)
+            throw new ArgumentException($"no sector {sector}");
+        var steps = new List<float>();
+        Color last = mesh.SectorData(sector);
+        long tics = _scene.TicsRun;
+        for (int i = 0; i < n; i++)
+        {
+            await Frames(1);
+            Color at = mesh.SectorData(sector);
+            steps.Add(Math.Abs(at.R - last.R) + Math.Abs(at.G - last.G));
+            last = at;
+        }
+        float jerk = 0;
+        for (int i = 1; i < steps.Count; i++)
+            jerk = Math.Max(jerk, Math.Abs(steps[i] - steps[i - 1]));
+        steps.Sort();
+        string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
+        GD.Print($"Level script: smooth: sector {sector}, {n} frames, {_scene.TicsRun - tics} tics; drawn floor + ceiling step per frame min {F(steps[0])} "
+            + $"median {F(steps[steps.Count / 2])} max {F(steps[^1])} units, largest change between consecutive steps {F(jerk)}; now floor {F(last.R)}, ceiling {F(last.G)}");
     }
 
     /// <summary>

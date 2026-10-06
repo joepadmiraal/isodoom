@@ -192,6 +192,9 @@ public partial class LevelScene : Node3D
     private double _ticTime;
     private readonly Queue<ticcmd_t?> _scriptTics = new();
 
+    // Debug plane moves (T5.1, the level script's plane): run after each tic, as a mover thinker would.
+    private readonly List<(sector_t Sector, bool Ceiling, int Target, int Speed)> _planeMoves = new();
+
     /// <summary>How far the presentation is between the last two tics (0–1): the time banked towards the next tic, in tics.</summary>
     public double TicFraction { get; private set; } = 1;
 
@@ -512,6 +515,42 @@ public partial class LevelScene : Node3D
             : throw new ArgumentException($"{what}: not a number: \"{s}\"");
 
     /// <summary>
+    /// Not vanilla, a debug move (T5.1, the level script's <c>plane</c>):
+    /// moves sector <paramref name="sector"/>'s floor (or ceiling) towards
+    /// <paramref name="height"/> (map units) by <paramref name="speed"/>
+    /// units at the end of each tic, as a mover thinker of that tic would
+    /// (with <see cref="World.P_ChangeSector"/>, no crushing), until it gets there;
+    /// so the sector moves smoothly on screen, drawn between tics. Doors and lifts come with T5.3/T5.5.
+    /// </summary>
+    public void MovePlane(int sector, bool ceiling, int height, int speed)
+    {
+        if (World is not { } world || sector < 0 || sector >= world.sectors.Length || speed <= 0)
+            throw new ArgumentException($"plane: no sector {sector} (or speed {speed} not positive)");
+        _planeMoves.RemoveAll(m => m.Sector == world.sectors[sector] && m.Ceiling == ceiling);
+        _planeMoves.Add((world.sectors[sector], ceiling, height << Fixed.FRACBITS, speed << Fixed.FRACBITS));
+    }
+
+    /// <summary>Whether a <see cref="MovePlane"/> move is still running.</summary>
+    public bool PlanesMoving => _planeMoves.Count > 0;
+
+    private void MovePlanes()
+    {
+        for (int i = _planeMoves.Count - 1; i >= 0; i--)
+        {
+            (sector_t sec, bool ceiling, int target, int speed) = _planeMoves[i];
+            int now = ceiling ? sec.ceilingheight : sec.floorheight;
+            int next = now < target ? Math.Min(now + speed, target) : Math.Max(now - speed, target);
+            if (ceiling)
+                sec.ceilingheight = next;
+            else
+                sec.floorheight = next;
+            World!.P_ChangeSector(sec, false);
+            if (next == target)
+                _planeMoves.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
     /// Puts the player mobj at map point (<paramref name="x"/>, <paramref name="y"/>)
     /// on the floor there, facing <paramref name="angle"/> (vanilla degrees)
     /// when given, with no momentum (<see cref="World.PlaceMobj"/>: a debug
@@ -763,6 +802,8 @@ public partial class LevelScene : Node3D
         }
         else
             World!.G_Ticker(cmd);
+        if (_planeMoves.Count > 0)
+            MovePlanes();
         LastTiccmd = cmd;
         TicsRun++;
     }
@@ -799,7 +840,26 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
-    /// Draws the world at <see cref="TicFraction"/>: the player mobj as
+    /// A sector's floor and ceiling heights (map units) at <see cref="TicFraction"/>
+    /// between the last two tics (T5.1): from <see cref="sector_t.oldfloorheight"/>…
+    /// to where they are now. Light levels step, as in vanilla.
+    /// </summary>
+    public (float Floor, float Ceiling) InterpolatedHeights(Sector sector)
+    {
+        double f = TicFraction;
+        if (World is not { } world || f >= 1 || sector.Index >= world.sectors.Length || world.sectors[sector.Index].map != sector)
+            return ((float)(sector.FloorHeight / 65536.0), (float)(sector.CeilingHeight / 65536.0));
+        sector_t s = world.sectors[sector.Index];
+        static float Lerp(int a, int b, double f) => (float)((a + ((long)b - a) * f) / 65536.0);
+        return (Lerp(s.oldfloorheight, s.floorheight, f), Lerp(s.oldceilingheight, s.ceilingheight, f));
+    }
+
+    private LevelMesh.SectorHeights? _interpolatedHeights;
+
+    /// <summary>
+    /// Draws the world at <see cref="TicFraction"/>: the sectors at their
+    /// interpolated heights with their current lights, flats and side
+    /// textures (<see cref="LevelMesh.UpdateSectors"/>, T5.1), the player mobj as
     /// <see cref="Player"/>, every other mobj as an entry of <see cref="Things"/>
     /// (rebuilt when the mobjs change), each from its interpolated position,
     /// facing and state.
@@ -808,6 +868,7 @@ public partial class LevelScene : Node3D
     {
         if (World is not { } world)
             return;
+        Mesh?.UpdateSectors(_interpolatedHeights ??= InterpolatedHeights);
         mobj_t? me = PlayerMobj;
         if (Player is not null && me is not null)
             Player.Set(ThingEntry(me, Interpolated(me)));
@@ -1084,6 +1145,7 @@ public partial class LevelScene : Node3D
         Things = null;
         _drawn.Clear();
         World = null;
+        _planeMoves.Clear();
         TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)
         ClearQueuedTics();
         _ticTime = 0;
@@ -1091,7 +1153,7 @@ public partial class LevelScene : Node3D
 
         var clock = Stopwatch.StartNew();
         Level level = Level.Load(wad, map);
-        LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!);
+        LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!, textureGroups: SwitchGroups(GameMode));
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
@@ -1135,6 +1197,18 @@ public partial class LevelScene : Node3D
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");
         _message.Text = _status = text;
+    }
+
+    /// <summary>
+    /// The texture groups a level's walls change between at run time (SPEC §12
+    /// T5.1): the switch pairs of <paramref name="mode"/> (p_switch.c
+    /// <c>alphSwitchList</c> as <c>P_InitSwitchList</c> picks them), which
+    /// <see cref="LevelMesh.Build"/> puts in the atlas up front.
+    /// </summary>
+    public static IEnumerable<IReadOnlyList<string>> SwitchGroups(GameMode mode)
+    {
+        foreach (switchlist_t s in Switches.For(mode))
+            yield return new[] { s.name1, s.name2 };
     }
 
     /// <summary>
@@ -1225,6 +1299,11 @@ public partial class LevelScene : Node3D
                 || s < 0 || s >= level.Sectors.Length)
                 throw new ArgumentException($"--level-sector-floor: bad entry \"{move}\" (SECTOR:HEIGHT)");
             level.Sectors[s].FloorHeight = height << Fixed.FRACBITS;
+            if (World is { } world && world.level == level)
+            {
+                world.sectors[s].StoreInterpolation(); // a debug move: not interpolated
+                world.P_ChangeSector(world.sectors[s], false);
+            }
             GD.Print($"Level: sector {s} floor set to {height}");
         }
         Mesh!.UpdateSectors();

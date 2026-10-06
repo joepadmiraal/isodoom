@@ -88,6 +88,30 @@ public class WallSectionTests
         (19, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
     };
 
+    /// <summary>
+    /// T5.1: the sections whose texture bottom is pegged (the texture height is
+    /// in the anchor's offset) are the pegged uppers and the lower-unpegged
+    /// middles and masked middles; <see cref="WallSection.TextureTopFor"/>
+    /// moves only their anchor with another texture's height.
+    /// </summary>
+    [Fact]
+    public void BottomPeggedSectionsAnchorOnTheirTextureHeight()
+    {
+        (_, _, WallSections walls) = BuildSynthetic();
+        var pegged = walls.Sections.Where(s => s.BottomPegged).Select(s => (s.Line.Index, s.Side, s.Kind)).ToArray();
+        Assert.Equal(new[]
+        {
+            (1, 0, Upper), (1, 1, Upper), (8, 0, Upper), (8, 1, Upper), (10, 0, Middle), (11, 0, Middle), (13, 0, Middle),
+            (15, 0, MaskedMiddle), (15, 1, MaskedMiddle),
+        }, pegged);
+        foreach (WallSection s in walls.Sections)
+        {
+            int now = s.TextureTop.Evaluate(s.FrontSector, s.BackSector);
+            Assert.Equal(now, s.TextureTopFor(s.TextureHeight));
+            Assert.Equal(s.BottomPegged ? now + (16 << FRACBITS) : now, s.TextureTopFor(s.TextureHeight + (16 << FRACBITS)));
+        }
+    }
+
     [Fact]
     public void SyntheticSectionsAreExact()
     {

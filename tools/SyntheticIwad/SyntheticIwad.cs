@@ -25,7 +25,9 @@ namespace IsoDoom.Tools.SyntheticIwad;
 /// rotation-0 frames (one full bright in its spawn state, one for a thing
 /// hanging from the ceiling), plus a sprite lump no sprite uses; global graphics
 /// (title, status bar, menu, font glyphs, with offsets and transparency); a
-/// map with a real BSP tree and every wall-section case (see <c>BuildMap</c>); ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
+/// map with a real BSP tree and every wall-section case (see <c>BuildMap</c>), and
+/// <c>E1M2</c>, the specials map M5's tasks add their cases to (see
+/// <c>BuildSpecialsMap</c>; a switch texture pair); ENDOOM, GENMIDI, DMXGUS, MUS and MIDI music, DMX and PC
 /// speaker sounds, a demo and a plain text lump.
 /// </para>
 /// </summary>
@@ -42,14 +44,18 @@ public static class SyntheticIwad
         w.Lump("ENDOOM", BuildEndoom());
         w.Lump("DEMO1", BuildDemo());
         BuildMap(w);
+        BuildSpecialsMap(w);
         w.Lump("TEXTURE1", BuildTextureLump(
             new Tex("NULLTEX", 64, 64, false, (0, 0, 0)), // texture 0 is never drawn (vanilla's AASTINKY/AASHITTY)
             new Tex("BRICK1", 64, 64, false, (0, 0, 0)),
             new Tex("BRKPNL", 128, 128, false, (0, 0, 0), (64, 0, 1), (-32, 64, 0), (32, 64, 0), (96, 64, 0)),
             new Tex("GRATE", 64, 64, true, (0, 0, 2), (32, 0, 2)),
             new Tex("PANEL", 64, 72, false, (0, -8, 1))));
-        w.Lump("TEXTURE2", BuildTextureLump(new Tex("WINFRAME", 32, 64, false, (0, 0, 2))));
-        w.Lump("PNAMES", BuildPNames("WALLBRK", "WALLPNL", "WINDOW"));
+        w.Lump("TEXTURE2", BuildTextureLump(
+            new Tex("WINFRAME", 32, 64, false, (0, 0, 2)),
+            new Tex("SW1BRCOM", 64, 128, false, (0, 0, 3)), // a switch pair of p_switch.c's list (T5.1, E1M2)
+            new Tex("SW2BRCOM", 64, 128, false, (0, 0, 4))));
+        w.Lump("PNAMES", BuildPNames("WALLBRK", "WALLPNL", "WINDOW", "SWOFF", "SWON"));
         w.Lump("GENMIDI", BuildGenmidi());
         w.Lump("DMXGUS", Encoding.ASCII.GetBytes("# Synthetic test patch map\r\n0, 2, 1, 0, acpiano\r\n"));
         w.Lump("D_E1M1", BuildMus());
@@ -87,6 +93,8 @@ public static class SyntheticIwad
         w.Lump("WALLPNL", EncodePatch(Panel(0)));
         w.Lump("WINDOW", EncodePatch(Window()));
         w.Lump("WALLPNL", EncodePatch(Panel(2))); // duplicate: this one wins, the first is overridden
+        w.Lump("SWOFF", EncodePatch(Switch(false)));
+        w.Lump("SWON", EncodePatch(Switch(true)));
         w.Markers("P1_END", "P_END");
 
         w.Markers("F_START", "F1_START");
@@ -153,6 +161,21 @@ public static class SyntheticIwad
         catch (WadFormatException e)
         {
             problems.Add($"E1M1 does not load: {e.Message}");
+        }
+        try
+        {
+            Level specials = Level.Load(wad, "E1M2");
+            if (specials.Sectors.Length != 1 + SpecialsAlcoves || specials.Sectors[0].Lines.Count != 3 + SpecialsAlcoves)
+                problems.Add($"E1M2 has {specials.Sectors.Length} sectors, its corridor {specials.Sectors[0].Lines.Count} lines; expected {1 + SpecialsAlcoves} and {3 + SpecialsAlcoves}");
+            WallSections walls = WallSections.Build(specials, catalog.Textures);
+            if (walls.Missing.Count > 0)
+                problems.Add($"E1M2 has missing wall textures: {string.Join(", ", walls.Missing)}");
+            if (!Has(walls, s => s.Texture != 0 && catalog.Textures.TextureDefs[s.Texture].Name == "SW1BRCOM"))
+                problems.Add("E1M2 has no switch texture");
+        }
+        catch (WadFormatException e)
+        {
+            problems.Add($"E1M2 does not load: {e.Message}");
         }
         return problems;
     }
@@ -283,6 +306,15 @@ public static class SyntheticIwad
         int edge = Math.Min(Math.Min(x, 63 - x), Math.Min(y % 64, 63 - y % 64));
         int level = edge < 2 ? 7 : edge < 4 ? 2 : 3 + (y % 64) / 22;
         return Index(level, level, hue + (edge < 2 ? 1 : 0));
+    });
+
+    /// <summary>A switch: a panel with a plate in the middle, lit when <paramref name="on"/>.</summary>
+    private static Image Switch(bool on) => Solid(64, 128, (x, y) =>
+    {
+        bool plate = x >= 20 && x < 44 && y >= 48 && y < 80;
+        if (plate)
+            return on ? Index(7, 6, 0) : Index(2, 1, 0);
+        return Index(3 + (x / 16 + y / 32) % 2, 3, 1);
     });
 
     private static Image Window()
@@ -685,8 +717,176 @@ public static class SyntheticIwad
             Sector(-16, 256, "FLOOR2", "F_SKY1", 255),  // 4: courtyard A
             Sector(64, 192, "FLOOR1", "F_SKY1", 192))); // 5: ledge B, raised 80 over A (T3.4a)
         w.Lump("REJECT", new byte[(6 * 6 + 7) / 8]); // all clear: every sector sees every other
-        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 10, 3));
+        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 10, 3, MapVertexes, MapLinedefs));
     }
+
+    // ---- E1M2: the specials map (M5) ----
+    //
+    // Each M5 task adds its cases here (TASKS.md M5). T5.1, the p_spec.c lookup
+    // helpers: a corridor (sector 0) with a row of SpecialsAlcoves alcoves
+    // along its north side (sector 1 + i), each opening onto the corridor and
+    // onto its neighbours through two-sided lines, so the corridor has 24
+    // neighbours (more than p_spec.c's MAX_ADJOINING_SECTORS):
+    //
+    //  y = 128   +----+----+----+-- ... --+----+
+    //            | a0 | a1 | a2 |         | a23|   alcoves, 32 wide
+    //  y = 0     +----+----+----+-- ... --+----+
+    //            |          corridor            |
+    //  y = -128  +------------------------------+
+    //            x = 0                          x = 768
+    //
+    // Lines: 0 corridor south (tag 5), 1 west, 2 east, 3 + i the opening of
+    // alcove i (alcove in front), 27 + i alcove i's north wall (alcove 0's a
+    // switch, SW1BRCOM), 51 and 52 the row's west and east ends, 52 + j the
+    // boundary between alcoves j - 1 and j (j = 1..23, alcove j in front).
+    // Alcoves 0-21 have floors 16..184 (steps of 8, shuffled; the lowest in
+    // alcove 0), alcove 22 a floor of 8 (above the corridor's 0, but after
+    // 22 higher neighbours, so P_FindNextHighestFloor's vanilla overflow
+    // skips it) and alcove 23 one of -32. Ceilings: 256-280, alcove 22 96
+    // (the lowest), alcove 23 320 (the highest). Lights 96-152, alcove 23 64.
+    // Alcoves 3, 7 and 12 have tag 5. Nodes: the root splits along y = 0
+    // (the corridor in front), then a chain along the alcove boundaries.
+
+    /// <summary>The number of alcoves on E1M2 (T5.1).</summary>
+    public const int SpecialsAlcoves = 24;
+
+    /// <summary>E1M2's alcove floors (map units), alcove i is sector 1 + i (T5.1).</summary>
+    public static int AlcoveFloor(int i) => i < 22 ? 16 + 8 * (i * 5 % 22) : i == 22 ? 8 : -32;
+
+    /// <summary>E1M2's alcove ceilings.</summary>
+    public static int AlcoveCeiling(int i) => i < 22 ? 256 + 8 * (i % 4) : i == 22 ? 96 : 320;
+
+    /// <summary>E1M2's alcove light levels.</summary>
+    public static int AlcoveLight(int i) => i < 23 ? 96 + 8 * (i % 8) : 64;
+
+    /// <summary>E1M2's alcove tags (alcoves 3, 7 and 12 share tag 5 with line 0).</summary>
+    public static int AlcoveTag(int i) => i is 3 or 7 or 12 ? 5 : 0;
+
+    private static void BuildSpecialsMap(Writer w)
+    {
+        const int n = SpecialsAlcoves, width = 32;
+        var vertexes = new List<short> { n * width, -128, 0, -128 }; // v0 corridor south-east, v1 south-west
+        int Mid(int i) => 2 + i;            // (32 i, 0)
+        int Top(int i) => 2 + (n + 1) + i;  // (32 i, 128)
+        for (int i = 0; i <= n; i++)
+            vertexes.AddRange(new[] { (short)(i * width), (short)0 });
+        for (int i = 0; i <= n; i++)
+            vertexes.AddRange(new[] { (short)(i * width), (short)128 });
+
+        var lines = new List<short[]>(); // v1, v2, flags, special, tag, right, left
+        var sides = new List<byte[]>();
+        int Side(string upper, string lower, string middle, int sector)
+        {
+            sides.Add(Sidedef(upper, lower, middle, (short)sector));
+            return sides.Count - 1;
+        }
+        void OneSided(int v1, int v2, int sector, string middle, int tag = 0) =>
+            lines.Add(new[] { (short)v1, (short)v2, (short)1, (short)0, (short)tag, (short)Side("-", "-", middle, sector), (short)-1 });
+        void TwoSided(int v1, int v2, int front, int back) =>
+            lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)0, (short)0,
+                (short)Side("BRICK1", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", back) });
+
+        OneSided(0, 1, 0, "BRICK1", tag: 5);  // L0: corridor south (westwards)
+        OneSided(1, Mid(0), 0, "BRICK1");     // L1: corridor west
+        OneSided(Mid(n), 0, 0, "BRICK1");     // L2: corridor east
+        for (int i = 0; i < n; i++)
+            TwoSided(Mid(i + 1), Mid(i), 1 + i, 0); // L3 + i: alcove i's opening (westwards: the alcove in front)
+        for (int i = 0; i < n; i++)
+            OneSided(Top(i), Top(i + 1), 1 + i, i == 0 ? "SW1BRCOM" : "BRICK1"); // L27 + i: alcove north walls
+        OneSided(Mid(0), Top(0), 1, "BRICK1");       // L51: the row's west end
+        OneSided(Top(n), Mid(n), n, "BRICK1");       // L52: its east end
+        for (int j = 1; j < n; j++)
+            TwoSided(Mid(j), Top(j), 1 + j, j);      // L52 + j: alcoves j - 1 | j (northwards: alcove j in front)
+
+        var segs = new List<short>();
+        var subsectors = new List<short>();
+        void Seg(int v1, int v2, int line, int side)
+        {
+            int x1 = vertexes[2 * v1], y1 = vertexes[2 * v1 + 1], x2 = vertexes[2 * v2], y2 = vertexes[2 * v2 + 1];
+            short angle = unchecked((short)((int)Math.Round(Math.Atan2(y2 - y1, x2 - x1) / (2 * Math.PI) * 65536) & 0xffff));
+            segs.AddRange(new[] { (short)v1, (short)v2, angle, (short)line, (short)side, (short)0 });
+        }
+        void Subsector(int first)
+        {
+            subsectors.Add((short)(segs.Count / 6 - first));
+            subsectors.Add((short)first);
+        }
+        // Subsector 0: the corridor, clockwise from its south wall.
+        Seg(0, 1, 0, 0);
+        Seg(1, Mid(0), 1, 0);
+        for (int i = 0; i < n; i++)
+            Seg(Mid(i), Mid(i + 1), 3 + i, 1);
+        Seg(Mid(n), 0, 2, 0);
+        Subsector(0);
+        // Subsector 1 + i: alcove i.
+        for (int i = 0; i < n; i++)
+        {
+            int first = segs.Count / 6;
+            Seg(Mid(i + 1), Mid(i), 3 + i, 0);
+            if (i == 0)
+                Seg(Mid(0), Top(0), 51, 0);
+            else
+                Seg(Mid(i), Top(i), 52 + i, 0);
+            Seg(Top(i), Top(i + 1), 27 + i, 0);
+            if (i == n - 1)
+                Seg(Top(n), Mid(n), 52, 0);
+            else
+                Seg(Top(i + 1), Mid(i + 1), 52 + i + 1, 1);
+            Subsector(first);
+        }
+
+        // Nodes: boundary j (northwards at x = 32 j, the east in front) at index n - 1 - j, its back child
+        // alcove j - 1, its front child the node of boundary j + 1 (or the last alcove); the root (last)
+        // splits along y = 0 eastwards, the corridor (south) in front.
+        var nodes = new List<short>();
+        for (int j = n - 1; j >= 1; j--)
+        {
+            int front = j == n - 1 ? 0x8000 | n : n - 2 - j;
+            int back = 0x8000 | j;
+            nodes.AddRange(new[]
+            {
+                (short)(j * width), (short)0, (short)0, (short)128,
+                (short)128, (short)0, (short)(j * width), (short)(n * width), // right box: top, bottom, left, right
+                (short)128, (short)0, (short)((j - 1) * width), (short)(j * width), // left box
+                unchecked((short)front), unchecked((short)back),
+            });
+        }
+        nodes.AddRange(new[]
+        {
+            (short)0, (short)0, (short)(n * width), (short)0,
+            (short)0, (short)-128, (short)0, (short)(n * width),
+            (short)128, (short)0, (short)0, (short)(n * width),
+            unchecked((short)0x8000), (short)(n - 2),
+        });
+
+        var sectors = new List<byte[]> { Sector(0, 128, "FLOOR1", "FLOOR2", 160) };
+        for (int i = 0; i < n; i++)
+            sectors.Add(Sector((short)AlcoveFloor(i), (short)AlcoveCeiling(i), i % 2 == 0 ? "FLOOR2" : "LAVA1", "FLOOR1", (short)AlcoveLight(i), (short)AlcoveTag(i)));
+
+        var linedefs = new short[lines.Count, 7];
+        for (int i = 0; i < lines.Count; i++)
+        {
+            for (int k = 0; k < 7; k++)
+                linedefs[i, k] = lines[i][k];
+        }
+        var flat = new List<short>();
+        foreach (short[] l in lines)
+            flat.AddRange(l);
+
+        w.Markers("E1M2");
+        w.Lump("THINGS", Shorts(64, -64, 90, 1, 7)); // player 1 start in the corridor
+        w.Lump("LINEDEFS", Shorts(flat.ToArray()));
+        w.Lump("SIDEDEFS", Concat(sides.ToArray()));
+        w.Lump("VERTEXES", Shorts(vertexes.ToArray()));
+        w.Lump("SEGS", Shorts(segs.ToArray()));
+        w.Lump("SSECTORS", Shorts(subsectors.ToArray()));
+        w.Lump("NODES", Shorts(nodes.ToArray()));
+        w.Lump("SECTORS", Concat(sectors.ToArray()));
+        w.Lump("REJECT", new byte[(sectors.Count * sectors.Count + 7) / 8]);
+        w.Lump("BLOCKMAP", BuildBlockmap(-8, -136, 7, 3, vertexes.ToArray(), linedefs));
+    }
+
+    private const short TwoSidedFlag = Line.ML_TWOSIDED;
 
     private static byte[] Sidedef(string upper, string lower, string middle, short sector, short xOffset = 0, short yOffset = 0)
     {
@@ -700,7 +900,7 @@ public static class SyntheticIwad
         return side;
     }
 
-    private static byte[] Sector(short floor, short ceiling, string floorFlat, string ceilingFlat, short light)
+    private static byte[] Sector(short floor, short ceiling, string floorFlat, string ceilingFlat, short light, short tag = 0)
     {
         byte[] sector = new byte[26]; // floor, ceiling, floor flat, ceiling flat, light, special, tag
         BinaryPrimitives.WriteInt16LittleEndian(sector, floor);
@@ -708,6 +908,7 @@ public static class SyntheticIwad
         Encoding.ASCII.GetBytes(floorFlat, sector.AsSpan(4));
         Encoding.ASCII.GetBytes(ceilingFlat, sector.AsSpan(12));
         BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(20), light);
+        BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(24), tag);
         return sector;
     }
 
@@ -717,7 +918,7 @@ public static class SyntheticIwad
     /// linedefs whose bounding box touches it, which is exact for these
     /// axis-aligned lines.
     /// </summary>
-    private static byte[] BuildBlockmap(short originX, short originY, short width, short height)
+    private static byte[] BuildBlockmap(short originX, short originY, short width, short height, short[] vertexes, short[,] linedefs)
     {
         var offsets = new List<short> { originX, originY, width, height };
         var lists = new List<short>();
@@ -729,10 +930,10 @@ public static class SyntheticIwad
                 offsets.Add((short)(listStart + lists.Count));
                 int left = originX + bx * 128, bottom = originY + by * 128;
                 lists.Add(0);
-                for (int i = 0; i < MapLinedefs.GetLength(0); i++)
+                for (int i = 0; i < linedefs.GetLength(0); i++)
                 {
-                    short v1 = MapLinedefs[i, 0], v2 = MapLinedefs[i, 1];
-                    int x1 = MapVertexes[2 * v1], y1 = MapVertexes[2 * v1 + 1], x2 = MapVertexes[2 * v2], y2 = MapVertexes[2 * v2 + 1];
+                    short v1 = linedefs[i, 0], v2 = linedefs[i, 1];
+                    int x1 = vertexes[2 * v1], y1 = vertexes[2 * v1 + 1], x2 = vertexes[2 * v2], y2 = vertexes[2 * v2 + 1];
                     if (Math.Max(x1, x2) >= left && Math.Min(x1, x2) <= left + 128 && Math.Max(y1, y2) >= bottom && Math.Min(y1, y2) <= bottom + 128)
                         lists.Add((short)i);
                 }

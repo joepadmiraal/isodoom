@@ -176,7 +176,7 @@ public class SyntheticMapTests
     public void MissingOrMisorderedMapsAreRejected()
     {
         var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
-        Assert.Throws<WadFormatException>(() => Level.Load(wad, "E1M2"));
+        Assert.Throws<WadFormatException>(() => Level.Load(wad, "E1M3"));
         Assert.Throws<WadFormatException>(() => Level.Load(wad, "PLAYPAL"));
     }
 }
