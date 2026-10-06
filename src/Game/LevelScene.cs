@@ -13,8 +13,10 @@ namespace IsoDoom.Game;
 
 /// <summary>
 /// The level scene (T2.5, milestone M2): loads one map of the IWAD and shows
-/// it as a textured mesh (<see cref="LevelMesh"/>) from a fixed overview
-/// camera (<see cref="LevelCamera"/>). Opened by <see cref="Main"/> with the
+/// it as a textured mesh (<see cref="LevelMesh"/>) through the game camera
+/// (<see cref="IsoCamera"/>, T3.3) following a player stand-in
+/// (<see cref="PlayerPlaceholder"/>), or from a fixed overview camera
+/// (<see cref="LevelCamera"/>) or the free-fly debug camera. Opened by <see cref="Main"/> with the
 /// user argument <c>--level MAP</c> (<c>godot -- --level E1M1</c>; without a
 /// map name the first of <c>E1M1</c>/<c>MAP01</c>).
 /// <para>
@@ -26,8 +28,12 @@ namespace IsoDoom.Game;
 /// in map units, through the data texture after loading);
 /// <c>--level-screenshot=FILE.png</c> (save a capture and quit; needs a real
 /// renderer; the image is WAD data, keep it out of the repo);
-/// <c>--level-camera=overview|fly</c> (start with the overview or the free-fly
-/// camera, T2.7; default overview);
+/// <c>--level-camera=iso|overview|fly</c> (start with the game camera, the
+/// overview or the free-fly camera, T2.7/T3.3; default iso);
+/// <c>--level-projection=ortho|perspective</c> (the game camera's projection,
+/// <see cref="IsoProjection"/>, default ortho); <c>--level-pitch=DEGREES</c>
+/// (its pitch, 45–60, default 55); <c>--level-zoom=UNITS</c> (its view height
+/// in map units, 320–1600, default 640);
 /// <c>--level-script=COMMANDS</c> (feed scripted input: <see cref="LevelScript"/>);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-origin=X,Y</c> (the player position light
@@ -39,9 +45,13 @@ namespace IsoDoom.Game;
 /// and, with a real renderer, drawn pixels: <see cref="LevelCheck"/>).
 /// </para>
 /// <para>
-/// Keys (T2.7; not under <c>--level-check</c>): Tab switches between the
-/// overview and the free-fly camera (<see cref="FreeFlyCamera"/>, which has
-/// its own keys), Home puts the free-fly camera at player 1's start, Page
+/// Keys (T2.7, T3.3; not under <c>--level-check</c>): Tab cycles the game
+/// camera, the overview and the free-fly camera (<see cref="FreeFlyCamera"/>,
+/// which has its own keys); with the game camera W/A/S/D walk the placeholder
+/// relative to the screen (Shift runs), it faces the cursor ground point,
+/// Ctrl + wheel zooms and O switches orthographic / perspective
+/// (<see cref="IsoCamera"/>); Home puts the placeholder (or, in free-fly, the
+/// free-fly camera) at player 1's start, Page
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
 /// diminishing mode, F1 shows the controls, F3 hides the overlay.
 /// </para>
@@ -74,12 +84,24 @@ public partial class LevelScene : Node3D
     /// <summary>The free-fly debug camera (T2.7); null under <c>--level-check</c>, which must keep the overview camera current.</summary>
     public FreeFlyCamera? FreeFly { get; private set; }
 
+    /// <summary>The game camera (T3.3); null under <c>--level-check</c>.</summary>
+    public IsoCamera? Iso { get; private set; }
+
+    /// <summary>The player stand-in the game camera follows (T3.3, until T4.7's player mobj); null under <c>--level-check</c>.</summary>
+    public PlayerPlaceholder? Placeholder { get; private set; }
+
+    /// <summary>The cursor ground point (<see cref="CursorGround"/>) under the game camera, updated every frame while it is current.</summary>
+    public CursorGround.Hit? Cursor { get; private set; }
+
+    private MeshInstance3D? _cursorMarker;
+
     /// <summary>p_local.h <c>VIEWHEIGHT</c>: eye height above the floor, map units (where Home puts the free-fly camera).</summary>
     public const int VIEWHEIGHT = 41;
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   F1 controls   F3 overlay\n"
+        + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
 
@@ -149,6 +171,7 @@ public partial class LevelScene : Node3D
                 };
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
+            CreateGameCamera();
             string? map = WadLocator.GetUserArg("--level");
             if (map is null || map.StartsWith('-'))
                 map = DefaultMap();
@@ -163,30 +186,124 @@ public partial class LevelScene : Node3D
             return;
         }
         GetViewport().SizeChanged += FrameCamera;
-        if (WadLocator.GetUserArg("--level-camera") == "fly")
-            UseFreeFly(true);
+        switch (WadLocator.GetUserArg("--level-camera"))
+        {
+            case "fly": UseCamera(CameraMode.FreeFly); break;
+            case "overview": UseCamera(CameraMode.Overview); break;
+            case null or "iso": UseCamera(CameraMode.Iso); break;
+            case string other: Fail($"--level-camera: unknown camera \"{other}\" (iso, overview or fly)"); return;
+        }
         if (WadLocator.GetUserArg("--level-script") is string script)
             AddChild(new LevelScript(this, script));
         else if (WadLocator.GetUserArg("--level-screenshot") is string path)
             _ = ScreenshotAsync(path);
     }
 
+    /// <summary>The level scene's cameras (Tab cycles them in this order).</summary>
+    public enum CameraMode { Iso, Overview, FreeFly }
+
     /// <summary>Makes the free-fly camera (<paramref name="fly"/>) or the overview camera current.</summary>
-    public void UseFreeFly(bool fly)
+    public void UseFreeFly(bool fly) => UseCamera(fly ? CameraMode.FreeFly : CameraMode.Overview);
+
+    /// <summary>Makes the camera <paramref name="mode"/> current (the overview camera when that one does not exist).</summary>
+    public void UseCamera(CameraMode mode)
     {
-        if (FreeFly is null)
-            return;
-        if (fly)
-            FreeFly.MakeCurrent();
-        else
+        if (mode == CameraMode.FreeFly && FreeFly is not null)
         {
-            _camera.MakeCurrent();
-            Input.MouseMode = Input.MouseModeEnum.Visible;
+            FreeFly.MakeCurrent();
+            return;
         }
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+        if (mode == CameraMode.Iso && Iso is not null)
+        {
+            Iso.MakeCurrent();
+            if (Placeholder is not null)
+                Iso.Snap(Placeholder.Foot);
+        }
+        else
+            _camera.MakeCurrent();
     }
+
+    /// <summary>The current camera.</summary>
+    public CameraMode CurrentCamera =>
+        FreeFly is { Current: true } ? CameraMode.FreeFly : Iso is { Current: true } ? CameraMode.Iso : CameraMode.Overview;
 
     /// <summary>Whether the free-fly camera is the current one.</summary>
     public bool FreeFlyActive => FreeFly is { } f && f.Current;
+
+    /// <summary>Whether the game camera is the current one.</summary>
+    public bool IsoActive => Iso is { } i && i.Current;
+
+    /// <summary>Creates the game camera, the placeholder (with the WAD's <c>PLAY</c> sprite) and the cursor marker.</summary>
+    private void CreateGameCamera()
+    {
+        Iso = new IsoCamera { Name = "Iso" };
+        AddChild(Iso);
+        if (WadLocator.GetUserArg("--level-projection") is string projection)
+            Iso.SetProjectionMode(projection switch
+            {
+                "ortho" or "orthographic" => IsoProjection.Orthographic,
+                "perspective" => IsoProjection.Perspective,
+                _ => throw new ArgumentException($"--level-projection: unknown projection \"{projection}\" (ortho or perspective)"),
+            });
+        if (WadLocator.GetUserArg("--level-pitch") is string pitch)
+            Iso.SetPitch(ParseFloat(pitch, "--level-pitch"));
+        if (WadLocator.GetUserArg("--level-zoom") is string zoom)
+            Iso.SetViewUnits(ParseFloat(zoom, "--level-zoom"));
+
+        Placeholder = new PlayerPlaceholder { Name = "Placeholder" };
+        AddChild(Placeholder);
+        try
+        {
+            Placeholder.LoadSprite(Wad!, Sprites.R_InitSprites(Wad!), Playpal!);
+        }
+        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
+        {
+            GD.PushWarning($"Level: no player sprite: {e.Message}");
+        }
+
+        // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
+        var ring = new TorusMesh { InnerRadius = 5f / LevelMesh.MapUnitsPerMetre, OuterRadius = 8f / LevelMesh.MapUnitsPerMetre, Rings = 16, RingSegments = 4 };
+        ring.Material = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = new Color(1f, 0.85f, 0.1f),
+            NoDepthTest = true,
+            RenderPriority = 1,
+        };
+        _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        AddChild(_cursorMarker);
+    }
+
+    private static float ParseFloat(string s, string what) =>
+        float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float f)
+            ? f
+            : throw new ArgumentException($"{what}: not a number: \"{s}\"");
+
+    /// <summary>Puts the placeholder at map point (<paramref name="x"/>, <paramref name="y"/>) facing <paramref name="angle"/> (vanilla degrees) and centres the game camera on it.</summary>
+    public void PlacePlaceholder(float x, float y, float? angle = null)
+    {
+        if (Placeholder is null || Mesh is null)
+            return;
+        Placeholder.Place(Mesh.Level, x, y);
+        if (angle is float a)
+            Placeholder.Angle = a;
+        Iso?.Snap(Placeholder.Foot);
+    }
+
+    /// <summary>Puts the placeholder at player <paramref name="player"/>'s start (or the map's centre), facing its angle.</summary>
+    public void PlaceholderToStart(int player = 0)
+    {
+        if (Mesh is null)
+            return;
+        if (Mesh.Level.PlayerStart(player) is MapThing start)
+            PlacePlaceholder(start.X, start.Y, start.Angle);
+        else
+        {
+            Vector3 c = Mesh.Bounds.GetCenter();
+            PlacePlaceholder(c.X * LevelMesh.MapUnitsPerMetre, -c.Z * LevelMesh.MapUnitsPerMetre, 90);
+        }
+    }
 
     /// <summary>
     /// Puts the free-fly camera at player <paramref name="player"/>'s start of
@@ -254,11 +371,19 @@ public partial class LevelScene : Node3D
         switch (key.PhysicalKeycode)
         {
             case Key.Tab:
-                UseFreeFly(!FreeFlyActive);
+                CameraMode next = (CameraMode)(((int)CurrentCamera + 1) % 3);
+                if (next == CameraMode.Iso && Iso is null)
+                    next = CameraMode.Overview;
+                UseCamera(next);
                 break;
             case Key.Home:
-                JumpToStart();
-                UseFreeFly(true);
+                if (FreeFlyActive || Placeholder is null)
+                {
+                    JumpToStart();
+                    UseFreeFly(true);
+                }
+                else
+                    PlaceholderToStart();
                 break;
             case Key.Pagedown:
                 SwitchMap(1);
@@ -285,11 +410,59 @@ public partial class LevelScene : Node3D
     public override void _Process(double delta)
     {
         if (!IsCheckRun && Mesh is not null)
+        {
+            UpdateGameCamera(delta);
             Mesh.SetLightOrigin(LightOrigin());
+        }
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
             _message.Text = OverlayText();
     }
+
+    /// <summary>
+    /// One frame of the game camera (T3.3): the cursor ground point under the
+    /// mouse, the placeholder walked by W/A/S/D relative to the screen and
+    /// facing the cursor ground point, and the camera following it.
+    /// </summary>
+    private void UpdateGameCamera(double delta)
+    {
+        if (Iso is null || Placeholder is null || Mesh is null)
+            return;
+        Placeholder.UpdateFloor();
+        if (Iso.Current)
+        {
+            Cursor = CursorGround.Pick(Mesh, Iso, Iso.CursorOrCentre, Placeholder.FloorHeight);
+            var move = new Vector2(Axis(Key.D, Key.A), Axis(Key.W, Key.S));
+            if (move != Vector2.Zero)
+            {
+                float speed = Input.IsPhysicalKeyPressed(Key.Shift) ? PlayerPlaceholder.RunSpeed : PlayerPlaceholder.WalkSpeed;
+                Vector3 dir = Iso.GroundRight * move.X + Iso.GroundUp * move.Y; // Godot XZ: map x = X, map y = −Z
+                var step = new Vector2(dir.X, -dir.Z).Normalized() * speed * (float)delta;
+                Placeholder.Move(step.X, step.Y);
+            }
+            if (Cursor is { } hit)
+            {
+                Vector3 c = hit.MapUnits;
+                Vector2 toCursor = new Vector2(c.X, c.Y) - Placeholder.MapPosition;
+                if (toCursor.LengthSquared() > 1f)
+                    Placeholder.Angle = Mathf.PosMod(Mathf.RadToDeg(MathF.Atan2(toCursor.Y, toCursor.X)), 360f);
+            }
+            Iso.Follow(Placeholder.Foot, Cursor?.Point, delta);
+        }
+        else
+            Cursor = null;
+        if (GetViewport().GetCamera3D() is Camera3D current)
+            Placeholder.FaceCamera(current);
+        if (_cursorMarker is not null)
+        {
+            _cursorMarker.Visible = Cursor is not null && Overlay.Visible;
+            if (Cursor is { } c)
+                _cursorMarker.Position = c.Point + new Vector3(0, 0.5f / LevelMesh.MapUnitsPerMetre, 0);
+        }
+    }
+
+    private static float Axis(Key positive, Key negative) =>
+        (Input.IsPhysicalKeyPressed(positive) ? 1f : 0f) - (Input.IsPhysicalKeyPressed(negative) ? 1f : 0f);
 
     /// <summary>A small cross at the screen centre (the free-fly camera's view direction; straight down it marks the floor the overlay names).</summary>
     private static Control Crosshair()
@@ -329,8 +502,29 @@ public partial class LevelScene : Node3D
                 text.Append(drawn == s.Index ? "\n" : drawn < 0 ? "   (outside the map: no floor here)\n" : $"   (floor drawn here: sector {drawn})\n");
             }
         }
+        else if (Iso is { } iso && iso.Current)
+        {
+            text.Append(iso.Mode == IsoProjection.Orthographic ? "game camera, orthographic" : $"game camera, perspective {IsoCamera.PerspectiveFov:F0}°");
+            text.Append($", view {iso.ViewUnits:F0} units, pitch {iso.Pitch:F0}°\n");
+            (int fx, int fy, int fz) = MapPosition(iso.Focus);
+            text.Append($"focus x {fx}  y {fy}  z {fz}\n");
+        }
         else
             text.Append(FreeFly is null ? "overview\n" : "overview (Tab: free-fly)\n");
+        if (Placeholder is { } p && Mesh is not null && !FreeFlyActive)
+        {
+            Vector2 at = p.MapPosition;
+            text.Append($"placeholder x {at.X:F0}  y {at.Y:F0}  z {p.FloorHeight:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}");
+            if (p.Sector is Sector ps)
+                text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel})");
+            text.Append('\n');
+        }
+        if (Cursor is { } hit)
+        {
+            Vector3 c = hit.MapUnits;
+            text.Append($"cursor x {c.X:F0}  y {c.Y:F0}  z {c.Z:F0}   ");
+            text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the placeholder's floor)\n");
+        }
         if (Mesh is not null)
         {
             Vector2 o = Mesh.LightOrigin;
@@ -348,9 +542,9 @@ public partial class LevelScene : Node3D
 
     /// <summary>
     /// The stand-in player position for light diminishing (map units x, y)
-    /// until the game has a player (M3/M4): <c>--level-light-origin</c>, else
-    /// the free-fly camera's pivot when it is current, else player 1's start
-    /// (the map's centre without one).
+    /// until the game has a player (M4): <c>--level-light-origin</c>, else
+    /// the free-fly camera's pivot when it is current, else the placeholder
+    /// (T3.3), else player 1's start (the map's centre without one).
     /// </summary>
     public Vector2 LightOrigin()
     {
@@ -363,6 +557,8 @@ public partial class LevelScene : Node3D
         }
         if (FreeFly is { } fly && fly.Current)
             return new Vector2(fly.Pivot.X, -fly.Pivot.Z) * LevelMesh.MapUnitsPerMetre;
+        if (Placeholder is { } p && Mesh is not null)
+            return p.MapPosition;
         if (Mesh is null)
             return Vector2.Zero;
         if (Mesh.Level.PlayerStart(0) is MapThing start)
@@ -459,6 +655,7 @@ public partial class LevelScene : Node3D
         FrameCamera();
         if (FreeFly is not null)
             JumpToStart();
+        PlaceholderToStart();
         string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";

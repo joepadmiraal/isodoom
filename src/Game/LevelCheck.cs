@@ -33,6 +33,14 @@ namespace IsoDoom.Game;
 /// <c>E1M1</c>/<c>MAP01</c>), the back sector of a pegged lower wall gets its
 /// floor raised 24 units through the data texture; the data and attribute
 /// checks run again, then the floor is put back.</item>
+/// <item><b>Cursor ground point</b> (T3.3, every map, no renderer needed):
+/// with a game camera (<see cref="IsoCamera"/>, not current) in each
+/// projection, a point inside every sector's floor (its largest triangle's
+/// centroid) is projected to the screen and picked back with
+/// <see cref="CursorGround.Pick"/>: the pick must land on that floor at
+/// that point, or on a higher floor in front of it along the ray, and the
+/// floor it names must be the one <see cref="FloorTriangles.SectorAt"/>
+/// finds there.</item>
 /// <item><b>With a real renderer</b> (not <c>--headless</c>), drawn pixels of
 /// the rendered map are compared with the CPU palette conversion
 /// (<see cref="TextureWrap"/>, the light mapping of <see cref="LightTables"/>,
@@ -78,6 +86,8 @@ public partial class LevelCheck : Godot.Node
     private readonly SortedSet<int> _lightLevels = new(), _contrasts = new(), _colormaps = new();
     private long _lightSkipped;
     private long _maskedOpaque, _maskedClear;
+    private IsoCamera? _isoProbe;
+    private int _cursorPoints, _cursorInFront;
 
     public LevelCheck(LevelScene scene) => _scene = scene;
 
@@ -162,6 +172,7 @@ public partial class LevelCheck : Godot.Node
             CheckSectorData(m, map);
             slots += CheckSlots(m, map);
             CheckLightTables(m, map);
+            CheckCursorGround(m, map);
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
@@ -171,8 +182,77 @@ public partial class LevelCheck : Godot.Node
         }
         GD.Print($"Level check: {_scene.MapNames.Count} maps built: {sectors} sector data texels, {slots} texture slots, "
             + $"{sections} wall sections and {vertices} vertices checked against the levels");
+        GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
+            + $"(both projections), {_cursorInFront} on a higher floor in front");
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
             + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
+    }
+
+    /// <summary>
+    /// T3.3: a point inside every sector's floor, seen through the game camera
+    /// (orthographic and perspective, focused 96 units off the point so the ray
+    /// is oblique in perspective), must be picked back by <see cref="CursorGround.Pick"/>
+    /// on that floor, or on a higher floor in front of it along the ray.
+    /// </summary>
+    private void CheckCursorGround(LevelMesh m, string map)
+    {
+        if (_isoProbe is null)
+        {
+            _isoProbe = new IsoCamera { Name = "IsoProbe", InputEnabled = false };
+            AddChild(_isoProbe);
+        }
+        IsoCamera cam = _isoProbe;
+        foreach (IsoProjection projection in new[] { IsoProjection.Orthographic, IsoProjection.Perspective })
+        {
+            cam.SetProjectionMode(projection);
+            foreach (SectorFloor floor in m.Floors.BySector)
+            {
+                if (floor.TriangleCount == 0)
+                    continue;
+                int best = 0;
+                Int128 bestArea = -1;
+                for (int t = 0; t < floor.TriangleCount; t++)
+                {
+                    Int128 area = FloorTriangles.TwiceArea(floor.Corner(t, 0), floor.Corner(t, 1), floor.Corner(t, 2));
+                    if (area > bestArea)
+                        (best, bestArea) = (t, area);
+                }
+                PolygonVertex a = floor.Corner(best, 0), b = floor.Corner(best, 1), c = floor.Corner(best, 2);
+                int cx = (int)(((long)a.X + b.X + c.X) / 3), cy = (int)(((long)a.Y + b.Y + c.Y) / 3);
+                Sector sector = m.Level.Sectors[floor.Sector];
+                float height = sector.FloorHeight / 65536f;
+                Vector3 p = LevelMesh.ToGodot(cx, cy, height);
+                cam.Snap(p + new Vector3(96, 0, -48) / LevelMesh.MapUnitsPerMetre);
+                Vector2 screen = cam.UnprojectPosition(p);
+                Vector3 origin = cam.ProjectRayOrigin(screen), dir = cam.ProjectRayNormal(screen);
+                string what = $"{map}: cursor ground ({projection}) over sector {floor.Sector} at ({cx / 65536.0:F1}, {cy / 65536.0:F1})";
+                _cursorPoints++;
+                if (CursorGround.Pick(m, origin, dir, height) is not { OnFloor: true } hit)
+                {
+                    Fail($"{what}: no floor picked");
+                    continue;
+                }
+                Vector3 got = hit.MapUnits;
+                int hitFloor = m.Level.Sectors[hit.Sector].FloorHeight;
+                double offBy = (hit.Point - p).Length() * LevelMesh.MapUnitsPerMetre;
+                if (hitFloor == sector.FloorHeight && offBy < 0.5)
+                {
+                    // On this floor (a sector of the same height there is the same surface).
+                }
+                else if (hitFloor > sector.FloorHeight && (hit.Point - origin).Dot(dir) < (p - origin).Dot(dir))
+                    _cursorInFront++;
+                else
+                {
+                    Fail($"{what}: picked sector {hit.Sector} at ({got.X:F1}, {got.Y:F1}, {got.Z:F1}), {offBy:F1} units off, "
+                        + $"neither this floor ({sector.FloorHeight >> Fixed.FRACBITS}) nor a higher one in front");
+                    continue;
+                }
+                int fx = (int)Math.Round(got.X * 65536.0), fy = (int)Math.Round(got.Y * 65536.0);
+                int drawn = m.Floors.SectorAt(fx, fy);
+                if (drawn != hit.Sector && (drawn < 0 || m.Level.Sectors[drawn].FloorHeight != hitFloor))
+                    Fail($"{what}: picked sector {hit.Sector}, but the floor drawn at ({got.X:F1}, {got.Y:F1}) is {drawn}");
+            }
+        }
     }
 
     /// <summary>Every sector's data texel (and, with a renderer, the GPU copy) against the level.</summary>

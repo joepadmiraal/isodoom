@@ -27,8 +27,11 @@ namespace IsoDoom.Game;
 /// vanilla player standing still); <c>fov DEGREES|vanilla</c> (the free-fly
 /// camera's vertical field of view; <c>vanilla</c> is
 /// <see cref="FreeFlyCamera.VanillaFov"/>, so a 16:10 window shows what
-/// vanilla's full-screen 320×200 view shows); <c>quit</c> (also implied at
-/// the end).
+/// vanilla's full-screen 320×200 view shows); <c>mouse X Y</c> (T3.3: move
+/// the cursor to viewport pixel X, Y; the game camera's cursor ground point
+/// follows); <c>place X Y [ANGLE]</c> (T3.3: put the placeholder at map
+/// point X, Y, optionally facing ANGLE degrees, and centre the game camera on
+/// it); <c>quit</c> (also implied at the end).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -77,6 +80,12 @@ public partial class LevelScript : Node
                     case "fov":
                         if (_scene.FreeFly is { } fly)
                             fly.Fov = w[1] == "vanilla" ? FreeFlyCamera.VanillaFov : float.Parse(w[1], CultureInfo.InvariantCulture);
+                        break;
+                    case "mouse":
+                        Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(Int(w[1]), Int(w[2])), GlobalPosition = new Vector2(Int(w[1]), Int(w[2])) });
+                        break;
+                    case "place":
+                        _scene.PlacePlaceholder(Int(w[1]), Int(w[2]), w.Length > 3 ? float.Parse(w[3], CultureInfo.InvariantCulture) : null);
                         break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
