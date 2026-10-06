@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Vanilla movement reference (T4.8; dev tool). Usage:
 
-    routes.py REF DOOM1.WAD SYNTHETIC.WAD OUTDIR ROUTE...
+    routes.py REF DOOM1.WAD SYNTHETIC.WAD TESTMAPS OUTDIR ROUTE...
 
 Plays each route (a .route file: a ticcmd sequence, format in
 tests/IsoDoom.Tests/Sim/VanillaRoute.cs) in the vanilla reference (REF,
 dump.c built by build.sh) as a v1.9 demo and writes the per-tic dump: NAME.vanilla
-beside the route for a route on the synthetic IWAD (generated, non-id
-content: committed), OUTDIR/NAME.vanilla for one on DOOM1.WAD (WAD-derived:
-never committed). The synthetic map plays as a -file over DOOM1.WAD, whose
-status bar and fonts the reference needs to start.
+beside the route for a route on the synthetic IWAD or a test map (generated,
+non-id content: committed), OUTDIR/NAME.vanilla for one on DOOM1.WAD
+(WAD-derived: never committed). The synthetic map and the test maps
+(TESTMAPS/NAME.wad, written by the tests' WritesTheTestMapPwads; T4.8a) play
+as a -file over DOOM1.WAD, whose status bar and fonts the reference needs to
+start; a test map's lump is E1M1.
 """
 import os, subprocess, sys, tempfile
 
@@ -18,7 +20,7 @@ SKILLS = range(1, 6)
 
 def parse(path):
     """The route's header (iwad, map, skill) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
-    head = {'iwad': None, 'map': 'E1M1', 'skill': 3}
+    head = {'iwad': None, 'map': None, 'skill': 3}
     cmds = []
     for n, line in enumerate(open(path), 1):
         line = line.split('#', 1)[0].split()
@@ -37,14 +39,16 @@ def parse(path):
         if not (-128 <= fwd <= 127 and -128 <= side <= 127 and -128 <= turn <= 127 and 0 <= buttons <= 255):
             sys.exit(f'{where}: out of range')
         cmds += [(fwd, side, turn, buttons)] * count
-    if head['iwad'] not in ('synthetic', 'doom1') or head['skill'] not in SKILLS:
-        sys.exit(f'{path}: needs "iwad synthetic|doom1" and a skill of 1-5')
+    if head['iwad'] not in ('synthetic', 'doom1', 'testmap') or head['skill'] not in SKILLS:
+        sys.exit(f'{path}: needs "iwad synthetic|doom1|testmap" and a skill of 1-5')
+    if head['iwad'] == 'testmap' and not head['map']:
+        sys.exit(f'{path}: "iwad testmap" needs "map NAME"')
     return head, cmds
 
 
 def demo(head, cmds):
     """A v1.9 demo lump: nomonsters, player 1 alone; angleturn is the turn byte << 8."""
-    m = head['map'].upper()
+    m = 'E1M1' if head['iwad'] == 'testmap' else (head['map'] or 'E1M1').upper()
     if len(m) != 4 or m[0] != 'E' or m[2] != 'M':
         sys.exit(f'{m}: only ExMy maps')
     data = bytearray([109, head['skill'] - 1, int(m[1]), int(m[3]), 0, 0, 0, 1, 0, 1, 0, 0, 0])
@@ -54,18 +58,24 @@ def demo(head, cmds):
 
 
 def main():
-    ref, doom1, synthetic, outdir = sys.argv[1:5]
+    ref, doom1, synthetic, testmaps, outdir = sys.argv[1:6]
+    outdir = os.path.abspath(outdir)
     os.makedirs(outdir, exist_ok=True)
-    for route in sys.argv[5:]:
+    for route in sys.argv[6:]:
         head, cmds = parse(route)
         name = os.path.splitext(os.path.basename(route))[0]
-        out = os.path.join(os.path.dirname(route) if head['iwad'] == 'synthetic' else outdir, name + '.vanilla')
+        out = os.path.join(os.path.dirname(os.path.abspath(route)) if head['iwad'] != 'doom1' else outdir, name + '.vanilla')
         tmp = tempfile.mkdtemp()
         try:
             open(os.path.join(tmp, 'route.lmp'), 'wb').write(demo(head, cmds))
             args = [ref, '-iwad', doom1, '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui']
             if head['iwad'] == 'synthetic':
                 args[3:3] = ['-file', synthetic]
+            elif head['iwad'] == 'testmap':
+                pwad = os.path.join(testmaps, head['map'] + '.wad')
+                if not os.path.exists(pwad):
+                    sys.exit(f'{route}: no test map {pwad} (RouteTestMaps.Maps)')
+                args[3:3] = ['-file', os.path.abspath(pwad)]
             env = dict(os.environ, DUMP_TICS=out)
             env.pop('VIEWS', None)
             r = subprocess.run(args, cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)

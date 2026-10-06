@@ -1,0 +1,15 @@
+# T4.8a: two rooms, the east one's floor 24 up under a ceiling at 80
+# (RouteTestMaps): 56 units, the player steps up into it: run east into the
+# east wall, slide along it, turn north-east, run strafing left, walk
+# diagonally, back off (a 24-unit fall).
+iwad testmap
+map raised80
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x30
+0 0 0 0 x8
+50 30 0 0 x30
+0 0 4 0 x8
+50 -20 0 0 x30
+25 25 0 0 x20
+-50 0 0 0 x20
+0 0 0 0 x10

@@ -10,7 +10,8 @@ namespace IsoDoom.Tests.Sim;
 /// T4.4: p_map.c's position checks, moves and wall sliding and p_mobj.c's
 /// momentum movement, on small test maps (<see cref="TestMap"/>), tic by
 /// tic against values worked out by hand from vanilla's arithmetic (the
-/// derivations are in the comments; T4.8 adds vanilla-generated routes).
+/// derivations are in the comments). The cases no IWAD route covers are
+/// also vanilla-generated routes on the same maps (T4.8a, <see cref="RouteTestMaps"/>).
 /// Most tests push the player by setting its momentum, so the values test
 /// p_map.c and p_mobj.c alone: with an empty <c>ticcmd</c>, <c>P_PlayerThink</c>
 /// (T4.5) does not thrust, it only moves the view height. Walking by

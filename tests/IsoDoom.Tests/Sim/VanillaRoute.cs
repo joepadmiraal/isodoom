@@ -18,8 +18,9 @@ namespace IsoDoom.Tests.Sim;
 /// (<c>tools/VanillaRef/routes.sh</c>, as a v1.9 demo) and by the sim, compared tic by tic.
 /// <para>
 /// A <c>.route</c> file (in <c>Routes/</c>) is text: <c>#</c> starts a
-/// comment; header lines <c>iwad synthetic|doom1</c> (required),
-/// <c>map ExMy</c> (default <c>E1M1</c>) and <c>skill 1-5</c> (default 3);
+/// comment; header lines <c>iwad synthetic|doom1|testmap</c> (required),
+/// <c>map ExMy</c> (default <c>E1M1</c>; for <c>testmap</c> the name of a
+/// <see cref="RouteTestMaps"/> map, required, T4.8a) and <c>skill 1-5</c> (default 3);
 /// then one line per <c>ticcmd</c>: <c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>,
 /// <c>forwardmove</c> and <c>sidemove</c> as signed bytes, <c>TURN</c> the
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
@@ -32,7 +33,7 @@ namespace IsoDoom.Tests.Sim;
 /// (<c>forwardmove sidemove angleturn buttons</c>), then player 1's mobj
 /// <c>x y z momx momy momz angle</c>, <c>viewz</c>, the <c>P_Random</c>
 /// index, and the mobj's <c>state</c> and <c>tics</c>. For the synthetic
-/// IWAD it is committed beside the route (generated content); for DOOM1.WAD
+/// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
 /// </para>
@@ -48,7 +49,7 @@ public sealed class VanillaRoute
 
     public string Name { get; }
     public string Path { get; }
-    /// <summary><c>synthetic</c> or <c>doom1</c>.</summary>
+    /// <summary><c>synthetic</c>, <c>doom1</c> or <c>testmap</c>.</summary>
     public string Iwad { get; }
     public string Map { get; }
     public skill_t Skill { get; }
@@ -78,7 +79,7 @@ public sealed class VanillaRoute
     public static VanillaRoute Parse(string path)
     {
         string? iwad = null;
-        string map = "E1M1";
+        string? map = null;
         int skill = 3;
         var cmds = new List<ticcmd_t>();
         int n = 0;
@@ -96,7 +97,7 @@ public sealed class VanillaRoute
                     iwad = f[1];
                     continue;
                 case "map":
-                    map = f[1].ToUpperInvariant();
+                    map = f[1];
                     continue;
                 case "skill":
                     skill = int.Parse(f[1], CultureInfo.InvariantCulture);
@@ -123,8 +124,17 @@ public sealed class VanillaRoute
             for (int i = 0; i < count; i++)
                 cmds.Add(cmd);
         }
-        if (iwad is not ("synthetic" or "doom1") || skill < 1 || skill > 5)
-            throw new FormatException($"{path}: needs \"iwad synthetic|doom1\" and a skill of 1-5");
+        if (iwad is not ("synthetic" or "doom1" or "testmap") || skill < 1 || skill > 5)
+            throw new FormatException($"{path}: needs \"iwad synthetic|doom1|testmap\" and a skill of 1-5");
+        if (iwad == "testmap")
+        {
+            if (map is null || !RouteTestMaps.Maps.ContainsKey(map))
+                throw new FormatException($"{path}: \"iwad testmap\" needs \"map NAME\" of RouteTestMaps.Maps");
+        }
+        else
+        {
+            map = (map ?? "E1M1").ToUpperInvariant();
+        }
         return new VanillaRoute(path, iwad, map, (skill_t)(skill - 1), cmds);
     }
 
@@ -135,7 +145,7 @@ public sealed class VanillaRoute
     public string[] Reference()
     {
         string path;
-        if (Iwad == "synthetic")
+        if (Iwad != "doom1")
         {
             path = System.IO.Path.ChangeExtension(Path, ".vanilla");
         }
@@ -155,11 +165,14 @@ public sealed class VanillaRoute
     /// <summary>A new game on the route's map with every tweak off (<see cref="Tweaks.Vanilla"/>), as the demo starts it.</summary>
     public World NewWorld()
     {
-        WadArchive wad = Iwad == "synthetic"
-            ? new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) })
-            : WadArchive.Open(TestWads.RequireDoom1());
+        WadArchive wad = Iwad switch
+        {
+            "synthetic" => new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }),
+            "testmap" => new WadArchive(new[] { WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad") }),
+            _ => WadArchive.Open(TestWads.RequireDoom1()),
+        };
         var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: true), Tweaks.Vanilla);
-        world.G_DoLoadLevel(Level.Load(wad, Map));
+        world.G_DoLoadLevel(Level.Load(wad, Iwad == "testmap" ? "E1M1" : Map));
         return world;
     }
 

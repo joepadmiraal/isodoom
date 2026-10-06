@@ -1,0 +1,15 @@
+# T4.8a: two rooms, the east one's ceiling at 55 (RouteTestMaps): the
+# 56-unit player does not fit (refused, sliding along the boundary): run
+# east into it, slide along it, turn north-east, run strafing left, walk
+# diagonally into it, back off.
+iwad testmap
+map ceiling55
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x30
+0 0 0 0 x8
+50 30 0 0 x30
+0 0 4 0 x8
+50 -20 0 0 x30
+25 25 0 0 x20
+-50 0 0 0 x20
+0 0 0 0 x10

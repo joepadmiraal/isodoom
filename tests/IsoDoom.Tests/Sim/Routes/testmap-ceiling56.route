@@ -1,0 +1,14 @@
+# T4.8a: two rooms, the east one's ceiling at 56 (RouteTestMaps): the
+# 56-unit player fits; run east through it into the east wall, slide along
+# it, turn north-east, run strafing left, walk diagonally, back off.
+iwad testmap
+map ceiling56
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x30
+0 0 0 0 x8
+50 30 0 0 x30
+0 0 4 0 x8
+50 -20 0 0 x30
+25 25 0 0 x20
+-50 0 0 0 x20
+0 0 0 0 x10

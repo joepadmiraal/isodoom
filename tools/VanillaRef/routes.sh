@@ -4,7 +4,8 @@
 # Plays each route (default: every tests/IsoDoom.Tests/Sim/Routes/*.route) in
 # the vanilla reference (build.sh; $VANILLA_REF or ~/.cache/isodoom/vanilla-ref)
 # and writes its per-tic dump (routes.py): beside the route for the synthetic
-# IWAD's routes (commit those), to $ISODOOM_VANILLA_ROUTES (default
+# IWAD's and the test maps' routes (commit those; the tests write the test
+# maps' PWADs, T4.8a), to $ISODOOM_VANILLA_ROUTES (default
 # ~/.cache/isodoom/vanilla-routes) for DOOM1.WAD's (WAD-derived: never commit
 # them). VanillaRouteTests compares the sim with them. Needs DOOM1.WAD
 # (wads/ or $ISODOOM_DOOM1_WAD) for both.
@@ -22,5 +23,7 @@ out=${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 (cd "$repo" && dotnet run --project tools/SyntheticIwad -- "$tmp/synthetic.wad" >/dev/null)
+(cd "$repo" && ISODOOM_TESTMAP_WADS="$tmp/testmaps" dotnet run --project tests/IsoDoom.Tests -- \
+    -method "IsoDoom.Tests.Sim.VanillaRouteTests.WritesTheTestMapPwads" >/dev/null)
 if [ $# -eq 0 ]; then set -- "$repo"/tests/IsoDoom.Tests/Sim/Routes/*.route; fi
-python3 "$here/routes.py" "$ref" "$doom1" "$tmp/synthetic.wad" "$out" "$@"
+python3 "$here/routes.py" "$ref" "$doom1" "$tmp/synthetic.wad" "$tmp/testmaps" "$out" "$@"

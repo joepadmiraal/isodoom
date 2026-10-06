@@ -19,6 +19,12 @@ namespace IsoDoom.Tests.Support;
 /// </summary>
 public sealed class TestMap
 {
+    /// <summary>
+    /// The floor and ceiling flat: a name every IWAD has (only the name is
+    /// written), so the vanilla reference can load the map as a PWAD (T4.8a).
+    /// </summary>
+    public const string Flat = "FLOOR4_8";
+
     /// <summary>A strip room: <paramref name="Width"/> units wide, with its floor and ceiling heights.</summary>
     public readonly record struct Room(int Width, int Floor, int Ceiling);
 
@@ -61,7 +67,7 @@ public sealed class TestMap
         int Top(int i) => n + 1 + i;
 
         foreach (Room r in rooms)
-            map._sectors.Add((r.Floor, r.Ceiling, "FLAT"));
+            map._sectors.Add((r.Floor, r.Ceiling, Flat));
 
         var south = new int[n];
         var north = new int[n];
@@ -119,7 +125,7 @@ public sealed class TestMap
     public static TestMap Polygon(int floor, int ceiling, params (int X, int Y)[] corners)
     {
         var map = new TestMap();
-        map._sectors.Add((floor, ceiling, "FLAT"));
+        map._sectors.Add((floor, ceiling, Flat));
         foreach (var c in corners)
             map._vertexes.Add(c);
         for (int i = 0; i < corners.Length; i++)
@@ -203,7 +209,7 @@ public sealed class TestMap
             Span<byte> sec = sectors.AsSpan(26 * i, 26);
             BinaryPrimitives.WriteInt16LittleEndian(sec, (short)_sectors[i].Floor);
             BinaryPrimitives.WriteInt16LittleEndian(sec[2..], (short)_sectors[i].Ceiling);
-            Encoding.ASCII.GetBytes("FLAT", sec[4..]);
+            Encoding.ASCII.GetBytes(Flat, sec[4..]);
             Encoding.ASCII.GetBytes(_sectors[i].CeilingPic, sec[12..]);
             BinaryPrimitives.WriteInt16LittleEndian(sec[20..], 160);
         }

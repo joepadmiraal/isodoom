@@ -5,8 +5,8 @@ namespace IsoDoom.Tests.Sim;
 
 /// <summary>
 /// T4.8: every route in <c>Routes/</c> plays exactly as in vanilla, tic by
-/// tic (<see cref="VanillaRoute"/>). The synthetic IWAD's routes check against
-/// committed dumps (in CI); DOOM1.WAD's need the WAD and a local dump from
+/// tic (<see cref="VanillaRoute"/>). The synthetic IWAD's and the test maps'
+/// (T4.8a) routes check against committed dumps (in CI); DOOM1.WAD's need the WAD and a local dump from
 /// <c>tools/VanillaRef/routes.sh</c>, and skip without them.
 /// </summary>
 public class VanillaRouteTests
@@ -22,6 +22,56 @@ public class VanillaRouteTests
     {
         Assert.Contains(VanillaRoute.Names(), n => VanillaRoute.Load(n).Iwad == "synthetic");
         Assert.Contains(VanillaRoute.Names(), n => VanillaRoute.Load(n).Iwad == "doom1");
+        Assert.Contains(VanillaRoute.Names(), n => VanillaRoute.Load(n).Iwad == "testmap");
+    }
+
+    /// <summary>The environment variable naming the directory <see cref="WritesTheTestMapPwads"/> writes to.</summary>
+    public const string TestMapWadsEnvVar = "ISODOOM_TESTMAP_WADS";
+
+    /// <summary>
+    /// T4.8a: every <see cref="RouteTestMaps"/> map builds, and with
+    /// <see cref="TestMapWadsEnvVar"/> set is written there as <c>NAME.wad</c>
+    /// for <c>tools/VanillaRef/routes.sh</c>; every test map route names one of them.
+    /// </summary>
+    [Fact]
+    public void WritesTheTestMapPwads()
+    {
+        string? dir = System.Environment.GetEnvironmentVariable(TestMapWadsEnvVar);
+        if (!string.IsNullOrEmpty(dir))
+            System.IO.Directory.CreateDirectory(dir);
+        foreach ((string name, System.Func<IsoDoom.Tests.Support.TestMap> make) in RouteTestMaps.Maps)
+        {
+            byte[] pwad = make().Build();
+            if (!string.IsNullOrEmpty(dir))
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, name + ".wad"), pwad);
+        }
+        var routes = VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "testmap").ToList();
+        Assert.NotEmpty(routes);
+        Assert.All(routes, r => Assert.Contains(r.Map, RouteTestMaps.Maps.Keys));
+    }
+
+    /// <summary>
+    /// T4.8a: the spechit route touches more special lines under one box than
+    /// vanilla's <c>spechit</c> holds (8), so it covers the overrun: vanilla
+    /// (Chocolate Doom's emulation) and the sim (no emulation, SPEC §12 T4.4)
+    /// still agree on every tic, since the lines vanilla then skips are only
+    /// the same-height special boundaries.
+    /// </summary>
+    [Fact]
+    public void TheSpechitRouteOverruns()
+    {
+        VanillaRoute route = VanillaRoute.Load("testmap-spechit");
+        IsoDoom.Sim.World world = route.NewWorld();
+        int most = 0;
+        foreach (IsoDoom.Sim.ticcmd_t cmd in route.Cmds)
+        {
+            int before = world.spechitoverruns;
+            world.G_Ticker(cmd);
+            most = System.Math.Max(most, world.spechitoverruns - before);
+        }
+        // In one tic at least 7 past the 8, as a box over 15 special lines (vanilla's emulation writes
+        // tmbbox at the 9th to 12th, so it skips every line after the 10th; the sim checks them all).
+        Assert.True(most >= 7, $"at most {most} overruns in a tic ({world.spechitoverruns} in all)");
     }
 
     /// <summary>A demo's angleturn is the byte &lt;&lt; 8, sign included.</summary>

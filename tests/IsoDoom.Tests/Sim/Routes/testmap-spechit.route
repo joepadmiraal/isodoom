@@ -1,0 +1,16 @@
+# T4.8a: 20 rooms 2 units wide between two 100-unit ones, every boundary a
+# walk-over special (RouteTestMaps): the player's box touches up to 15 of
+# them, past vanilla's 8 spechit entries (the overrun Chocolate Doom
+# emulates). Walk east across them into the east room, back west across
+# them running, stop astride them, then strafe across them diagonally.
+iwad testmap
+map spechit
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+25 0 0 0 x60
+-50 0 0 0 x20
+0 0 0 0 x10
+25 0 0 0 x14
+0 0 0 0 x20
+0 0 -4 0 x8
+25 25 0 0 x20
+-25 -25 0 0 x30

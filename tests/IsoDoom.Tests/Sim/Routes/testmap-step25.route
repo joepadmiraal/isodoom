@@ -1,0 +1,15 @@
+# T4.8a: two rooms, the east one's floor 25 units up (RouteTestMaps): run
+# east into the step (refused: P_SlideMove stops at the boundary), run
+# east-south-east sliding along it, turn north-east and run along it
+# strafing left, walk diagonally into it, back off.
+iwad testmap
+map step25
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+50 0 0 0 x30
+0 0 0 0 x8
+50 30 0 0 x30
+0 0 4 0 x8
+50 -20 0 0 x30
+25 25 0 0 x20
+-50 0 0 0 x20
+0 0 0 0 x10
