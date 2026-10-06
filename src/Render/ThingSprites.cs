@@ -31,6 +31,11 @@ namespace IsoDoom.Render;
 /// part is moved along each vertex's view ray towards the camera until it is
 /// <see cref="PullMargin"/> above the thing's floor plane: it stays where it
 /// is on screen but passes the depth test against the floor (SPEC §12 T3.5).</item>
+/// <item><b>Readability</b> (T3.6, <see cref="SpriteSettings"/>, set on the
+/// material by <see cref="LevelMesh.SetSprites"/>): the tilt towards the camera
+/// (default full, with an upright billboard's depth), a one-texel outline
+/// (default black) and blob shadows under actors (<see cref="Shadows"/>,
+/// <see cref="Entry.ShadowRadius"/>; default off).</item>
 /// </list>
 /// Per-instance custom data: (atlas slot, or −1 to hide; flags: 1 flip, 2
 /// full bright; sector; 0). Positions and frames are set by the owner
@@ -46,8 +51,27 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// <summary>Custom data flags.</summary>
     public const int FlagFlip = 1, FlagFullBright = 2;
 
-    /// <summary>One thing: map position (x, y, z in map units), facing (BAM), sector index (light), sprite (<c>spritenum_t</c>), frame (0 = A) and full bright.</summary>
-    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright);
+    /// <summary>
+    /// One thing: map position (x, y, z in map units), facing (BAM), sector
+    /// index (light), sprite (<c>spritenum_t</c>), frame (0 = A), full bright,
+    /// and the radius of its blob shadow in map units (T3.6; 0: none).
+    /// </summary>
+    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0);
+
+    public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
+
+    /// <summary>The blob shadows (T3.6): one instance per entry, drawn with the shadow material given to <see cref="Bind"/>.</summary>
+    public MultiMeshInstance3D Shadows { get; } = new()
+    {
+        Name = "Shadows",
+        CastShadow = ShadowCastingSetting.Off,
+        Multimesh = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            UseCustomData = true,
+            Mesh = ShadowMesh(),
+        },
+    };
 
     /// <summary>What an instance shows: atlas slot (−1: nothing), flip, rotation slot (0–7; 0 for rotation-0 frames).</summary>
     public readonly record struct Shown(int Slot, bool Flip, int Rot);
@@ -86,6 +110,21 @@ public partial class ThingSprites : MultiMeshInstance3D
             UseCustomData = true,
             Mesh = QuadMesh(),
         };
+        AddChild(Shadows);
+    }
+
+    /// <summary>The shadow mesh: a horizontal square, x and z in −1…1 (the shader sizes it).</summary>
+    private static ArrayMesh ShadowMesh()
+    {
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, -1), new Vector3(1, 0, -1), new Vector3(1, 0, 1), new Vector3(-1, 0, 1) };
+        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 0, 2, 3 };
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        const float reach = 128f / LevelMesh.MapUnitsPerMetre;
+        mesh.CustomAabb = new Aabb(new Vector3(-reach, -reach, -reach), new Vector3(2 * reach, 2 * reach, 2 * reach));
+        return mesh;
     }
 
     /// <summary>
@@ -113,10 +152,16 @@ public partial class ThingSprites : MultiMeshInstance3D
         return mesh;
     }
 
-    /// <summary>Uses <paramref name="atlas"/> and <paramref name="material"/> (a level's <see cref="LevelMesh.SpriteMaterial"/>, given the atlas textures).</summary>
-    public void Bind(SpriteAtlas atlas, ShaderMaterial material)
+    /// <summary>
+    /// Uses <paramref name="atlas"/> and <paramref name="material"/> (a level's
+    /// <see cref="LevelMesh.SpriteMaterial"/>, given the atlas textures), and
+    /// <paramref name="shadowMaterial"/> (<see cref="LevelMesh.ShadowMaterial"/>)
+    /// for the blob shadows.
+    /// </summary>
+    public void Bind(SpriteAtlas atlas, ShaderMaterial material, ShaderMaterial? shadowMaterial = null)
     {
         _atlas = atlas;
+        Shadows.MaterialOverride = shadowMaterial;
         material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
         material.SetShaderParameter("sprite_info", atlas.InfoTexture);
         MaterialOverride = material;
@@ -132,6 +177,7 @@ public partial class ThingSprites : MultiMeshInstance3D
         _shown = new Shown[_entries.Length];
         _custom = new Color[_entries.Length];
         Multimesh.InstanceCount = _entries.Length;
+        Shadows.Multimesh.InstanceCount = _entries.Length;
         for (int i = 0; i < _entries.Length; i++)
             WriteTransform(i);
         MissingFrames = 0;
@@ -236,8 +282,12 @@ public partial class ThingSprites : MultiMeshInstance3D
     private static Vector3 ToGodot(Vector3 map) =>
         new Vector3(map.X, map.Z, -map.Y) / LevelMesh.MapUnitsPerMetre;
 
-    private void WriteTransform(int i) =>
-        Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(_entries[i].MapPosition)));
+    private void WriteTransform(int i)
+    {
+        var t = new Transform3D(Basis.Identity, ToGodot(_entries[i].MapPosition));
+        Multimesh.SetInstanceTransform(i, t);
+        Shadows.Multimesh.SetInstanceTransform(i, t);
+    }
 
     private void Refresh()
     {
@@ -261,5 +311,6 @@ public partial class ThingSprites : MultiMeshInstance3D
         int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0);
         _custom[i] = new Color(hidden ? -1 : shown.Slot, flags, e.Sector, 0);
         Multimesh.SetInstanceCustomData(i, _custom[i]);
+        Shadows.Multimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));
     }
 }

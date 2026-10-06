@@ -125,6 +125,9 @@ public sealed class LevelMesh
     /// </summary>
     public ShaderMaterial SpriteMaterial { get; private set; } = null!;
 
+    /// <summary>The material of the things' blob shadows (T3.6, <c>shaders/sprite_shadow.gdshader</c>, <see cref="ThingSprites.Shadows"/>); set by <see cref="SetSprites"/>.</summary>
+    public ShaderMaterial ShadowMaterial { get; private set; } = null!;
+
     /// <summary>Every material (level, masked, sprites), for setting a shader parameter on each.</summary>
     public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial, SpriteMaterial };
 
@@ -274,6 +277,20 @@ public sealed class LevelMesh
         SetParameter("cut_cursor", cursor is Vector3 c ? new Vector4(c.X, c.Y, c.Z, 1) : Vector4.Zero);
     }
 
+    /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
+    public SpriteSettings Sprites { get; private set; } = new();
+
+    /// <summary>Sets the thing sprites' tilt, outline and blob shadows (T3.6, <see cref="SpriteSettings"/>).</summary>
+    public void SetSprites(SpriteSettings settings)
+    {
+        Sprites = settings;
+        SpriteMaterial.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
+        SpriteMaterial.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
+        SpriteMaterial.SetShaderParameter("outline", settings.Outline);
+        ShadowMaterial.SetShaderParameter("shadow_mode", (int)settings.Shadow);
+        ShadowMaterial.SetShaderParameter("shadow_opacity", settings.ShadowOpacity);
+    }
+
     /// <summary>Selects the PLAYPAL palette.</summary>
     public void SetPalette(int palette) => SetParameter("palette_index", palette);
 
@@ -326,6 +343,7 @@ public sealed class LevelMesh
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
         SpriteMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShaderPath) };
+        ShadowMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShadowShaderPath) };
         SetParameter("atlas", AtlasTexture);
         SetParameter("texture_info", TextureInfoTexture);
         SetParameter("sector_data", SectorDataTexture);
@@ -343,6 +361,7 @@ public sealed class LevelMesh
         SetExtraLight(0);
         SetWallTiling(WallTextureTiling.Vanilla);
         SetCutaway(Cutaway);
+        SetSprites(Sprites);
         SetCutawayCentres(null, null);
     }
 

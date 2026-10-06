@@ -23,6 +23,9 @@ public partial class PlayerPlaceholder : Node3D
     /// <summary>info.c <c>SPR_PLAY</c>'s index in <c>sprnames</c>.</summary>
     private static readonly int SprPlay = Array.IndexOf(SpriteNames.sprnames, "PLAY");
 
+    /// <summary>info.c <c>MT_PLAYER</c>'s radius (map units): its blob shadow's (T3.6).</summary>
+    public static readonly float ShadowRadius = IsoDoom.Sim.Info.mobjinfo[(int)IsoDoom.Sim.mobjtype_t.MT_PLAYER].radius / 65536f;
+
     private readonly ThingSprites _sprite = new() { Name = "Sprite" };
     private Level? _level;
     private bool _bound;
@@ -55,9 +58,9 @@ public partial class PlayerPlaceholder : Node3D
     public override void _Ready() => AddChild(_sprite);
 
     /// <summary>Draws <c>PLAY</c> frame A from <paramref name="atlas"/> with a level's <see cref="LevelMesh.SpriteMaterial"/> (call again for each new level).</summary>
-    public void Bind(SpriteAtlas atlas, ShaderMaterial material)
+    public void Bind(SpriteAtlas atlas, ShaderMaterial material, ShaderMaterial? shadowMaterial = null)
     {
-        _sprite.Bind(atlas, material);
+        _sprite.Bind(atlas, material, shadowMaterial);
         _bound = true;
         HasSprite = _sprite.FrameOf(Entry()) is not null;
         UpdateEntry();
@@ -115,7 +118,7 @@ public partial class PlayerPlaceholder : Node3D
     }
 
     private ThingSprites.Entry Entry() =>
-        new(new Vector3(MapPosition.X, MapPosition.Y, FloorHeight), ThingSprites.BamOfDegrees(Angle), Sector?.Index ?? 0, SprPlay, 0, false);
+        new(new Vector3(MapPosition.X, MapPosition.Y, FloorHeight), ThingSprites.BamOfDegrees(Angle), Sector?.Index ?? 0, SprPlay, 0, false, ShadowRadius);
 
     private void UpdateEntry()
     {

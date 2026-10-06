@@ -42,6 +42,12 @@ namespace IsoDoom.Game;
 /// player's floor, default 32), <c>--level-cutaway-cursor=on|off</c> (the
 /// cursor ground point cuts too; default off);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
+/// <c>--level-sprite-tilt=0-1|off|half|full</c> (billboards turn towards the
+/// camera by this fraction of its elevation, T3.6, <see cref="SpriteSettings"/>;
+/// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
+/// upright), <c>--level-sprite-shadow=off|blend|dither</c> (blob shadows under
+/// actors; default off), <c>--level-sprite-outline=off|INDEX</c> (a one-texel
+/// outline in palette index INDEX; default off);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-origin=X,Y</c> (the player position light
 /// diminishing uses, in map units; by default the free-fly camera's pivot, or
@@ -60,7 +66,8 @@ namespace IsoDoom.Game;
 /// (<see cref="IsoCamera"/>); Home puts the placeholder (or, in free-fly, the
 /// free-fly camera) at player 1's start, Page
 /// Down / Page Up load the next / previous map of the WAD, L cycles the light
-/// diminishing mode, X cycles the cutaway style (cut, dither, off), F1 shows
+/// diminishing mode, X cycles the cutaway style (cut, dither, off), T the
+/// sprite tilt (full, half, off), G the blob shadows (off, blend, dither), F1 shows
 /// the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
@@ -76,6 +83,9 @@ public partial class LevelScene : Node3D
 
     /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
     public CutawaySettings Cutaway { get; set; } = new();
+
+    /// <summary>The thing sprites' readability options (T3.6: tilt, blob shadows, outline); applied to every level.</summary>
+    public SpriteSettings SpriteOptions { get; set; } = new();
 
     /// <summary>The loaded level's mesh, or null when no map is loaded.</summary>
     public LevelMesh? Mesh { get; private set; }
@@ -128,7 +138,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -202,6 +212,7 @@ public partial class LevelScene : Node3D
                     _ => throw new ArgumentException($"--level-light: unknown mode \"{light}\" (player, none or camera)"),
                 };
             Cutaway = ParseCutaway();
+            SpriteOptions = ParseSprites();
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
@@ -320,6 +331,21 @@ public partial class LevelScene : Node3D
                     _ => throw new ArgumentException($"--level-cutaway-cursor: \"{cursor}\" (on or off)"),
                 },
             };
+        return settings;
+    }
+
+    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6).</summary>
+    private static SpriteSettings ParseSprites()
+    {
+        var settings = new SpriteSettings();
+        if (WadLocator.GetUserArg("--level-sprite-tilt") is string tilt)
+            settings = settings with { Tilt = SpriteSettings.ParseTilt(tilt) };
+        if (WadLocator.GetUserArg("--level-sprite-tilt-depth") is string depth)
+            settings = settings with { TiltDepth = SpriteSettings.ParseTiltDepth(depth) };
+        if (WadLocator.GetUserArg("--level-sprite-shadow") is string shadow)
+            settings = settings with { Shadow = SpriteSettings.ParseShadow(shadow) };
+        if (WadLocator.GetUserArg("--level-sprite-outline") is string outline)
+            settings = settings with { Outline = SpriteSettings.ParseOutline(outline) };
         return settings;
     }
 
@@ -446,6 +472,12 @@ public partial class LevelScene : Node3D
             case Key.X:
                 Cutaway = Cutaway with { Style = Cutaway.Style switch { CutawayStyle.Cut => CutawayStyle.Dither, CutawayStyle.Dither => CutawayStyle.Off, _ => CutawayStyle.Cut } };
                 break;
+            case Key.T:
+                SpriteOptions = SpriteOptions with { Tilt = SpriteOptions.Tilt >= 1f ? 0.5f : SpriteOptions.Tilt >= 0.5f ? 0f : 1f };
+                break;
+            case Key.G:
+                SpriteOptions = SpriteOptions with { Shadow = (SpriteShadowStyle)(((int)SpriteOptions.Shadow + 1) % 3) };
+                break;
             case Key.F1:
                 _showHelp = !_showHelp;
                 break;
@@ -467,6 +499,8 @@ public partial class LevelScene : Node3D
                 Things?.UpdateRotations(current);
             Mesh.SetLightOrigin(LightOrigin());
             UpdateCutaway();
+            if (Mesh.Sprites != SpriteOptions)
+                Mesh.SetSprites(SpriteOptions);
         }
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
@@ -730,6 +764,7 @@ public partial class LevelScene : Node3D
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
+        mesh.SetSprites(SpriteOptions);
 
         Chunks = new MeshInstance3D?[mesh.SectorMeshes.Length];
         for (int s = 0; s < mesh.SectorMeshes.Length; s++)
@@ -746,7 +781,7 @@ public partial class LevelScene : Node3D
         LastLoadMilliseconds = clock.Elapsed.TotalMilliseconds;
         Mesh = mesh;
         if (SpriteAtlas is not null)
-            Placeholder?.Bind(SpriteAtlas, mesh.SpriteMaterial);
+            Placeholder?.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
 
         FrameCamera();
         if (FreeFly is not null)
@@ -781,16 +816,26 @@ public partial class LevelScene : Node3D
         for (int i = 0; i < entries.Length; i++)
             entries[i] = ThingEntry(SpawnedThings[i]);
         Things = new ThingSprites { Name = "Things" };
-        Things.Bind(SpriteAtlas, mesh.SpriteMaterial);
+        Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
         Things.SetEntries(entries);
         AddChild(Things);
         if (Things.MissingFrames > 0)
             GD.PushWarning($"Level: {level.Name}: {Things.MissingFrames} thing(s) whose spawn frame the WAD lacks are not drawn");
     }
 
-    /// <summary>A spawned thing as a billboard entry (map units).</summary>
+    /// <summary>A spawned thing as a billboard entry (map units), with a blob shadow of its radius when it is an actor (<see cref="ShadowRadius"/>).</summary>
     public static ThingSprites.Entry ThingEntry(SpawnedThing t) =>
-        new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright);
+        new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright,
+            ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]));
+
+    /// <summary>
+    /// The blob shadow's radius for a thing of <paramref name="info"/> (T3.6,
+    /// SPEC §7.5): its radius (map units) for actors, things with
+    /// <c>MF_SHOOTABLE</c> (monsters, the player, barrels) standing on the
+    /// floor; 0 (none) for everything else.
+    /// </summary>
+    public static float ShadowRadius(mobjinfo_t info) =>
+        (info.flags & mobjflag_t.MF_SHOOTABLE) != 0 && (info.flags & mobjflag_t.MF_SPAWNCEILING) == 0 ? info.radius / 65536f : 0f;
 
     private void MoveFloors(Level level, string moves)
     {

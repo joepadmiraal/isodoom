@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
@@ -269,8 +270,19 @@ public partial class LevelCheck
         m.SetColormapOverride(Colormap.INVERSECOLORMAP);
         compared += await CompareSprite(m, things, atlas, bright, basis, $"{map}: thing {bright}, fixed colormap {Colormap.INVERSECOLORMAP}");
         m.SetColormapOverride(-1);
+
+        // T3.6: vanilla's look (no outline) side-on, and the full tilt from the game camera's pitch, where the
+        // billboard faces the camera: the patch again at 1 unit per pixel (an upright one would be squashed).
+        SpriteSettings settings = m.Sprites;
+        m.SetSprites(settings with { Outline = -1, Tilt = 0 });
+        compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, no outline, no tilt");
+        m.SetSprites(settings with { Tilt = 1 });
+        Basis pitched = GameBasis(IsoCamera.DefaultPitch);
+        foreach (int i in new[] { lit, bright }.Distinct())
+            compared += await CompareSprite(m, things, atlas, i, pitched, $"{map}: thing {i}, full tilt from the game camera's pitch");
+        m.SetSprites(settings);
         GD.Print($"Level check: {map}: {picked.Count} things of distinct frames, rotations and mirrors seen side-on ({fullbright} full bright; rotation slots {string.Join(" ", rotations)}"
-            + $"{(flipCompared ? ", mirrored ones among them" : "")}), plus two light options: {compared} pixels compared");
+            + $"{(flipCompared ? ", mirrored ones among them" : "")}; outline {settings.Outline}), plus two light options, no outline, and full tilt from {IsoCamera.DefaultPitch}°: {compared} pixels compared");
 
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
@@ -278,6 +290,7 @@ public partial class LevelCheck
                 chunk.Visible = true;
         }
         await CheckRowsBelowOrigin(m, things, atlas);
+        await CheckTiltDepth(m, things, atlas);
         things.Isolate(null);
         things.Visible = false;
     }
@@ -312,7 +325,10 @@ public partial class LevelCheck
             : ExpectedColormap(m, true, m.Level.Sectors[e.Sector].LightLevel, 0, e.MapPosition.X, e.MapPosition.Y, back, sprite: true);
         Vector2I size = ViewSize();
         int left = fx - patch.LeftOffset, top = fy - patch.TopOffset;
-        int compared = 0, bad = 0, stray = 0;
+        // T3.6: the outline (in the sprite light) on transparent texels next to an opaque one, one texel around the rectangle too.
+        int outline = m.Sprites.Outline, grow = outline >= 0 ? 1 : 0;
+        bool Opaque(int c, int r) => c >= 0 && c < patch.Width && r >= 0 && r < patch.Height && patch.IsOpaque(shown.Flip ? patch.Width - 1 - c : c, r);
+        int compared = 0, bad = 0, stray = 0, outlined = 0;
         string first = "";
         for (int py = 0; py < size.Y; py++)
         {
@@ -321,29 +337,43 @@ public partial class LevelCheck
                 int p = (py * size.X + px) * 4;
                 (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
                 int c = px - left, r = py - top;
-                if (c < 0 || c >= patch.Width || r < 0 || r >= patch.Height)
+                if (c < -grow || c >= patch.Width + grow || r < -grow || r >= patch.Height + grow)
                 {
                     if (!NearBackground(got))
                         stray++;
                     continue;
                 }
-                int tc = shown.Flip ? patch.Width - 1 - c : c;
                 compared++;
                 bool ok;
-                if (!patch.IsOpaque(tc, r))
-                    ok = NearBackground(got);
+                string expected;
+                if (Opaque(c, r))
+                {
+                    byte texel = patch[shown.Flip ? patch.Width - 1 - c : c, r];
+                    ok = colormap < 0 ? !NearBackground(got) : got == Shade(texel, colormap);
+                    expected = colormap < 0 ? "a texel" : $"{Shade(texel, colormap)} (colormap {colormap})";
+                }
+                else if (grow > 0 && (Opaque(c - 1, r) || Opaque(c + 1, r) || Opaque(c, r - 1) || Opaque(c, r + 1)))
+                {
+                    outlined++;
+                    ok = colormap < 0 ? !NearBackground(got) : got == Shade((byte)outline, colormap);
+                    expected = colormap < 0 ? "the outline" : $"the outline {Shade((byte)outline, colormap)}";
+                }
                 else
-                    ok = colormap < 0 ? !NearBackground(got) : got == Shade(patch[tc, r], colormap);
+                {
+                    ok = NearBackground(got);
+                    expected = "the background";
+                }
                 if (!ok && bad++ == 0)
-                    first = $"texel ({tc}, {r}) at pixel ({px}, {py}): drew {got}, expected "
-                        + (!patch.IsOpaque(tc, r) ? "the background" : colormap < 0 ? "a texel" : $"{Shade(patch[tc, r], colormap)} (colormap {colormap})");
+                    first = $"texel ({c}, {r}) at pixel ({px}, {py}): drew {got}, expected {expected}";
             }
         }
         _pixels += compared;
         if (bad > 0)
-            Fail($"{what} ({(SpriteName(e))}, rotation slot {shown.Rot}{(shown.Flip ? " mirrored" : "")}): {bad} of {compared} pixels differ, first {first}");
+            Fail($"{what} ({(SpriteName(e))}, rotation slot {shown.Rot}{(shown.Flip ? " mirrored" : "")}{(grow > 0 ? $", outline {outline}" : "")}): {bad} of {compared} pixels differ, first {first}");
         if (stray > 0)
-            Fail($"{what} ({SpriteName(e)}): {stray} pixel(s) drawn outside the sprite's rectangle");
+            Fail($"{what} ({SpriteName(e)}): {stray} pixel(s) drawn outside the sprite's rectangle{(grow > 0 ? " and outline" : "")}");
+        if (grow > 0 && outlined == 0)
+            Fail($"{what} ({SpriteName(e)}): no outline pixels to compare");
         return compared;
     }
 
@@ -456,5 +486,149 @@ public partial class LevelCheck
         if (bad > 0)
             Fail($"{what}: {bad} of {below} pixels of the rows below the origin are hidden (the floor drew over them)");
         GD.Print($"Level check: {what}: {below} pixels of the rows below the origin drawn over the floor");
+    }
+
+    /// <summary>
+    /// T3.6: a tilted billboard keeps an upright one's depth
+    /// (<see cref="SpriteTiltDepth.Upright"/>). The tallest thing is moved in
+    /// front of a long one-sided wall facing the game camera, on open floor,
+    /// near enough that a billboard really leaning back (full tilt) would go
+    /// into the wall: from the game camera with the level shown, every pixel
+    /// of the sprite must equal the sprite drawn alone; with
+    /// <see cref="SpriteTiltDepth.Tilted"/> some must be hidden (so the view
+    /// does test the depth).
+    /// </summary>
+    private async Task CheckTiltDepth(LevelMesh m, ThingSprites things, SpriteAtlas atlas)
+    {
+        string map = m.Level.Name;
+        double pitch = Mathf.DegToRad(IsoCamera.DefaultPitch);
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        var right = new Vector2(ground.Y, -ground.X);
+        things.UpdateRotations(true, -basis.Z, Vector3.Zero);
+
+        // The tallest thing standing on its floor.
+        int thing = -1, tallest = 0;
+        for (int i = 0; i < things.Entries.Count; i++)
+        {
+            ThingSprites.Entry e = things.Entries[i];
+            ThingSprites.Shown s = things.ShownFrames[i];
+            if (s.Slot >= 0 && e.MapPosition.Z == m.Level.Sectors[e.Sector].FloorHeight / 65536f && atlas.Images[s.Slot].TopOffset > tallest)
+            {
+                tallest = atlas.Images[s.Slot].TopOffset;
+                thing = i;
+            }
+        }
+        if (thing < 0)
+        {
+            Fail($"{map}: no thing on a floor for the tilt depth view");
+            return;
+        }
+        ThingSprites.Entry original = things.Entries[thing];
+        IndexedImage patch = atlas.Images[things.ShownFrames[thing].Slot];
+        float halfSpan = Math.Max(patch.LeftOffset, patch.Width - patch.LeftOffset) + 2;
+
+        // A one-sided wall facing the camera, long and high enough, with open floor in front of the spot.
+        Vector2? spot = null;
+        Sector? front = null;
+        float along = 0;
+        foreach (Line line in m.Level.Lines)
+        {
+            if (line.BackSector is not null || line.FrontSector is not Sector sector)
+                continue;
+            var a = new Vector2(line.V1.X / 65536f, line.V1.Y / 65536f);
+            var b = new Vector2(line.V2.X / 65536f, line.V2.Y / 65536f);
+            float length = a.DistanceTo(b);
+            Vector2 normal = new Vector2(b.Y - a.Y, a.X - b.X) / length; // the front (right) side
+            float facing = normal.Dot(ground);
+            if (facing < 0.5f || length < 2 * halfSpan + 128 || (sector.CeilingHeight - sector.FloorHeight) >> Fixed.FRACBITS < 96)
+                continue;
+            // Far enough that no column of the upright billboard reaches the wall.
+            float distance = 8 + halfSpan * MathF.Abs(right.Dot(normal));
+            Vector2 at = (a + b) / 2 + normal * distance;
+            if (m.Level.R_PointInSubsector((int)(at.X * 65536), (int)(at.Y * 65536)).Sector != sector)
+                continue;
+            bool open = true;
+            foreach (float side in new[] { -halfSpan, 0, halfSpan })
+            {
+                Vector2 start = at + right * side, end = start + ground * 96;
+                for (int k = 0; k <= 96 && open; k += 4)
+                {
+                    Vector2 p = start + ground * k;
+                    open = m.Level.R_PointInSubsector((int)(p.X * 65536), (int)(p.Y * 65536)).Sector == sector;
+                }
+                foreach (Line other in sector.Lines)
+                {
+                    if (open && other != line && SegmentDistance(start.X, start.Y, end.X, end.Y, other.V1.X / 65536.0, other.V1.Y / 65536.0, other.V2.X / 65536.0, other.V2.Y / 65536.0) < 2)
+                        open = false;
+                }
+            }
+            if (!open)
+                continue;
+            spot = at;
+            front = sector;
+            along = distance / facing;
+            break;
+        }
+        if (spot is not Vector2 where || front is null)
+        {
+            Fail($"{map}: no one-sided wall facing the game camera with open floor in front for the tilt depth view");
+            return;
+        }
+        // A billboard leaning back hides behind the wall above this screen height (map units).
+        double hiddenAbove = along / Math.Sin(pitch);
+        if (patch.TopOffset < hiddenAbove + 4)
+        {
+            Fail($"{map}: the tallest thing ({SpriteName(original)}, {patch.TopOffset} rows above its origin) is too short for the tilt depth view (hidden above {hiddenAbove:F0})");
+            return;
+        }
+
+        ThingSprites.Entry moved = original with { MapPosition = new Vector3(where.X, where.Y, front.FloorHeight / 65536f), Sector = front.Index };
+        SpriteSettings settings = m.Sprites;
+        things.SetEntry(thing, moved);
+        things.Isolate(thing);
+        const float back = 4096;
+        Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
+        string what = $"{map}: thing {thing} ({SpriteName(original)}) at ({where.X:F0}, {where.Y:F0}), {along:F0} units in front of a wall, full tilt";
+        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
+        byte[]? upright = await Capture(what);
+        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Tilted });
+        byte[]? tilted = await Capture($"{what}, tilted depth");
+        foreach (MeshInstance3D? chunk in _scene.Chunks)
+        {
+            if (chunk is not null)
+                chunk.Visible = false;
+        }
+        m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
+        byte[]? alone = await Capture($"{what}, alone");
+        foreach (MeshInstance3D? chunk in _scene.Chunks)
+        {
+            if (chunk is not null)
+                chunk.Visible = true;
+        }
+        m.SetSprites(settings);
+        things.SetEntry(thing, original);
+        if (upright is null || tilted is null || alone is null)
+            return;
+        int drawn = 0, hidden = 0, hiddenTilted = 0;
+        for (int p = 0; p < alone.Length; p += 4)
+        {
+            if (NearBackground((alone[p], alone[p + 1], alone[p + 2])))
+                continue;
+            drawn++;
+            if (upright[p] != alone[p] || upright[p + 1] != alone[p + 1] || upright[p + 2] != alone[p + 2])
+                hidden++;
+            if (tilted[p] != alone[p] || tilted[p + 1] != alone[p + 1] || tilted[p + 2] != alone[p + 2])
+                hiddenTilted++;
+        }
+        _pixels += drawn;
+        if (drawn == 0)
+            Fail($"{what}: nothing drawn");
+        if (hidden > 0)
+            Fail($"{what}: {hidden} of {drawn} sprite pixels hidden (the wall or floor behind drew over an upright-depth billboard)");
+        if (hiddenTilted == 0)
+            Fail($"{what}: with tilted depth no sprite pixel is hidden by the wall behind (the view does not test the depth)");
+        GD.Print($"Level check: {what}: all {drawn} sprite pixels drawn with upright depth ({hiddenTilted} hidden by the wall with tilted depth)");
     }
 }
