@@ -54,7 +54,11 @@ public static class SyntheticIwad
         w.Lump("TEXTURE2", BuildTextureLump(
             new Tex("WINFRAME", 32, 64, false, (0, 0, 2)),
             new Tex("SW1BRCOM", 64, 128, false, (0, 0, 3)), // a switch pair of p_switch.c's list (T5.1, E1M2)
-            new Tex("SW2BRCOM", 64, 128, false, (0, 0, 4))));
+            new Tex("SW2BRCOM", 64, 128, false, (0, 0, 4)),
+            // An animated wall texture of p_spec.c's animdefs, its three frames the bricks scrolled down (T5.7, E1M2).
+            new Tex("SLADRIP1", 64, 64, false, (0, -64, 0), (0, 0, 0)),
+            new Tex("SLADRIP2", 64, 64, false, (0, -48, 0), (0, 16, 0)),
+            new Tex("SLADRIP3", 64, 64, false, (0, -32, 0), (0, 32, 0))));
         w.Lump("PNAMES", BuildPNames("WALLBRK", "WALLPNL", "WINDOW", "SWOFF", "SWON"));
         w.Lump("GENMIDI", BuildGenmidi());
         w.Lump("DMXGUS", Encoding.ASCII.GetBytes("# Synthetic test patch map\r\n0, 2, 1, 0, acpiano\r\n"));
@@ -100,7 +104,14 @@ public static class SyntheticIwad
         w.Markers("F_START", "F1_START");
         w.Lump("FLOOR1", Checker().Pixels);
         w.Lump("FLOOR2", Diagonal().Pixels);
-        w.Lump("LAVA1", Waves().Pixels);
+        w.Lump("LAVA1", Waves(0).Pixels);
+        // T5.7: p_spec.c's animated flats LAVA1-LAVA4 and NUKAGE1-NUKAGE3 (animdefs; E1M1 and E1M2 draw them).
+        w.Lump("LAVA2", Waves(16).Pixels);
+        w.Lump("LAVA3", Waves(32).Pixels);
+        w.Lump("LAVA4", Waves(48).Pixels);
+        w.Lump("NUKAGE1", Ooze(0).Pixels);
+        w.Lump("NUKAGE2", Ooze(1).Pixels);
+        w.Lump("NUKAGE3", Ooze(2).Pixels);
         w.Lump("F_SKY1", Solid(64, 64, (x, y) => Index(1, 2, 3)).Pixels); // the sky flat (r_sky.h SKYFLATNAME)
         w.Markers("F1_END", "F_END");
         return w.Build();
@@ -343,10 +354,17 @@ public static class SyntheticIwad
 
     private static Image Diagonal() => Solid(64, 64, (x, y) => Index((x + y) / 16, 7 - (x + y) / 18, (x / 16) % 4));
 
-    private static Image Waves() => Solid(64, 64, (x, y) =>
+    private static Image Waves(int phase) => Solid(64, 64, (x, y) =>
     {
-        int t = (x * 3 + Tri(y * 4)) % 64;
+        int t = (x * 3 + Tri(y * 4) + phase) % 64;
         return Index(7, t / 10, 0);
+    });
+
+    // Green blobs that drift with the frame (T5.7's animated flat).
+    private static Image Ooze(int frame) => Solid(64, 64, (x, y) =>
+    {
+        int t = (Tri(x * 2 + frame * 21) + Tri(y * 2 + 11)) / 8;
+        return Index(t % 3, 3 + t % 5, 0);
     });
 
     private static int Tri(int v) => Math.Abs(v % 64 - 32); // a triangle wave in integers
@@ -782,6 +800,13 @@ public static class SyntheticIwad
     // north, east). Subsectors 28 and 29; node n + 2 splits T from P along
     // x = 384, node n + 3 the door area from T along x = 304, and the root
     // (now n + 4) along y = 144.
+    //
+    // T5.7, lights and animations: alcoves 1, 2, 4, 5, 6, 8 and 9 have the
+    // light specials 1, 2, 3, 8, 12, 13 and 17 (AlcoveSpecial); line 28
+    // (alcove 1's north wall, BRKPNL) scrolls (48); line 29 (alcove 2's north
+    // wall) draws the animated texture SLADRIP1 (frames SLADRIP1-3), room S
+    // (sector 27) the animated flat NUKAGE1 (NUKAGE1-3); the odd alcoves'
+    // LAVA1 animates too (LAVA1-4).
 
     /// <summary>E1M2's sector count: the corridor, the alcoves, rooms R and S with the door between (T5.3), room T and its teleporter pad (T5.6).</summary>
     public const int SpecialsSectors = 1 + SpecialsAlcoves + 3 + 2;
@@ -815,6 +840,23 @@ public static class SyntheticIwad
 
     /// <summary>E1M2's alcove light levels.</summary>
     public static int AlcoveLight(int i) => i < 23 ? 96 + 8 * (i % 8) : 64;
+
+    /// <summary>
+    /// E1M2's alcove sector specials (T5.7): the light specials of
+    /// <c>P_SpawnSpecials</c>, alcove 1 flickering (1), 2 strobe fast (2), 4
+    /// strobe slow (3), 5 glowing (8), 6 sync strobe slow (12), 8 sync strobe
+    /// fast (13), 9 fire flicker (17); none elsewhere.
+    /// </summary>
+    public static int AlcoveSpecial(int i) => i switch { 1 => 1, 2 => 2, 4 => 3, 5 => 8, 6 => 12, 8 => 13, 9 => 17, _ => 0 };
+
+    /// <summary>E1M2's scrolling wall (T5.7): alcove 1's north wall, line 28 (special 48, <c>BRKPNL</c>).</summary>
+    public const int ScrollLine = 28;
+
+    /// <summary>E1M2's animated wall (T5.7): alcove 2's north wall, line 29 (<c>SLADRIP1</c>).</summary>
+    public const int AnimatedWallLine = 29;
+
+    /// <summary>E1M2's animated floor (T5.7): room S, sector 27 (<c>NUKAGE1</c>).</summary>
+    public const int AnimatedFloorSector = SpecialsAlcoves + 3;
 
     /// <summary>E1M2's alcove tags (alcoves 3, 7 and 12 share tag 5 with line 0).</summary>
     public static int AlcoveTag(int i) => i is 3 or 7 or 12 ? 5 : 0;
@@ -855,9 +897,14 @@ public static class SyntheticIwad
         }
         for (int i = 0; i < n; i++)
         {
-            // L27 + i: alcove north walls; alcove 0's an SR raise-door button (63) of the door sector (T5.4).
+            // L27 + i: alcove north walls; alcove 0's an SR raise-door button (63) of the door sector (T5.4),
+            // alcove 1's a scrolling wall (48), alcove 2's an animated texture (T5.7).
             if (i == 0)
                 OneSided(Top(i), Top(i + 1), 1 + i, "SW1BRCOM", special: 63, tag: DoorTag);
+            else if (i == 1)
+                OneSided(Top(i), Top(i + 1), 1 + i, "BRKPNL", special: 48);
+            else if (i == 2)
+                OneSided(Top(i), Top(i + 1), 1 + i, "SLADRIP1");
             else
                 OneSided(Top(i), Top(i + 1), 1 + i, "BRICK1");
         }
@@ -1000,10 +1047,11 @@ public static class SyntheticIwad
 
         var sectors = new List<byte[]> { Sector(0, 128, "FLOOR1", "FLOOR2", 160) };
         for (int i = 0; i < n; i++)
-            sectors.Add(Sector((short)AlcoveFloor(i), (short)AlcoveCeiling(i), i % 2 == 0 ? "FLOOR2" : "LAVA1", "FLOOR1", (short)AlcoveLight(i), (short)AlcoveTag(i)));
+            sectors.Add(Sector((short)AlcoveFloor(i), (short)AlcoveCeiling(i), i % 2 == 0 ? "FLOOR2" : "LAVA1", "FLOOR1", (short)AlcoveLight(i), (short)AlcoveTag(i),
+                (short)AlcoveSpecial(i)));
         sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 160, TeleportTag)); // 25: room R (the teleport destination's, T5.6)
         sectors.Add(Sector(0, 0, "FLOOR2", "FLOOR2", 128, DoorTag));      // 26: the door, closed
-        sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 144));              // 27: room S
+        sectors.Add(Sector(0, 128, "NUKAGE1", "FLOOR2", 144));             // 27: room S (an animated flat, T5.7)
         sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 176));              // 28: room T (T5.6)
         sectors.Add(Sector(8, 128, "LAVA1", "FLOOR2", 208));               // 29: the teleporter pad
 
@@ -1044,7 +1092,7 @@ public static class SyntheticIwad
         return side;
     }
 
-    private static byte[] Sector(short floor, short ceiling, string floorFlat, string ceilingFlat, short light, short tag = 0)
+    private static byte[] Sector(short floor, short ceiling, string floorFlat, string ceilingFlat, short light, short tag = 0, short special = 0)
     {
         byte[] sector = new byte[26]; // floor, ceiling, floor flat, ceiling flat, light, special, tag
         BinaryPrimitives.WriteInt16LittleEndian(sector, floor);
@@ -1052,6 +1100,7 @@ public static class SyntheticIwad
         Encoding.ASCII.GetBytes(floorFlat, sector.AsSpan(4));
         Encoding.ASCII.GetBytes(ceilingFlat, sector.AsSpan(12));
         BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(20), light);
+        BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(22), special);
         BinaryPrimitives.WriteInt16LittleEndian(sector.AsSpan(24), tag);
         return sector;
     }

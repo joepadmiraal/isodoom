@@ -43,7 +43,10 @@ namespace IsoDoom.Tests.Sim;
 /// lump, as <c>SIDE:PART:NAME</c> (<c>PART</c> <c>t</c>, <c>m</c> or
 /// <c>b</c>) joined by commas, or <c>-</c> for none (switches), then (T5.6) the
 /// teleport <c>fogs</c> (<c>MT_TFOG</c> mobjs) in thinker order as
-/// <c>X:Y:Z:STATE</c> joined by commas, or <c>-</c> for none. For the synthetic
+/// <c>X:Y:Z:STATE</c> joined by commas, or <c>-</c> for none, then (T5.7) the
+/// sectors whose light level differs from the map's <c>SECTORS</c> lump, as
+/// <c>SECTOR:LIGHT</c> joined by commas, or <c>-</c> for none (the light
+/// specials). For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -56,7 +59,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights" };
 
     public string Name { get; }
     public string Path { get; }
@@ -195,6 +198,7 @@ public sealed class VanillaRoute
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
+        world.P_InitPicAnims(world.textures, PicAnims.FlatNames(wad)); // P_Init's (T5.7)
         world.G_DoLoadLevel(Level.Load(wad, Iwad == "testmap" ? "E1M1" : Map));
         if (Start is { } s)
             RouteStart.Place(world, s.X, s.Y, s.Angle);
@@ -205,9 +209,10 @@ public sealed class VanillaRoute
     /// The sim's state after a tic, as a dump line; <paramref name="mapHeights"/>
     /// are the sectors' floor and ceiling heights as the map has them
     /// (<see cref="MapHeights"/>), <paramref name="mapTextures"/> the sidedefs'
-    /// textures (<see cref="MapTextures"/>).
+    /// textures (<see cref="MapTextures"/>), <paramref name="mapLights"/> the
+    /// sectors' light levels (<see cref="MapLights"/>).
     /// </summary>
-    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights, string[] mapTextures)
+    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights, string[] mapTextures, short[] mapLights)
     {
         player_t p = world.players[world.consoleplayer];
         mobj_t mo = p.mo!;
@@ -237,9 +242,18 @@ public sealed class VanillaRoute
             if (m.type == mobjtype_t.MT_TFOG)
                 fogs.Add(string.Create(CultureInfo.InvariantCulture, $"{m.x}:{m.y}:{m.z}:{(int)m.state}"));
         }
+        var lights = new List<string>();
+        for (int i = 0; i < world.sectors.Length; i++)
+        {
+            if (world.sectors[i].lightlevel != mapLights[i])
+                lights.Add(string.Create(CultureInfo.InvariantCulture, $"{i}:{world.sectors[i].lightlevel}"));
+        }
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
-            + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs));
+            + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights));
     }
+
+    /// <summary>The sectors' light levels of a world before its first tic: the map's (the light thinkers spawn without changing them).</summary>
+    public static short[] MapLights(World world) => world.sectors.Select(s => s.lightlevel).ToArray();
 
     /// <summary>The sidedefs' textures, top, middle and bottom of each in sidedef order (before the first tic: the map's).</summary>
     public static string[] MapTextures(World world) =>
@@ -259,12 +273,13 @@ public sealed class VanillaRoute
         World world = NewWorld();
         (int, int)[] mapHeights = MapHeights(world);
         string[] mapTextures = MapTextures(world);
+        short[] mapLights = MapLights(world);
         Assert.True(expected.Length == Cmds.Count,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
             world.G_Ticker(Cmds[tic]);
-            string actual = Line(world, mapHeights, mapTextures);
+            string actual = Line(world, mapHeights, mapTextures, mapLights);
             if (actual == expected[tic])
                 continue;
             string[] e = expected[tic].Split(' '), a = actual.Split(' ');

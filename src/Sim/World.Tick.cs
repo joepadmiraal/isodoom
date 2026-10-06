@@ -76,6 +76,18 @@ public sealed partial class World
             case think_t.T_MoveCeiling:
                 T_MoveCeiling((ceiling_t)thinker);
                 break;
+            case think_t.T_FireFlicker:
+                T_FireFlicker((fireflicker_t)thinker);
+                break;
+            case think_t.T_LightFlash:
+                T_LightFlash((lightflash_t)thinker);
+                break;
+            case think_t.T_StrobeFlash:
+                T_StrobeFlash((strobe_t)thinker);
+                break;
+            case think_t.T_Glow:
+                T_Glow((glow_t)thinker);
+                break;
             // think_t.NULL: nothing
         }
     }

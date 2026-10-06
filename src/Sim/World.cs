@@ -61,7 +61,7 @@ public sealed partial class World
             players[i].playerstate = playerstate_t.PST_REBORN;
         P_InitThinkers();
 
-        // p_setup.c P_Init (the switch list; the animations come with T5.7)
+        // p_setup.c P_Init: the switch list (the animations need the WAD: P_InitPicAnims, T5.7)
         P_InitSwitchList();
     }
 

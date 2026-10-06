@@ -34,25 +34,22 @@ index 9954d78..9f682c8 100644
  	// end of demo data stream 
  	G_CheckDemoStatus (); 
  	return; 
-diff --git a/doomgeneric/p_setup.c b/doomgeneric/p_setup.c
-index 00306e8..439c46c 100644
---- a/doomgeneric/p_setup.c
-+++ b/doomgeneric/p_setup.c
-@@ -846,7 +846,9 @@ P_SetupLevel
- //
- void P_Init (void)
- {
-+    extern int dump_nospecials; // IsoDoom reference (T4.8): no animations (T5.4: switches run)
-     P_InitSwitchList ();
-+    if (!dump_nospecials)
-     P_InitPicAnims ();
-     R_InitSprites (sprnames);
- }
 diff --git a/doomgeneric/p_spec.c b/doomgeneric/p_spec.c
-index 17446b5..8e14fdb 100644
+index 17446b5..8cdd087 100644
 --- a/doomgeneric/p_spec.c
 +++ b/doomgeneric/p_spec.c
-@@ -1020,6 +1020,7 @@ void P_PlayerInSpecialSector (player_t* player)
+@@ -170,6 +170,10 @@ void P_InitPicAnims (void)
+ 
+ 	    lastanim->picnum = R_FlatNumForName(endname);
+ 	    lastanim->basepic = R_FlatNumForName(startname);
++	    { extern int dump_nospecials, numflats; // IsoDoom reference (T5.7): a -file map with flats of its own numbers
++	      // the IWAD's flats from its F_START (negative): skip those, which would write outside flattranslation
++	      if (dump_nospecials && (lastanim->basepic < 0 || lastanim->picnum >= numflats))
++	        continue; }
+ 	}
+ 
+ 	lastanim->istexture = animdefs[i].istexture;
+@@ -1020,6 +1024,7 @@ void P_PlayerInSpecialSector (player_t* player)
  {
      sector_t*	sector;
  	
@@ -60,7 +57,7 @@ index 17446b5..8e14fdb 100644
      sector = player->mo->subsector->sector;
  
      // Falling, not all the way down yet?
-@@ -1092,6 +1093,7 @@ int		levelTimeCount;
+@@ -1092,6 +1097,7 @@ int		levelTimeCount;
  
  void P_UpdateSpecials (void)
  {
@@ -68,15 +65,6 @@ index 17446b5..8e14fdb 100644
      anim_t*	anim;
      int		pic;
      int		i;
-@@ -1376,6 +1378,8 @@ void P_SpawnSpecials (void)
-     sector_t*	sector;
-     int		i;
- 
-+    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials, as the sim of M4
-+
-     // See if -TIMER was specified.
- 
-     if (timelimit > 0 && deathmatch)
 diff --git a/doomgeneric/p_switch.c b/doomgeneric/p_switch.c
 index ed4feec..cc94b61 100644
 --- a/doomgeneric/p_switch.c
@@ -93,7 +81,7 @@ index ed4feec..cc94b61 100644
  	{
  #if 0	// UNUSED - debug?
 diff --git a/doomgeneric/p_tick.c b/doomgeneric/p_tick.c
-index 2289350..00b5cc3 100644
+index 2289350..da27b6c 100644
 --- a/doomgeneric/p_tick.c
 +++ b/doomgeneric/p_tick.c
 @@ -138,6 +138,7 @@ void P_Ticker (void)

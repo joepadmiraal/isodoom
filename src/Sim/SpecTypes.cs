@@ -310,3 +310,45 @@ public sealed class ceiling_t : thinker_t
 
     public int olddirection;
 }
+
+/// <summary>p_spec.h <c>fireflicker_t</c>: a flickering fire light's thinker (p_lights.c <c>P_SpawnFireFlicker</c>, T5.7).</summary>
+public sealed class fireflicker_t : thinker_t
+{
+    public sector_t sector = null!;
+    public int count;
+    public int maxlight;
+    public int minlight;
+}
+
+/// <summary>p_spec.h <c>lightflash_t</c>: a broken, randomly flashing light's thinker (p_lights.c <c>P_SpawnLightFlash</c>, T5.7).</summary>
+public sealed class lightflash_t : thinker_t
+{
+    public sector_t sector = null!;
+    public int count;
+    public int maxlight;
+    public int minlight;
+    public int maxtime;
+    public int mintime;
+}
+
+/// <summary>p_spec.h <c>strobe_t</c>: a strobe light's thinker (p_lights.c <c>P_SpawnStrobeFlash</c>, T5.7).</summary>
+public sealed class strobe_t : thinker_t
+{
+    public sector_t sector = null!;
+    public int count;
+    public int minlight;
+    public int maxlight;
+    public int darktime;
+    public int brighttime;
+}
+
+/// <summary>p_spec.h <c>glow_t</c>: a glowing light's thinker (p_lights.c <c>P_SpawnGlowingLight</c>, T5.7).</summary>
+public sealed class glow_t : thinker_t
+{
+    public sector_t sector = null!;
+    public int minlight;
+    public int maxlight;
+
+    /// <summary>-1 down, 1 up.</summary>
+    public int direction;
+}

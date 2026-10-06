@@ -3,7 +3,10 @@
 // at each view of $VIEWS ("X Y ANGLE;X Y ANGLE;...", map units and degrees),
 // standing still at eye level, with the sector lights as the map lump has
 // them (no light specials) and, with $DUMP_STATIC set, no animated textures
-// or scrolling walls, and writes $OUTDIR/vN.ppm: vanilla's full-screen
+// or scrolling walls; or (T5.7) with $DUMP_TIC=N, all of them at the end of
+// tic N (leveltime N: the lights, animations and scrolling walls as they run
+// with the player standing at its start, no reset), and writes
+// $OUTDIR/vN.ppm: vanilla's full-screen
 // 320x200 view in palette 0, with masked middles (T3.1) but without sprites,
 // ceilings or sky; pixels that draw nothing (ceilings, sky) are cyan (0, 255, 255), a
 // colour in no PLAYPAL; and $OUTDIR/vN.z, the eye height (viewz, map units:
@@ -13,8 +16,9 @@
 //
 // The movement reference (T4.8): with $DUMP_TICS set (and no $VIEWS), it
 // plays a demo (-playdemo) without the specials the sim lacks yet
-// (dump_nospecials in ref.patch: sector specials and animations; line
-// triggers, doors, switches and P_UpdateSpecials run since T5.2-T5.4) and
+// (dump_nospecials in ref.patch: the player's special sectors; line
+// triggers, doors, switches and P_UpdateSpecials run since T5.2-T5.4, the
+// sector specials and animations since T5.7) and
 // appends one line per tic to the file $DUMP_TICS, after the
 // tic: leveltime, the ticcmd read (forwardmove, sidemove, angleturn,
 // buttons), player 1's mobj x, y, z, momx, momy, momz, angle (unsigned),
@@ -26,7 +30,9 @@
 // lump (switches), as SIDE:PART:NAME (PART t, m or b; NAME upper case)
 // joined by commas in sidedef and part order, or - for none; then (T5.6)
 // the teleport fogs (MT_TFOG mobjs) in thinker order as X:Y:Z:STATE
-// (fixed_t, statenum_t) joined by commas, or - for none. With $DUMP_START
+// (fixed_t, statenum_t) joined by commas, or - for none; then (T5.7) the
+// sectors whose light level differs from the map's SECTORS lump, as
+// SECTOR:LIGHT joined by commas in sector order, or - for none. With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
 // of at its map start: before the first tic it is moved with P_TeleportMove
 // onto the floor, facing ANGLE (no fog, nothing else changed).
@@ -48,6 +54,7 @@
 
 extern byte *I_VideoBuffer;
 static int views[MAX_VIEWS][3], nviews, cur = -1, wait;
+static int dump_tic_target; // $DUMP_TIC (T5.7): render the views at the end of this tic
 static uint32_t fake_ms;
 int dump_noceil; // read by the patched r_main.c / r_plane.c
 int dump_nospecials; // read by the patched p_spec.c
@@ -62,6 +69,9 @@ void DG_Init(void)
     for (char *tok = strtok(strdup(v ? v : ""), ";"); tok && nviews < MAX_VIEWS; tok = strtok(NULL, ";"))
         if (sscanf(tok, "%d %d %d", &views[nviews][0], &views[nviews][1], &views[nviews][2]) == 3)
             nviews++;
+    char *dt = getenv("DUMP_TIC");
+    if (dt && *dt)
+        dump_tic_target = atoi(dt);
     char *t = getenv("DUMP_TICS");
     if (t && *t)
     {
@@ -77,6 +87,7 @@ void DG_Init(void)
 
 static byte *map_sectors(void);
 static byte *map_lump(int lump);
+static void capture_tic(void);
 // r_data.c's textures: each starts with its name (char[8], not terminated when 8 long).
 extern char **textures;
 
@@ -96,6 +107,8 @@ void dump_pretic(void)
 // Called by the patched p_tick.c at the end of every P_Ticker.
 void dump_tic(void)
 {
+    if (dump_tic_target && nviews > 0 && leveltime == dump_tic_target)
+        capture_tic();
     if (!ticfile)
         return;
     player_t *p = &players[consoleplayer];
@@ -144,7 +157,16 @@ void dump_tic(void)
         if (m->type == MT_TFOG)
             fprintf(ticfile, "%s%d:%d:%d:%d", fogs++ ? "," : "", m->x, m->y, m->z, (int)(m->state - states));
     }
-    fprintf(ticfile, "%s\n", fogs ? "" : "-");
+    fprintf(ticfile, "%s ", fogs ? "" : "-");
+    // The light levels (T5.7).
+    int lit = 0;
+    for (int i = 0; i < numsectors; i++)
+    {
+        short light = (short)(data[26 * i + 20] | data[26 * i + 21] << 8);
+        if (sectors[i].lightlevel != light)
+            fprintf(ticfile, "%s%d:%d", lit++ ? "," : "", i, sectors[i].lightlevel);
+    }
+    fprintf(ticfile, "%s\n", lit ? "" : "-");
     fflush(ticfile);
 }
 
@@ -175,7 +197,8 @@ static void reset_lights(void)
 
 static void place(int i)
 {
-    reset_lights();
+    if (!dump_tic_target)
+        reset_lights();
     mobj_t *mo = players[0].mo;
     P_TeleportMove(mo, views[i][0] << FRACBITS, views[i][1] << FRACBITS);
     mo->z = mo->floorz;
@@ -186,12 +209,37 @@ static void place(int i)
     players[0].psprites[0].state = NULL;
     players[0].psprites[1].state = NULL;
     players[0].message = NULL;
+    if (dump_tic_target) // rendered now, not after the player thinks (T5.7)
+        players[0].viewz = mo->z + VIEWHEIGHT;
+}
+
+static void render_view(void);
+
+// $DUMP_TIC (T5.7): every view at the end of tic N, then exit.
+static void capture_tic(void)
+{
+    extern boolean setsizeneeded;
+    if (setsizeneeded)
+        R_ExecuteSetViewSize();
+    for (cur = 0; cur < nviews; cur++)
+    {
+        place(cur);
+        render_view();
+    }
+    exit(0);
 }
 
 void DG_DrawFrame(void)
 {
     if (gamestate != GS_LEVEL || !players[0].mo || nviews == 0)
         return;
+    if (dump_tic_target) // T5.7: the views render at the end of tic N (capture_tic)
+    {
+        if (cur < 0)
+            R_SetViewSize(11, 0);
+        cur = 0;
+        return;
+    }
     if (cur < 0) // full-screen view, and let the screen wipe finish
     {
         R_SetViewSize(11, 0);
@@ -205,8 +253,18 @@ void DG_DrawFrame(void)
         place(cur);
         return;
     }
-    // Render twice over two clear colours: pixels that differ were not drawn.
     reset_lights();
+    render_view();
+    if (++cur >= nviews)
+        exit(0);
+    place(cur);
+    wait = 4;
+}
+
+// Renders view cur to $OUTDIR/vN.ppm and its eye height to vN.z.
+static void render_view(void)
+{
+    // Render twice over two clear colours: pixels that differ were not drawn.
     dump_noceil = 1;
     memset(I_VideoBuffer, 0, sizeof first);
     R_RenderPlayerView(&players[0]);
@@ -236,10 +294,6 @@ void DG_DrawFrame(void)
         fprintf(f, "%d\n", players[0].viewz >> FRACBITS);
         fclose(f);
     }
-    if (++cur >= nviews)
-        exit(0);
-    place(cur);
-    wait = 4;
 }
 
 void DG_SleepMs(uint32_t ms) { fake_ms += ms; }

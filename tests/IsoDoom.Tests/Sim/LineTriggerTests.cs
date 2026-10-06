@@ -77,7 +77,7 @@ public class LineTriggerTests
         Assert.Equal(9, world.lines[2].tag);
         Assert.Equal(88, world.lines[3].special);
         Assert.Equal(38, world.lines[25].special);
-        Assert.Empty(world.unported); // no sector specials
+        Assert.Empty(world.unported); // the sector specials are ported (T5.7)
         Assert.Equal(0, world.totalsecret);
     }
 
@@ -329,16 +329,25 @@ public class LineTriggerTests
         level.Lines[27].Special = 48;  // scrolling wall
         World world = Specials(level: level);
         Assert.Equal(2, world.totalsecret);
-        Assert.Equal(new[]
+        Assert.Empty(world.unported);
+        // The light thinkers (T5.7), after the things, in sector order.
+        var lights = new List<thinker_t>();
+        for (thinker_t th = world.thinkercap.next; th != world.thinkercap; th = th.next)
         {
-            "P_SpawnLightFlash(sector 6)",
-            $"P_SpawnStrobeFlash(sector 7, {LightFlash.FASTDARK}, 0)",
-        }, world.unported);
+            if (th is lightflash_t { sector.Index: 6 } or strobe_t { sector.Index: 7 })
+                lights.Add(th);
+        }
+        Assert.Collection(lights,
+            th => Assert.Same(world.sectors[6], Assert.IsType<lightflash_t>(th).sector),
+            th => Assert.Equal(LightFlash.FASTDARK, Assert.IsType<strobe_t>(th).darktime));
+        Assert.Equal(0, world.sectors[6].special);
+        Assert.Equal(4, world.sectors[7].special); // death slime keeps its special
         var door = Assert.IsType<vldoor_t>(world.sectors[8].specialdata);
         Assert.Equal(vldoor_e.vld_raiseIn5Mins, door.type);
         Assert.Equal(0, world.sectors[8].special);
-        Assert.Equal(1, world.numlinespecials);
+        Assert.Equal(2, world.numlinespecials); // and line 28's (the map's, T5.7)
         Assert.Same(world.lines[27], world.linespeciallist[0]);
+        Assert.Same(world.lines[SyntheticIwad.ScrollLine], world.linespeciallist[1]);
 
         // P_UpdateSpecials scrolls the wall's front side a unit a tic.
         side_t side = world.sides[world.lines[27].sidenum[0]];
@@ -364,6 +373,11 @@ public class LineTriggerTests
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         Assert.Equal(3, world.totalsecret);
-        Assert.Contains(world.unported, call => call.StartsWith("P_SpawnLightFlash(", StringComparison.Ordinal));
+        Assert.Empty(world.unported);
+        // Sector 40's blinking light (the start alcove; T4.8's note) and more (T5.7).
+        bool flash40 = false;
+        for (thinker_t th = world.thinkercap.next; th != world.thinkercap; th = th.next)
+            flash40 |= th is lightflash_t { sector.Index: 40 };
+        Assert.True(flash40);
     }
 }

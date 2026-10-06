@@ -31,6 +31,18 @@ public enum think_t
 
     /// <summary>p_ceilng.c <c>T_MoveCeiling</c> (a <see cref="ceiling_t"/>, T5.5).</summary>
     T_MoveCeiling,
+
+    /// <summary>p_lights.c <c>T_FireFlicker</c> (a <see cref="fireflicker_t"/>, T5.7).</summary>
+    T_FireFlicker,
+
+    /// <summary>p_lights.c <c>T_LightFlash</c> (a <see cref="lightflash_t"/>, T5.7).</summary>
+    T_LightFlash,
+
+    /// <summary>p_lights.c <c>T_StrobeFlash</c> (a <see cref="strobe_t"/>, T5.7).</summary>
+    T_StrobeFlash,
+
+    /// <summary>p_lights.c <c>T_Glow</c> (a <see cref="glow_t"/>, T5.7).</summary>
+    T_Glow,
 }
 
 /// <summary>

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using IsoDoom.Wad.Graphics;
 using IsoDoom.Map;
 using IsoDoom.Wad;
 
@@ -707,13 +710,59 @@ public sealed partial class World
 
     // P_ShootSpecialLine (gun-triggered lines) waits for M6's hitscan (T6.3).
 
+    /// <summary>p_spec.c <c>anims</c>: the animations <see cref="P_InitPicAnims"/> found, up to <see cref="lastanim"/>.</summary>
+    public readonly anim_t?[] anims = new anim_t?[PicAnims.MAXANIMS];
+
+    /// <summary>p_spec.c <c>lastanim</c> (an index here): the number of <see cref="anims"/>.</summary>
+    public int lastanim;
+
+    /// <summary>
+    /// r_data.c <c>texturetranslation</c>: the texture drawn for each texture
+    /// number (identity but for the animations' frames, which
+    /// <see cref="P_UpdateSpecials"/> rotates). Render state the sim never
+    /// reads; the presentation re-points the frames' atlas slots by it (T5.7).
+    /// </summary>
+    public int[] texturetranslation = Array.Empty<int>();
+
+    /// <summary>r_data.c <c>flattranslation</c>: as <see cref="texturetranslation"/> for flat numbers (<see cref="flatnames"/>).</summary>
+    public int[] flattranslation = Array.Empty<int>();
+
+    /// <summary>The flat namespace by name, in order: what <see cref="flattranslation"/>'s numbers are (vanilla's <c>firstflat</c> + n).</summary>
+    public IReadOnlyList<string> flatnames { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// p_spec.c <c>P_InitPicAnims</c> (vanilla's <c>P_Init</c>, after
+    /// <c>R_InitData</c> made the translations identity): the animations of
+    /// <see cref="PicAnims.animdefs"/> whose start the WAD has
+    /// (<see cref="PicAnims.Resolve"/>: <paramref name="textures"/>, null for
+    /// none; <paramref name="flats"/>, the flat namespace in order). Not run
+    /// by the constructor, which has no WAD; without it nothing animates.
+    /// </summary>
+    public void P_InitPicAnims(Textures? textures, IReadOnlyList<string> flats)
+    {
+        texturetranslation = new int[(textures?.NumTextures ?? 0) + 1];
+        for (int i = 0; i < texturetranslation.Length; i++)
+            texturetranslation[i] = i;
+        flatnames = flats;
+        flattranslation = new int[flats.Count + 1];
+        for (int i = 0; i < flattranslation.Length; i++)
+            flattranslation[i] = i;
+
+        //	Init animation
+        Array.Clear(anims);
+        lastanim = 0;
+        foreach (anim_t anim in PicAnims.Resolve(textures, flats))
+            anims[lastanim++] = anim;
+    }
+
     /// <summary>
     /// p_spec.c <c>P_UpdateSpecials</c>: animate planes, scroll walls, etc.,
-    /// once a tic after the thinkers (<see cref="P_Ticker"/>). The level
-    /// timer (deathmatch only) and the scrolling walls (special 48: the front
-    /// side's texture offset, one unit a tic) are ported; the animated
-    /// textures and flats come with T5.7. Then the button timers (T5.4,
-    /// <see cref="P_UpdateButtons"/>).
+    /// once a tic after the thinkers (<see cref="P_Ticker"/>): the level
+    /// timer (deathmatch only), the animated textures and flats
+    /// (<see cref="texturetranslation"/>, <see cref="flattranslation"/>, on
+    /// <see cref="leveltime"/>; T5.7), the scrolling walls (special 48: the
+    /// front side's texture offset, one unit a tic), then the button timers
+    /// (T5.4, <see cref="P_UpdateButtons"/>).
     /// </summary>
     public void P_UpdateSpecials()
     {
@@ -725,7 +774,19 @@ public sealed partial class World
                 G_ExitLevel();
         }
 
-        //	ANIMATE FLATS AND TEXTURES GLOBALLY (T5.7)
+        //	ANIMATE FLATS AND TEXTURES GLOBALLY
+        for (int a = 0; a < lastanim; a++)
+        {
+            anim_t anim = anims[a]!;
+            for (int i = anim.basepic; i < anim.basepic + anim.numpics; i++)
+            {
+                int pic = anim.basepic + ((leveltime / anim.speed + i) % anim.numpics);
+                if (anim.istexture)
+                    texturetranslation[i] = pic;
+                else
+                    flattranslation[i] = pic;
+            }
+        }
 
         //	ANIMATE LINE SPECIALS
         for (int i = 0; i < numlinespecials; i++)
@@ -747,8 +808,8 @@ public sealed partial class World
     /// <summary>
     /// p_spec.c <c>P_SpawnSpecials</c>: after the map has been loaded, scan
     /// for specials that spawn thinkers (the end of <see cref="P_SetupLevel"/>).
-    /// Sector specials: the lights (T5.7) and the timed doors (T5.3) are
-    /// stubs (<see cref="unported"/>); secrets (9) count into
+    /// Sector specials: the lights (T5.7, World.Lights.cs), the timed doors
+    /// (T5.3); secrets (9) count into
     /// <see cref="totalsecret"/>. Line effects: the scrolling walls (48),
     /// at most <see cref="MAXLINEANIMS"/> as Chocolate Doom (vanilla
     /// overruns). The active ceilings and lifts (T5.5) and the buttons (T5.4)
