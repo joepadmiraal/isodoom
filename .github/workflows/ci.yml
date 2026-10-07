@@ -153,14 +153,16 @@ jobs:
           grep -q "Level check: OK" level-check-editor.log
 
       # T5.10: the synthetic routes played in the level scene (the script's
-      # `route`): E1M1's exit into E1M2, then E1M2's secret exit. `map NAME
-      # EXITS` fails the script unless the scene shows NAME after EXITS exits.
+      # `route`): E1M1's exit into E1M2 (T7.1: through the intermission,
+      # `skip`), then E1M2's secret exit, whose next map the synthetic IWAD
+      # lacks: back to the title loop. `map NAME EXITS` fails the script
+      # unless the scene shows NAME after EXITS exits.
       - name: Route play (editor, headless)
         run: |
           r=tests/IsoDoom.Tests/Sim/Routes
           timeout 300 godot --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
             --level-tweaks=vanilla --level-monsters=off \
-            --level-script="route $r/synthetic-exit.route; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2"
+            --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
 
       - name: Export
         run: |

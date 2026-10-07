@@ -77,8 +77,9 @@ namespace IsoDoom.Game;
 /// <c>map NAME [EXITS]</c> (T5.8) waits until the queue is empty, prints the map
 /// shown, the maps completed through exits and the player's status, and
 /// fails the script unless the map is NAME (and, T5.10, EXITS maps were
-/// completed through exits since the scene started; e.g. after an exit:
-/// <c>place 2940 -4768 180; cmd 0 0 -32768 0 2; cmd 0 0 -32768 2; map E1M2</c>
+/// completed through exits since the scene started; e.g. after an exit and
+/// the intermission (T7.1: the map shown stays the one left until it is over):
+/// <c>place 2940 -4768 180; cmd 0 0 -32768 0 2; cmd 0 0 -32768 2; skip; map E1M2</c>
 /// on DOOM1.WAD's E1M1).
 /// <c>route FILE</c> (T5.10) queues a <c>.route</c> file's tics
 /// (<see cref="RouteFile"/>, e.g. <c>tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route</c>)
@@ -86,7 +87,7 @@ namespace IsoDoom.Game;
 /// along; a <c>start</c> header places the player first, as the route tests
 /// do; its <c>damage</c>, <c>alert</c> and <c>rocket</c> events (T6.4, T6.5) run before their tics. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
 /// <c>--level-monsters=off</c> (<c>on</c> for a route with the <c>monsters</c> header), the route's skill and map, or the script
-/// fails. <c>map NAME</c> after it checks that the route left by its exit.
+/// fails. <c>skip; map NAME</c> after it checks that the route left by its exit.
 /// A route goes on through a reborn (T6.12: a dead player's use reloads the
 /// level; the <c>start</c> header places the player again), and
 /// <c>reborns N</c> waits for the queued tics and fails unless the scene
@@ -132,6 +133,23 @@ namespace IsoDoom.Game;
 /// <c>MT_TYPE</c> (e.g. <c>shadows</c>, the spectre, which DOOM1's maps lack) on the floor at
 /// map point X, Y facing ANGLE (degrees, default 0) through <c>P_SpawnMobj</c>, before the next
 /// tic as <c>missile</c>; e.g. <c>power invisibility; spawn shadows 1100 -3600 180; cmd 0 0 0 0 1; shot FILE.png</c>.
+/// </para>
+/// <para>
+/// The game states (T7.1, <see cref="GameFlow"/>): tics (queued or live) run
+/// in every state, the title loop, the intermission and the finale too, and
+/// a queued tic is the console player's <c>ticcmd</c> there (fire or use skip
+/// the intermission; <c>cmd 0 0 0 129</c>, <c>BT_SPECIAL | BTS_PAUSE</c>,
+/// toggles the pause). <c>newgame [SKILL [EPISODE [MAP]]]</c> starts a new
+/// game (g_game.c <c>G_DeferedInitNew</c>, as the menus' New Game; default
+/// <c>--level-skill</c>'s skill, episode 1, map 1) at once; <c>title</c>
+/// goes back to the title loop (<c>D_StartTitle</c>); <c>gamestate NAME</c>
+/// waits for the queued tics and fails unless the game state is NAME
+/// (<c>level</c>, <c>intermission</c>, <c>finale</c> or <c>demoscreen</c>,
+/// the title loop); <c>skip [TICS]</c> waits for the queued tics, then
+/// queues tics pressing and releasing use, one at a time, until the
+/// intermission or the finale is over (the level or the title loop shows),
+/// and fails after TICS tics (default 3000). E.g. after an exit:
+/// <c>route tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route; gamestate intermission; skip; map E1M2 1</c>.
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -254,7 +272,7 @@ public partial class LevelScript : Node
                     case "tics":
                         {
                             long until = _scene.TicsRun + Int(w[1]);
-                            while (_scene.TicsRun < until && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.World is not null)
+                            while (_scene.TicsRun < until && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.Flow.CanTic)
                                 await Frames(1);
                             break;
                         }
@@ -385,7 +403,7 @@ public partial class LevelScript : Node
                             string now = _scene.Mesh?.Level.Name ?? "no map";
                             string status = _scene.World is { } world && world.players[world.consoleplayer] is { mo: not null } p
                                 ? LevelScene.StatusText(world, p) : "no player";
-                            GD.Print($"Level script: map {now} ({_scene.LevelsCompleted} completed by exits): {status}");
+                            GD.Print($"Level script: map {now} ({_scene.LevelsCompleted} completed by exits, game: {_scene.Flow.StateText()}): {status}");
                             if (!string.Equals(now, w[1], StringComparison.OrdinalIgnoreCase))
                             {
                                 GD.PrintErr($"Level script: map: expected {w[1].ToUpperInvariant()}, the scene shows {now}");
@@ -408,6 +426,42 @@ public partial class LevelScript : Node
                             if (_scene.Reborns != Int(w[1]))
                             {
                                 GD.PrintErr($"Level script: reborns: expected {Int(w[1])}, there were {_scene.Reborns}");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "newgame":
+                        // T7.1: G_DeferedInitNew (the menus' New Game, T7.2): [SKILL 1-5 [EPISODE [MAP]]], started before the next tic
+                        _scene.StartNewGame(w.Length > 1 ? (IsoDoom.Sim.skill_t)(Math.Clamp(Int(w[1]), 1, 5) - 1) : null,
+                            w.Length > 2 ? Int(w[2]) : 1, w.Length > 3 ? Int(w[3]) : 1);
+                        while (_scene.Flow.gameaction == IsoDoom.Sim.gameaction_t.ga_newgame)
+                            await Frames(1); // the scene's _Process runs the game action
+                        break;
+                    case "title":
+                        _scene.Flow.D_StartTitle(null); // T7.1: back to the title loop (d_main.c D_StartTitle)
+                        break;
+                    case "gamestate":
+                        {
+                            // T7.1: waits for the queued tics (and a title loop step due); fails unless the game state is NAME
+                            await Drain();
+                            while (_scene.Flow.advancedemo && !(_scene.ScriptedTics && _scene.QueuedTics == 0))
+                                await Frames(1);
+                            string state = GameFlow.StateName(_scene.GameState);
+                            GD.Print($"Level script: gamestate {state}: {_scene.Flow.StateText()}{(_scene.LevelEnded is { } ended ? $" ({ended})" : "")}");
+                            if (!string.Equals(state, w[1], StringComparison.OrdinalIgnoreCase))
+                            {
+                                GD.PrintErr($"Level script: gamestate: expected {w[1]}, the game is at {state}");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "skip":
+                        {
+                            int skipped = await Skip(w.Length > 1 ? Int(w[1]) : 3000);
+                            GD.Print($"Level script: skip: {(skipped < 0 ? "still" : $"{skipped} tic(s), now")} {_scene.Flow.StateText()}");
+                            if (skipped < 0)
+                            {
+                                GD.PrintErr("Level script: skip: the intermission or the finale did not end");
                                 exit = 1;
                             }
                             break;
@@ -436,8 +490,30 @@ public partial class LevelScript : Node
     /// <summary>Waits until the scripted tics queued so far ran (a map without a player runs none).</summary>
     private async Task Drain()
     {
-        while (_scene.QueuedTics > 0 && _scene.PlayerMobj is not null)
+        while (_scene.QueuedTics > 0 && _scene.Flow.CanTic)
             await Frames(1);
+    }
+
+    /// <summary>
+    /// T7.1: <c>skip [TICS]</c>: waits for the queued tics, then queues one
+    /// tic at a time, use pressed and released in turn (as a player skipping
+    /// the screens), until the game state is the level or the title loop;
+    /// fails after TICS tics (default 3000). Returns the tics it ran, or −1.
+    /// </summary>
+    private async Task<int> Skip(int max)
+    {
+        await Drain();
+        _scene.ScriptedTics = true;
+        int tics = 0;
+        while (_scene.GameState is gamestate_t.GS_INTERMISSION or gamestate_t.GS_FINALE)
+        {
+            if (tics >= max)
+                return -1;
+            _scene.QueueTic(new IsoDoom.Sim.ticcmd_t { buttons = tics % 2 == 0 ? IsoDoom.Sim.buttoncode_t.BT_USE : (byte)0 });
+            tics++;
+            await Drain();
+        }
+        return tics;
     }
 
     private void PrintChecksum()

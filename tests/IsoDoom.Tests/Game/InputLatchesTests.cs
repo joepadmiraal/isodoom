@@ -25,6 +25,22 @@ public class InputLatchesTests
     }
 
     [Fact]
+    public void ThePauseLatchesOncePerFrame()
+    {
+        // T7.1: a frame running two tics sends one pause (a second would unpause)
+        var latches = new InputLatches();
+        latches.Poll(4, false, false, false, 0, pausePressed: true);
+        Assert.True(latches.Pause);
+        latches.Clear();
+        latches.Poll(4, false, false, false, 0, pausePressed: true); // the same frame's next tic
+        Assert.False(latches.Pause);
+        latches.Poll(5, false, false, false, 0, pausePressed: false);
+        Assert.False(latches.Pause);
+        latches.Poll(6, false, false, false, 0, pausePressed: true);
+        Assert.True(latches.Pause);
+    }
+
+    [Fact]
     public void EdgesLatchUntilATicTakesThem()
     {
         var latches = new InputLatches();

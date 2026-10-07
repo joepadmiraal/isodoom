@@ -14,12 +14,23 @@ using IsoDoom.Wad.Graphics;
 namespace IsoDoom.Game;
 
 /// <summary>
-/// The level scene (T2.5, milestone M2): loads one map of the IWAD and shows
+/// The level scene (T2.5, milestone M2), the game scene since T7.1: loads one map of the IWAD and shows
 /// it as a textured mesh (<see cref="LevelMesh"/>) through the game camera
 /// (<see cref="IsoCamera"/>, T3.3) following the player, or from a fixed overview camera
-/// (<see cref="LevelCamera"/>) or the free-fly debug camera. Opened by <see cref="Main"/> with the
+/// (<see cref="LevelCamera"/>) or the free-fly debug camera. Opened by <see cref="Main"/>:
+/// at the title loop by default, or with the
 /// user argument <c>--level MAP</c> (<c>godot -- --level E1M1</c>; without a
-/// map name the first of <c>E1M1</c>/<c>MAP01</c>).
+/// map name the first of <c>E1M1</c>/<c>MAP01</c>) straight into a new game on that map.
+/// <para>
+/// The game's flow (T7.1): <see cref="Flow"/> (<see cref="GameFlow"/>, g_game.c's game
+/// states and actions and d_main.c's title loop) runs every tic, with this
+/// scene as its <see cref="IGameHost"/>: the title loop's pages, a new game
+/// (fire, use, Enter, Escape or the pad's Start on the title until the menus,
+/// T7.2), each level, the (placeholder) intermission between levels and the
+/// (placeholder) finale, drawn over the level by <see cref="Screens"/>; the
+/// pause key (Pause, the pad's Back) pauses through the <c>ticcmd</c>
+/// (vanilla's <c>BTS_PAUSE</c>), and the window's focus loss pauses too.
+/// </para>
 /// <para>
 /// The game loop (T4.7): each map gets a <see cref="Sim.World"/> on the same
 /// <see cref="Level"/> as the mesh; <see cref="_Process"/> runs it at
@@ -136,7 +147,7 @@ namespace IsoDoom.Game;
 /// none, - back), F1 shows the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
-public partial class LevelScene : Node3D
+public partial class LevelScene : Node3D, IGameHost
 {
     private Camera3D _camera = null!;
     private Label _message = null!;
@@ -176,6 +187,33 @@ public partial class LevelScene : Node3D
     /// depend on it.
     /// </summary>
     public DoomRandom MRandom { get; } = new();
+
+    private GameFlow? _flow;
+
+    /// <summary>
+    /// T7.1: the game's flow (g_game.c's game states and actions, d_main.c's
+    /// title loop; <see cref="GameFlow"/>), with this scene as its host
+    /// (<see cref="IGameHost"/>); null until a WAD is open.
+    /// </summary>
+    public GameFlow Flow => _flow ?? throw new InvalidOperationException("No WAD open.");
+
+    /// <summary>T7.1: the game state (<see cref="GameFlow.gamestate"/>; the level before a WAD is open).</summary>
+    public gamestate_t GameState => _flow?.gamestate ?? gamestate_t.GS_LEVEL;
+
+    /// <summary>T7.1: the full screens of the game states (the title loop's pages, the intermission, the finale) and the pause graphic.</summary>
+    public ScreenView Screens { get; } = new() { Name = "Screens" };
+
+    private ScreenGraphics? _graphics;
+
+    // What the screens showed last (redrawn when it changes).
+    private (gamestate_t State, int Tic, bool Pause, Vector2 Size, int Palette)? _screenKey;
+
+    /// <summary>
+    /// T7.1: the window lost the focus: nothing runs until it is back (not
+    /// vanilla's pause, which goes through the <c>ticcmd</c>; never under the
+    /// level check or a level script). The pause graphic shows.
+    /// </summary>
+    public bool FocusPaused { get; private set; }
 
     /// <summary>T6.11: the console player's status bar (st_stuff.c), from the WAD's graphics; null until a WAD is open.</summary>
     public StStuff? StatusBar { get; private set; }
@@ -278,7 +316,7 @@ public partial class LevelScene : Node3D
     /// <summary>The command of the last tic run.</summary>
     public ticcmd_t LastTiccmd { get; private set; }
 
-    /// <summary>While true no tic runs (the visibility measure keeps the world still).</summary>
+    /// <summary>While true no tic runs (the visibility measure keeps the world still; not the game's pause, <see cref="GameFlow.paused"/>).</summary>
     public bool Paused { get; set; }
 
     /// <summary>
@@ -326,7 +364,8 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   =/- HUD (bar, fullscreen, none)   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        + "Title: fire, use, Enter or Escape start a new game (until the menus)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -372,6 +411,7 @@ public partial class LevelScene : Node3D
         }
         _background = Environment.BackgroundColor;
         AddChild(new WorldEnvironment { Environment = Environment });
+        AddChild(Screens); // T7.1: under the debug overlay and the HUD
         Overlay = new CanvasLayer();
         _message = new Label
         {
@@ -415,6 +455,8 @@ public partial class LevelScene : Node3D
             if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
+            _flow = new GameFlow(this, GameMode, MRandom); // T7.1: g_game.c's flow, d_main.c's title loop
+            _graphics = new ScreenGraphics(Wad, MessageLine);
             if (IsCheckRun)
             {
                 AddChild(new LevelCheck(this)); // loads every map itself; no free-fly camera, no keys
@@ -472,12 +514,18 @@ public partial class LevelScene : Node3D
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
-            string? map = WadLocator.GetUserArg("--level");
-            if (map is null || map.StartsWith('-'))
-                map = DefaultMap();
-            LoadMap(map);
-            if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
-                MoveFloors(Mesh!.Level, moves);
+            if (WadLocator.HasUserArg("--level"))
+            {
+                // A map from the command line (vanilla's -warp): a new game on it, no title loop.
+                string? map = WadLocator.GetUserArg("--level");
+                if (map is null || map.StartsWith('-'))
+                    map = DefaultMap();
+                LoadMap(map);
+                if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
+                    MoveFloors(Mesh!.Level, moves);
+            }
+            else
+                _flow.D_StartTitle(null); // T7.1: d_main.c D_DoomMain without a map: the title loop
         }
         catch (Exception e) when (e is WadFormatException or ModifiedGameException or IOException or UnauthorizedAccessException
             or KeyNotFoundException or ArgumentException)
@@ -802,6 +850,14 @@ public partial class LevelScene : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
+        // T7.1: on the title loop, vanilla's menu opens on a key (m_menu.c M_Responder); until the menus
+        // (T7.2) fire, use, Enter, Escape or the pad's Start start a new game (episode 1, --level-skill's skill).
+        if (!IsCheckRun && _flow is { gamestate: gamestate_t.GS_DEMOSCREEN } && IsTitleStart(e))
+        {
+            StartNewGame();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         // T6.6: the next/previous weapon (the wheel without Ctrl: the game camera zooms with it) for the game camera's next tic.
         if (!IsCheckRun && IsoActive && !(e is InputEventWithModifiers { CtrlPressed: true } || Input.IsPhysicalKeyPressed(Key.Ctrl))
             && GameInput.WeaponEvent(e))
@@ -889,23 +945,49 @@ public partial class LevelScene : Node3D
         GetViewport().SetInputAsHandled();
     }
 
+    /// <summary>T7.1: whether <paramref name="e"/> starts a new game from the title loop (a press of fire, use, Enter, Escape or the pad's Start).</summary>
+    private static bool IsTitleStart(InputEvent e) =>
+        e.IsActionPressed(GameInput.Attack) || e.IsActionPressed(GameInput.Use)
+        || e is InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.Enter or Key.KpEnter or Key.Escape }
+        || e is InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.Start };
+
+    /// <summary>
+    /// T7.1: g_game.c <c>G_DeferedInitNew</c> as the menus' New Game will
+    /// (T7.2): episode <paramref name="episode"/>, map <paramref name="map"/>
+    /// on <paramref name="skill"/> (default <c>--level-skill</c>'s), started
+    /// between the tics (<see cref="GameFlow.G_DoGameActions"/>, every frame).
+    /// </summary>
+    public void StartNewGame(skill_t? skill = null, int episode = 1, int map = 1)
+    {
+        Flow.G_DeferedInitNew(skill ?? Skill, episode, map);
+        GD.Print($"Level: new game: episode {episode}, map {map}, skill {(int)(skill ?? Skill) + 1}");
+    }
+
     public override void _Process(double delta)
     {
-        if (!IsCheckRun && Mesh is not null)
+        if (!IsCheckRun && _flow is { } flow)
         {
-            UpdateCursor();
+            if (Mesh is not null)
+                UpdateCursor();
+            if (flow.gamestate != gamestate_t.GS_LEVEL)
+                GameInput.Poll(); // T7.1: fire and use for the intermission and the finale
+            flow.G_DoGameActions(); // T7.1: the game actions set between the tics (a new game from the title)
             RunTics(delta);
-            PresentWorld();
-            UpdateExtraLight();
-            UpdatePaletteEffects();
-            FollowPlayer(delta);
-            if (GetViewport().GetCamera3D() is Camera3D current)
-                Things?.UpdateRotations(current);
-            Mesh.SetLightOrigin(LightOrigin());
-            UpdateCutaway();
+            if (Mesh is not null)
+            {
+                PresentWorld();
+                UpdateExtraLight();
+                UpdatePaletteEffects();
+                FollowPlayer(delta);
+                if (GetViewport().GetCamera3D() is Camera3D current)
+                    Things?.UpdateRotations(current);
+                Mesh.SetLightOrigin(LightOrigin());
+                UpdateCutaway();
+                if (Mesh.Sprites != SpriteOptions)
+                    Mesh.SetSprites(SpriteOptions);
+            }
             UpdateHud();
-            if (Mesh.Sprites != SpriteOptions)
-                Mesh.SetSprites(SpriteOptions);
+            UpdateScreens();
         }
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
@@ -941,13 +1023,14 @@ public partial class LevelScene : Node3D
     /// one tic per <see cref="TicSeconds"/> banked (at most <see cref="MaxTicsPerFrame"/>),
     /// then sets <see cref="TicFraction"/> to what is left. With
     /// <see cref="ScriptedTics"/> an empty queue holds the world still (nothing
-    /// banked, the last tic shown). Nothing runs while <see cref="Paused"/>,
-    /// without a player mobj (vanilla needs one), or while a game action is
-    /// left pending (T5.8: the game ended, or the next map is missing).
+    /// banked, the last tic shown). Nothing runs while <see cref="Paused"/>
+    /// or <see cref="FocusPaused"/>, or on a level without a player mobj
+    /// (vanilla needs one; <see cref="GameFlow.CanTic"/>). Tics run in every
+    /// game state (T7.1: the title loop, the intermission and the finale tic too).
     /// </summary>
     private void RunTics(double delta)
     {
-        if (World is null || PlayerMobj is null || Paused || World.gameaction != gameaction_t.ga_nothing)
+        if (_flow is not { } flow || Paused || FocusPaused || !flow.CanTic)
             return;
         _ticTime += delta;
         int ran = 0;
@@ -968,6 +1051,8 @@ public partial class LevelScene : Node3D
             _ticTime = 0;
             TicFraction = 1;
         }
+        else if (flow.paused || flow.gamestate != gamestate_t.GS_LEVEL)
+            TicFraction = 1; // T7.1: the world holds still: show its last tic
         else
             TicFraction = Math.Clamp(_ticTime / TicSeconds, 0, 1);
     }
@@ -981,17 +1066,18 @@ public partial class LevelScene : Node3D
     {
         if (!ScriptedTics)
         {
-            if (_beforeNext is { } pending)
+            if (_beforeNext is { } pending && World is { } world)
             {
                 _beforeNext = null;
-                pending(World!);
+                pending(world);
             }
-            Tic(BuildTiccmd(World!.tweaks));
+            Tic(BuildTiccmd(World?.tweaks ?? Tweaks));
             return;
         }
         (ticcmd_t? cmd, Action<World>? before) = _scriptTics.Dequeue();
-        before?.Invoke(World!); // T6.4: a route's events, before the tic
-        Tic(cmd ?? BuildTiccmd(World!.tweaks));
+        if (World is { } w)
+            before?.Invoke(w); // T6.4: a route's events, before the tic
+        Tic(cmd ?? BuildTiccmd(World?.tweaks ?? Tweaks));
     }
 
     private Action<World>? _beforeNext;
@@ -1004,8 +1090,37 @@ public partial class LevelScene : Node3D
     /// </summary>
     public void BeforeNextTic(Action<World> action) => _beforeNext += action;
 
-    /// <summary>Runs one tic of <paramref name="cmd"/> (the game loop's, and the level check's).</summary>
+    /// <summary>
+    /// Runs one game tic of <paramref name="cmd"/> (the game loop's, and the
+    /// level check's): <see cref="GameFlow.G_Ticker"/>, whose level tic is
+    /// <see cref="G_LevelTicker"/>, in every game state (T7.1).
+    /// </summary>
     public void Tic(in ticcmd_t cmd)
+    {
+        Flow.G_Ticker(cmd);
+        LastTiccmd = cmd;
+        TicsRun++;
+    }
+
+    /// <summary>
+    /// <see cref="IGameHost.G_LevelTicker"/>: the level's tic (g_game.c
+    /// <c>G_Ticker</c>'s <see cref="gamestate_t.GS_LEVEL"/> part): the
+    /// world's (<see cref="World.G_Ticker(in ticcmd_t)"/>, <c>P_Ticker</c>; not
+    /// while <paramref name="paused"/>), then the status bar's and the
+    /// message line's, which vanilla runs paused too.
+    /// </summary>
+    public void G_LevelTicker(in ticcmd_t cmd, bool paused)
+    {
+        if (!paused)
+            WorldTic(cmd);
+        // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents), then the HUD is drawn.
+        StartHud();
+        StatusBar?.ST_Ticker();
+        TakeEvents();
+        DrawHud();
+    }
+
+    private void WorldTic(in ticcmd_t cmd)
     {
         if (TicTimes is { } times)
         {
@@ -1021,15 +1136,6 @@ public partial class LevelScene : Node3D
         if (_planeMoves.Count > 0)
             MovePlanes();
         PrintUnported();
-        LastTiccmd = cmd;
-        TicsRun++;
-        // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents), then the HUD is drawn.
-        StartHud();
-        StatusBar?.ST_Ticker();
-        TakeEvents();
-        DrawHud();
-        if (World!.gameaction != gameaction_t.ga_nothing)
-            DoGameAction();
     }
 
     /// <summary>The player's last message (<see cref="player_t.message"/>: pickups, locked doors) while it shows, else null (T5.8; T6.11: the message line's, <see cref="HuStuff.Message"/>).</summary>
@@ -1071,12 +1177,72 @@ public partial class LevelScene : Node3D
     /// </summary>
     private void UpdateHud()
     {
-        Hud.Visible = IsoActive && PlayerMobj is not null && StatusBar is not null;
+        Hud.Visible = IsoActive && PlayerMobj is not null && StatusBar is not null && GameState == gamestate_t.GS_LEVEL;
         if (Hud.Visible && Playpal is not null)
             Hud.Show(StatusBar, MessageLine, Playpal, Mesh?.Palette ?? 0);
         if (Iso is not null)
             Iso.BottomInset = Hud.BottomInset;
         _message.Position = new Vector2(8, 8 + Hud.TopInset);
+    }
+
+    /// <summary>
+    /// T7.1: draws the game state's screen when it changed
+    /// (<see cref="Screens"/>): the title loop's page (d_main.c
+    /// <c>D_PageDrawer</c>), the intermission (<see cref="WiStuff.WI_Drawer"/>)
+    /// or the finale (<see cref="FFinale.F_Drawer"/>) in palette 0, over a
+    /// black backdrop, and the pause graphic over them or over the level (in
+    /// its palette, flashes included, as vanilla's <c>D_Display</c>).
+    /// </summary>
+    public void UpdateScreens()
+    {
+        if (_flow is not { } flow || _graphics is not { } g || Playpal is null)
+            return;
+        bool pause = flow.paused || FocusPaused;
+        gamestate_t state = flow.gamestate;
+        if (state == gamestate_t.GS_LEVEL && (!pause || Mesh is null))
+        {
+            Screens.Visible = false;
+            _screenKey = null;
+            return;
+        }
+        int palette = state == gamestate_t.GS_LEVEL ? Mesh?.Palette ?? 0 : 0;
+        var key = (state, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
+        if (_screenKey == key && Screens.Visible)
+            return;
+        _screenKey = key;
+        HudScreen screen = Screens.Screen;
+        switch (state)
+        {
+            case gamestate_t.GS_LEVEL:
+                screen.Clear();
+                break;
+            case gamestate_t.GS_INTERMISSION:
+                flow.Wi.WI_Drawer(g, screen);
+                break;
+            case gamestate_t.GS_FINALE:
+                flow.Finale.F_Drawer(g, screen);
+                break;
+            default:
+                screen.Clear();
+                g.DrawPage(screen, flow.pagename);
+                break;
+        }
+        if (pause)
+            g.DrawPause(screen);
+        Screens.Show(Playpal, palette, state != gamestate_t.GS_LEVEL, Hud.FixedScale);
+    }
+
+    /// <summary>
+    /// T7.1: the window's focus: nothing runs while it is lost
+    /// (<see cref="FocusPaused"/>), but under the level check and a level
+    /// script, which run without a person.
+    /// </summary>
+    public override void _Notification(int what)
+    {
+        if (what == NotificationApplicationFocusOut && !IsCheckRun && !WadLocator.HasUserArg("--level-script"))
+            FocusPaused = true;
+        else if (what == NotificationApplicationFocusIn)
+            FocusPaused = false;
     }
 
     private readonly List<sim_event_t> _events = new();
@@ -1136,71 +1302,14 @@ public partial class LevelScene : Node3D
         return name;
     }
 
-    /// <summary>Why the world stopped (T5.8: the game ended, or the next map is not in the WAD), or null while it runs.</summary>
+    /// <summary>
+    /// Why the last game stopped (T5.8, T7.1: the end of the game, or a next
+    /// map the WAD lacks: back to the title loop), or null; a new game clears it.
+    /// </summary>
     public string? LevelEnded { get; private set; }
 
     /// <summary>The maps completed through an exit since the scene started (T5.8).</summary>
     public int LevelsCompleted { get; private set; }
-
-    /// <summary>
-    /// The level flow (T5.8, g_game.c <c>G_Ticker</c>'s game actions, before
-    /// the next tic): a completed level (<see cref="World.G_DoCompleted"/>)
-    /// goes straight on to the next one, without the intermission (M7):
-    /// <see cref="World.G_WorldDone"/>, then <see cref="LoadMap(string, World?)"/>
-    /// with the same world (<see cref="World.G_DoWorldDone"/>: the players
-    /// keep their health, armor and weapons). The end of the game (an
-    /// episode's map 8, Doom II's MAP30: the finale, M7) or a next map the
-    /// WAD lacks stops the world there (<see cref="LevelEnded"/>; PgDn/PgUp
-    /// still load maps).
-    /// </summary>
-    private void DoGameAction()
-    {
-        World world = World!;
-        string map = world.level.Name;
-        if (world.gameaction == gameaction_t.ga_loadlevel)
-        {
-            Reborn(world);
-            return;
-        }
-        if (world.gameaction != gameaction_t.ga_completed)
-            return;
-        world.G_DoCompleted();
-        LevelsCompleted++;
-        if (_scriptTics.Count > 0)
-        {
-            // T5.10: scripted tics were for the map just left (e.g. a route
-            // whose exit came early): drop them, or a script waiting for them
-            // would wait for ever once the game ends.
-            GD.Print($"Level: {_scriptTics.Count} scripted tic(s) left at the exit dropped");
-            _scriptTics.Clear();
-        }
-        if (world.G_GameEnds())
-        {
-            LevelEnded = $"{map} completed: the end of the game (the finale is M7's); PgDn/PgUp load a map";
-            GD.Print($"Level: {LevelEnded}");
-            return;
-        }
-        world.G_WorldDone();
-        string next = world.NextMapName();
-        GD.Print($"Level: {map} completed{(world.secretexit ? " (secret exit)" : "")} at tic {world.wminfo.plyr[world.consoleplayer].stime}: "
-            + $"kills {world.wminfo.plyr[world.consoleplayer].skills}/{world.wminfo.maxkills}, items {world.wminfo.plyr[world.consoleplayer].sitems}/{world.wminfo.maxitems}, "
-            + $"secrets {world.wminfo.plyr[world.consoleplayer].ssecret}/{world.wminfo.maxsecret}; next {next}");
-        if (Wad is null || Wad.W_CheckNumForName(next) < 0)
-        {
-            LevelEnded = $"{map} completed: the next map, {next}, is not in the WAD; PgDn/PgUp load a map";
-            GD.Print($"Level: {LevelEnded}");
-            return;
-        }
-        try
-        {
-            LoadMap(next, world);
-        }
-        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
-        {
-            GD.PrintErr($"Level: {next}: {e.Message}");
-            _status = $"{next}: {e.Message}";
-        }
-    }
 
     /// <summary>The reborns since the scene started (T6.12).</summary>
     public int Reborns { get; private set; }
@@ -1212,35 +1321,107 @@ public partial class LevelScene : Node3D
     /// </summary>
     public (int X, int Y, int Angle)? RouteStartPoint { get; set; }
 
+    /// <inheritdoc/>
+    public bool HasLump(string name) => Wad is { } wad && wad.W_CheckNumForName(name) >= 0;
+
+    // The exception of the last level load the flow asked for (LoadMap rethrows it).
+    private Exception? _loadError;
+
     /// <summary>
-    /// T6.12: g_game.c's <see cref="gameaction_t.ga_loadlevel"/> (a dead
-    /// player pressed use: <see cref="World.G_DoReborn"/>): the same map
-    /// afresh in the same world (<see cref="LoadMap(string, World?)"/>, whose
+    /// <see cref="IGameHost.G_InitNew"/>: a new game on <paramref name="skill"/>
+    /// (<see cref="Skill"/> from now on) at map <paramref name="map"/>
+    /// (<see cref="LoadMap(string, World?)"/> with a new world).
+    /// </summary>
+    bool IGameHost.G_InitNew(skill_t skill, string map)
+    {
+        Skill = skill;
+        LevelEnded = null;
+        return TryLoad(map, null);
+    }
+
+    /// <summary>
+    /// <see cref="IGameHost.G_DoWorldDone"/> (T5.8): the next map in the
+    /// same world (<see cref="World.G_DoWorldDone"/>: the players keep their
+    /// health, armor and weapons).
+    /// </summary>
+    bool IGameHost.G_DoWorldDone(string map) => TryLoad(map, World);
+
+    /// <summary>
+    /// <see cref="IGameHost.G_DoLoadLevel"/> (T6.12, g_game.c's
+    /// <see cref="gameaction_t.ga_loadlevel"/>: a dead player pressed use,
+    /// <see cref="World.G_DoReborn"/>): the same map afresh in the same
+    /// world (<see cref="LoadMap(string, World?)"/>, whose
     /// <see cref="World.G_DoLoadLevel"/> gives the player a fresh start), the
     /// status bar and message line restarted (<see cref="StartHud"/>), the
     /// queued script tics kept (a route goes on through a reborn, its
     /// <see cref="RouteStartPoint"/> placed again).
     /// </summary>
-    private void Reborn(World world)
+    bool IGameHost.G_DoLoadLevel()
     {
+        World world = World!;
         string map = world.level.Name;
         var queued = _scriptTics.ToArray();
-        try
-        {
-            LoadMap(map, world);
-        }
-        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
-        {
-            GD.PrintErr($"Level: {map}: {e.Message}");
-            _status = $"{map}: {e.Message}";
-            return;
-        }
+        if (!TryLoad(map, world))
+            return false;
         foreach (var tic in queued)
             _scriptTics.Enqueue(tic);
         Reborns++;
         if (queued.Length > 0 && RouteStartPoint is { } s && !PlaceRouteStart(s.X, s.Y, s.Angle))
             GD.PrintErr($"Level: reborn: the route's start {s.X} {s.Y}: something stands there");
         GD.Print($"Level: {map} reloaded for a reborn player (G_DoReborn) at tic {TicsRun}");
+        return true;
+    }
+
+    private bool TryLoad(string map, World? carry)
+    {
+        try
+        {
+            LoadMap(map, carry);
+            return true;
+        }
+        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
+        {
+            GD.PrintErr($"Level: {map}: {e.Message}");
+            _status = $"{map}: {e.Message}";
+            _loadError = e;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="IGameHost.LevelCompleted"/> (T5.8, g_game.c <c>G_DoCompleted</c>):
+    /// counts and prints it; the scripted tics left are dropped (T5.10: they
+    /// were for the map just left, e.g. a route whose exit came early).
+    /// </summary>
+    void IGameHost.LevelCompleted()
+    {
+        World world = World!;
+        LevelsCompleted++;
+        if (_scriptTics.Count > 0)
+        {
+            GD.Print($"Level: {_scriptTics.Count} scripted tic(s) left at the exit dropped");
+            _scriptTics.Clear();
+        }
+        wbplayerstruct_t p = world.wminfo.plyr[world.consoleplayer];
+        GD.Print($"Level: {world.level.Name} completed{(world.secretexit ? " (secret exit)" : "")} at tic {world.leveltime}"
+            + (world.gameaction == gameaction_t.ga_victory ? ": the episode's end, the finale"
+                : $": kills {p.skills}/{world.wminfo.maxkills}, items {p.sitems}/{world.wminfo.maxitems}, "
+                    + $"secrets {p.ssecret}/{world.wminfo.maxsecret}; the intermission, then {world.NextMapName()}"));
+    }
+
+    /// <summary>
+    /// <see cref="IGameHost.EndGame"/> (T7.1, d_main.c <c>D_StartTitle</c>):
+    /// the level goes (the title loop shows next); <paramref name="why"/>,
+    /// when the game stopped short, shows in the overlay (<see cref="LevelEnded"/>).
+    /// </summary>
+    void IGameHost.EndGame(string? why)
+    {
+        if (why is not null)
+        {
+            LevelEnded = why;
+            GD.Print($"Level: {why}; the title loop");
+        }
+        UnloadLevel();
     }
 
     // How many of the world's World.unported calls are printed (or were there at its start).
@@ -1507,15 +1688,17 @@ public partial class LevelScene : Node3D
     /// player mobj (its x, y and angle) from the input since the last call,
     /// with <paramref name="tweaks"/>; called once per tic (T4.7; the level
     /// script's <c>ticcmd</c> prints one). Only the game camera reads the
-    /// input (the free-fly camera shares W/A/S/D, E and Space): under the
-    /// others the latches are dropped and the command only keeps the
-    /// player's angle.
+    /// input on a level (the free-fly camera shares W/A/S/D, E and Space):
+    /// under the others the latches are dropped (but the pause key, T7.1)
+    /// and the command only keeps the player's angle. The other game states
+    /// (T7.1: the title loop, the intermission, the finale) read the input
+    /// under every camera.
     /// </summary>
     public ticcmd_t BuildTiccmd(Tweaks tweaks)
     {
         TiccmdInput input = GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null);
-        if (!IsoActive)
-            input = new TiccmdInput();
+        if (!IsoActive && GameState == gamestate_t.GS_LEVEL)
+            input = new TiccmdInput { Pause = input.Pause }; // T7.1: the pause key works under every camera
         mobj_t? mo = PlayerMobj;
         uint screenUp = Iso is not null ? GameInput.ScreenUp(Iso.GroundUp) : Tables.ANG90;
         player_t? player = World?.players[World.consoleplayer];
@@ -1589,6 +1772,8 @@ public partial class LevelScene : Node3D
             text.Append($"message: {HudMessage}\n");
         if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
             text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
+        if (_flow is { } flow)
+            text.Append($"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}\n");
         if (LevelEnded is not null)
             text.Append(LevelEnded + "\n");
         if (World is { } world)
@@ -1765,32 +1950,38 @@ public partial class LevelScene : Node3D
     /// <see cref="KeyNotFoundException"/> for an unknown flat) when the map
     /// can't be built.
     /// </summary>
-    public void LoadMap(string map) => LoadMap(map, null);
+    /// <remarks>
+    /// T7.1: a new game on the map (<see cref="GameFlow.G_InitNewMap"/>: as
+    /// <c>G_InitNew</c>, on <see cref="Skill"/>; the debug arguments' way
+    /// in: <c>--level MAP</c>, PgDn/PgUp, the level check, the level script).
+    /// A map that can't be built leaves the game at the title loop.
+    /// </remarks>
+    public void LoadMap(string map)
+    {
+        _loadError = null;
+        Flow.G_InitNewMap(Skill, map);
+        if (_loadError is { } e)
+        {
+            _loadError = null;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(e);
+        }
+    }
 
     /// <summary>
-    /// <see cref="LoadMap(string)"/>; with <paramref name="carry"/> (T5.8, the
-    /// level flow) the game goes on in that world, its players as they left
-    /// the last level (<see cref="World.G_DoWorldDone"/>), instead of a new game.
+    /// Builds and shows map <paramref name="map"/>: a new game's world, or
+    /// with <paramref name="carry"/> (T5.8, the level flow) the game going on
+    /// in that world, its players as they left the last level
+    /// (<see cref="World.G_DoWorldDone"/>), or a reborn's
+    /// (<see cref="gameaction_t.ga_loadlevel"/>, T6.12).
     /// </summary>
-    public void LoadMap(string map, World? carry)
+    private void LoadMap(string map, World? carry)
     {
         WadArchive wad = Wad ?? throw new InvalidOperationException("No WAD open.");
         map = map.ToUpperInvariant();
         if (wad.W_CheckNumForName(map) < 0)
             throw new WadFormatException($"the WAD has no map {map}");
 
-        foreach (MeshInstance3D chunk in _chunks)
-            chunk.QueueFree();
-        _chunks.Clear();
-        Chunks = Array.Empty<MeshInstance3D?>();
-        Mesh = null;
-        Things?.QueueFree();
-        Things = null;
-        _drawn.Clear();
-        World = null;
-        LevelEnded = null;
-        _soundLog.Clear();
-        _planeMoves.Clear();
+        UnloadLevel();
         SnapPending = false;
         TeleportSnaps = 0;
         TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)
@@ -1824,9 +2015,7 @@ public partial class LevelScene : Node3D
             _chunks.Add(node);
             Chunks[s] = node;
         }
-        if (carry is null)
-            MRandom.M_ClearRandom(); // T6.11: g_game.c G_InitNew's, a new game
-        StartWorld(level, carry);
+        StartWorld(level, carry); // (a new game's M_ClearRandom is GameFlow.G_InitNewMap's, T6.11)
         _hudMobj = null;
         StartHud(); // T6.11: P_SpawnPlayer's ST_Start and HU_Start (drawn after the first tic's ST_Ticker, as vanilla's)
         BuildThings(level, mesh);
@@ -1851,6 +2040,31 @@ public partial class LevelScene : Node3D
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");
         _message.Text = _status = text;
+    }
+
+    /// <summary>
+    /// Frees the level's chunks, billboards and world (before the next
+    /// level, or for the title loop, T7.1: <see cref="IGameHost.EndGame"/>).
+    /// </summary>
+    private void UnloadLevel()
+    {
+        foreach (MeshInstance3D chunk in _chunks)
+            chunk.QueueFree();
+        _chunks.Clear();
+        Chunks = Array.Empty<MeshInstance3D?>();
+        Mesh = null;
+        Things?.QueueFree();
+        Things = null;
+        _drawn.Clear();
+        World = null;
+        _hudMobj = null;
+        if (Player is not null)
+            Player.Visible = false;
+        Cursor = null;
+        if (_cursorMarker is not null)
+            _cursorMarker.Visible = false;
+        _soundLog.Clear();
+        _planeMoves.Clear();
     }
 
     /// <summary>

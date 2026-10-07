@@ -48,6 +48,9 @@ public struct TiccmdInput
 
     /// <summary>T6.6: the next (+1) or previous (−1) weapon asked for since the last tic (the mouse wheel, LB/RB), or 0; it wins over <see cref="Weapon"/>.</summary>
     public int WeaponStep;
+
+    /// <summary>T7.1: the pause key was pressed since the last tic (g_game.c <c>sendpause</c>).</summary>
+    public bool Pause;
 }
 
 /// <summary>Where the aim of <see cref="TiccmdBuilder"/> comes from.</summary>
@@ -198,6 +201,10 @@ public sealed class TiccmdBuilder
             cmd.buttons |= (byte)(buttoncode_t.BT_CHANGE | ((int)G_NextWeapon(player, gamemode, input.WeaponStep) << buttoncode_t.BT_WEAPONSHIFT));
         else if (input.Weapon is >= 1 and <= WeaponSlots)
             cmd.buttons |= (byte)(buttoncode_t.BT_CHANGE | ((input.Weapon - 1) << buttoncode_t.BT_WEAPONSHIFT));
+
+        // special buttons (T7.1): the pause replaces the buttons, as vanilla's sendpause
+        if (input.Pause)
+            cmd.buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE;
         return cmd;
     }
 

@@ -28,9 +28,10 @@ namespace IsoDoom.Game;
 // it. With a real renderer, a wall translated to another texture (as an
 // animation re-points a slot) and a wall scrolled are compared side-on.
 // T5.8: on every map with a use exit (special 11), the player uses it: the
-// scene goes on to the next map in the same world, the player keeping its
-// health and losing its keys, or stops with the reason when the game ends or
-// the WAD lacks the next map; a message the sim leaves shows in the overlay.
+// scene goes on (T7.1: through the intermission, skipped with use) to the
+// next map in the same world, the player keeping its health and losing its
+// keys, or stops: the finale at the game's end, the title loop when the WAD
+// lacks the next map; a message the sim leaves shows in the overlay.
 // T6.12: on every map (but where the player starts in a special 11 sector,
 // where it cannot die) the player is killed: dead, it lies in a death frame
 // and its commands move nothing; use reborns it: the scene reloads the same
@@ -38,7 +39,7 @@ namespace IsoDoom.Game;
 // bullets, no keys) and restarts the status bar.
 public partial class LevelCheck
 {
-    private int _exitMaps, _exitsToNext, _exitsEnded;
+    private int _exitMaps, _exitsToNext, _exitsEnded, _intermissionTics, _textScreens;
     private int _rebornMaps, _rebornSkipped;
 
     /// <summary>
@@ -96,9 +97,10 @@ public partial class LevelCheck
     /// <summary>
     /// T5.8: the player uses the map's first use exit (special 11) from 24
     /// (16, 8) units in front of it; the level scene must then show the next
-    /// map (<see cref="World.NextMapName"/>) in the same world, with the
-    /// player's health kept, its keys taken and the overlay's status line,
-    /// or stop with <see cref="LevelScene.LevelEnded"/>. Leaves the scene
+    /// map (<see cref="World.NextMapName"/>) in the same world after the
+    /// intermission (T7.1), with the player's health kept, its keys taken
+    /// and the overlay's status line, or stop: the finale, or the title loop
+    /// with <see cref="LevelScene.LevelEnded"/>. Leaves the scene
     /// on whatever map it got to (call it last for a map).
     /// </summary>
     private void CheckExit(string map)
@@ -142,11 +144,40 @@ public partial class LevelCheck
             if (_scene.LevelsCompleted == completed)
                 continue; // the use hit something else: try another exit
             _exitMaps++;
-            if (_scene.LevelEnded is not null)
+            if (_scene.GameState == gamestate_t.GS_FINALE)
             {
+                // an episode's end (T7.1: the finale, no intermission)
                 _exitsEnded++;
                 if (_scene.Mesh?.Level.Name != map || _scene.World != world)
-                    Fail($"{map}: the game ended ({_scene.LevelEnded}) but the scene left the map");
+                    Fail($"{map}: the finale began but the scene left the map");
+                return;
+            }
+            // T7.1: the intermission, until fire or use (released first: use is held from the exit), then the next map
+            if (_scene.GameState != gamestate_t.GS_INTERMISSION || _scene.Flow.Wi.state != WiStuff.stateenum_t.StatCount
+                || _scene.Mesh?.Level.Name != map || _scene.World != world || world.wminfo.last != world.gamemap - 1)
+            {
+                Fail($"{map}: after the exit the game is at {_scene.Flow.StateText()} on {_scene.Mesh?.Level.Name}, not the intermission's stats on {map}");
+                return;
+            }
+            int intermission = 0;
+            bool text = false;
+            for (; intermission < 400 && _scene.GameState is gamestate_t.GS_INTERMISSION or gamestate_t.GS_FINALE; intermission++)
+            {
+                text |= _scene.GameState == gamestate_t.GS_FINALE; // Doom II's text screens (G_WorldDone's F_StartFinale)
+                _scene.Tic(new ticcmd_t { buttons = intermission % 2 == 1 ? buttoncode_t.BT_USE : (byte)0 });
+            }
+            if (text)
+                _textScreens++;
+            else
+                _intermissionTics = Math.Max(_intermissionTics, intermission);
+            if (_scene.GameState == gamestate_t.GS_DEMOSCREEN && _scene.LevelEnded is not null && _scene.World is null)
+            {
+                _exitsEnded++; // the next map is not in the WAD: the title loop
+                return;
+            }
+            if (_scene.GameState != gamestate_t.GS_LEVEL)
+            {
+                Fail($"{map}: the intermission (and text screen) did not end in {intermission} tics: {_scene.Flow.StateText()}");
                 return;
             }
             _exitsToNext++;

@@ -79,6 +79,16 @@ public class TiccmdBuilderTests
     private static (int, int) Move(ticcmd_t cmd) => (cmd.forwardmove, cmd.sidemove);
 
     [Fact]
+    public void ThePauseKeySendsOnlyThePause()
+    {
+        // T7.1: g_game.c's sendpause: the buttons become BT_SPECIAL | BTS_PAUSE, the move stays
+        ticcmd_t cmd = Build(Keys(w: true) with { Attack = true, Use = true, Weapon = 3, Pause = true });
+        Assert.Equal(buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE, cmd.buttons);
+        Assert.Equal(Move(Build(Keys(w: true))), Move(cmd));
+        Assert.Equal(buttoncode_t.BT_ATTACK, Build(new TiccmdInput { Attack = true }).buttons);
+    }
+
+    [Fact]
     public void RunToggleFlipsRun()
     {
         var b = new TiccmdBuilder();

@@ -22,6 +22,9 @@ public sealed class GameInput
     /// <summary>T6.6: the next and previous weapon (the mouse wheel, LB/RB; SPEC §6.2).</summary>
     public const string WeaponNext = "weapon_next", WeaponPrev = "weapon_prev";
 
+    /// <summary>T7.1: the pause (Pause, the pad's Back; g_game.c <c>key_pause</c>).</summary>
+    public const string Pause = "pause";
+
     /// <summary>The weapon slot actions <c>weapon_1</c>–<c>weapon_8</c>.</summary>
     public static string Weapon(int slot) => "weapon_" + slot;
 
@@ -31,7 +34,7 @@ public sealed class GameInput
         var actions = new System.Collections.Generic.List<string>
         {
             MoveLeft, MoveRight, MoveUp, MoveDown, AimLeft, AimRight, AimUp, AimDown,
-            Run, RunToggle, TurnLeft, TurnRight, Attack, Use, WeaponNext, WeaponPrev,
+            Run, RunToggle, TurnLeft, TurnRight, Attack, Use, WeaponNext, WeaponPrev, Pause,
         };
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
             actions.Add(Weapon(i));
@@ -81,7 +84,7 @@ public sealed class GameInput
                 break;
             }
         }
-        _latches.Poll(Engine.GetProcessFrames(), Input.IsActionPressed(Attack), Input.IsActionPressed(Use), Input.IsActionJustPressed(RunToggle), weapon);
+        _latches.Poll(Engine.GetProcessFrames(), Input.IsActionPressed(Attack), Input.IsActionPressed(Use), Input.IsActionJustPressed(RunToggle), weapon, Input.IsActionJustPressed(Pause));
     }
 
     /// <summary>
@@ -108,6 +111,7 @@ public sealed class GameInput
             Use = _latches.Use,
             Weapon = _latches.Weapon,
             WeaponStep = _latches.WeaponStep,
+            Pause = _latches.Pause,
         };
         _latches.Clear();
         _cursorMoved = false;
