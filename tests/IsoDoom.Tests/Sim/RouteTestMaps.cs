@@ -52,7 +52,23 @@ public static class RouteTestMaps
         // to B) from their east sides, P2 | B (boundary 4) a W1 teleport (39, tag 1: to A) from B.
         // The player in S facing west.
         ["teleport"] = Teleport,
+        // T6.5: missiles and sky walls. West to east: a room W (64 wide, ceiling 36, F_SKY1), the
+        // start room S (512 wide, ceiling 128) and a room E (64 wide, ceiling 36, F_SKY1), 512 deep.
+        // A missile 32 units up (top 40) is blocked by both low sky ceilings: across W | S
+        // (boundary 1, W behind it) it vanishes (p_mobj.c's sky hack reads the back sector), across
+        // S | E (boundary 2, S behind it) it explodes. The player at (136, 256) facing west (a
+        // rocket's 20-unit steps from there end with its centre still in S, see SPEC §12 T6.5), a
+        // barrel at (136, 448), an imp at (480, 256) facing east (away from the player).
+        ["missiles"] = Missiles,
     };
+
+    private static TestMap Missiles()
+    {
+        TestMap map = TestMap.Strip(0, 0, 512,
+            new TestMap.Room(64, 0, 36), new TestMap.Room(512, 0, 128), new TestMap.Room(64, 0, 36));
+        map.CeilingPic(0, "F_SKY1").CeilingPic(2, "F_SKY1");
+        return map.Thing(136, 448, 2035).Thing(480, 256, 3001, 0).Player(136, 256, 180);
+    }
 
     private static TestMap Teleport()
     {

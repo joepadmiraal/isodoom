@@ -12,8 +12,8 @@ non-id content: committed), OUTDIR/NAME.vanilla for one on DOOM1.WAD
 (TESTMAPS/NAME.wad, written by the tests' WritesTheTestMapPwads; T4.8a) play
 as a -file over DOOM1.WAD, whose status bar and fonts the reference needs to
 start; a test map's lump is E1M1. A route with the monsters header (T6.4)
-plays without nomonsters, and its damage/alert lines go to the reference as
-$DUMP_EVENTS (dump.c), run before their tics.
+plays without nomonsters, and its damage/alert (and, T6.5, rocket) lines go
+to the reference as $DUMP_EVENTS (dump.c), run before their tics.
 """
 import os, subprocess, sys, tempfile
 
@@ -24,7 +24,7 @@ def parse(path):
     """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
     head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False}
     cmds = []
-    events = []  # T6.4: "TIC damage X Y AMOUNT" / "TIC alert", TIC the 0-based tic they start
+    events = []  # T6.4: "TIC damage X Y AMOUNT" / "TIC alert" (/ T6.5 "TIC rocket"), TIC the 0-based tic they start
     for n, line in enumerate(open(path), 1):
         line = line.split('#', 1)[0].split()
         if not line:
@@ -54,6 +54,11 @@ def parse(path):
             if len(line) != 1:
                 sys.exit(f'{where}: expected alert')
             events.append(f'{len(cmds)} alert')
+            continue
+        if line[0] == 'rocket':  # T6.5: player 1 fires a rocket at the start of the next tic
+            if len(line) != 1:
+                sys.exit(f'{where}: expected rocket')
+            events.append(f'{len(cmds)} rocket')
             continue
         if line[0] in head:
             head[line[0]] = line[1] if line[0] != 'skill' else int(line[1])

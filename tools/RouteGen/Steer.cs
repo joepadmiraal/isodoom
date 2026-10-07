@@ -97,6 +97,10 @@ public sealed class Steer
     public void Alert() =>
         Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Alert, 0, 0, 0));
 
+    /// <summary>T6.5: player 1 fires a rocket at the start of the next tic (a route <c>rocket</c> line).</summary>
+    public void Rocket() =>
+        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Rocket, 0, 0, 0));
+
     /// <summary>T6.4: the live mobj spawned at (x, y) (a damage event's target), or null.</summary>
     public mobj_t? Spawned(int x, int y) =>
         w.Mobjs().FirstOrDefault(m => m.spawnpoint.X == x && m.spawnpoint.Y == y && (m.flags & mobjflag_t.MF_SHOOTABLE) != 0 && m.health > 0);

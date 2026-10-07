@@ -50,7 +50,8 @@
 // order; T6.4), at the start of tic TIC (leveltime TIC), before the players
 // think: P_DamageMobj(thing, mo, mo, AMOUNT) on the first mobj in thinker
 // order spawned at map point X, Y (spawnpoint) that is shootable and alive
-// (none: exit 1), or P_NoiseAlert(mo, mo), mo player 1's mobj: the route's
+// (none: exit 1), or P_NoiseAlert(mo, mo), or (T6.5, "TIC rocket")
+// P_SpawnPlayerMissile(mo, MT_ROCKET), mo player 1's mobj: the route's
 // stand-ins for the player's shots.
 #include "doomgeneric.h"
 #include "doomstat.h"
@@ -111,9 +112,10 @@ static void capture_tic(void);
 // r_data.c's textures: each starts with its name (char[8], not terminated when 8 long).
 extern char **textures;
 
-// $DUMP_EVENTS (T6.4): "TIC damage X Y AMOUNT;TIC alert;..." in tic order.
+// $DUMP_EVENTS (T6.4): "TIC damage X Y AMOUNT;TIC alert;TIC rocket;..." in tic order.
+// kind: 0 damage, 1 alert, 2 rocket (T6.5).
 #define MAX_EVENTS 4096
-static struct { int tic, alert, x, y, amount; } events[MAX_EVENTS];
+static struct { int tic, kind, x, y, amount; } events[MAX_EVENTS];
 static int nevents, nextevent;
 
 static void parse_events(void)
@@ -126,6 +128,8 @@ static void parse_events(void)
             events[nevents++] = (typeof(events[0])){ tic, 0, x, y, amount };
         else if (sscanf(tok, "%d alert", &tic) == 1 && strstr(tok, "alert"))
             events[nevents++] = (typeof(events[0])){ tic, 1, 0, 0, 0 };
+        else if (sscanf(tok, "%d rocket", &tic) == 1 && strstr(tok, "rocket"))
+            events[nevents++] = (typeof(events[0])){ tic, 2, 0, 0, 0 };
         else
         {
             fprintf(stderr, "DUMP_EVENTS: bad event \"%s\"\n", tok);
@@ -153,9 +157,14 @@ void dump_pretic(void)
     {
         if (events[nextevent].tic < leveltime)
             continue;
-        if (events[nextevent].alert)
+        if (events[nextevent].kind == 1)
         {
             P_NoiseAlert(mo, mo);
+            continue;
+        }
+        if (events[nextevent].kind == 2)
+        {
+            P_SpawnPlayerMissile(mo, MT_ROCKET);
             continue;
         }
         mobj_t *target = NULL;

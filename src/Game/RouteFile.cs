@@ -11,9 +11,9 @@ namespace IsoDoom.Game;
 /// <c>VanillaRoute</c>): a header (<c>iwad</c>, <c>map</c>, <c>skill</c>,
 /// <c>start X Y ANGLE</c>, <c>exit normal|secret</c>, <c>monsters</c>) and one vanilla
 /// <c>ticcmd</c> per tic (<c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>, a demo's
-/// relative turn byte), between which (T6.4) <c>damage X Y AMOUNT</c> and
-/// <c>alert</c> lines are <see cref="RouteEvent"/>s run at the start of the
-/// next tic. Plain C#: the tests parse their routes with it, and
+/// relative turn byte), between which (T6.4) <c>damage X Y AMOUNT</c>,
+/// <c>alert</c> and (T6.5) <c>rocket</c> lines are <see cref="RouteEvent"/>s
+/// run at the start of the next tic. Plain C#: the tests parse their routes with it, and
 /// the level script's <c>route FILE</c> (T5.10) plays one in the level scene.
 /// </summary>
 public sealed class RouteFile
@@ -91,6 +91,11 @@ public sealed class RouteFile
                         throw new FormatException($"{where}: expected alert");
                     events.Add(new RouteEvent(cmds.Count, RouteEventKind.Alert, 0, 0, 0));
                     continue;
+                case "rocket":
+                    if (f.Length != 1)
+                        throw new FormatException($"{where}: expected rocket");
+                    events.Add(new RouteEvent(cmds.Count, RouteEventKind.Rocket, 0, 0, 0));
+                    continue;
             }
             int count = 1;
             if (f[^1].StartsWith('x'))
@@ -150,6 +155,9 @@ public enum RouteEventKind
 
     /// <summary><c>alert</c>: player 1 makes a noise as a shot would.</summary>
     Alert,
+
+    /// <summary><c>rocket</c> (T6.5): player 1 fires a rocket (<c>P_SpawnPlayerMissile(mo, MT_ROCKET)</c>, as <c>A_FireMissile</c> without the ammo).</summary>
+    Rocket,
 }
 
 /// <summary>
@@ -163,7 +171,9 @@ public enum RouteEventKind
 /// was spawned at map point (<see cref="X"/>, <see cref="Y"/>)
 /// (<c>spawnpoint</c>) and is shootable and alive;
 /// <see cref="RouteEventKind.Alert"/> calls <c>P_NoiseAlert(mo, mo)</c>, as
-/// <c>P_FireWeapon</c> does (SPEC §12 T6.4).
+/// <c>P_FireWeapon</c> does (SPEC §12 T6.4); <see cref="RouteEventKind.Rocket"/>
+/// calls <c>P_SpawnPlayerMissile(mo, MT_ROCKET)</c>, as <c>A_FireMissile</c>
+/// does, without using ammo or making a noise (SPEC §12 T6.5).
 /// </summary>
 public readonly record struct RouteEvent(int Tic, RouteEventKind Kind, int X, int Y, int Amount)
 {
@@ -174,6 +184,11 @@ public readonly record struct RouteEvent(int Tic, RouteEventKind Kind, int X, in
         if (Kind == RouteEventKind.Alert)
         {
             world.P_NoiseAlert(mo, mo);
+            return;
+        }
+        if (Kind == RouteEventKind.Rocket)
+        {
+            world.P_SpawnPlayerMissile(mo, mobjtype_t.MT_ROCKET);
             return;
         }
         foreach (mobj_t m in world.Mobjs())
@@ -188,7 +203,10 @@ public readonly record struct RouteEvent(int Tic, RouteEventKind Kind, int X, in
     }
 
     /// <summary>The event's route line.</summary>
-    public override string ToString() => Kind == RouteEventKind.Alert
-        ? "alert"
-        : string.Create(CultureInfo.InvariantCulture, $"damage {X} {Y} {Amount}");
+    public override string ToString() => Kind switch
+    {
+        RouteEventKind.Alert => "alert",
+        RouteEventKind.Rocket => "rocket",
+        _ => string.Create(CultureInfo.InvariantCulture, $"damage {X} {Y} {Amount}"),
+    };
 }

@@ -216,9 +216,15 @@ public sealed partial class World
     {
     }
 
-    /// <summary>p_pspr.c <c>A_FireMissile</c>: the rocket launcher. A stub until T6.6.</summary>
+    /// <summary>
+    /// p_pspr.c <c>A_FireMissile</c>: the rocket launcher, a rocket and one
+    /// of its ammo (T6.5; nothing calls the weapon actions before T6.6's
+    /// <c>P_SetPsprite</c>).
+    /// </summary>
     public void A_FireMissile(player_t player, pspdef_t psp)
     {
+        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+        P_SpawnPlayerMissile(player.mo!, mobjtype_t.MT_ROCKET);
     }
 
     /// <summary>p_pspr.c <c>A_Saw</c>: the chainsaw. A stub until T6.6.</summary>

@@ -34,6 +34,20 @@ public sealed class Gunner
     /// <summary>Whether it shoots (it keeps noting attacks while off).</summary>
     public bool Firing = true;
 
+    /// <summary>
+    /// T6.5: shoot rockets (<c>rocket</c> events, facing the target first)
+    /// from <see cref="Clear"/> instead of <c>damage</c> events after every
+    /// tic, at targets in sight at least <see cref="RocketMin"/> units away
+    /// (nearer ones, or ones out of sight, get a <c>damage</c> event as before).
+    /// </summary>
+    public bool Rockets;
+
+    /// <summary>T6.5: the nearest a rocket's target may be (its blast reaches 128 units).</summary>
+    public double RocketMin = 200;
+
+    /// <summary>Rockets fired, for the log.</summary>
+    public int RocketsFired;
+
     /// <summary>Kills (dead monsters it shot at) by type, for the log.</summary>
     public readonly SortedDictionary<string, int> Kills = new(StringComparer.Ordinal);
 
@@ -78,8 +92,15 @@ public sealed class Gunner
             _shot.Remove(m);
             Kills[m.type.ToString()] = Kills.GetValueOrDefault(m.type.ToString()) + 1;
         }
-        if (!Firing || me.health <= 0 || --_wait > 0)
+        if (!Firing || Rockets || me.health <= 0 || --_wait > 0)
             return;
+        Shoot();
+    }
+
+    private void Shoot()
+    {
+        World w = _g.w;
+        mobj_t me = _g.Mo;
         var awake = w.Mobjs().Where(m => Monster(m) && m.health > 0 && Awake(m)).ToList();
         mobj_t? barrel = w.Mobjs().FirstOrDefault(b => b.type == mobjtype_t.MT_BARREL && b.health > 0
             && Dist(b, me) > BarrelSafe && awake.Any(m => _attacked.Contains(m) && Dist(b, m) < 90));
@@ -94,6 +115,16 @@ public sealed class Gunner
             return;
         }
         _g.Alert();
+        if (Rockets && barrel == null && Dist(target, me) >= RocketMin && w.P_CheckSight(me, target))
+        {
+            _g.Face(target.x / (double)FU, target.y / (double)FU); // (with the alert)
+            _g.Rocket();
+            _g.Wait(1);
+            RocketsFired++;
+            _shot.Add(target);
+            _wait = Every;
+            return;
+        }
         int amount = 5 * (1 + _shots++ % 3);
         _g.Damage(target.spawnpoint.X, target.spawnpoint.Y, barrel != null ? 20 : Amount?.Invoke(target) ?? amount);
         if (barrel == null)
@@ -107,9 +138,13 @@ public sealed class Gunner
     public void Clear(int max = 1000)
     {
         for (int i = 0; i < max && _attacked.Any(m => m.health > 0 && m.function != think_t.REMOVED); i++)
+        {
+            if (Rockets && Firing && _g.Mo.health > 0 && --_wait <= 0)
+                Shoot();
             _g.Wait(1);
+        }
     }
 
     public override string ToString() =>
-        $"attackers {string.Join(",", Attackers)}; kills {string.Join(",", Kills.Select(k => $"{k.Key}:{k.Value}"))}; barrels shot {Barrels}";
+        $"attackers {string.Join(",", Attackers)}; kills {string.Join(",", Kills.Select(k => $"{k.Key}:{k.Value}"))}; barrels shot {Barrels}; rockets {RocketsFired}";
 }

@@ -150,6 +150,60 @@ public sealed partial class World
     }
 
     /// <summary>
+    /// p_mobj.c <c>P_SpawnPlayerMissile</c>: a missile of
+    /// <paramref name="type"/> (the rocket; T9.3's plasma and BFG balls)
+    /// fired by the player's mobj <paramref name="source"/> from 32 units
+    /// above its feet, along its angle, or 1&lt;&lt;26 (5.6°) to the left or
+    /// else the right of it when <see cref="P_AimLineAttack"/> finds a target
+    /// there (and climbing at the slope to it; flat without one); then
+    /// <see cref="P_CheckMissileSpawn"/>. The speed is the table's (vanilla's
+    /// <c>-fast</c> changes no player missile).
+    /// </summary>
+    public mobj_t P_SpawnPlayerMissile(mobj_t source, mobjtype_t type)
+    {
+        // see which target is to be aimed at
+        uint an = source.angle;
+        int slope = P_AimLineAttack(source, an, 16 * 64 * Fixed.FRACUNIT);
+
+        if (linetarget == null)
+        {
+            an = unchecked(an + (1u << 26));
+            slope = P_AimLineAttack(source, an, 16 * 64 * Fixed.FRACUNIT);
+
+            if (linetarget == null)
+            {
+                an = unchecked(an - (2u << 26));
+                slope = P_AimLineAttack(source, an, 16 * 64 * Fixed.FRACUNIT);
+            }
+
+            if (linetarget == null)
+            {
+                an = source.angle;
+                slope = 0;
+            }
+        }
+
+        int x = source.x;
+        int y = source.y;
+        int z = source.z + 4 * 8 * Fixed.FRACUNIT;
+
+        mobj_t th = P_SpawnMobj(x, y, z, type);
+
+        if (th.info.seesound != sfxenum_t.sfx_None)
+            S_StartSound(th, th.info.seesound);
+
+        th.target = source;
+        th.angle = an;
+        th.momx = Fixed.FixedMul(th.info.speed, Tables.finecosine[(int)(an >> Tables.ANGLETOFINESHIFT)]);
+        th.momy = Fixed.FixedMul(th.info.speed, Tables.finesine[(int)(an >> Tables.ANGLETOFINESHIFT)]);
+        th.momz = Fixed.FixedMul(th.info.speed, slope);
+
+        P_CheckMissileSpawn(th);
+
+        return th;
+    }
+
+    /// <summary>
     /// p_mobj.c <c>P_XYMovement</c>: moves the mobj by its momentum (clamped
     /// to <see cref="MAXMOVE"/>, in two halves when a positive component is
     /// over half of it: vanilla's check ignores negative ones), sliding a

@@ -35,7 +35,8 @@ namespace IsoDoom.Tests.Sim;
 /// <c>monsters</c> (T6.4), and player 1 alone. Between the ticcmds (T6.4),
 /// <c>damage X Y AMOUNT</c> (player 1 hurts the live shootable thing spawned
 /// at map point X, Y by AMOUNT, as a shot would) and <c>alert</c> (player 1
-/// makes a noise, as a shot would) run at the start of the next tic, before
+/// makes a noise, as a shot would) and (T6.5) <c>rocket</c> (player 1 fires
+/// a rocket, <c>P_SpawnPlayerMissile</c>) run at the start of the next tic, before
 /// the players think (<see cref="RouteEvent"/>): stand-ins for the player's
 /// shots until its weapons are ported (T6.6).
 /// </para>

@@ -83,7 +83,7 @@ namespace IsoDoom.Game;
 /// (<see cref="RouteFile"/>, e.g. <c>tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route</c>)
 /// and does not wait for them, so <c>tics N; shot FILE.png</c> can follow
 /// along; a <c>start</c> header places the player first, as the route tests
-/// do; its <c>damage</c> and <c>alert</c> events (T6.4) run before their tics. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
+/// do; its <c>damage</c>, <c>alert</c> and <c>rocket</c> events (T6.4, T6.5) run before their tics. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
 /// <c>--level-monsters=off</c> (<c>on</c> for a route with the <c>monsters</c> header), the route's skill and map, or the script
 /// fails. <c>map NAME</c> after it checks that the route left by its exit.
 /// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
@@ -101,6 +101,12 @@ namespace IsoDoom.Game;
 /// the sector's floor or ceiling towards HEIGHT by SPEED units (default 2, a
 /// door's speed) at the end of each tic, as a mover thinker would, with
 /// <c>P_ChangeSector</c>; it runs with the tics (queue some, or <c>sim live</c>).
+/// <c>missile [TYPE]</c> (T6.5, a debug shot until the weapons, T6.6) makes the player
+/// fire a missile of <c>mobjtype_t</c> <c>MT_TYPE</c> (default <c>rocket</c>; e.g.
+/// <c>troopshot</c>, <c>bruisershot</c>) through <c>P_SpawnPlayerMissile</c> (along its
+/// facing, aimed as vanilla) before the next tic queued after it (scripted tics) or the next
+/// tic (<c>sim live</c>); e.g. <c>place X Y ANGLE; missile; cmd 0 0 0 0 10; shot FILE.png</c>
+/// with <c>--level-tweaks=vanilla</c> (a twin-stick <c>cmd</c>'s ANGLETURN sets the facing).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -245,6 +251,18 @@ public partial class LevelScript : Node
                         }, Int(w[3]), w.Length > 4 ? Int(w[4]) : 2);
                         break;
                     case "tictime": await TicTime(Int(w[1])); break;
+                    case "missile":
+                        {
+                            var type = w.Length > 1
+                                ? Enum.Parse<IsoDoom.Sim.mobjtype_t>("MT_" + w[1].ToUpperInvariant())
+                                : IsoDoom.Sim.mobjtype_t.MT_ROCKET;
+                            _scene.BeforeNextTic(world =>
+                            {
+                                if (world.players[world.consoleplayer].mo is { } mo)
+                                    world.P_SpawnPlayerMissile(mo, type);
+                            });
+                            break;
+                        }
                     case "route":
                         if (!QueueRoute(string.Join(' ', w[1..])))
                         {

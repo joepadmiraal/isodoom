@@ -785,6 +785,34 @@ monsters
             Log("door 81 " + g.Monsters());
             Log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
+        ["e1m1-rockets"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 on skill 4 with monsters (T6.5): e1m1-monsters' way
+# through door 4, but the monsters that attacked are shot with rocket events
+# (P_SpawnPlayerMissile, aimed as vanilla; the player faces the target a
+# tic before) when they are in sight at least 200 units away, else with
+# damage events: rockets fly, hit monsters, walls and barrels and
+# explode (A_Explode's blast), the imps' fireballs fly and hit. Written
+# by tools/RouteGen (e1m1-rockets).
+iwad doom1
+skill 4
+monsters
+
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Every = 8, Rockets = true };
+            g.GoTo(1500, -2496);
+            Log("at door 4 " + g.Monsters());
+            g.Door(4, 1544, -2496);
+            gun.Clear(400);
+            Log("door 4 clear " + g.Monsters());
+            g.GoTo(1600, -2496);
+            gun.Clear(400);
+            Log("through door 4 " + g.Monsters());
+            g.Wait(60);
+            gun.Clear(400);
+            Log("waited " + g.Monsters());
+            Log(gun.ToString());
+        }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
         ["e1m2-monsters"] = new(Doom1, "E1M2", """
 # DOOM1.WAD E1M2 on skill 4 with monsters (T6.4): a shot's noise at the
 # start, north through door 116 and east to the red keycard, a wait there
@@ -1010,6 +1038,75 @@ map teleport
             g.Wait(80);
             Log("fog " + string.Join(",", g.w.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG).Select(m => $"{m.x >> 16}:{m.y >> 16}")));
         }),
+        ["testmap-missiles"] = new(() => TestMapWad("missiles"), "E1M1", """
+# The missiles test map (T6.5, RouteTestMaps) with monsters: rocket
+# events (P_SpawnPlayerMissile, standing in for the rocket launcher until
+# T6.6). A rocket west hits the low sky wall W | S (boundary 1) and
+# vanishes (the sky hack: W, behind the line, has a sky ceiling, and the
+# rocket's centre is still in S); one north hits the barrel (it
+# explodes), one more the north wall; then a noise (alert) wakes the imp
+# and it throws fireballs while the player strafes up and down the room
+# (the missed ones vanish on the sky wall behind); it is shot with
+# rockets (aimed at it, 5.6 degrees off at most) until it dies; a rocket
+# east explodes on the low sky wall S | E (boundary 2: S, behind it, has
+# no sky ceiling, vanilla's one-sided hack); a last one west from x 290
+# explodes on W | S: its 20-unit steps put its centre past the line, in
+# W, whose ceiling then is no lower than the missile's way (no
+# ceilingline). Written by tools/RouteGen (testmap-missiles).
+iwad testmap
+map missiles
+monsters
+
+""", (g, Log) =>
+        {
+            string Missiles() => string.Join(" ", g.w.Mobjs()
+                .Where(m => m.type is IsoDoom.Sim.mobjtype_t.MT_ROCKET or IsoDoom.Sim.mobjtype_t.MT_TROOPSHOT or IsoDoom.Sim.mobjtype_t.MT_BARREL or IsoDoom.Sim.mobjtype_t.MT_TROOP)
+                .Select(m => $"{m.type.ToString()[3..]}({m.x >> 16},{m.y >> 16},{m.z >> 16}) {m.state.ToString()[2..]} h{m.health}")) + $"; health {g.w.players[0].health}";
+            g.Rocket();
+            g.Wait(3);
+            Log("rocket west " + Missiles());
+            g.Wait(1);
+            Log("rocket west, a tic later " + Missiles());
+            g.Face(136, 600);
+            g.Rocket();
+            g.Wait(40);
+            Log("rocket north (barrel) " + Missiles());
+            g.Rocket();
+            g.Wait(40);
+            Log("rocket north (wall) " + Missiles());
+            g.Face(600, 256);
+            g.Alert();
+            bool Ball() => g.w.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOPSHOT && (m.flags & IsoDoom.Sim.mobjflag_t.MF_MISSILE) != 0);
+            for (int i = 0; i < 3; i++)
+            {
+                // a fireball comes: strafe out of its way (facing east: + is south)
+                g.WaitUntil(Ball, 300);
+                for (int k = 0; k < 22; k++)
+                    g.Tic(0, i % 2 == 0 ? -40 : 40, 0, 0);
+                Log("strafed, the imp awake " + Missiles());
+                g.Settle();
+            }
+            var imp = g.w.Mobjs().First(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP);
+            for (int i = 0; i < 8 && imp.health > 0; i++)
+            {
+                g.Face(imp.x / 65536.0, imp.y / 65536.0);
+                g.Rocket();
+                for (int k = 0; k < 12; k++)
+                    g.Tic(0, i % 2 == 0 ? 40 : -40, 0, 0);
+                Log("rocket at the imp " + Missiles());
+            }
+            g.Wait(30);
+            g.GoTo(136, 256);
+            g.Face(600, 256);
+            g.Rocket();
+            g.Wait(40);
+            Log("rocket east (wall) " + Missiles());
+            g.GoTo(290, 256, 3);
+            g.Face(0, g.Y);
+            g.Rocket();
+            g.Wait(20);
+            Log("rocket west from x 290 " + Missiles());
+        }, Monsters: true),
         ["testmap-stairs"] = new(() => TestMapWad("stairs"), "E1M1", """
 # The stairs test map (T5.5, RouteTestMaps): west across the W1 stairs
 # line (8, boundary 7): the four steps rise by 8 a step at a quarter unit

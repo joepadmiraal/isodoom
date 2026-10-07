@@ -834,6 +834,11 @@ public partial class LevelScene : Node3D
     {
         if (!ScriptedTics)
         {
+            if (_beforeNext is { } pending)
+            {
+                _beforeNext = null;
+                pending(World!);
+            }
             Tic(BuildTiccmd(World!.tweaks));
             return;
         }
@@ -841,6 +846,16 @@ public partial class LevelScene : Node3D
         before?.Invoke(World!); // T6.4: a route's events, before the tic
         Tic(cmd ?? BuildTiccmd(World!.tweaks));
     }
+
+    private Action<World>? _beforeNext;
+
+    /// <summary>
+    /// T6.5: runs <paramref name="action"/> on the world before a tic (e.g.
+    /// the level script's <c>missile</c>): with <see cref="ScriptedTics"/>
+    /// before the next tic queued after this call (<see cref="QueueTic"/>), so
+    /// it keeps its place among the script's tics, else before the next tic.
+    /// </summary>
+    public void BeforeNextTic(Action<World> action) => _beforeNext += action;
 
     /// <summary>Runs one tic of <paramref name="cmd"/> (the game loop's, and the level check's).</summary>
     public void Tic(in ticcmd_t cmd)
@@ -980,7 +995,15 @@ public partial class LevelScene : Node3D
     /// or null for a command built from the input at that tic.
     /// </summary>
     /// <remarks>T6.4: <paramref name="before"/> runs on the world just before that tic (a route's events).</remarks>
-    public void QueueTic(ticcmd_t? cmd, Action<World>? before = null) => _scriptTics.Enqueue((cmd, before));
+    public void QueueTic(ticcmd_t? cmd, Action<World>? before = null)
+    {
+        if (_beforeNext is { } pending)
+        {
+            _beforeNext = null;
+            before = before is null ? pending : pending + before;
+        }
+        _scriptTics.Enqueue((cmd, before));
+    }
 
     /// <summary>Drops the scripted tics not run yet.</summary>
     public void ClearQueuedTics() => _scriptTics.Clear();
@@ -1572,11 +1595,26 @@ public partial class LevelScene : Node3D
     /// facing, <see cref="Interpolated"/>): its sector (<c>subsector->sector</c>,
     /// the light), its state's sprite and frame (<c>FF_FULLBRIGHT</c>), the
     /// blob shadow on its <c>floorz</c> (so a falling or flying thing's shadow
-    /// stays on the floor), actor flag and radius as <see cref="ThingEntry(SpawnedThing)"/>.
+    /// stays on the floor), actor flag and radius as <see cref="ThingEntry(SpawnedThing)"/>
+    /// (an exploding missile's: <see cref="PullRadius"/>).
     /// </summary>
     public static ThingSprites.Entry ThingEntry(mobj_t mo, (Vector3 Position, uint Angle) at) =>
         new(at.Position, at.Angle, mo.subsector.sector.Index, (int)mo.sprite, mo.frame & Info.FF_FRAMEMASK, (mo.frame & Info.FF_FULLBRIGHT) != 0,
-            ShadowRadius(mo.info), IsActor(mo.info), mo.radius / 65536f, (float)(mo.floorz / 65536.0));
+            ShadowRadius(mo.info), IsActor(mo.info), PullRadius(mo), (float)(mo.floorz / 65536.0));
+
+    /// <summary>
+    /// The radius a mobj's billboard is pulled by towards the camera, up to
+    /// <see cref="SpriteSettings.WallPull"/> (T3.5a): its <c>radius</c>, but
+    /// for an exploding missile (a type with <c>MF_MISSILE</c> that
+    /// <c>P_ExplodeMissile</c> took it from) the whole pull, since its
+    /// explosion frames are much wider than its 6–11 unit radius and it
+    /// stands against the wall it hit (T6.5, SPEC §12).
+    /// </summary>
+    public static float PullRadius(mobj_t mo) =>
+        (mo.info.flags & mobjflag_t.MF_MISSILE) != 0 && (mo.flags & mobjflag_t.MF_MISSILE) == 0 ? ExplosionPullRadius : mo.radius / 65536f;
+
+    /// <summary>T6.5: <see cref="PullRadius"/> of an exploding missile, more than any wall pull.</summary>
+    public const float ExplosionPullRadius = 1024f;
 
     /// <summary>
     /// Whether a thing of <paramref name="info"/> is an actor the cutaway keeps
