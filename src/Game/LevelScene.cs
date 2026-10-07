@@ -583,6 +583,31 @@ public partial class LevelScene : Node3D
             Iso?.Snap(Player.Foot);
     }
 
+    /// <summary>
+    /// T5.10: a route's <c>start X Y ANGLE</c> header (<see cref="RouteFile"/>),
+    /// as the tests' <c>RouteStart.Place</c> and the reference's <c>dump_pretic</c>
+    /// do it: <see cref="World.P_TeleportMove"/> (no fog), onto the floor,
+    /// facing ANGLE degrees; the camera snaps. False when something stands there.
+    /// A route starts standing still (a fresh map's player), so the momentum
+    /// is zeroed too (T5.10: <c>e1m8-exit</c> after <c>e1m8-arena</c> slid past its switch).
+    /// </summary>
+    public bool PlaceRouteStart(int x, int y, int angle)
+    {
+        if (World is not { } world || PlayerMobj is not { } mo)
+            return false;
+        if (!world.P_TeleportMove(mo, x << Fixed.FRACBITS, y << Fixed.FRACBITS))
+            return false;
+        mo.z = mo.floorz;
+        mo.momx = mo.momy = mo.momz = 0;
+        mo.angle = (uint)((long)angle * 0x100000000L / 360);
+        mo.interp = false;
+        TiccmdBuilder.Reset();
+        PresentWorld();
+        if (Player is not null)
+            Iso?.Snap(Player.Foot);
+        return true;
+    }
+
     /// <summary>Puts the player mobj back at player 1's start, facing its angle.</summary>
     public void PlayerToStart()
     {
@@ -884,6 +909,14 @@ public partial class LevelScene : Node3D
             return;
         world.G_DoCompleted();
         LevelsCompleted++;
+        if (_scriptTics.Count > 0)
+        {
+            // T5.10: scripted tics were for the map just left (e.g. a route
+            // whose exit came early): drop them, or a script waiting for them
+            // would wait for ever once the game ends.
+            GD.Print($"Level: {_scriptTics.Count} scripted tic(s) left at the exit dropped");
+            _scriptTics.Clear();
+        }
         if (world.G_GameEnds())
         {
             LevelEnded = $"{map} completed: the end of the game (the finale is M7's); PgDn/PgUp load a map";

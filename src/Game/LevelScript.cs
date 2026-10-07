@@ -73,11 +73,19 @@ namespace IsoDoom.Game;
 /// <c>tictime TICS</c> (T4.9) times <c>World.G_Ticker</c> over the next TICS
 /// tics (or until the scripted queue is empty) and prints the mean, median,
 /// 95th percentile and worst in ms (SPEC §9's budget is 2 ms).
-/// <c>map NAME</c> (T5.8) waits until the queue is empty, prints the map
+/// <c>map NAME [EXITS]</c> (T5.8) waits until the queue is empty, prints the map
 /// shown, the maps completed through exits and the player's status, and
-/// fails the script unless the map is NAME (e.g. after an exit:
+/// fails the script unless the map is NAME (and, T5.10, EXITS maps were
+/// completed through exits since the scene started; e.g. after an exit:
 /// <c>place 2940 -4768 180; cmd 0 0 -32768 0 2; cmd 0 0 -32768 2; map E1M2</c>
 /// on DOOM1.WAD's E1M1).
+/// <c>route FILE</c> (T5.10) queues a <c>.route</c> file's tics
+/// (<see cref="RouteFile"/>, e.g. <c>tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route</c>)
+/// and does not wait for them, so <c>tics N; shot FILE.png</c> can follow
+/// along; a <c>start</c> header places the player first, as the route tests
+/// do. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
+/// <c>--level-monsters=off</c>, the route's skill and map, or the script
+/// fails. <c>map NAME</c> after it checks that the route left by its exit.
 /// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
 /// name (<c>LeftX</c>, <c>LeftY</c>: the move stick, <c>RightX</c>,
 /// <c>RightY</c>: the aim stick, <c>TriggerRight</c>: fire; Y down is
@@ -111,7 +119,8 @@ public partial class LevelScript : Node
         // Scripted tics from the first frame, so no input tic runs before the first command.
         foreach (string command in _commands)
         {
-            if (command.StartsWith("cmd ", StringComparison.Ordinal) || command.StartsWith("step ", StringComparison.Ordinal) || command == "sim scripted")
+            if (command.StartsWith("cmd ", StringComparison.Ordinal) || command.StartsWith("step ", StringComparison.Ordinal)
+                || command.StartsWith("route ", StringComparison.Ordinal) || command == "sim scripted")
             {
                 _scene.ScriptedTics = true;
                 break;
@@ -236,6 +245,13 @@ public partial class LevelScript : Node
                         }, Int(w[3]), w.Length > 4 ? Int(w[4]) : 2);
                         break;
                     case "tictime": await TicTime(Int(w[1])); break;
+                    case "route":
+                        if (!QueueRoute(string.Join(' ', w[1..])))
+                        {
+                            GetTree().Quit(1);
+                            return;
+                        }
+                        break;
                     case "map":
                         {
                             await Drain();
@@ -246,6 +262,11 @@ public partial class LevelScript : Node
                             if (!string.Equals(now, w[1], StringComparison.OrdinalIgnoreCase))
                             {
                                 GD.PrintErr($"Level script: map: expected {w[1].ToUpperInvariant()}, the scene shows {now}");
+                                exit = 1;
+                            }
+                            if (w.Length > 2 && _scene.LevelsCompleted != Int(w[2]))
+                            {
+                                GD.PrintErr($"Level script: map: expected {Int(w[2])} map(s) completed by exits, there were {_scene.LevelsCompleted}");
                                 exit = 1;
                             }
                             break;
@@ -371,6 +392,53 @@ public partial class LevelScript : Node
         times.Sort();
         string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
         GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: mean {F(mean)} ms, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])}");
+    }
+
+    /// <summary>
+    /// T5.10: queues the tics of the route file at <paramref name="path"/>
+    /// (and places the player at its <c>start</c>); false, with an error,
+    /// when the scene cannot play it as vanilla does.
+    /// </summary>
+    private bool QueueRoute(string path)
+    {
+        RouteFile route;
+        try
+        {
+            route = RouteFile.Parse(path);
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or FormatException)
+        {
+            GD.PrintErr($"Level script: route: {e.Message}");
+            return false;
+        }
+        string map = (route.Map ?? "E1M1").ToUpperInvariant();
+        string? shown = _scene.Mesh?.Level.Name;
+        var wrong = new List<string>();
+        if (_scene.Tweaks != IsoDoom.Sim.Tweaks.Vanilla)
+            wrong.Add("needs --level-tweaks=vanilla (a route is a vanilla demo)");
+        if (!_scene.NoMonsters)
+            wrong.Add("needs --level-monsters=off (routes are -nomonsters)");
+        if ((int)_scene.Skill + 1 != route.Skill)
+            wrong.Add($"needs --level-skill={route.Skill}");
+        if (!string.Equals(shown, map, StringComparison.OrdinalIgnoreCase))
+            wrong.Add($"is for {map}, the scene shows {shown ?? "no map"}");
+        if (_scene.PlayerMobj is null)
+            wrong.Add("no player");
+        if (wrong.Count > 0)
+        {
+            GD.PrintErr($"Level script: route {path}: {string.Join("; ", wrong)}");
+            return false;
+        }
+        if (route.Start is { } s && !_scene.PlaceRouteStart(s.X, s.Y, s.Angle))
+        {
+            GD.PrintErr($"Level script: route {path}: start {s.X} {s.Y}: something stands there");
+            return false;
+        }
+        _scene.ScriptedTics = true;
+        foreach (var cmd in route.Cmds)
+            _scene.QueueTic(cmd);
+        GD.Print($"Level script: route {path}: {route.Cmds.Count} tics queued on {map}{(route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
+        return true;
     }
 
     /// <summary>The least share of the player's pixels (%) <c>visible</c> and <c>walkto</c> accept by default.</summary>

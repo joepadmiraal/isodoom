@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using IsoDoom.Game;
 using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Tests.Support;
@@ -79,7 +80,7 @@ public sealed class VanillaRoute
     public int Exit { get; }
     public IReadOnlyList<ticcmd_t> Cmds { get; }
 
-    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, int exit, List<ticcmd_t> cmds)
+    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, int exit, IReadOnlyList<ticcmd_t> cmds)
     {
         Start = start;
         Exit = exit;
@@ -102,67 +103,12 @@ public sealed class VanillaRoute
 
     public static VanillaRoute Load(string name) => Parse(System.IO.Path.Combine(Dir, name + ".route"));
 
+    /// <summary>Parses a route file with the game's <see cref="RouteFile"/> (T5.10: the level script plays routes too) and checks its header.</summary>
     public static VanillaRoute Parse(string path)
     {
-        string? iwad = null;
-        string? map = null;
-        int skill = 3;
-        (int, int, int)? start = null;
-        int exit = 0;
-        var cmds = new List<ticcmd_t>();
-        int n = 0;
-        foreach (string raw in File.ReadLines(path))
-        {
-            n++;
-            int hash = raw.IndexOf('#');
-            string[] f = (hash >= 0 ? raw[..hash] : raw).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (f.Length == 0)
-                continue;
-            string where = $"{path}:{n}";
-            switch (f[0])
-            {
-                case "iwad":
-                    iwad = f[1];
-                    continue;
-                case "map":
-                    map = f[1];
-                    continue;
-                case "skill":
-                    skill = int.Parse(f[1], CultureInfo.InvariantCulture);
-                    continue;
-                case "exit":
-                    exit = f.Length == 2 ? f[1] switch { "normal" => 1, "secret" => 2, _ => 0 } : 0;
-                    if (exit == 0)
-                        throw new FormatException($"{where}: expected exit normal|secret");
-                    continue;
-                case "start":
-                    if (f.Length != 4)
-                        throw new FormatException($"{where}: expected start X Y ANGLE");
-                    start = (int.Parse(f[1], CultureInfo.InvariantCulture), int.Parse(f[2], CultureInfo.InvariantCulture), int.Parse(f[3], CultureInfo.InvariantCulture));
-                    continue;
-            }
-            int count = 1;
-            if (f[^1].StartsWith('x'))
-            {
-                count = int.Parse(f[^1][1..], CultureInfo.InvariantCulture);
-                f = f[..^1];
-            }
-            if (f.Length != 4)
-                throw new FormatException($"{where}: expected FORWARD SIDE TURN BUTTONS [xCOUNT]");
-            int[] v = f.Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
-            if (v[..3].Any(x => x < -128 || x > 127) || v[3] < 0 || v[3] > 255)
-                throw new FormatException($"{where}: out of range");
-            var cmd = new ticcmd_t
-            {
-                forwardmove = (sbyte)v[0],
-                sidemove = (sbyte)v[1],
-                angleturn = (short)(v[2] << 8),
-                buttons = (byte)v[3],
-            };
-            for (int i = 0; i < count; i++)
-                cmds.Add(cmd);
-        }
-        if (iwad is not ("synthetic" or "doom1" or "testmap") || skill < 1 || skill > 5)
+        RouteFile route = RouteFile.Parse(path);
+        string? iwad = route.Iwad, map = route.Map;
+        if (iwad is not ("synthetic" or "doom1" or "testmap"))
             throw new FormatException($"{path}: needs \"iwad synthetic|doom1|testmap\" and a skill of 1-5");
         if (iwad == "testmap")
         {
@@ -173,7 +119,7 @@ public sealed class VanillaRoute
         {
             map = (map ?? "E1M1").ToUpperInvariant();
         }
-        return new VanillaRoute(path, iwad, map, (skill_t)(skill - 1), start, exit, cmds);
+        return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds);
     }
 
     /// <summary>
