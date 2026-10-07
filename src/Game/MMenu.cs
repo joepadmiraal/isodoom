@@ -25,7 +25,7 @@ public interface IMenuHost
     /// <summary>A menu sound (<c>S_StartSound(NULL, …)</c>; played from T7.7).</summary>
     void StartSound(sfxenum_t sfx);
 
-    /// <summary>The description of save slot <paramref name="slot"/> (0–5), or null when it is empty (m_menu.c <c>M_ReadSaveStrings</c>; saves are T7.6's).</summary>
+    /// <summary>The description of save slot <paramref name="slot"/> (0–5), or null when it is empty (m_menu.c <c>M_ReadSaveStrings</c>; T7.6: <see cref="GameFlow.SaveDescription"/>).</summary>
     string? SaveDescription(int slot);
 
     /// <summary>i_system.c <c>I_Quit</c>: the game ends.</summary>
@@ -49,8 +49,8 @@ public interface IMenuHost
 /// <see cref="KEY_PAD_CANCEL"/>, <see cref="M_MouseMove"/>, <see cref="M_MouseButton"/>;
 /// SPEC §12 T7.2). Drawn by <see cref="M_Drawer"/> into vanilla's 320×200
 /// screen. Not ported: the function keys (help, save, load, volume,
-/// detail, quicksave, end game, messages, quickload, quit, gamma), gamma,
-/// quicksave and quickload (T7.6), the net game and demo checks (single
+/// detail, end game, messages, quit, gamma; T7.6 ported quicksave and quickload), gamma,
+/// the net game and demo checks (single
 /// player only).
 /// </summary>
 public sealed partial class MMenu
@@ -76,6 +76,13 @@ public sealed partial class MMenu
     public int key_menu_confirm = 'y';
     public int key_menu_abort = 'n';
 
+    /// <summary>doomkeys.h <c>KEY_F6</c>, <c>KEY_F9</c>: Chocolate Doom's quicksave and quickload keys (T7.6; the game scene's <c>quicksave</c>/<c>quickload</c> actions).</summary>
+    public const int KEY_F6 = 0x80 + 0x40, KEY_F9 = 0x80 + 0x43;
+
+    // m_controls.c (Chocolate Doom): key_menu_qsave, key_menu_qload (T7.6)
+    public int key_menu_qsave = KEY_F6;
+    public int key_menu_qload = KEY_F9;
+
     public const int SKULLXOFF = -32;
     public const int LINEHEIGHT = 16;
     public const int SAVESTRINGSIZE = 24;
@@ -96,6 +103,12 @@ public sealed partial class MMenu
     public const string DETAILHI = "High detail";
     public const string DETAILLO = "Low detail";
     public const string EMPTYSTRING = "empty slot";
+
+    // d_englsh.h (T7.6)
+    public const string QSPROMPT = "quicksave over your game named\n\n'{0}'?\n\n" + PRESSYN;
+    public const string QLPROMPT = "do you want to quickload the game named\n\n'{0}'?\n\n" + PRESSYN;
+    public const string QSAVESPOT = "you haven't picked a quicksave slot yet!\n\n" + PRESSKEY;
+    public const string QLOADNET = "you can't quickload during a netgame!\n\n" + PRESSKEY;
 
     /// <summary>dstrings.h <c>NUM_QUITMESSAGES</c> (Chocolate Doom: eight for each game).</summary>
     public const int NUM_QUITMESSAGES = 8;
@@ -342,6 +355,12 @@ public sealed partial class MMenu
     /// <summary>s_sound.c <c>sfxVolume</c> and <c>musicVolume</c> (0–15; applied with the sound, T7.7, and the music, T7.8).</summary>
     public int sfxVolume = 8, musicVolume = 8;
 
+    /// <summary>m_menu.c <c>quickSaveSlot</c>: the quicksave's slot; -1 none yet, -2 picking one in the save menu (T7.6).</summary>
+    public int quickSaveSlot = -1;
+
+    // Not vanilla: the key being answered came from the pad's A (or the mouse's left button): KEY_PAD_ACCEPT (T7.6).
+    private bool _padAccept;
+
     // The save string entry (M_SaveSelect).
     public bool saveStringEnter;
     public int saveSlot;
@@ -434,7 +453,7 @@ public sealed partial class MMenu
 
     private void M_FinishReadThis(int choice) => M_SetupNextMenu(MainDef);
 
-    // ---- load and save (the slots; loading and saving are T7.6's) ----
+    // ---- load and save (the slots; the saving and loading are GameFlow.G_DoSaveGame and G_DoLoadGame, T7.6) ----
 
     /// <summary>m_menu.c <c>M_ReadSaveStrings</c>: each slot's description, an empty one can't be loaded (status 0).</summary>
     private void M_ReadSaveStrings()
@@ -503,14 +522,24 @@ public sealed partial class MMenu
         }
     }
 
-    /// <summary>m_menu.c <c>M_DoSave</c>: <c>G_SaveGame</c> (T7.6), the menus close.</summary>
+    /// <summary>m_menu.c <c>M_DoSave</c>: <c>G_SaveGame</c> (saved with the next tic, T7.6), the menus close; the slot picked for a quicksave is the quicksave's from now on.</summary>
     private void M_DoSave(int slot)
     {
         flow.G_SaveGame(slot, savegamestrings[slot]);
         M_ClearMenus();
+
+        // PICK QUICKSAVE SLOT YET?
+        if (quickSaveSlot == -2)
+            quickSaveSlot = slot;
     }
 
-    /// <summary>m_menu.c <c>M_SaveSelect</c>: the slot's description is typed (an empty slot's starts empty).</summary>
+    /// <summary>
+    /// m_menu.c <c>M_SaveSelect</c>: the slot's description is typed (an
+    /// empty slot's starts empty). Not vanilla (T7.6): a pad can't type, so
+    /// an empty slot chosen with A (or the mouse's left button) starts with
+    /// <see cref="DefaultSaveDescription"/>, which A then saves (or the
+    /// keyboard edits).
+    /// </summary>
     private void M_SaveSelect(int choice)
     {
         // we are going to be intercepting all chars
@@ -518,8 +547,88 @@ public sealed partial class MMenu
         saveSlot = choice;
         saveOldString = savegamestrings[choice];
         if (savegamestrings[choice] == EMPTYSTRING)
-            savegamestrings[choice] = "";
+            savegamestrings[choice] = _padAccept ? DefaultSaveDescription() : "";
         saveCharIndex = savegamestrings[choice].Length;
+    }
+
+    /// <summary>
+    /// Not vanilla (T7.6): the description a save gets when the pad chose an
+    /// empty slot: the map and its time, as the intermission counts it
+    /// (<c>E1M3 2:05</c>), upper case as the menu font draws.
+    /// </summary>
+    public string DefaultSaveDescription()
+    {
+        if (flow.World is not { level: not null } world)
+            return "SAVE";
+        int seconds = world.leveltime / SimInfo.TICRATE;
+        return $"{world.level.Name.ToUpperInvariant()} {seconds / 60}:{seconds % 60:00}";
+    }
+
+    // ---- quicksave and quickload (T7.6) ----
+
+    /// <summary>m_menu.c <c>M_QuickSaveResponse</c>.</summary>
+    private void M_QuickSaveResponse(int key)
+    {
+        if (key == key_menu_confirm)
+        {
+            M_DoSave(quickSaveSlot);
+            S_StartSound(sfxenum_t.sfx_swtchx);
+        }
+    }
+
+    /// <summary>
+    /// m_menu.c <c>M_QuickSave</c>: in a game the user started, on a level,
+    /// asks to save over the quicksave's slot, or, without one yet, opens the
+    /// save menu to pick it.
+    /// </summary>
+    public void M_QuickSave()
+    {
+        if (!flow.usergame)
+        {
+            S_StartSound(sfxenum_t.sfx_oof);
+            return;
+        }
+
+        if (flow.gamestate != gamestate_t.GS_LEVEL)
+            return;
+
+        if (quickSaveSlot < 0)
+        {
+            M_StartControlPanel();
+            M_ReadSaveStrings();
+            M_SetupNextMenu(SaveDef);
+            quickSaveSlot = -2; // means to pick a slot now
+            return;
+        }
+        M_StartMessage(string.Format(System.Globalization.CultureInfo.InvariantCulture, QSPROMPT, savegamestrings[quickSaveSlot]), M_QuickSaveResponse, true);
+    }
+
+    /// <summary>m_menu.c <c>M_QuickLoadResponse</c>.</summary>
+    private void M_QuickLoadResponse(int key)
+    {
+        if (key == key_menu_confirm)
+        {
+            M_LoadSelect(quickSaveSlot);
+            S_StartSound(sfxenum_t.sfx_swtchx);
+        }
+    }
+
+    /// <summary>m_menu.c <c>M_QuickLoad</c>: asks to load the quicksave's slot, or says there is none yet.</summary>
+    public void M_QuickLoad()
+    {
+        if (flow.World?.netgame == true)
+        {
+            M_StartMessage(QLOADNET, null, false);
+            return;
+        }
+
+        if (quickSaveSlot < 0)
+        {
+            M_StartMessage(QSAVESPOT, null, false);
+            return;
+        }
+        M_ReadSaveStrings();
+        M_StartMessage(string.Format(System.Globalization.CultureInfo.InvariantCulture, QLPROMPT, savegamestrings[quickSaveSlot]), M_QuickLoadResponse, true);
     }
 
     /// <summary>m_menu.c <c>M_SaveGame</c>: only in a game the user started, on a level.</summary>
@@ -874,6 +983,7 @@ public sealed partial class MMenu
 
     private bool Respond(int key, int ch)
     {
+        _padAccept = key == KEY_PAD_ACCEPT;
         // T7.3: waiting for an input to bind (the glue takes it): Escape cancels
         if (WaitingBinding is not null)
         {
@@ -948,6 +1058,20 @@ public sealed partial class MMenu
         // Pop-up menu?
         if (!menuactive)
         {
+            // F-Keys (T7.6: quicksave and quickload only; the others are not ported, SPEC §12 T7.3)
+            if (key == key_menu_qsave)
+            {
+                S_StartSound(sfxenum_t.sfx_swtchn);
+                M_QuickSave();
+                return true;
+            }
+            if (key == key_menu_qload)
+            {
+                S_StartSound(sfxenum_t.sfx_swtchn);
+                M_QuickLoad();
+                return true;
+            }
+
             if (key == key_menu_activate)
             {
                 M_StartControlPanel();

@@ -180,6 +180,18 @@ namespace IsoDoom.Game;
 /// fails the script unless it is VALUE, <c>settings</c> prints them all.
 /// A script runs on the defaults unless <c>--settings=FILE</c> names a file.
 /// </para>
+/// <para>
+/// Saving and loading (T7.6): <c>save SLOT [DESCRIPTION]</c> waits for the
+/// queued tics and saves the game to slot SLOT (0–5) at once
+/// (<see cref="GameFlow.G_DoSaveGame"/>; the menus' save goes with the next
+/// tic, <c>BTS_SAVEGAME</c>), failing unless it saved; <c>load SLOT</c>
+/// waits for the queued tics and loads it (<see cref="GameFlow.G_LoadGame"/>,
+/// run between the frames' tics as the menus' load; the queued tics are
+/// dropped, as by a new game), failing when it is refused, and
+/// <c>load SLOT refused</c> fails unless it is. A script saves to a
+/// directory of its own (removed at the end) unless <c>--savedir=DIR</c>
+/// names one: <c>route …; tics 600; save 0; checksum; load 0; checksum</c>.
+/// </para>
 /// </summary>
 public partial class LevelScript : Node
 {
@@ -550,6 +562,37 @@ public partial class LevelScript : Node
                             GD.Print($"  {key} = {_scene.GetSetting(key)}{(_scene.SettingsValues.IsPinned(key) ? " (command line)" : "")}");
                         GD.Print($"  (the window: {DisplayServer.WindowGetSize().X}x{DisplayServer.WindowGetSize().Y} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, Engine.MaxFps {Engine.MaxFps})");
                         break;
+                    case "save":
+                        {
+                            // T7.6: waits for the queued tics, then saves the game at once to slot SLOT (G_DoSaveGame); fails unless it saved
+                            await Drain();
+                            GameFlow flow = _scene.Flow;
+                            flow.savegameslot = Math.Clamp(Int(w[1]), 0, 5);
+                            flow.savedescription = w.Length > 2 ? string.Join(' ', w[2..]).ToUpperInvariant() : "SCRIPT";
+                            if (!flow.G_DoSaveGame())
+                            {
+                                GD.PrintErr($"Level script: save: nothing saved to slot {flow.savegameslot}");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "load":
+                        {
+                            // T7.6: waits for the queued tics, then loads slot SLOT (G_LoadGame, before the next frame's tics); fails when it is refused, unless "refused" follows
+                            await Drain();
+                            GameFlow flow = _scene.Flow;
+                            flow.G_LoadGame(Math.Clamp(Int(w[1]), 0, 5));
+                            while (flow.gameaction == IsoDoom.Sim.gameaction_t.ga_loadgame)
+                                await Frames(1); // the scene's _Process runs the game action
+                            bool expectRefused = w.Length > 2 && w[2] == "refused";
+                            GD.Print($"Level script: load {w[1]}: {(flow.LoadRefused is { } why ? "refused: " + why.Replace('\n', ' ') : $"{_scene.Mesh?.Level.Name} at tic {_scene.World?.leveltime}")}");
+                            if ((flow.LoadRefused is not null) != expectRefused)
+                            {
+                                GD.PrintErr($"Level script: load: {(expectRefused ? "loaded, expected a refusal" : "refused")}");
+                                exit = 1;
+                            }
+                            break;
+                        }
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }

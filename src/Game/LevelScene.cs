@@ -532,6 +532,7 @@ public partial class LevelScene : Node3D, IGameHost
             OpenWad();
             _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission); // T7.1: g_game.c's flow, d_main.c's title loop
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
+            InitSaves(); // T7.6: the save slots' directory
             _graphics = new ScreenGraphics(Wad, MessageLine);
             InitMenus(); // T7.2
             if (IsCheckRun)
@@ -2106,6 +2107,7 @@ public partial class LevelScene : Node3D, IGameHost
 
         var clock = Stopwatch.StartNew();
         var wad = WadArchive.Open(found.Path, [.. found.Pwads]);
+        _iwadPath = found.Path; // T7.6: the save directory's name
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
         ModifiedGame.D_CheckModifiedGame(wad, info);
         Textures = Textures.R_InitTextures(wad);
@@ -2326,7 +2328,9 @@ public partial class LevelScene : Node3D, IGameHost
         try
         {
             World world;
-            if (carry is not null)
+            if (_loading is { } save)
+                world = LoadSaveWorld(save, level); // T7.6: a loaded game (checked already: IGameHost.G_CheckLoadGame)
+            else if (carry is not null)
             {
                 world = carry;
                 if (world.gameaction == gameaction_t.ga_loadlevel)
@@ -2347,7 +2351,7 @@ public partial class LevelScene : Node3D, IGameHost
             World = world;
             _unportedPrinted = world.unported.Count; // the level's start (P_SpawnSpecials) is not news
         }
-        catch (WadFormatException e)
+        catch (Exception e) when (e is WadFormatException or SaveGameException)
         {
             GD.PushWarning($"Level: {level.Name}: no things: {e.Message}");
             World = null;

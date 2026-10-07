@@ -50,7 +50,7 @@ public partial class LevelScene : IMenuHost
         // S_StartSound(NULL, sfx): played from T7.7
     }
 
-    string? IMenuHost.SaveDescription(int slot) => null; // the saves are T7.6's
+    string? IMenuHost.SaveDescription(int slot) => Flow.SaveDescription(slot); // T7.6
 
     void IMenuHost.I_Quit()
     {
@@ -77,7 +77,8 @@ public partial class LevelScene : IMenuHost
     /// T7.3: the menu key of a menu action's input event (<see cref="Settings.MenuActions"/>,
     /// rebindable): open/close, the arrows, select (Enter; the pad's
     /// <see cref="MMenu.KEY_PAD_ACCEPT"/>), back (Backspace; the pad's
-    /// <see cref="MMenu.KEY_PAD_CANCEL"/>), yes and no; 0 for none. The pad's
+    /// <see cref="MMenu.KEY_PAD_CANCEL"/>), yes and no, and (T7.6, game
+    /// actions on the Actions page) quicksave and quickload; 0 for none. The pad's
     /// directions are polled (<see cref="PollMenuPad"/>), not taken here.
     /// </summary>
     public static int MenuActionKey(InputEvent e, MMenu menu)
@@ -94,6 +95,10 @@ public partial class LevelScene : IMenuHost
             return menu.key_menu_confirm;
         if (Is(GameInput.MenuNo))
             return menu.key_menu_abort;
+        if (Is(GameInput.QuickSave))
+            return menu.key_menu_qsave; // T7.6: F6 by default
+        if (Is(GameInput.QuickLoad))
+            return menu.key_menu_qload; // T7.6: F9 by default
         if (pad)
             return 0;
         if (Is(GameInput.MenuUp))
@@ -167,8 +172,8 @@ public partial class LevelScene : IMenuHost
                             menu.M_ClearBinding(true); // T7.3: on a binding page, the pad's bindings go
                         return true;
                     }
-                    if (key == menu.key_menu_activate)
-                        return menu.M_Responder(key);
+                    if (key == menu.key_menu_activate || key == menu.key_menu_qsave || key == menu.key_menu_qload)
+                        return menu.M_Responder(key); // T7.6: quicksave and quickload, if bound to the pad
                     if (title && !IsMenuDirection(pad))
                     {
                         menu.M_StartControlPanel();

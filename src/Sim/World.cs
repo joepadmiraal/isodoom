@@ -243,6 +243,28 @@ public sealed partial class World
         P_InitThinkers();
         leveltime = 0;
 
+        P_SetupLevelMap(level);
+
+        P_LoadThings();
+
+        // clear special respawning que
+        iquehead = iquetail = 0;
+
+        // set up world state
+        unported.Clear(); // not vanilla (T5.2)
+        events.Clear(); // not vanilla (T6.10)
+        P_SpawnSpecials();
+    }
+
+    /// <summary>
+    /// <see cref="P_SetupLevel"/>'s map part, before the things and the
+    /// specials: the level, its number and episode, the sim's sectors,
+    /// subsectors, lines and sides over the map's, the sectors' line lists
+    /// (<c>P_GroupLines</c>), empty block lists, no starts and no player
+    /// mobjs. Also the base of a loaded game (<see cref="P_UnArchiveGame"/>, T7.6).
+    /// </summary>
+    private void P_SetupLevelMap(Level level)
+    {
         this.level = level;
         gamemap = MapNumber(level.Name);
         gameepisode = EpisodeNumber(level.Name);
@@ -279,16 +301,6 @@ public sealed partial class World
         deathmatchstarts.Clear();
         for (int i = 0; i < MAXPLAYERS; i++)
             players[i].mo = null;
-
-        P_LoadThings();
-
-        // clear special respawning que
-        iquehead = iquetail = 0;
-
-        // set up world state
-        unported.Clear(); // not vanilla (T5.2)
-        events.Clear(); // not vanilla (T6.10)
-        P_SpawnSpecials();
     }
 
     /// <summary>

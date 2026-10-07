@@ -63,6 +63,23 @@ public interface IGameHost
 
     /// <summary>The game ended or stopped (<paramref name="why"/>) and the title loop starts (<see cref="GameFlow.D_StartTitle"/>): the level goes.</summary>
     void EndGame(string? why);
+
+    /// <summary>
+    /// T7.6: whether <paramref name="save"/> loads on this WAD
+    /// (<see cref="SaveGameFile.LoadWorld"/> on its map, freshly loaded, the
+    /// game shown left as it is); throws a <see cref="SaveGameException"/>
+    /// with the player's message when not. Before <see cref="G_LoadGame"/>,
+    /// which then can't fail. None by default (the tests' hosts load nothing).
+    /// </summary>
+    void G_CheckLoadGame(SaveGameFile save) => throw new SaveGameException(SaveGameFile.OTHERGAME);
+
+    /// <summary>
+    /// T7.6: g_game.c <c>G_DoLoadGame</c>'s level: the save's map and its
+    /// world (<see cref="SaveGameFile.LoadWorld"/>) in place of the game
+    /// shown, as <see cref="G_InitNew"/>'s new game. False when it can't be
+    /// loaded (the host says why).
+    /// </summary>
+    bool G_LoadGame(SaveGameFile save) => false;
 }
 
 /// <summary>
@@ -209,11 +226,11 @@ public sealed class GameFlow
             || host.World is { } w && w.players[w.consoleplayer].mo is not null);
 
     /// <summary>
-    /// g_game.c <c>G_Ticker</c> for the console player's <paramref name="cmd"/>,
+    /// g_game.c <c>G_Ticker</c> for the console player's <paramref name="ticcmd"/>,
     /// after d_main.c's title loop step (<see cref="D_DoAdvanceDemo"/>, which
     /// vanilla's tic loop runs before it): the game actions due, the special
     /// buttons (<c>BTS_PAUSE</c> toggles <see cref="paused"/>; <c>BTS_SAVEGAME</c>
-    /// is T7.6's), then the tic of the <see cref="gamestate"/> and d_main.c's
+    /// saves, T7.6: <see cref="G_SaveGame"/> puts it in this tic's buttons), then the tic of the <see cref="gamestate"/> and d_main.c's
     /// <see cref="D_Display"/> (T7.1a: after every tic, as vanilla's at 35
     /// frames a second or more). The game actions the tic set run at its end
     /// (not vanilla's place, which is the next tic's start, after
@@ -221,8 +238,16 @@ public sealed class GameFlow
     /// scripted run sees the next level or the intermission without
     /// another tic; SPEC §12 T5.8, T6.12, T7.1).
     /// </summary>
-    public void G_Ticker(in ticcmd_t cmd)
+    public void G_Ticker(in ticcmd_t ticcmd)
     {
+        // g_game.c G_BuildTiccmd's special buttons: a save asked for (T7.6) goes with this tic, in place of the buttons
+        ticcmd_t cmd = ticcmd;
+        if (sendsave)
+        {
+            sendsave = false;
+            cmd.buttons = (byte)(buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_SAVEGAME | (savegameslot << buttoncode_t.BTS_SAVESHIFT));
+        }
+
         if (advancedemo)
             D_DoAdvanceDemo();
         Menu.M_Ticker(); // d_net.c TryRunTics: M_Ticker before G_Ticker
@@ -236,8 +261,21 @@ public sealed class GameFlow
             world.players[world.consoleplayer].cmd = cmd;
 
         // check for special buttons
-        if ((cmd.buttons & buttoncode_t.BT_SPECIAL) != 0 && (cmd.buttons & buttoncode_t.BT_SPECIALMASK) == buttoncode_t.BTS_PAUSE)
-            paused = !paused; // S_PauseSound / S_ResumeSound: T7.7
+        if ((cmd.buttons & buttoncode_t.BT_SPECIAL) != 0)
+        {
+            switch (cmd.buttons & buttoncode_t.BT_SPECIALMASK)
+            {
+                case buttoncode_t.BTS_PAUSE:
+                    paused = !paused; // S_PauseSound / S_ResumeSound: T7.7
+                    break;
+                case buttoncode_t.BTS_SAVEGAME:
+                    if (savedescription.Length == 0)
+                        savedescription = "NET GAME";
+                    savegameslot = (cmd.buttons & buttoncode_t.BTS_SAVEMASK) >> buttoncode_t.BTS_SAVESHIFT;
+                    gameaction = gameaction_t.ga_savegame;
+                    break;
+            }
+        }
 
         // do main actions
         switch (gamestate)
@@ -315,24 +353,64 @@ public sealed class GameFlow
     /// </summary>
     public void S_StartSound(sfxenum_t sfx) => Menu.Host?.StartSound(sfx);
 
-    /// <summary>g_game.c <c>savegameslot</c> and <c>savedescription</c>: the save the menu asked for last (saved from T7.6).</summary>
+    /// <summary>g_game.c <c>savegameslot</c> and <c>savedescription</c>: the save the menu asked for last.</summary>
     public int savegameslot = -1;
 
     /// <inheritdoc cref="savegameslot"/>
     public string savedescription = "";
 
+    /// <summary>g_game.c <c>sendsave</c>: the next tic carries <c>BTS_SAVEGAME</c> (<see cref="G_SaveGame"/>).</summary>
+    public bool sendsave;
+
+    /// <summary>d_englsh.h <c>GGSAVED</c>: the message after a save.</summary>
+    public const string GGSAVED = "game saved.";
+
     /// <summary>
-    /// g_game.c <c>G_SaveGame</c> (the save menu's): vanilla saves at the
-    /// next tic's <c>BTS_SAVEGAME</c> (<c>sendsave</c>); the saving itself is
-    /// T7.6's, so only the slot and description are kept.
+    /// T7.6: the directory of the save slots' files (Chocolate Doom's
+    /// <c>savegamedir</c>: the host's, one per IWAD); null: no saves (the
+    /// slots show empty, nothing is written).
+    /// </summary>
+    public string? SaveDir;
+
+    /// <summary>T7.6: where the flow says what it saved or why a save didn't load (the host prints it).</summary>
+    public Action<string>? Log;
+
+    /// <summary>p_saveg.c <c>P_SaveGameFile</c>: slot <paramref name="slot"/>'s file, or null without <see cref="SaveDir"/>.</summary>
+    public string? SaveGamePath(int slot) => SaveDir is null || slot < 0 ? null : System.IO.Path.Combine(SaveDir, SaveGameFile.SlotFileName(slot));
+
+    /// <summary>
+    /// m_menu.c <c>M_ReadSaveStrings</c>' read (the menus' host's
+    /// <see cref="IMenuHost.SaveDescription"/>): slot <paramref name="slot"/>'s
+    /// description, null for an empty slot; a file that is no save shows as
+    /// <c>?</c> (loading it says so).
+    /// </summary>
+    public string? SaveDescription(int slot)
+    {
+        if (SaveGamePath(slot) is not { } path || !System.IO.File.Exists(path))
+            return null;
+        try
+        {
+            return SaveGameFile.ReadDescription(System.IO.File.ReadAllBytes(path)) ?? "?";
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+        {
+            return "?";
+        }
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_SaveGame</c> (the save menu's <c>M_DoSave</c>): the
+    /// next tic carries <c>BTS_SAVEGAME</c> (<see cref="sendsave"/>), which
+    /// saves after it (<see cref="G_DoSaveGame"/>).
     /// </summary>
     public void G_SaveGame(int slot, string description)
     {
         savegameslot = slot;
         savedescription = description;
+        sendsave = true;
     }
 
-    /// <summary>g_game.c <c>G_LoadGame</c> (the load menu's): <see cref="gameaction_t.ga_loadgame"/>, which <see cref="G_DoGameActions"/> drops until T7.6.</summary>
+    /// <summary>g_game.c <c>G_LoadGame</c> (the load menu's): <see cref="gameaction_t.ga_loadgame"/>, before the next tic (<see cref="G_DoLoadGame"/>).</summary>
     public void G_LoadGame(int slot)
     {
         savegameslot = slot;
@@ -340,9 +418,109 @@ public sealed class GameFlow
     }
 
     /// <summary>
+    /// g_game.c <c>G_DoSaveGame</c> (<see cref="gameaction_t.ga_savegame"/>):
+    /// the level's game (<see cref="SaveGameFile.Write"/>) to slot
+    /// <see cref="savegameslot"/>'s file with <see cref="savedescription"/>
+    /// (written aside, then put in place: Chocolate Doom's), and the console
+    /// player's <see cref="GGSAVED"/>. Only on a level the user started
+    /// (<see cref="usergame"/>, as the save menu checks); a file that can't
+    /// be written says so in the menus' message box (vanilla's <c>I_Error</c>).
+    /// Also the level script's <c>save</c>. Returns whether it saved.
+    /// </summary>
+    public bool G_DoSaveGame()
+    {
+        gameaction = gameaction_t.ga_nothing;
+        World? world = host.World;
+        string? path = SaveGamePath(savegameslot);
+        if (world is null || gamestate != gamestate_t.GS_LEVEL || !usergame || path is null)
+        {
+            Log?.Invoke($"Save: nothing saved (slot {savegameslot}): {(path is null ? "no save directory" : "no game on a level")}");
+            savedescription = "";
+            return false;
+        }
+        try
+        {
+            byte[] data = SaveGameFile.Write(world, savedescription);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+            string temp = path + ".tmp";
+            System.IO.File.WriteAllBytes(temp, data);
+            System.IO.File.Move(temp, path, overwrite: true);
+            Log?.Invoke($"Save: {world.level.Name} at tic {world.leveltime} saved to slot {savegameslot} (\"{savedescription}\", {data.Length} bytes): {path}");
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+        {
+            Log?.Invoke($"Save: slot {savegameslot}: {e.Message}");
+            Menu.M_StartMessage("the game couldn't be saved.\n\n" + MMenu.PRESSKEY, null, false);
+            savedescription = "";
+            return false;
+        }
+        savedescription = "";
+        world.players[world.consoleplayer].message = GGSAVED;
+        return true;
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_DoLoadGame</c> (<see cref="gameaction_t.ga_loadgame"/>):
+    /// slot <see cref="savegameslot"/>'s file, refused with the menus' message
+    /// box when it is no save, from another version, damaged or another
+    /// game's (vanilla returns silently on another version); else as
+    /// <see cref="G_InitNew"/> (unpaused, <c>M_ClearRandom</c>, a user game,
+    /// its skill, the forced wipe of <c>G_DoLoadLevel</c>, so a load melts
+    /// over a level too) the host shows the save's level and world
+    /// (<see cref="IGameHost.G_LoadGame"/>). Returns whether it loaded.
+    /// </summary>
+    public bool G_DoLoadGame()
+    {
+        gameaction = gameaction_t.ga_nothing;
+        string? path = SaveGamePath(savegameslot);
+        SaveGameFile save;
+        try
+        {
+            if (path is null || !System.IO.File.Exists(path))
+                throw new SaveGameException(EMPTYSLOT);
+            save = SaveGameFile.Read(System.IO.File.ReadAllBytes(path));
+            if (save.GameMode != gamemode)
+                throw new SaveGameException(SaveGameFile.OTHERGAME);
+            host.G_CheckLoadGame(save);
+        }
+        catch (Exception e) when (e is SaveGameException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            string reason = e is SaveGameException ? e.Message : SaveGameFile.DAMAGED;
+            Log?.Invoke($"Load: slot {savegameslot} refused: {e.Message.Replace('\n', ' ')}{(e.InnerException is { } inner ? $" ({inner.Message})" : "")}");
+            LoadRefused = reason;
+            Menu.M_StartMessage(reason + "\n\n" + MMenu.PRESSKEY, null, false);
+            return false;
+        }
+
+        // g_game.c G_InitNew's
+        paused = false; // S_ResumeSound: T7.7
+        advancedemo = false; // not vanilla: as G_InitNewMap
+        MRandom.M_ClearRandom();
+        usergame = true;
+        gameskill = save.Skill;
+        G_DoLoadLevelWipe();
+        if (!host.G_LoadGame(save))
+        {
+            D_StartTitle(null);
+            return false;
+        }
+        LoadRefused = null;
+        gamestate = gamestate_t.GS_LEVEL;
+        _gameaction = gameaction_t.ga_nothing;
+        Log?.Invoke($"Load: slot {savegameslot}, \"{save.Description}\": {save.Map} at tic {save.LevelTime}");
+        return true;
+    }
+
+    /// <summary>T7.6: the message of the last load refused (<see cref="G_DoLoadGame"/>), null after a load (the tests', the level script's).</summary>
+    public string? LoadRefused;
+
+    /// <summary>The message for a load from an empty slot (the quickload's slot emptied since, a script's).</summary>
+    public const string EMPTYSLOT = "this save slot is empty.";
+
+    /// <summary>
     /// g_game.c <c>G_Ticker</c>'s "do things to change the game state": runs
-    /// the game actions until none is left. <c>ga_loadgame</c> and
-    /// <c>ga_savegame</c> are T7.6's; there is no demo playback (SPEC §7.6)
+    /// the game actions until none is left (T7.6: <c>ga_loadgame</c>,
+    /// <c>ga_savegame</c>); there is no demo playback (SPEC §7.6)
     /// and no screenshot action (the level script's <c>shot</c>).
     /// </summary>
     public void G_DoGameActions()
@@ -366,8 +544,14 @@ public sealed class GameFlow
                 case gameaction_t.ga_worlddone:
                     G_DoWorldDone();
                     break;
+                case gameaction_t.ga_loadgame:
+                    G_DoLoadGame();
+                    break;
+                case gameaction_t.ga_savegame:
+                    G_DoSaveGame();
+                    break;
                 default:
-                    // ga_loadgame, ga_savegame (T7.6), ga_playdemo, ga_screenshot: not ported
+                    // ga_playdemo, ga_screenshot: not ported
                     gameaction = gameaction_t.ga_nothing;
                     break;
             }

@@ -25,6 +25,9 @@ public sealed class GameInput
     /// <summary>T7.1: the pause (Pause, the pad's Back; g_game.c <c>key_pause</c>).</summary>
     public const string Pause = "pause";
 
+    /// <summary>T7.6: quicksave and quickload (F6, F9; Chocolate Doom's <c>key_menu_qsave</c>, <c>key_menu_qload</c>), read by the menus (<see cref="MMenu.M_QuickSave"/>).</summary>
+    public const string QuickSave = "quicksave", QuickLoad = "quickload";
+
     /// <summary>The weapon slot actions <c>weapon_1</c>–<c>weapon_8</c>.</summary>
     public static string Weapon(int slot) => "weapon_" + slot;
 
@@ -38,7 +41,7 @@ public sealed class GameInput
         var actions = new System.Collections.Generic.List<string>
         {
             MoveLeft, MoveRight, MoveUp, MoveDown, AimLeft, AimRight, AimUp, AimDown,
-            Run, RunToggle, TurnLeft, TurnRight, Attack, Use, WeaponNext, WeaponPrev, Pause,
+            Run, RunToggle, TurnLeft, TurnRight, Attack, Use, WeaponNext, WeaponPrev, Pause, QuickSave, QuickLoad,
         };
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
             actions.Add(Weapon(i));

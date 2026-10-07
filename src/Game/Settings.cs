@@ -168,7 +168,7 @@ public static class Settings
             ("attack", "FIRE"), ("use", "USE"), ("weapon_next", "NEXT WEAPON"), ("weapon_prev", "PREVIOUS WEAPON"),
             ("weapon_1", "WEAPON 1"), ("weapon_2", "WEAPON 2"), ("weapon_3", "WEAPON 3"), ("weapon_4", "WEAPON 4"),
             ("weapon_5", "WEAPON 5"), ("weapon_6", "WEAPON 6"), ("weapon_7", "WEAPON 7"), ("weapon_8", "WEAPON 8"),
-            ("pause", "PAUSE"),
+            ("pause", "PAUSE"), ("quicksave", "QUICKSAVE"), ("quickload", "QUICKLOAD"),
         }),
         ("MENU KEYS", new[]
         {

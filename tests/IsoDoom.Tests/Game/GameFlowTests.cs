@@ -44,6 +44,7 @@ public class GameFlowTests
             if (Wad.W_CheckNumForName(map) < 0)
                 return false;
             World = new World(new SpawnSettings(mode, skill), Tweaks.Vanilla);
+            World.P_InitPicAnims(null, PicAnims.FlatNames(Wad)); // P_Init's, as the game scene's (T7.6: a save loads into the same)
             World.G_DoLoadLevel(Level.Load(Wad, map));
             return true;
         }
@@ -71,6 +72,21 @@ public class GameFlowTests
                 World!.G_Ticker(cmd);
                 LevelTics++;
             }
+        }
+
+        // T7.6: as the game scene, a trial load first, then the load
+        public void G_CheckLoadGame(SaveGameFile save)
+        {
+            if (Wad.W_CheckNumForName(save.Map) < 0)
+                throw new SaveGameException(SaveGameFile.OTHERGAME);
+            save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
+        }
+
+        public bool G_LoadGame(SaveGameFile save)
+        {
+            Loads.Add("load " + save.Map);
+            World = save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
+            return true;
         }
 
         public void LevelCompleted() => Completed++;
