@@ -18,3 +18,8 @@ obj/
 *.user
 .vs/
 TestResults/
+
+# Claude Code: agent worktrees and personal settings (a shared
+# .claude/settings.json may be committed)
+.claude/worktrees/
+.claude/settings.local.json
