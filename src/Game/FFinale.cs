@@ -12,9 +12,8 @@ namespace IsoDoom.Game;
 /// button) with the episode's flat but a stand-in text, and the end
 /// pictures (E1: <c>HELP2</c>, the retail game <c>CREDIT</c>; E2
 /// <c>VICTORY2</c>; E3 <c>PFUB2</c> without the scroll; E4 <c>ENDPIC</c>).
-/// Vanilla stays on the end picture until the menu starts another game;
-/// until the menus (T7.2) fire or use there goes back to the title loop. Doom
-/// II's cast call (M10) also ends there. No Godot types: the tests link it.
+/// The end picture stays, as vanilla's, until the menu (T7.2) starts another
+/// game or ends this one. Doom II's cast call (M10) ends at the title loop. No Godot types: the tests link it.
 /// </summary>
 public sealed class FFinale
 {
@@ -41,9 +40,6 @@ public sealed class FFinale
     public string finaleflat = "";
 
     private int gameepisode, gamemap;
-
-    // Placeholder (until T7.2's menus): fire or use held at the end picture's start must be let go first.
-    private bool held = true;
 
     /// <summary>
     /// f_finale.c <c>F_StartFinale</c>: the text screen of episode
@@ -83,7 +79,6 @@ public sealed class FFinale
         }
         finalestage = 0;
         finalecount = 0;
-        held = true;
     }
 
     /// <summary>
@@ -128,14 +123,7 @@ public sealed class FFinale
             finalestage = 1;
             // wipegamestate = -1 (a wipe: T7.1a); E3's mus_bunny: T7.8
         }
-        else if (finalestage == 1)
-        {
-            // Not vanilla, until T7.2's menus: fire or use leaves the end picture for the title loop.
-            bool pressed = (world.players[world.consoleplayer].cmd.buttons & (buttoncode_t.BT_ATTACK | buttoncode_t.BT_USE)) != 0;
-            if (pressed && !held)
-                flow.D_StartTitle(null);
-            held = pressed;
-        }
+        // finalestage 1 (the end picture) stays until the menu starts a new game or ends this one (T7.2), as vanilla's
     }
 
     /// <summary>f_finale.c <c>F_StartCast</c>: Doom II's cast call is M10's; the game ends here (the title loop).</summary>

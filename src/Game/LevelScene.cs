@@ -260,6 +260,9 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>The IWAD's game mode (which things spawn, T3.2).</summary>
     public GameMode GameMode { get; private set; }
 
+    /// <summary>T7.2: the IWAD's variant (Chocolate Doom's <c>gamevariant</c>: the BFG Edition's menu workarounds).</summary>
+    public GameVariant GameVariant { get; private set; }
+
     /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
     public skill_t Skill { get; private set; } = skill_t.sk_medium;
 
@@ -365,7 +368,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
         "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
-        + "Title: fire, use, Enter or Escape start a new game (until the menus)   Intermission: fire or use go on\n"
+        + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -412,6 +415,7 @@ public partial class LevelScene : Node3D, IGameHost
         _background = Environment.BackgroundColor;
         AddChild(new WorldEnvironment { Environment = Environment });
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
+        AddChild(MenuScreens); // T7.2: layer 2, over everything
         Overlay = new CanvasLayer();
         _message = new Label
         {
@@ -455,8 +459,9 @@ public partial class LevelScene : Node3D, IGameHost
             if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
-            _flow = new GameFlow(this, GameMode, MRandom); // T7.1: g_game.c's flow, d_main.c's title loop
+            _flow = new GameFlow(this, GameMode, MRandom, GameVariant); // T7.1: g_game.c's flow, d_main.c's title loop
             _graphics = new ScreenGraphics(Wad, MessageLine);
+            InitMenus(); // T7.2
             if (IsCheckRun)
             {
                 AddChild(new LevelCheck(this)); // loads every map itself; no free-fly camera, no keys
@@ -850,14 +855,6 @@ public partial class LevelScene : Node3D, IGameHost
 
     public override void _UnhandledInput(InputEvent e)
     {
-        // T7.1: on the title loop, vanilla's menu opens on a key (m_menu.c M_Responder); until the menus
-        // (T7.2) fire, use, Enter, Escape or the pad's Start start a new game (episode 1, --level-skill's skill).
-        if (!IsCheckRun && _flow is { gamestate: gamestate_t.GS_DEMOSCREEN } && IsTitleStart(e))
-        {
-            StartNewGame();
-            GetViewport().SetInputAsHandled();
-            return;
-        }
         // T6.6: the next/previous weapon (the wheel without Ctrl: the game camera zooms with it) for the game camera's next tic.
         if (!IsCheckRun && IsoActive && !(e is InputEventWithModifiers { CtrlPressed: true } || Input.IsPhysicalKeyPressed(Key.Ctrl))
             && GameInput.WeaponEvent(e))
@@ -945,15 +942,9 @@ public partial class LevelScene : Node3D, IGameHost
         GetViewport().SetInputAsHandled();
     }
 
-    /// <summary>T7.1: whether <paramref name="e"/> starts a new game from the title loop (a press of fire, use, Enter, Escape or the pad's Start).</summary>
-    private static bool IsTitleStart(InputEvent e) =>
-        e.IsActionPressed(GameInput.Attack) || e.IsActionPressed(GameInput.Use)
-        || e is InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.Enter or Key.KpEnter or Key.Escape }
-        || e is InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.Start };
-
     /// <summary>
-    /// T7.1: g_game.c <c>G_DeferedInitNew</c> as the menus' New Game will
-    /// (T7.2): episode <paramref name="episode"/>, map <paramref name="map"/>
+    /// T7.1: g_game.c <c>G_DeferedInitNew</c> as the menus' skill choice
+    /// does (T7.2), for the level script: episode <paramref name="episode"/>, map <paramref name="map"/>
     /// on <paramref name="skill"/> (default <c>--level-skill</c>'s), started
     /// between the tics (<see cref="GameFlow.G_DoGameActions"/>, every frame).
     /// </summary>
@@ -971,6 +962,7 @@ public partial class LevelScene : Node3D, IGameHost
                 UpdateCursor();
             if (flow.gamestate != gamestate_t.GS_LEVEL)
                 GameInput.Poll(); // T7.1: fire and use for the intermission and the finale
+            PollMenuPad(delta); // T7.2: the pad's directions in the menus
             flow.G_DoGameActions(); // T7.1: the game actions set between the tics (a new game from the title)
             RunTics(delta);
             if (Mesh is not null)
@@ -1051,8 +1043,8 @@ public partial class LevelScene : Node3D, IGameHost
             _ticTime = 0;
             TicFraction = 1;
         }
-        else if (flow.paused || flow.gamestate != gamestate_t.GS_LEVEL)
-            TicFraction = 1; // T7.1: the world holds still: show its last tic
+        else if (flow.paused || flow.gamestate != gamestate_t.GS_LEVEL || World is { } w && flow.MenuHolds(w))
+            TicFraction = 1; // T7.1: the world holds still (T7.2: also under the menu): show its last tic
         else
             TicFraction = Math.Clamp(_ticTime / TicSeconds, 0, 1);
     }
@@ -1158,6 +1150,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (StatusBar is not null)
             StatusBar.ConsolePlayer = world.consoleplayer;
         MessageLine?.HU_Start();
+        _menuMessage = null; // G_PlayerReborn clears players[].message
     }
 
     /// <summary>T6.11: draws the status bar (as vanilla's <c>ST_Drawer</c>, what changed), the fullscreen HUD and the message line after a tic.</summary>
@@ -1165,7 +1158,8 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (PlayerMobj is null)
             return;
-        StatusBar?.ST_Drawer();
+        StatusBar?.ST_Drawer(_redrawStatusBar); // T7.2: whole after a read-this page (D_Display's redrawsbar)
+        _redrawStatusBar = false;
         StatusBar?.ST_DrawFullscreen();
         MessageLine?.HU_Drawer();
     }
@@ -1199,13 +1193,14 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         bool pause = flow.paused || FocusPaused;
         gamestate_t state = flow.gamestate;
+        int palette = state == gamestate_t.GS_LEVEL ? Mesh?.Palette ?? 0 : 0;
+        UpdateMenuScreens(flow, palette, pause); // T7.2: M_Drawer, last (over the pause graphic), on its own layer
         if (state == gamestate_t.GS_LEVEL && (!pause || Mesh is null))
         {
             Screens.Visible = false;
             _screenKey = null;
             return;
         }
-        int palette = state == gamestate_t.GS_LEVEL ? Mesh?.Palette ?? 0 : 0;
         var key = (state, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
         if (_screenKey == key && Screens.Visible)
             return;
@@ -1288,7 +1283,18 @@ public partial class LevelScene : Node3D, IGameHost
                     break;
             }
         }
-        MessageLine?.HU_Ticker(message);
+        if (MessageLine is { } hu)
+        {
+            // T7.2: the menus' message (players[consoleplayer].message) and the messages toggle
+            hu.showMessages = _flow?.Menu.showMessages != 0;
+            if (_menuMessage is { } menu)
+            {
+                message ??= menu.Text;
+                hu.message_dontfuckwithme |= menu.DontFuckWithMe;
+                _menuMessage = null;
+            }
+            hu.HU_Ticker(message);
+        }
     }
 
     /// <summary>A started sound as the overlay lists it: the name without <c>sfx_</c> and its origin (none, a sector, the player or a mobj type).</summary>
@@ -1681,6 +1687,10 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (e is InputEventMouseMotion && !IsCheckRun)
             GameInput.CursorMoved();
+        // T7.2: the menus before anything else (d_main.c D_ProcessEvents: M_Responder first; on the title loop
+        // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
+        if (!IsCheckRun && MenuEvent(e))
+            GetViewport().SetInputAsHandled();
     }
 
     /// <summary>
@@ -1696,7 +1706,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public ticcmd_t BuildTiccmd(Tweaks tweaks)
     {
-        TiccmdInput input = GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null);
+        TiccmdInput input = MenuFilter(GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null)); // T7.2: none under the menus
         if (!IsoActive && GameState == gamestate_t.GS_LEVEL)
             input = new TiccmdInput { Pause = input.Pause }; // T7.1: the pause key works under every camera
         mobj_t? mo = PlayerMobj;
@@ -1773,7 +1783,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
             text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
         if (_flow is { } flow)
-            text.Append($"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}\n");
+            text.Append($"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}   menu: {flow.Menu.StateText()}\n");
         if (LevelEnded is not null)
             text.Append(LevelEnded + "\n");
         if (World is { } world)
@@ -1907,6 +1917,7 @@ public partial class LevelScene : Node3D, IGameHost
         ModifiedGame.D_CheckModifiedGame(wad, info);
         Textures = Textures.R_InitTextures(wad);
         GameMode = info.GameMode;
+        GameVariant = info.GameVariant;
         try
         {
             Sprites = Sprites.R_InitSprites(wad);

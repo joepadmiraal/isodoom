@@ -118,6 +118,7 @@ public partial class LevelCheck : Godot.Node
             await NextFrame();
             CheckAllMaps();
             CheckGameFlow(); // T7.1: the title loop, a new game, the pause
+            CheckMenus(); // T7.2: the menus through the input glue
 
             string map = RenderMapName();
             _scene.LoadMap(map);
@@ -130,6 +131,7 @@ public partial class LevelCheck : Godot.Node
             {
                 await RenderChecks(m, move);
                 await CheckScreensDrawn(); // T7.1: last, it drops the level for the title loop and starts a new game
+                await CheckMenuDrawn(); // T7.2: the main menu over the title page
             }
             else if (move is { } mv)
                 MoveCheckData(m, mv.Sector);

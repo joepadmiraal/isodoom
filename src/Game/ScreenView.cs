@@ -46,9 +46,11 @@ public partial class ScreenView : CanvasLayer
     /// Uploads <see cref="Screen"/> through <paramref name="playpal"/>'s
     /// palette <paramref name="palette"/> and shows it, with the black
     /// backdrop when <paramref name="opaque"/> (a full screen) and at
-    /// <paramref name="fixedScale"/> (0: the largest that fits).
+    /// <paramref name="fixedScale"/> (0: the largest that fits), centred
+    /// (by default only <paramref name="opaque"/>, else at the top, as the
+    /// pause graphic over the level) when <paramref name="centre"/>.
     /// </summary>
-    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale)
+    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool? centre = null)
     {
         Visible = true;
         _backdrop.Visible = opaque;
@@ -69,9 +71,13 @@ public partial class ScreenView : CanvasLayer
             _texture.Update(_image);
         }
         _rect.Size = new Vector2(Screen.Width, Screen.Height) * PixelScale;
-        _rect.Position = new Vector2(MathF.Floor((size.X - _rect.Size.X) / 2), opaque ? MathF.Floor((size.Y - _rect.Size.Y) / 2) : 0);
+        _rect.Position = new Vector2(MathF.Floor((size.X - _rect.Size.X) / 2), centre ?? opaque ? MathF.Floor((size.Y - _rect.Size.Y) / 2) : 0);
     }
 
     /// <summary>The screen's texture rectangle (checks read it back).</summary>
     public TextureRect Rect => _rect;
+
+    /// <summary>The point of vanilla's 320×200 screen under viewport point <paramref name="at"/> (where it was shown last).</summary>
+    public Vector2I ToScreen(Vector2 at) =>
+        new((int)MathF.Floor((at.X - _rect.Position.X) / PixelScale), (int)MathF.Floor((at.Y - _rect.Position.Y) / PixelScale));
 }

@@ -77,31 +77,50 @@ public sealed class HuStuff
     public void HU_Start()
     {
         message_on = false;
+        message_dontfuckwithme = false;
+        message_nottobefuckedwith = false;
         text = "";
     }
+
+    /// <summary>m_menu.c <c>showMessages</c>: the console player's messages show (the menu's options toggle it, T7.2).</summary>
+    public bool showMessages = true;
+
+    /// <summary>hu_stuff.c <c>message_dontfuckwithme</c>: the next message shows even with <see cref="showMessages"/> off, and stays until its time is up (the menu's "Messages ON/OFF").</summary>
+    public bool message_dontfuckwithme;
+
+    // hu_stuff.c message_nottobefuckedwith: the message showing is one of those; others wait for it to go.
+    private bool message_nottobefuckedwith;
 
     /// <summary>
     /// hu_stuff.c <c>HU_Ticker</c> (after <c>ST_Ticker</c>, each tic): the
     /// counter runs down, and <paramref name="message"/> (the console
     /// player's message of the tic, or null) shows for
-    /// <see cref="HU_MSGTIMEOUT"/> tics, the same text again too.
-    /// <c>showMessages</c> is on; no message is
-    /// <c>message_dontfuckwithme</c> (only chat and the menus' are), so
-    /// every message replaces the last.
+    /// <see cref="HU_MSGTIMEOUT"/> tics, the same text again too, when
+    /// <see cref="showMessages"/> is on or it is
+    /// <see cref="message_dontfuckwithme"/> (which no other message replaces
+    /// while it shows). Chat is not ported.
     /// </summary>
     public void HU_Ticker(string? message)
     {
         // tick down message counter if message is up
         if (message_counter != 0 && --message_counter == 0)
-            message_on = false;
-
-        // display message if necessary
-        if (message is not null)
         {
-            // hu_lib.c HUlib_addMessageToSText: a new line of at most HU_MAXLINELENGTH characters
-            text = message.Length > HU_MAXLINELENGTH ? message[..HU_MAXLINELENGTH] : message;
-            message_on = true;
-            message_counter = HU_MSGTIMEOUT;
+            message_on = false;
+            message_nottobefuckedwith = false;
+        }
+
+        if (showMessages || message_dontfuckwithme)
+        {
+            // display message if necessary
+            if (message is not null && (!message_nottobefuckedwith || message_dontfuckwithme))
+            {
+                // hu_lib.c HUlib_addMessageToSText: a new line of at most HU_MAXLINELENGTH characters
+                text = message.Length > HU_MAXLINELENGTH ? message[..HU_MAXLINELENGTH] : message;
+                message_on = true;
+                message_counter = HU_MSGTIMEOUT;
+                message_nottobefuckedwith = message_dontfuckwithme;
+                message_dontfuckwithme = false;
+            }
         }
     }
 

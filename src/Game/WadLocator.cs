@@ -38,8 +38,11 @@ public static class WadLocator
         CommandLine = new CommandLine(OS.GetExecutablePath(), OS.GetCmdlineUserArgs()),
         CurrentDirectory = UserWorkingDirectory(),
         GameDirectories = GameDirectories(),
-        ConfiguredIwad = LoadConfiguredIwad(),
+        ConfiguredIwad = ChosenIwad ?? LoadConfiguredIwad(),
     };
+
+    /// <summary>T7.2: the IWAD chosen in the IWAD menu this run (taken as the configured one, even when the settings can't be saved).</summary>
+    public static string? ChosenIwad { get; set; }
 
     /// <summary>
     /// The game folder: the project folder in editor runs, the executable's

@@ -72,17 +72,25 @@ public sealed class GameFlow
     private readonly IGameHost host;
     private gameaction_t _gameaction;
 
-    public GameFlow(IGameHost host, GameMode gamemode, DoomRandom mrandom)
+    public GameFlow(IGameHost host, GameMode gamemode, DoomRandom mrandom, GameVariant gamevariant = GameVariant.vanilla)
     {
         this.host = host;
         this.gamemode = gamemode;
+        this.gamevariant = gamevariant;
         MRandom = mrandom;
         Wi = new WiStuff(this);
         Finale = new FFinale(this);
+        Menu = new MMenu(this, gamevariant);
     }
 
     /// <summary>doomstat.h <c>gamemode</c>.</summary>
     public readonly GameMode gamemode;
+
+    /// <summary>Chocolate Doom's <c>gamevariant</c> (the BFG Edition's workarounds, T7.2).</summary>
+    public readonly GameVariant gamevariant;
+
+    /// <summary>The menus (m_menu.c, T7.2).</summary>
+    public MMenu Menu { get; }
 
     /// <summary>m_random.c's <c>M_Random</c> index of the presentation (<see cref="G_InitNew"/> clears it, T6.11).</summary>
     public DoomRandom MRandom { get; }
@@ -166,6 +174,7 @@ public sealed class GameFlow
     {
         if (advancedemo)
             D_DoAdvanceDemo();
+        Menu.M_Ticker(); // d_net.c TryRunTics: M_Ticker before G_Ticker
 
         // do things to change the game state
         G_DoGameActions();
@@ -184,7 +193,7 @@ public sealed class GameFlow
         {
             case gamestate_t.GS_LEVEL:
                 if (world is not null)
-                    host.G_LevelTicker(cmd, paused);
+                    host.G_LevelTicker(cmd, paused || MenuHolds(world));
                 break;
             case gamestate_t.GS_INTERMISSION:
                 Wi.WI_Ticker();
@@ -199,6 +208,39 @@ public sealed class GameFlow
         gametic++;
 
         G_DoGameActions();
+    }
+
+    /// <summary>
+    /// p_tick.c <c>P_Ticker</c>'s hold while the menu is up in single player
+    /// (<c>menuactive &amp;&amp; !demoplayback &amp;&amp; viewz != 1</c>: the first tic of a
+    /// level the player came to alive, whose <c>P_SetupLevel</c> set
+    /// <c>viewz</c> to 1, still runs; a reborn player's is 0, so held at once).
+    /// </summary>
+    public bool MenuHolds(World world) =>
+        !world.netgame && Menu.menuactive && world.players[world.consoleplayer].viewz != 1;
+
+    /// <summary>g_game.c <c>savegameslot</c> and <c>savedescription</c>: the save the menu asked for last (saved from T7.6).</summary>
+    public int savegameslot = -1;
+
+    /// <inheritdoc cref="savegameslot"/>
+    public string savedescription = "";
+
+    /// <summary>
+    /// g_game.c <c>G_SaveGame</c> (the save menu's): vanilla saves at the
+    /// next tic's <c>BTS_SAVEGAME</c> (<c>sendsave</c>); the saving itself is
+    /// T7.6's, so only the slot and description are kept.
+    /// </summary>
+    public void G_SaveGame(int slot, string description)
+    {
+        savegameslot = slot;
+        savedescription = description;
+    }
+
+    /// <summary>g_game.c <c>G_LoadGame</c> (the load menu's): <see cref="gameaction_t.ga_loadgame"/>, which <see cref="G_DoGameActions"/> drops until T7.6.</summary>
+    public void G_LoadGame(int slot)
+    {
+        savegameslot = slot;
+        gameaction = gameaction_t.ga_loadgame;
     }
 
     /// <summary>
@@ -252,8 +294,8 @@ public sealed class GameFlow
     /// <summary>
     /// g_game.c <c>G_DeferedInitNew</c>: a new game on <paramref name="skill"/>,
     /// episode <paramref name="episode"/>, map <paramref name="map"/> starts
-    /// before the next tic (the menus', T7.2; the title's placeholder key
-    /// until then, and the level script's <c>newgame</c>).
+    /// before the next tic (the menus' <c>M_ChooseSkill</c>, T7.2, and the
+    /// level script's <c>newgame</c>).
     /// </summary>
     public void G_DeferedInitNew(skill_t skill, int episode, int map)
     {
@@ -479,6 +521,9 @@ public sealed class GameFlow
             (string? page, int tics) = DemoStep(demosequence);
             if (page is null)
                 continue; // G_DeferedPlayDemo: no demo playback
+            // Chocolate Doom: the BFG Edition's doom2.wad has no TITLEPIC; INTERPIC stands in
+            if (gamevariant == GameVariant.bfgedition && page == "TITLEPIC" && !host.HasLump(page))
+                page = "INTERPIC";
             if (!host.HasLump(page) && tries < 2 * steps)
                 continue;
             pagename = page;

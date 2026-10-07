@@ -32,6 +32,7 @@
     <Compile Include="../../src/Game/WiStuff.cs" Link="Game/WiStuff.cs" />
     <Compile Include="../../src/Game/FFinale.cs" Link="Game/FFinale.cs" />
     <Compile Include="../../src/Game/ScreenGraphics.cs" Link="Game/ScreenGraphics.cs" />
+    <Compile Include="../../src/Game/MMenu.cs" Link="Game/MMenu.cs" />
     <Compile Include="../../src/Render/Fuzz.cs" Link="Render/Fuzz.cs" />
     <Compile Include="../../src/Render/DoorLids.cs" Link="Render/DoorLids.cs" />
   </ItemGroup>

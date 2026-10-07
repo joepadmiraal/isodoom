@@ -148,8 +148,20 @@ namespace IsoDoom.Game;
 /// the title loop); <c>skip [TICS]</c> waits for the queued tics, then
 /// queues tics pressing and releasing use, one at a time, until the
 /// intermission or the finale is over (the level or the title loop shows),
-/// and fails after TICS tics (default 3000). E.g. after an exit:
+/// and fails after TICS tics (default 3000); on the finale it stops at the
+/// end picture, which stays until the menus start or end a game (T7.2). E.g. after an exit:
 /// <c>route tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route; gamestate intermission; skip; map E1M2 1</c>.
+/// </para>
+/// <para>
+/// The menus (T7.2, <see cref="MMenu"/>) take the keys, the pad and the
+/// mouse as a person's: <c>tap Escape</c> opens them, <c>tap Down</c>,
+/// <c>tap Return</c>, <c>tap BackSpace</c>, <c>tap Y</c>, <c>joybutton A down</c>,
+/// <c>joybutton DpadDown down</c>, <c>mouse X Y; click</c> (the click at the
+/// last <c>mouse</c> point) and <c>rclick</c> (the right button) work them;
+/// <c>menu [NAME [ITEM]]</c> prints what they show after a frame and fails
+/// unless it is NAME (<c>closed</c>, <c>message</c>, <c>main</c>,
+/// <c>episode</c>, <c>skill</c>, <c>options</c>, <c>sound</c>, <c>load</c>,
+/// <c>save</c>, <c>readthis1</c>, <c>readthis2</c>) with the skull on item ITEM.
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -196,7 +208,22 @@ public partial class LevelScript : Node
                     case "tap": Key(w[1], true); await Frames(1); Key(w[1], false); break;
                     case "hold": Key(w[1], true); await Frames(Int(w[2])); Key(w[1], false); break;
                     case "wait": await Frames(Int(w[1])); break;
-                    case "click": Click(); break;
+                    case "click": Click(MouseButton.Left); break;
+                    case "rclick": Click(MouseButton.Right); break;
+                    case "menu":
+                        {
+                            // T7.2: prints the menus' state after a frame; fails unless it is NAME (and item ITEM)
+                            await Frames(1);
+                            MMenu menu = _scene.Menu;
+                            GD.Print($"Level script: menu: {menu.StateText()}");
+                            if (w.Length > 1 && (!string.Equals(menu.StateName, w[1], StringComparison.OrdinalIgnoreCase)
+                                || w.Length > 2 && menu.itemOn != Int(w[2])))
+                            {
+                                GD.PrintErr($"Level script: menu: expected {w[1]}{(w.Length > 2 ? $" item {w[2]}" : "")}, the menus show {menu.StateText()}");
+                                exit = 1;
+                            }
+                            break;
+                        }
                     case "look":
                         Input.ParseInputEvent(new InputEventMouseMotion { Relative = new Vector2(Int(w[1]), Int(w[2])) });
                         break;
@@ -214,7 +241,8 @@ public partial class LevelScript : Node
                             fly.Fov = w[1] == "vanilla" ? FreeFlyCamera.VanillaFov : float.Parse(w[1], CultureInfo.InvariantCulture);
                         break;
                     case "mouse":
-                        Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(Int(w[1]), Int(w[2])), GlobalPosition = new Vector2(Int(w[1]), Int(w[2])) });
+                        _mouse = new Vector2(Int(w[1]), Int(w[2]));
+                        Input.ParseInputEvent(new InputEventMouseMotion { Position = _mouse, GlobalPosition = _mouse });
                         break;
                     case "place":
                         _scene.PlacePlayer(Int(w[1]), Int(w[2]), w.Length > 3 ? float.Parse(w[3], CultureInfo.InvariantCulture) : null);
@@ -497,7 +525,8 @@ public partial class LevelScript : Node
     /// <summary>
     /// T7.1: <c>skip [TICS]</c>: waits for the queued tics, then queues one
     /// tic at a time, use pressed and released in turn (as a player skipping
-    /// the screens), until the game state is the level or the title loop;
+    /// the screens), until the game state is the level or the title loop, or
+    /// the finale shows its end picture (which stays, as vanilla's, T7.2);
     /// fails after TICS tics (default 3000). Returns the tics it ran, or −1.
     /// </summary>
     private async Task<int> Skip(int max)
@@ -505,7 +534,9 @@ public partial class LevelScript : Node
         await Drain();
         _scene.ScriptedTics = true;
         int tics = 0;
-        while (_scene.GameState is gamestate_t.GS_INTERMISSION or gamestate_t.GS_FINALE)
+        // T7.2: the finale's end picture stays until the menu starts or ends a game, so skip stops there
+        while (_scene.GameState is gamestate_t.GS_INTERMISSION
+            || _scene.GameState == gamestate_t.GS_FINALE && !(_scene.Flow.Finale.finalestage == 1 && _scene.Flow.gamemode != IsoDoom.Wad.GameMode.commercial))
         {
             if (tics >= max)
                 return -1;
@@ -790,10 +821,13 @@ public partial class LevelScript : Node
         Input.ParseInputEvent(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = pressed });
     }
 
-    private static void Click()
+    // Where the last `mouse` put the cursor (a click happens there; T7.2's menus read it).
+    private Vector2 _mouse;
+
+    private void Click(MouseButton button)
     {
         foreach (bool pressed in new[] { true, false })
-            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = pressed });
+            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, Position = _mouse, GlobalPosition = _mouse });
     }
 
     private static void Wheel(MouseButton button)

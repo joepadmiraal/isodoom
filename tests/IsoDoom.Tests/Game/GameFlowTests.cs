@@ -21,7 +21,7 @@ public class GameFlowTests
 {
     private static readonly WadArchive Wad = new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
 
-    private sealed class Host : IGameHost
+    internal sealed class Host : IGameHost
     {
         private readonly GameMode mode;
 
@@ -82,7 +82,7 @@ public class GameFlowTests
         }
     }
 
-    private static (GameFlow Flow, Host Host) New(GameMode mode = GameMode.shareware)
+    internal static (GameFlow Flow, Host Host) New(GameMode mode = GameMode.shareware)
     {
         var host = new Host(mode);
         return (new GameFlow(host, mode, new DoomRandom()), host);
@@ -268,7 +268,16 @@ public class GameFlowTests
         Assert.Equal((1, 0), (flow.Finale.finalestage, flow.Finale.finalecount));
         Tics(flow, 200);
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // vanilla stays on the end picture
-        flow.G_Ticker(Use); // until the menus: back to the title loop
+        Tics(flow, 10, Use);
+        Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // fire and use too (T7.2)
+        // the menu's End Game goes back to the title loop
+        MMenu menu = flow.Menu;
+        Assert.True(menu.M_Responder(MMenu.KEY_ESCAPE));
+        Assert.True(menu.M_Responder('o'));
+        Assert.True(menu.M_Responder(MMenu.KEY_ENTER));
+        Assert.Equal("options", menu.StateName);
+        Assert.True(menu.M_Responder(MMenu.KEY_ENTER)); // End Game
+        Assert.True(menu.M_Responder('y'));
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
         Assert.Null(host.World);
     }
