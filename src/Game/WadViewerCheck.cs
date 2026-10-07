@@ -153,12 +153,13 @@ public partial class WadViewerCheck : Node
                 Fail($"lump list row {row}: wrong lump or cells for #{i} {lump.Name}");
         }
 
-        int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0;
+        int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0, sounds = 0, unplayable = 0;
         var kinds = new int[Enum.GetValues<LumpKind>().Length];
         foreach (int i in _viewer.LumpRows)
         {
             LumpEntry e = lumps[i];
             kinds[(int)e.Kind]++;
+            int previews = _viewer.PreviewStarts;
             _viewer.SelectLump(i);
             string what = $"lump #{i} {e.Lump.Name} ({e.Kind})";
             if (!ReferenceEquals(_viewer.CurrentLump, e))
@@ -174,6 +175,23 @@ public partial class WadViewerCheck : Node
                 if (_viewer.MainViewShown || _viewer.CurrentView is not null)
                     Fail($"{what}: a non-graphic lump left a graphic shown");
                 others++;
+                // T7.7: a digitized sound plays as decoded (DMX's pads left out, 8-bit signed at its own rate); nothing else plays
+                DmxSound? expected = e.Kind == LumpKind.Sound ? DmxSound.TryDecode(e.Lump.Data.Span, out _) : null;
+                if (expected is null)
+                {
+                    if (_viewer.PreviewSound is not null)
+                        Fail($"{what}: a sound preview for a lump that is no playable sound");
+                    if (e.Kind == LumpKind.Sound && DmxSound.HasHeader(e.Lump.Data.Span))
+                        unplayable++;
+                    continue;
+                }
+                sounds++;
+                AudioStreamWav? stream = _viewer.PreviewStream;
+                if (_viewer.PreviewSound is null || stream is null || _viewer.PreviewStarts != previews + 1)
+                    Fail($"{what}: no sound preview started");
+                else if (stream.MixRate != expected.SampleRate || stream.Stereo || stream.Format != AudioStreamWav.FormatEnum.Format8Bits
+                    || !stream.Data.AsSpan().SequenceEqual(expected.ToSigned8()))
+                    Fail($"{what}: the preview's stream is not the lump's sound ({stream.MixRate} Hz, {stream.Data.Length} bytes; expected {expected.SampleRate} Hz, {expected.Samples.Length})");
                 continue;
             }
 
@@ -216,7 +234,7 @@ public partial class WadViewerCheck : Node
         }
         GD.Print($"WAD viewer check: lump list: {_viewer.LumpRows.Count} lumps ({string.Join(", ", kindSummary)}); "
             + $"{viaBrowser + direct} graphic lumps shown ({viaBrowser} through the browser, {direct} directly), "
-            + $"{tables} palette tables shown, {others} other lumps"
+            + $"{tables} palette tables shown, {others} other lumps ({sounds} sounds played, {unplayable} digitized sounds DMX would not play)"
             + (gpu ? $", {pixels} drawn pixels compared" : " (headless: upload only)"));
         _viewer.ShowTab(lumps: false);
         _viewer.MainView.SolidBackground = null;

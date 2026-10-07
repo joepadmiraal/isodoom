@@ -72,6 +72,18 @@ public partial class WadViewer : Control
 
     private readonly List<int> _shown = new(); // catalog indices behind the list rows
 
+    // T7.7: the sound lumps' preview (on the master bus).
+    private AudioStreamPlayer _preview = null!;
+
+    /// <summary>T7.7: the sound lump the preview plays (decoded from the lump selected last), or null.</summary>
+    public DmxSound? PreviewSound { get; private set; }
+
+    /// <summary>T7.7: the preview's stream (<see cref="IsoDoom.Audio.SfxPlayer.ToStream"/> of <see cref="PreviewSound"/>), or null.</summary>
+    public AudioStreamWav? PreviewStream => PreviewSound is null ? null : _preview.Stream as AudioStreamWav;
+
+    /// <summary>T7.7: how many times the preview started playing (the check).</summary>
+    public int PreviewStarts { get; private set; }
+
     /// <summary>The catalog, or null when no IWAD could be loaded.</summary>
     public GraphicsCatalog? Catalog => _catalog;
 
@@ -356,8 +368,12 @@ public partial class WadViewer : Control
         {
             if (_catalog is not null && _lumpTree.GetSelected() is TreeItem item && _catalog.Locate(item.GetMetadata(0).AsInt32()) is not null)
                 ShowTab(lumps: false);
+            else if (PreviewSound is not null)
+                PlayPreview(); // T7.7: double-click or Enter plays the sound again
         };
         lumps.AddChild(_lumpTree);
+        _preview = new AudioStreamPlayer { Name = "SoundPreview" };
+        AddChild(_preview);
         _tabs.TabChanged += OnTabChanged; // after the tabs exist: adding the first one emits it
 
         // Right: controls, sprite controls, info, view.
@@ -622,6 +638,23 @@ public partial class WadViewer : Control
 
         ClearStrip();
         _spriteBar.Visible = false;
+        _preview.Stop();
+        PreviewSound = null;
+        if (e.Kind == LumpKind.Sound && DmxSound.HasHeader(e.Lump.Data.Span))
+        {
+            // T7.7 (T1.6c): a digitized sound plays when selected, as the game plays it (DMX's pads left out)
+            if (DmxSound.TryDecode(e.Lump.Data.Span, out string? error) is DmxSound sound)
+            {
+                PreviewSound = sound;
+                Resource? old = _preview.Stream;
+                _preview.Stream = IsoDoom.Audio.SfxPlayer.ToStream(sound);
+                old?.Dispose();
+                PlayPreview();
+                line += "\nPlaying it (double-click or Enter plays it again).";
+            }
+            else
+                line += $"\nNot playable: {error}";
+        }
         if (e.IsGraphic)
         {
             string note = e.OverriddenBy is WadLump o ? $"overridden by {o.File.Name}, so no list shows it" : "not used by any sprite frame";
@@ -639,6 +672,23 @@ public partial class WadViewer : Control
         CurrentView = null;
         _main.Visible = false;
         _info.Text = line;
+    }
+
+    // T7.7: a stream still playing (or a wrapper not freed) at exit is reported as leaked
+    public override void _ExitTree()
+    {
+        _preview?.Stop();
+        if (_preview?.Stream is { } stream)
+        {
+            _preview.Stream = null;
+            stream.Dispose();
+        }
+    }
+
+    private void PlayPreview()
+    {
+        _preview.Play();
+        PreviewStarts++;
     }
 
     private void ClearStrip()

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Godot;
@@ -550,7 +551,18 @@ public partial class LevelScript : Node
                             GD.Print($"  {key} = {_scene.GetSetting(key)}{(_scene.SettingsValues.IsPinned(key) ? " (command line)" : "")}");
                         GD.Print($"  (the window: {DisplayServer.WindowGetSize().X}x{DisplayServer.WindowGetSize().Y} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, Engine.MaxFps {Engine.MaxFps})");
                         break;
-                    case "quit": GetTree().Quit(exit); return;
+                    case "channels":
+                        // T7.7: waits for the queued tics; prints the channels playing and the last sounds started
+                        await Drain();
+                        GD.Print($"Level script: channels (sfx volume {_scene.Sound?.snd_SfxVolume}, stereo {_scene.Stereo.ToString().ToLowerInvariant()}):\n{_scene.ChannelsText()}");
+                        if (_scene.Sound is { } snd)
+                            GD.Print("Level script: last starts: " + string.Join(", ", snd.Log.TakeLast(8).Select(st => _scene.StartText(st))));
+                        break;
+                    case "playing":
+                    case "heard":
+                        exit |= await CheckSound(w[0] == "playing", w);
+                        break;
+                    case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
             }
@@ -562,7 +574,44 @@ public partial class LevelScript : Node
             }
             await Frames(1); // let the event reach the nodes
         }
-        GetTree().Quit(exit);
+        await _scene.QuitQuietly(exit);
+    }
+
+    /// <summary>
+    /// T7.7: <c>playing NAME [ORIGIN]</c> fails unless a channel plays sound
+    /// NAME (<c>sfx_</c> left out) now, from ORIGIN if given (<c>player</c>,
+    /// <c>-</c> for none, <c>sector N</c> as <c>sector:N</c>, or a mobj type
+    /// such as <c>troop</c>); <c>heard NAME [MIN]</c> fails unless NAME took a
+    /// channel at least MIN times (default 1) since the scene started. Both
+    /// wait for the queued tics first.
+    /// </summary>
+    private async Task<int> CheckSound(bool playing, string[] w)
+    {
+        await Drain();
+        if (_scene.Sound is not { } snd)
+        {
+            GD.PrintErr("Level script: no sound");
+            return 1;
+        }
+        var sfx = Enum.Parse<IsoDoom.Sim.sfxenum_t>("sfx_" + w[1].ToLowerInvariant());
+        if (!playing)
+        {
+            int min = w.Length > 2 ? Int(w[2]) : 1, times = snd.ChannelStarts[(int)sfx];
+            GD.Print($"Level script: heard {w[1]}: {times} time(s)");
+            if (times >= min)
+                return 0;
+            GD.PrintErr($"Level script: heard: {w[1]} took a channel {times} time(s), expected at least {min}");
+            return 1;
+        }
+        string? origin = w.Length > 2 ? string.Join(' ', w[2..]).Replace(':', ' ') : null;
+        IsoDoom.Sim.mobj_t? player = _scene.PlayerMobj;
+        bool found = snd.channels.Any(c => c.sfxinfo is not null && c.sfx == sfx
+            && (origin is null || IsoDoom.Audio.SSound.OriginText(c.origin, player) == origin));
+        GD.Print($"Level script: playing {w[1]}{(origin is null ? "" : $"@{origin}")}: {(found ? "yes" : "no")}\n{_scene.ChannelsText()}");
+        if (found)
+            return 0;
+        GD.PrintErr($"Level script: playing: no channel plays {w[1]}{(origin is null ? "" : $" from {origin}")}");
+        return 1;
     }
 
     /// <summary>Waits until the scripted tics queued so far ran (a map without a player runs none).</summary>

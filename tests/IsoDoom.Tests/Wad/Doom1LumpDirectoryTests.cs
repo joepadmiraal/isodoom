@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tests.Support;
@@ -58,7 +59,8 @@ public class Doom1LumpDirectoryTests
         Assert.All(list.Where(e => e.Kind == LumpKind.Music), e => Assert.Equal("MUS", e.Detail));
         // Every DS* sound is 11025 Hz except the item respawn sound, the one 22050 Hz sample.
         Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DS")),
-            e => Assert.Equal(e.Lump.Name == "DSITMBK" ? "digitized, 22050 Hz" : "digitized, 11025 Hz", e.Detail));
+            e => Assert.StartsWith(e.Lump.Name == "DSITMBK" ? "digitized, 22050 Hz, " : "digitized, 11025 Hz, ", e.Detail));
+        Assert.DoesNotContain(list, e => e.Kind == LumpKind.Sound && e.Detail.Contains("not playable", StringComparison.Ordinal));
         Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DP")), e => Assert.Equal("PC speaker", e.Detail));
         Assert.Equal("of E1M9", list.Last(e => e.Kind == LumpKind.MapData).Detail);
     }

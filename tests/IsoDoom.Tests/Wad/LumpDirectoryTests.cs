@@ -98,7 +98,7 @@ public class LumpDirectoryTests
         Assert.Equal((LumpKind.Music, "MIDI"), (Kind("D_RUNNIN"), Detail("D_RUNNIN")));
         Assert.Equal((LumpKind.Music, "unknown format"), (Kind("D_JUNK"), Detail("D_JUNK")));
         Assert.Equal((LumpKind.Music, "MIDI"), (Kind("SONG"), Detail("SONG"))); // by header alone
-        Assert.Equal((LumpKind.Sound, "digitized, 11025 Hz"), (Kind("DSPISTOL"), Detail("DSPISTOL")));
+        Assert.Equal((LumpKind.Sound, "digitized, 11025 Hz, not playable: 4 samples, too short for DMX"), (Kind("DSPISTOL"), Detail("DSPISTOL")));
         Assert.Equal((LumpKind.Sound, "PC speaker"), (Kind("DPPISTOL"), Detail("DPPISTOL")));
         Assert.Equal(LumpKind.Graphic, Kind("TITLEPIC"));
         Assert.Equal(LumpKind.Other, Kind("FOOBAR"));

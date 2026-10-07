@@ -119,3 +119,145 @@ public enum sfxenum_t
     sfx_radio,
     NUMSFX,
 }
+
+/// <summary>
+/// sounds.h <c>sfxinfo_t</c> (T7.7): the parts the sound code reads. <see cref="name"/> is
+/// the lump name without its <c>DS</c> prefix; <see cref="priority"/> is
+/// s_sound.c's (a lower number wins a channel); a link plays its
+/// <see cref="link"/>'s lump with <see cref="volume"/> added (vanilla's
+/// <c>pitch</c> is kept but unused, as in v1.9). <c>usefulness</c>,
+/// <c>lumpnum</c> and <c>driver_data</c> are the presentation's.
+/// </summary>
+public sealed record sfxinfo_t(string name, int priority, sfxenum_t? link = null, int pitch = -1, int volume = -1);
+
+/// <summary>sounds.c's sound table (T7.7).</summary>
+public static class SoundInfo
+{
+    private static sfxinfo_t SOUND(string name, int priority) => new(name, priority);
+
+    private static sfxinfo_t SOUND_LINK(string name, int priority, sfxenum_t link, int pitch, int volume) => new(name, priority, link, pitch, volume);
+
+    /// <summary>sounds.c <c>S_sfx</c> (Chocolate Doom's, v1.9 data), indexed by <see cref="sfxenum_t"/>.</summary>
+    public static readonly sfxinfo_t[] S_sfx =
+    {
+        // S_sfx[0] needs to be a dummy for odd reasons.
+        SOUND("none", 0),
+        SOUND("pistol", 64),
+        SOUND("shotgn", 64),
+        SOUND("sgcock", 64),
+        SOUND("dshtgn", 64),
+        SOUND("dbopn", 64),
+        SOUND("dbcls", 64),
+        SOUND("dbload", 64),
+        SOUND("plasma", 64),
+        SOUND("bfg", 64),
+        SOUND("sawup", 64),
+        SOUND("sawidl", 118),
+        SOUND("sawful", 64),
+        SOUND("sawhit", 64),
+        SOUND("rlaunc", 64),
+        SOUND("rxplod", 70),
+        SOUND("firsht", 70),
+        SOUND("firxpl", 70),
+        SOUND("pstart", 100),
+        SOUND("pstop", 100),
+        SOUND("doropn", 100),
+        SOUND("dorcls", 100),
+        SOUND("stnmov", 119),
+        SOUND("swtchn", 78),
+        SOUND("swtchx", 78),
+        SOUND("plpain", 96),
+        SOUND("dmpain", 96),
+        SOUND("popain", 96),
+        SOUND("vipain", 96),
+        SOUND("mnpain", 96),
+        SOUND("pepain", 96),
+        SOUND("slop", 78),
+        SOUND("itemup", 78),
+        SOUND("wpnup", 78),
+        SOUND("oof", 96),
+        SOUND("telept", 32),
+        SOUND("posit1", 98),
+        SOUND("posit2", 98),
+        SOUND("posit3", 98),
+        SOUND("bgsit1", 98),
+        SOUND("bgsit2", 98),
+        SOUND("sgtsit", 98),
+        SOUND("cacsit", 98),
+        SOUND("brssit", 94),
+        SOUND("cybsit", 92),
+        SOUND("spisit", 90),
+        SOUND("bspsit", 90),
+        SOUND("kntsit", 90),
+        SOUND("vilsit", 90),
+        SOUND("mansit", 90),
+        SOUND("pesit", 90),
+        SOUND("sklatk", 70),
+        SOUND("sgtatk", 70),
+        SOUND("skepch", 70),
+        SOUND("vilatk", 70),
+        SOUND("claw", 70),
+        SOUND("skeswg", 70),
+        SOUND("pldeth", 32),
+        SOUND("pdiehi", 32),
+        SOUND("podth1", 70),
+        SOUND("podth2", 70),
+        SOUND("podth3", 70),
+        SOUND("bgdth1", 70),
+        SOUND("bgdth2", 70),
+        SOUND("sgtdth", 70),
+        SOUND("cacdth", 70),
+        SOUND("skldth", 70),
+        SOUND("brsdth", 32),
+        SOUND("cybdth", 32),
+        SOUND("spidth", 32),
+        SOUND("bspdth", 32),
+        SOUND("vildth", 32),
+        SOUND("kntdth", 32),
+        SOUND("pedth", 32),
+        SOUND("skedth", 32),
+        SOUND("posact", 120),
+        SOUND("bgact", 120),
+        SOUND("dmact", 120),
+        SOUND("bspact", 100),
+        SOUND("bspwlk", 100),
+        SOUND("vilact", 100),
+        SOUND("noway", 78),
+        SOUND("barexp", 60),
+        SOUND("punch", 64),
+        SOUND("hoof", 70),
+        SOUND("metal", 70),
+        SOUND_LINK("chgun", 64, sfxenum_t.sfx_pistol, 150, 0),
+        SOUND("tink", 60),
+        SOUND("bdopn", 100),
+        SOUND("bdcls", 100),
+        SOUND("itmbk", 100),
+        SOUND("flame", 32),
+        SOUND("flamst", 32),
+        SOUND("getpow", 60),
+        SOUND("bospit", 70),
+        SOUND("boscub", 70),
+        SOUND("bossit", 70),
+        SOUND("bospn", 70),
+        SOUND("bosdth", 70),
+        SOUND("manatk", 70),
+        SOUND("mandth", 70),
+        SOUND("sssit", 70),
+        SOUND("ssdth", 70),
+        SOUND("keenpn", 70),
+        SOUND("keendt", 70),
+        SOUND("skeact", 70),
+        SOUND("skesit", 70),
+        SOUND("skeatk", 70),
+        SOUND("radio", 60),
+    };
+
+    /// <summary>The sound's lump name: <c>DS</c> + its (or its link's) name, upper case (i_sdlsound.c <c>GetSfxLumpName</c>).</summary>
+    public static string LumpName(sfxenum_t sfx)
+    {
+        sfxinfo_t info = S_sfx[(int)sfx];
+        if (info.link is sfxenum_t link)
+            info = S_sfx[(int)link];
+        return "DS" + info.name.ToUpperInvariant();
+    }
+}

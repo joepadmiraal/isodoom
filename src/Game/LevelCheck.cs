@@ -121,6 +121,9 @@ public partial class LevelCheck : Godot.Node
             CheckMenus(); // T7.2: the menus through the input glue
             CheckSettings(); // T7.3: every setting applies at once and survives a restart (through a file of its own)
             CheckWipes(); // T7.1a: the screen wipes' timing and M_Random
+            CheckSound(); // T7.7: the sound effects through the scene
+            // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
+            await _scene.AudioSettled();
 
             string map = RenderMapName();
             _scene.LoadMap(map);
