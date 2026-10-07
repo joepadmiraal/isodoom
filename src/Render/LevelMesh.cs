@@ -63,6 +63,12 @@ namespace IsoDoom.Render;
 /// in its chunk's solid surface twice more, after the walls, as the caps of
 /// the two centres (<see cref="KindCap"/>, T3.4a), collapsed by the vertex
 /// shader unless the floor is cut.</item>
+/// <item><b>Lids</b> (T6.13b): each lid sector's floor again (<see cref="KindLid"/>,
+/// <see cref="DoorLids"/>), which the vertex shader places at its lid height
+/// from the <c>sector_lids</c> data texture (the lowest neighbouring
+/// ceiling, as drawn) while the sector's ceiling is below it, showing its
+/// ceiling flat: the top of a closed door or a lintel. <see cref="SetDoorLids"/>
+/// turns them off. The caps also cap a lid's solid where it spans the cutoff.</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -86,8 +92,10 @@ public sealed class LevelMesh
     /// <see cref="KindCap"/> (T3.4a) is a copy of a floor that the vertex shader
     /// places at a cut centre's cutoff (<see cref="CutawayCap"/>; <c>CUSTOM0.w</c>
     /// is the centre, <see cref="CapPlayer"/> or <see cref="CapCursor"/>).
+    /// <see cref="KindLid"/> (T6.13b) is a copy of a lid sector's floor that the
+    /// vertex shader places at its lid height (<see cref="DoorLids"/>).
     /// </summary>
-    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4;
+    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -109,6 +117,10 @@ public sealed class LevelMesh
     private const float HeightRange = 32768f / MapUnitsPerMetre;
 
     private readonly Image _sectorImage;
+    private readonly Image _lidImage;
+    private readonly Color[] _lidTexels;
+    private readonly string?[] _lidFlats;
+    private Func<int, float>? _drawnCeiling; // a sector's ceiling as written to the sector data (T6.13b)
     private Image _infoImage = null!;
     private readonly Image _sideImage;
     private readonly int[] _textureSlot; // texture number → slot, -1 if unused
@@ -128,12 +140,13 @@ public sealed class LevelMesh
     private bool _infoDirty;
     private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
 
-    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, Textures textures, int[] textureSlot, List<string> slotNames,
+    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, Textures textures, int[] textureSlot, List<string> slotNames,
         TextureAtlas atlas, Image sectorImage)
     {
         Level = level;
         Walls = walls;
         Floors = floors;
+        Lids = lids;
         Pieces = WallPieces.Build(level, floors);
         foreach (WallSection s in walls.Sections)
         {
@@ -147,6 +160,9 @@ public sealed class LevelMesh
         _sectorImage = sectorImage;
         _sectorTexels = new Color[level.Sectors.Length];
         _sectorFlats = new string?[level.Sectors.Length];
+        _lidImage = Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgf);
+        _lidTexels = new Color[level.Sectors.Length];
+        _lidFlats = new string?[level.Sectors.Length];
         _sideImage = Image.CreateEmpty(DataWidth, Rows(3 * level.Sides.Length), false, Image.Format.Rgf);
         _sideNames = new string?[3 * level.Sides.Length];
         _sideSlots = new int[3 * level.Sides.Length];
@@ -166,6 +182,9 @@ public sealed class LevelMesh
     public WallSections Walls { get; }
     public FloorTriangles Floors { get; }
     public Textures Textures { get; }
+
+    /// <summary>The lid sectors (T6.13b), whose floor is in their chunk once more as the lid.</summary>
+    public DoorLids Lids { get; }
 
     /// <summary>The quads of every side (per seg, on the floor's corners, with each seg's fake contrast; T2.9): one wall quad per piece of each drawn section.</summary>
     public WallPieces Pieces { get; }
@@ -243,6 +262,12 @@ public sealed class LevelMesh
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
+    /// <summary>The lids' data texture (T6.13b, <c>sector_lids</c>, RG float, one texel per sector): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot.</summary>
+    public ImageTexture LidDataTexture { get; private set; } = null!;
+
+    /// <summary>Number of lid triangles (T6.13b).</summary>
+    public int LidTriangleCount { get; private set; }
+
     /// <summary>The per-side texture slots (T5.1, <c>side_textures</c>).</summary>
     public ImageTexture SideTexturesTexture { get; private set; } = null!;
 
@@ -278,6 +303,7 @@ public sealed class LevelMesh
     {
         WallSections walls = WallSections.Build(level, textures);
         FloorTriangles floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
+        DoorLids lids = DoorLids.Build(level, floors);
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
         var images = new List<IndexedImage>();
@@ -326,6 +352,16 @@ public sealed class LevelMesh
             images.Add(Flat.Load(wad, sector.FloorPic));
             names.Add(sector.FloorPic);
         }
+        // T6.13b: the lids show their sector's ceiling flat.
+        foreach (int i in lids.Sectors)
+        {
+            string pic = level.Sectors[i].CeilingPic;
+            if (flatSlot.ContainsKey(pic) || wad.Find(pic, LumpNamespace.Flats) is null)
+                continue;
+            flatSlot[pic] = images.Count;
+            images.Add(Flat.Load(wad, pic));
+            names.Add(pic);
+        }
         var runtimeFlats = new List<string>();
         foreach (IReadOnlyList<string> group in flatGroups ?? Array.Empty<IReadOnlyList<string>>())
         {
@@ -348,7 +384,7 @@ public sealed class LevelMesh
             throw new WadFormatException($"{level.Name}: nothing to draw");
         TextureAtlas atlas = TextureAtlas.Build(images);
 
-        var mesh = new LevelMesh(level, walls, floors, textures, textureSlot, names, atlas,
+        var mesh = new LevelMesh(level, walls, floors, lids, textures, textureSlot, names, atlas,
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
         foreach (var (name, slot) in flatSlot)
             mesh._flatSlot[name] = slot;
@@ -489,6 +525,16 @@ public sealed class LevelMesh
         SetParameter("cut_cursor", cursor is Vector3 c ? new Vector4(c.X, c.Y, c.Z, 1) : Vector4.Zero);
     }
 
+    /// <summary>Whether the lids are drawn (T6.13b), as last set (<see cref="SetDoorLids"/>; on until set).</summary>
+    public DoorLidMode LidMode { get; private set; } = DoorLidMode.On;
+
+    /// <summary>Turns the lids (T6.13b, <see cref="Lids"/>) on or off, and with them the caps of their solids.</summary>
+    public void SetDoorLids(DoorLidMode mode)
+    {
+        LidMode = mode;
+        SetParameter("lids", (int)mode);
+    }
+
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
     public SpriteSettings Sprites { get; private set; } = new();
 
@@ -566,6 +612,8 @@ public sealed class LevelMesh
             dirty |= WriteSector(s, heights);
         if (dirty)
             SectorDataTexture.Update(_sectorImage);
+        if (WriteLids())
+            LidDataTexture.Update(_lidImage);
         if (WriteSides())
             SideTexturesTexture.Update(_sideImage);
         if (_infoDirty)
@@ -615,6 +663,13 @@ public sealed class LevelMesh
         AtlasRect r = Atlas.Rects[toSlot];
         _infoImage.SetPixel(slot % DataWidth, slot / DataWidth, new Color(r.X, r.Y, r.Width, r.Height));
         _infoDirty = true;
+    }
+
+    /// <summary>The <c>sector_lids</c> texel of <paramref name="sector"/> as uploaded (T6.13b): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot.</summary>
+    public (float Height, int Slot) LidData(int sector)
+    {
+        Color c = _lidImage.GetPixel(sector % DataWidth, sector / DataWidth);
+        return (c.R, (int)MathF.Round(c.G));
     }
 
     /// <summary>The sector data texel of <paramref name="sector"/> as uploaded: floor, ceiling (map units), light, floor flat slot.</summary>
@@ -680,6 +735,34 @@ public sealed class LevelMesh
         _sectorTexels[i] = texel;
         _sectorImage.SetPixel(i % DataWidth, i / DataWidth, texel);
         return true;
+    }
+
+    // Every lid sector's lid height from its neighbours' ceilings as just written, and its
+    // ceiling flat's slot (T6.13b); returns whether one changed.
+    private bool WriteLids()
+    {
+        bool dirty = false;
+        foreach (int i in Lids.Sectors)
+        {
+            Sector s = Level.Sectors[i];
+            float slot = _lidTexels[i].G;
+            if (!ReferenceEquals(_lidFlats[i], s.CeilingPic))
+            {
+                int found = FlatSlot(s.CeilingPic);
+                if (found >= 0)
+                    slot = found;
+                else
+                    Miss($"ceiling flat {s.CeilingPic} (sector {i}'s lid)");
+                _lidFlats[i] = s.CeilingPic;
+            }
+            var texel = new Color(Lids.LidHeight(i, _drawnCeiling ??= n => _sectorTexels[n].G), slot, 0);
+            if (texel == _lidTexels[i])
+                continue;
+            _lidTexels[i] = texel;
+            _lidImage.SetPixel(i % DataWidth, i / DataWidth, texel);
+            dirty = true;
+        }
+        return dirty;
     }
 
     // Every side part's texture slot and every side's scroll (T5.7); returns whether one changed.
@@ -755,6 +838,10 @@ public sealed class LevelMesh
         foreach (Sector s in Level.Sectors)
             WriteSector(s, null);
         SectorDataTexture = ImageTexture.CreateFromImage(_sectorImage);
+        _lidImage.Fill(new Color(DoorLids.None, -1, 0));
+        Array.Fill(_lidTexels, new Color(DoorLids.None, -1, 0));
+        WriteLids();
+        LidDataTexture = ImageTexture.CreateFromImage(_lidImage);
         WriteSides();
         SideTexturesTexture = ImageTexture.CreateFromImage(_sideImage);
 
@@ -766,6 +853,7 @@ public sealed class LevelMesh
         SetParameter("atlas", AtlasTexture);
         SetParameter("texture_info", TextureInfoTexture);
         SetParameter("sector_data", SectorDataTexture);
+        SetParameter("sector_lids", LidDataTexture);
         SetParameter("side_textures", SideTexturesTexture);
         SetParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
         SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
@@ -783,6 +871,7 @@ public sealed class LevelMesh
         SetWallTiling(WallTextureTiling.Vanilla);
         SetMaskedBackFaces(MaskedBacks);
         SetCutaway(Cutaway);
+        SetDoorLids(LidMode);
         SetSprites(Sprites);
         SetCutawayCentres(null, null);
         SetFuzzPhase(0);
@@ -900,6 +989,18 @@ public sealed class LevelMesh
                     c.Add(ToGodot(v.X, v.Y, 0), new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)), c0, Vector4.Zero, Vector4.Zero);
                 foreach (int i in floor.Indices)
                     c.Indices.Add(first + i);
+            }
+
+            // T6.13b: a lid sector's floor once more, after its caps, as its lid.
+            if (Lids.Has(floor.Sector))
+            {
+                int first = c.Vertices.Count;
+                var c0 = new Vector4(KindLid, 0, floor.Sector, -1);
+                foreach (PolygonVertex v in floor.Vertices)
+                    c.Add(ToGodot(v.X, v.Y, 0), new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)), c0, Vector4.Zero, Vector4.Zero);
+                foreach (int i in floor.Indices)
+                    c.Indices.Add(first + i);
+                LidTriangleCount += floor.TriangleCount;
             }
         }
 

@@ -181,6 +181,7 @@ public partial class LevelCheck : Godot.Node
             LevelMesh m = _scene.Mesh!;
             int failures = _failures;
             CheckSectorData(m, map);
+            CheckLidData(m, map);
             slots += CheckSlots(m, map);
             CheckLightTables(m, map);
             CheckCursorGround(m, map);
@@ -234,6 +235,7 @@ public partial class LevelCheck : Godot.Node
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");
+        GD.Print($"Level check: lids (T6.13b): {_lidMoves} maps moved a lid sector's lowest neighbouring ceiling up and down: the lid texel follows");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
@@ -312,6 +314,31 @@ public partial class LevelCheck : Godot.Node
             if (gpu is not null && gpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth) != expected)
                 Fail($"{map}: sector {s.Index}: GPU data texel {gpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth)}, expected {expected}");
         }
+
+        // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere).
+        Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null;
+        foreach (Sector s in m.Level.Sectors)
+        {
+            float lowest = DoorLids.None;
+            if (m.Lids.Has(s.Index))
+            {
+                lowest = float.MaxValue;
+                foreach (Line line in s.Lines)
+                {
+                    if (line.BackSector is Sector back && line.FrontSector is Sector front && front != back)
+                        lowest = Math.Min(lowest, (float)((front == s ? back : front).CeilingHeight / 65536.0));
+                }
+            }
+            (float Height, int Slot) expected = (lowest, m.Lids.Has(s.Index) ? m.FlatSlot(s.CeilingPic) : -1);
+            if (m.LidData(s.Index) != expected)
+                Fail($"{map}: sector {s.Index}: lid texel {m.LidData(s.Index)}, expected {expected}");
+            if (lidGpu is not null)
+            {
+                Color g = lidGpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth);
+                if (g.R != expected.Height || (int)MathF.Round(g.G) != expected.Slot)
+                    Fail($"{map}: sector {s.Index}: GPU lid texel ({g.R}, {g.G}), expected {expected}");
+            }
+        }
     }
 
     /// <summary>Texture binding: each drawn section's and floor's slot, its <c>texture_info</c> texel and atlas pixels. Returns slots checked.</summary>
@@ -367,6 +394,11 @@ public partial class LevelCheck : Godot.Node
         }
         foreach (Sector s in m.Level.Sectors)
             CheckSlot((int)m.SectorData(s.Index).A, s.FloorPic, FlatImage(s.FloorPic), $"sector {s.Index} floor");
+        foreach (int i in m.Lids.Sectors)
+        {
+            Sector s = m.Level.Sectors[i];
+            CheckSlot(m.LidData(i).Slot, s.CeilingPic, FlatImage(s.CeilingPic), $"sector {i} lid (T6.13b)");
+        }
         // T5.1: the textures only reachable at run time (switch pairs) have slots of their own, and
         // every texture of a switch pair the level draws is in the atlas.
         var runtime = new HashSet<string>(m.RuntimeTextures, StringComparer.OrdinalIgnoreCase);
@@ -585,7 +617,8 @@ public partial class LevelCheck : Godot.Node
     /// same corners and columns, its sectors and plane references swapped
     /// (<see cref="LevelMesh.OtherSide"/>) and the other winding. After the
     /// walls, the floor again per cut centre as its cap (T3.4a,
-    /// <see cref="LevelMesh.KindCap"/>). Returns the wall quads checked.
+    /// <see cref="LevelMesh.KindCap"/>), and for a lid sector once more as its
+    /// lid (T6.13b, <see cref="LevelMesh.KindLid"/>). Returns the wall quads checked.
     /// </summary>
     private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
         List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
@@ -595,7 +628,8 @@ public partial class LevelCheck : Godot.Node
         int quadCount = 0;
         foreach ((WallSection s, _) in sectionsOfSurface)
             quadCount += m.Pieces.Of(s.Line, s.Side).Count;
-        int expectedVertices = 3 * floorVertices + 4 * quadCount; // the floor, the walls, two caps
+        int floorCopies = floor is not null && m.Lids.Has(sector) ? 4 : 3; // the floor, two caps, the lid (T6.13b)
+        int expectedVertices = floorCopies * floorVertices + 4 * quadCount; // the floor, the walls, the caps and lid
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
         Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         Vector2[] uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
@@ -603,7 +637,7 @@ public partial class LevelCheck : Godot.Node
         float[] c1 = arrays[(int)Mesh.ArrayType.Custom1].AsFloat32Array();
         float[] c2 = arrays[(int)Mesh.ArrayType.Custom2].AsFloat32Array();
         int[] idx = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
-        int expectedIndices = 3 * (floor?.Indices.Count ?? 0) + 6 * quadCount;
+        int expectedIndices = floorCopies * (floor?.Indices.Count ?? 0) + 6 * quadCount;
         if (pos.Length != expectedVertices || uv.Length != expectedVertices || c0.Length != 4 * expectedVertices
             || c1.Length != 4 * expectedVertices || c2.Length != 4 * expectedVertices || idx.Length != expectedIndices)
         {
@@ -635,17 +669,20 @@ public partial class LevelCheck : Godot.Node
                 }
             }
 
-            // T3.4a: the caps, the same triangles once per cut centre after the walls.
-            foreach (int centre in new[] { LevelMesh.CapPlayer, LevelMesh.CapCursor })
+            // T3.4a: the caps, the same triangles once per cut centre after the walls; T6.13b: then the lid.
+            for (int copy = 0; copy < floorCopies - 1; copy++)
             {
-                int vb = floorVertices * (1 + centre) + 4 * quadCount, ib = floor.Indices.Count * (1 + centre) + 6 * quadCount;
+                bool lid = copy == 2;
+                int centre = lid ? -1 : copy;
+                string name = lid ? "lid" : $"cap {centre}";
+                int vb = floorVertices * (1 + copy) + 4 * quadCount, ib = floor.Indices.Count * (1 + copy) + 6 * quadCount;
                 for (int i = 0; i < floorVertices; i++)
                 {
                     PolygonVertex v = floor.Vertices[i];
                     if (!Near(pos[vb + i], LevelMesh.ToGodot(v.X, v.Y, 0)) || !Near(uv[vb + i], new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)))
-                        || !Custom(c0, vb + i, LevelMesh.KindCap, flatSlot, sector, centre))
+                        || !Custom(c0, vb + i, lid ? LevelMesh.KindLid : LevelMesh.KindCap, flatSlot, sector, centre))
                     {
-                        Fail($"{what}: cap {centre} vertex {i} differs ({Custom4(c0, vb + i)})");
+                        Fail($"{what}: {name} vertex {i} differs ({Custom4(c0, vb + i)})");
                         break;
                     }
                 }
@@ -653,7 +690,7 @@ public partial class LevelCheck : Godot.Node
                 {
                     if (idx[ib + i] != vb + floor.Indices[i])
                     {
-                        Fail($"{what}: cap {centre} index {i} is {idx[ib + i]}, expected {vb + floor.Indices[i]}");
+                        Fail($"{what}: {name} index {i} is {idx[ib + i]}, expected {vb + floor.Indices[i]}");
                         break;
                     }
                 }
@@ -909,9 +946,12 @@ public partial class LevelCheck : Godot.Node
         _background = UnusedColor(Playpal);
         _scene.Environment.BackgroundColor = Color.Color8((byte)_background.R, (byte)_background.G, (byte)_background.B);
         _scene.Overlay.Visible = false;
-        // The level's own views are compared without the things (T3.5: SpriteChecks shows them).
+        // The level's own views are compared without the things (T3.5: SpriteChecks shows them),
+        // and without the lids (T6.13b: LidCheck shows them).
         if (_scene.Things is { } things)
             things.Visible = false;
+        DoorLidMode lidMode = m.LidMode;
+        m.SetDoorLids(DoorLidMode.Off);
 
         // Light (T2.8): the player-distance mapping (default) from player 1's
         // start; then top-down again with no diminishing (and extralight 1),
@@ -1000,6 +1040,9 @@ public partial class LevelCheck : Godot.Node
 
         await CutawayCheck(m);
 
+        await LidCheck(m);
+        m.SetDoorLids(DoorLidMode.Off);
+
         if (move is { } mv)
             await MoveCheck(m, mv.Lower, mv.Sector);
 
@@ -1021,6 +1064,7 @@ public partial class LevelCheck : Godot.Node
             Fail($"{map}: walls of both orientations (fake contrast -1 and +1) must be compared");
 
         _scene.Overlay.Visible = true;
+        m.SetDoorLids(lidMode);
         if (_scene.Things is { } shown)
             shown.Visible = true;
         _scene.Environment.BackgroundColor = oldBackground;

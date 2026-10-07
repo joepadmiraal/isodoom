@@ -60,6 +60,9 @@ namespace IsoDoom.Game;
 /// <c>--level-masked-back=mirror|off</c> (T3.1a, <see cref="MaskedBackFaces"/>:
 /// a masked middle on one side of a line only is drawn from behind too,
 /// mirrored, or as vanilla only from its own side; default mirror);
+/// <c>--level-door-lids=on|off</c> (T6.13b, <see cref="DoorLidMode"/>: a lid
+/// on the solid above doors, lintels and other thin low-ceilinged sectors, so
+/// a closed door reads as a block; default on);
 /// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
 /// player's weapon flash, <c>player_t.extralight</c>, lights the level as
 /// vanilla's lights the view; default on);
@@ -127,7 +130,8 @@ namespace IsoDoom.Game;
 /// the sprite wall pull (on, off), H the upright hiding (depth, upright), B
 /// the player's minimum light (on, off), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
-/// cap (dark, flat, off), V the things it cuts (decor, all, off), = and -
+/// cap (dark, flat, off), V the things it cuts (decor, all, off), J the door
+/// lids (on, off), = and -
 /// the HUD (T6.11: as vanilla's screen size keys, = bar, fullscreen HUD,
 /// none, - back), F1 shows the controls, F3 hides the overlay.
 /// </para>
@@ -144,6 +148,9 @@ public partial class LevelScene : Node3D
 
     /// <summary>Whether one-sided masked middles are drawn from behind (T3.1a, <c>--level-masked-back</c>, key M); applied to every level.</summary>
     public MaskedBackFaces MaskedBacks { get; private set; } = MaskedBackFaces.Mirrored;
+
+    /// <summary>Whether lids are drawn on doors and lintels (T6.13b, <c>--level-door-lids</c>, key J); applied to every level.</summary>
+    public DoorLidMode DoorLids { get; private set; } = DoorLidMode.On;
 
     /// <summary>
     /// T6.6: whether the console player's weapon flash (<see cref="player_t.extralight"/>,
@@ -319,7 +326,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   =/- HUD (bar, fullscreen, none)   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   =/- HUD (bar, fullscreen, none)   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -429,6 +436,13 @@ public partial class LevelScene : Node3D
                 _playerLight = SpriteOptions.PlayerLight;
             if (WadLocator.GetUserArg("--level-masked-back") is string backs)
                 MaskedBacks = ParseMaskedBacks(backs);
+            if (WadLocator.GetUserArg("--level-door-lids") is string lids)
+                DoorLids = lids switch
+                {
+                    "on" => DoorLidMode.On,
+                    "off" or "vanilla" => DoorLidMode.Off,
+                    _ => throw new ArgumentException($"--level-door-lids: \"{lids}\" (on or off)"),
+                };
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
                 WeaponLight = weaponLight switch
                 {
@@ -851,6 +865,10 @@ public partial class LevelScene : Node3D
             case Key.M:
                 MaskedBacks = MaskedBacks == MaskedBackFaces.Mirrored ? MaskedBackFaces.Off : MaskedBackFaces.Mirrored;
                 Mesh?.SetMaskedBackFaces(MaskedBacks);
+                break;
+            case Key.J:
+                DoorLids = DoorLids == DoorLidMode.On ? DoorLidMode.Off : DoorLidMode.On;
+                Mesh?.SetDoorLids(DoorLids);
                 break;
             case Key.Equal:
                 // T6.11: vanilla's screen size keys: = shows more of the view (bar, fullscreen HUD, none), - less.
@@ -1599,6 +1617,8 @@ public partial class LevelScene : Node3D
         }
         if (Mesh is { MaskedBacks: MaskedBackFaces.Off })
             text.Append("masked middles: one side only, as vanilla (M)\n");
+        if (Mesh is { LidMode: DoorLidMode.Off })
+            text.Append("door lids: off (J)\n");
         text.Append(_status);
         text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
         return text.ToString();
@@ -1787,6 +1807,7 @@ public partial class LevelScene : Node3D
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
         mesh.SetMaskedBackFaces(MaskedBacks);
+        mesh.SetDoorLids(DoorLids);
         if (WadLocator.GetUserArg("--level-light-near") is string near)
             mesh.SetLightNear(Math.Max(0, ParseFloat(near, "--level-light-near")));
         if (WadLocator.GetUserArg("--level-light-reference") is string reference)
@@ -1825,7 +1846,7 @@ public partial class LevelScene : Node3D
             Iso?.Snap(Player.Foot);
         else
             Iso?.Snap(Mesh.Bounds.GetCenter());
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {_drawn.Count} things, "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {mesh.Lids.Sectors.Count} lids, {_drawn.Count} things, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");

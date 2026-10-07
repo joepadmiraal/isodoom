@@ -38,7 +38,7 @@
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
-//              4 a floor's cutaway cap), side part (walls: the side_textures texel; floors 0,
+//              4 a floor's cutaway cap, 5 a lid), side part (walls: the side_textures texel; floors 0,
 //              their slot is the sector's), front sector, back sector (-1: none; for a cap
 //              its cut centre, 0 player, 1 cursor)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
@@ -90,7 +90,17 @@
 // were cut down to the stub its walls keep. It shows the sector's flat, lit as
 // the floor (flat) or CAP_DARKEN light levels darker (dark). It is collapsed
 // when the cutaway or the cap is off or the centre is inactive, and is cut by
-// the other centre as any floor.
+// the other centre as any floor. With the lids on, it also caps a lid's solid
+// (below): where the sector's ceiling is at or below the cutoff and its lid
+// above it, showing the lid's flat.
+//
+// Lids (T6.13b; IsoDoom.Render.DoorLids, `lids` 0 off, 1 on): kind 5 is a
+// copy of a lid sector's floor (a door, a lintel), placed at its lid height
+// from `sector_lids` (RG float, one texel per sector: R the lid height, the
+// lowest neighbouring ceiling as drawn, very low for none; G the ceiling
+// flat's texture slot) and drawn while the sector's ceiling is below it: the
+// top of the solid between the upper walls around it. It shows the ceiling
+// flat, lit as a floor of the sector, and is cut as any floor.
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -110,6 +120,7 @@ const int CAP_DARKEN = 4;
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
 uniform sampler2D sector_data : filter_nearest, repeat_disable;
+uniform sampler2D sector_lids : filter_nearest, repeat_disable;
 uniform sampler2D side_textures : filter_nearest, repeat_disable;
 // PLAYPAL: RGB8, 256 x palettes. COLORMAP: R8, 256 x maps (as palette.gdshader).
 uniform sampler2D playpal : filter_nearest, repeat_disable;
@@ -143,6 +154,8 @@ uniform float cut_height = 32.0;
 uniform float cut_anchor = 28.0;
 // The cap (T3.4a): 0 off, 1 flat, 2 dark.
 uniform int cut_cap = 0;
+// The lids (T6.13b): 0 off, 1 on.
+uniform int lids = 1;
 
 varying flat ivec4 v_rect;
 varying flat int v_kind;
@@ -178,36 +191,52 @@ void vertex() {
 		kind = 2;
 	}
 	v_cap = -1;
+	bool lid = kind == 5;
 	if (kind == 4) {
 		kind = 0;
 		v_cap = int(CUSTOM0.w);
+	} else if (lid) {
+		kind = 0;
 	}
 	int front_id = int(CUSTOM0.z);
 	int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
 	vec4 front = data_texel(sector_data, front_id);
 	vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
 	vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
+	// T6.13b: the sector's lid height and its flat's slot (kind 5, and a cap of a lid's solid).
+	vec2 lid_data = kind == 0 ? data_texel(sector_lids, front_id).rg : vec2(0.0);
+	int lid_slot = int(floor(lid_data.g + 0.5));
 	int slot = kind == 0 ? int(front.a + 0.5) : int(floor(side.r + 0.5));
+	bool collapse = false;
+	float z = front.r;
+	if (lid) {
+		z = lid_data.r;
+		slot = lid_slot;
+		collapse = lids == 0 || front.g >= z || slot < 0;
+	} else if (v_cap >= 0) {
+		vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+		z = c.z + cut_height;
+		// The floor's block, or else the solid above the sector up to its lid, spans the cutoff.
+		bool solid_lid = lids == 1 && front.g <= z && z < lid_data.r && lid_slot >= 0;
+		if (front.r <= z && solid_lid) {
+			slot = lid_slot;
+		}
+		// Nothing to cap: collapse the triangle.
+		collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || (front.r <= z && !solid_lid);
+	}
 	ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
 	v_rect = rect;
 	v_kind = kind;
 	int light = clamp(int(front.b + 0.5), 0, 255);
 	v_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
 
-	float z;
 	if (kind == 0) {
-		z = front.r;
 		v_texcoord = UV;
-		if (v_cap >= 0) {
-			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
-			z = c.z + cut_height;
-			if (cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || front.r <= z) {
-				// Nothing to cap: collapse the triangle.
-				VERTEX.xz = vec2(0.0);
-			}
-			if (cut_cap == 2) {
-				v_lightnum -= CAP_DARKEN;
-			}
+		if (collapse) {
+			VERTEX.xz = vec2(0.0);
+		}
+		if (v_cap >= 0 && cut_cap == 2) {
+			v_lightnum -= CAP_DARKEN;
 		}
 	} else {
 		// WallSection.Span: clipped to the front sector, empty when top <= bottom.
