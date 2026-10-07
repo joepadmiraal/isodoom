@@ -139,6 +139,18 @@ public sealed class sector_t
 
     public short tag { get => map.Tag; set => map.Tag = value; }
 
+    /// <summary>If == <see cref="World.validcount"/>, already checked (<see cref="World.P_RecursiveSound"/>; T6.2).</summary>
+    public int validcount;
+
+    /// <summary>
+    /// 0 = untraversed, 1, 2 = sndlines - 1: how many sound-blocking lines
+    /// the last noise crossed to get here, plus 1 (<see cref="World.P_RecursiveSound"/>).
+    /// </summary>
+    public int soundtraversed;
+
+    /// <summary>Thing that made a sound (or null): the monsters here wake to it (<see cref="World.P_NoiseAlert"/>).</summary>
+    public mobj_t? soundtarget;
+
     /// <summary>List of mobjs in sector (through <see cref="mobj_t.snext"/>).</summary>
     public mobj_t? thinglist;
 

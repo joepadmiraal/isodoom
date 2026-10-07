@@ -35,6 +35,7 @@ public sealed class TestMap
     private readonly List<(int Count, int First)> _subsectors = new();
     private readonly List<short> _nodes = new();
     private readonly List<short> _things = new();
+    private readonly List<(int S1, int S2)> _rejects = new();
 
     private TestMap()
     {
@@ -188,6 +189,13 @@ public sealed class TestMap
         return this;
     }
 
+    /// <summary>Sets the <c>REJECT</c> bit for (<paramref name="s1"/>, <paramref name="s2"/>): nothing in sector s1 sees into s2 (T6.2).</summary>
+    public TestMap Reject(int s1, int s2)
+    {
+        _rejects.Add((s1, s2));
+        return this;
+    }
+
     /// <summary>Adds a map thing (doomednum <paramref name="type"/>, all skills).</summary>
     public TestMap Thing(int x, int y, int type, int angle = 0, int flags = 7)
     {
@@ -271,7 +279,7 @@ public sealed class TestMap
             .Lump("SSECTORS", Shorts(ssectors))
             .Lump("NODES", Shorts(_nodes))
             .Lump("SECTORS", sectors)
-            .Lump("REJECT", new byte[(_sectors.Count * _sectors.Count + 7) / 8])
+            .Lump("REJECT", RejectLump())
             .Lump("BLOCKMAP", BlockmapLump())
             .Build();
     }
@@ -283,6 +291,17 @@ public sealed class TestMap
         var world = new World(new SpawnSettings(GameMode.shareware, skill), tweaks ?? Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         return world;
+    }
+
+    private byte[] RejectLump()
+    {
+        byte[] reject = new byte[(_sectors.Count * _sectors.Count + 7) / 8];
+        foreach (var (s1, s2) in _rejects)
+        {
+            int pnum = s1 * _sectors.Count + s2;
+            reject[pnum >> 3] |= (byte)(1 << (pnum & 7));
+        }
+        return reject;
     }
 
     private byte[] BlockmapLump()

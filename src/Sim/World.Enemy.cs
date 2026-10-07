@@ -1,8 +1,11 @@
+using IsoDoom.Map;
+
 namespace IsoDoom.Sim;
 
 // p_enemy.c (and p_pspr.c's A_BFGSpray): the action functions of the mobj
 // states, dispatched by P_SetMobjState (T6.1). Each is a stub until the task
-// named in its summary; the player's pain and death ones are ported (T5.8).
+// named in its summary; the player's pain and death ones are ported (T5.8),
+// and so are the sound alert and P_LookForPlayers (T6.2; sight in World.Sight.cs).
 public sealed partial class World
 {
     /// <summary>
@@ -173,6 +176,131 @@ public sealed partial class World
                 break;
             default:
                 throw new System.InvalidOperationException($"{action} is not a mobj action.");
+        }
+    }
+
+    // ---- Enemy thinking: sound alert and looking for players (T6.2) ----
+
+    /// <summary>p_local.h <c>MELEERANGE</c>: a monster this close reacts to a player behind its back (fixed_t).</summary>
+    public const int MELEERANGE = 64 * Fixed.FRACUNIT;
+
+    /// <summary>p_enemy.c <c>soundtarget</c>: the thing whose noise <see cref="P_RecursiveSound"/> floods the sectors with.</summary>
+    public mobj_t? soundtarget;
+
+    /// <summary>
+    /// p_enemy.c <c>P_RecursiveSound</c>: the noise reaches
+    /// <paramref name="sec"/> (its <see cref="sector_t.soundtarget"/>) after
+    /// crossing <paramref name="soundblocks"/> sound-blocking lines, and
+    /// spreads through every open two-sided line; a second
+    /// <see cref="Line.ML_SOUNDBLOCK"/> line stops it. A sector already
+    /// reached in this flood (<see cref="validcount"/>) is flooded again only
+    /// when this path crossed fewer blocking lines.
+    /// </summary>
+    public void P_RecursiveSound(sector_t sec, int soundblocks)
+    {
+        // wake up all monsters in this sector
+        if (sec.validcount == validcount
+            && sec.soundtraversed <= soundblocks + 1)
+        {
+            return; // already flooded
+        }
+
+        sec.validcount = validcount;
+        sec.soundtraversed = soundblocks + 1;
+        sec.soundtarget = soundtarget;
+
+        for (int i = 0; i < sec.linecount; i++)
+        {
+            line_t check = sec.lines[i];
+            if ((check.flags & Line.ML_TWOSIDED) == 0)
+                continue;
+
+            P_LineOpening(check);
+
+            if (openrange <= 0)
+                continue; // closed door
+
+            sector_t other;
+            if (sides[check.sidenum[0]].sector == sec)
+                other = sides[check.sidenum[1]].sector;
+            else
+                other = sides[check.sidenum[0]].sector;
+
+            if ((check.flags & Line.ML_SOUNDBLOCK) != 0)
+            {
+                if (soundblocks == 0)
+                    P_RecursiveSound(other, 1);
+            }
+            else
+            {
+                P_RecursiveSound(other, soundblocks);
+            }
+        }
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>P_NoiseAlert</c>: if a monster yells at a player, it will
+    /// alert other monsters to the player: the noise <paramref name="emmiter"/>
+    /// makes floods out from its sector (<see cref="P_RecursiveSound"/>),
+    /// leaving <paramref name="target"/> as each reached sector's
+    /// <see cref="sector_t.soundtarget"/>. Uses <see cref="validcount"/>.
+    /// </summary>
+    public void P_NoiseAlert(mobj_t target, mobj_t emmiter)
+    {
+        soundtarget = target;
+        validcount++;
+        P_RecursiveSound(emmiter.subsector.sector, 0);
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>P_LookForPlayers</c>: true when <paramref name="actor"/>
+    /// sees a live player (<see cref="P_CheckSight"/>), who becomes its
+    /// <see cref="mobj_t.target"/>. Unless <paramref name="allaround"/>, a
+    /// player behind its back (more than 90° off its angle) counts only
+    /// within <see cref="MELEERANGE"/>. Looks at no more than two players a
+    /// call, from <see cref="mobj_t.lastlook"/> on (vanilla's loop, kept:
+    /// with one player in the game it checks that player twice).
+    /// </summary>
+    public bool P_LookForPlayers(mobj_t actor, bool allaround)
+    {
+        int c = 0;
+        int stop = (actor.lastlook - 1) & 3;
+
+        for (; ; actor.lastlook = (actor.lastlook + 1) & 3)
+        {
+            if (!playeringame[actor.lastlook])
+                continue;
+
+            if (c++ == 2
+                || actor.lastlook == stop)
+            {
+                // done looking
+                return false;
+            }
+
+            player_t player = players[actor.lastlook];
+
+            if (player.health <= 0)
+                continue; // dead
+
+            if (!P_CheckSight(actor, player.mo!))
+                continue; // out of sight
+
+            if (!allaround)
+            {
+                uint an = unchecked(Tables.R_PointToAngle2(actor.x, actor.y, player.mo!.x, player.mo.y) - actor.angle);
+
+                if (an > Tables.ANG90 && an < Tables.ANG270)
+                {
+                    int dist = P_AproxDistance(player.mo.x - actor.x, player.mo.y - actor.y);
+                    // if real close, react anyway
+                    if (dist > MELEERANGE)
+                        continue; // behind back
+                }
+            }
+
+            actor.target = player.mo;
+            return true;
         }
     }
 
