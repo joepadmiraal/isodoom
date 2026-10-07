@@ -196,8 +196,10 @@ public class GameFlowTests
         Assert.Equal((0, 0, 1), (world.wminfo.epsd, world.wminfo.last, world.wminfo.next));
         Assert.Equal(5, world.wminfo.plyr[0].stime);
         Tics(flow, 100, Use); // held: no skip
-        Tics(flow, 100);
         Assert.Equal(WiStuff.stateenum_t.StatCount, flow.Wi.state);
+        Assert.NotEqual(10, flow.Wi.sp_state);
+        Tics(flow, 200);
+        Assert.Equal((WiStuff.stateenum_t.StatCount, 10), (flow.Wi.state, flow.Wi.sp_state)); // counted out
         Assert.Equal(5, host.LevelTics); // the level holds still
 
         flow.G_Ticker(Use); // a press: the next location
@@ -230,7 +232,7 @@ public class GameFlowTests
             flow.G_Ticker(cmds[tics % 2]);
             Assert.True(++tics < 100);
         }
-        Assert.Equal(1 + 3 + 10, tics); // the exit's tic, press, release, press, then NoState's 10
+        Assert.Equal(1 + 5 + 10, tics); // the exit's tic, presses (all the stats, the next location, the end) and releases, then NoState's 10
     }
 
     [Fact]
@@ -299,6 +301,8 @@ public class GameFlowTests
             world.G_ExitLevel();
         flow.G_Ticker(None);
         Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
+        flow.G_Ticker(Use); // all the stats at once
+        flow.G_Ticker(None);
         flow.G_Ticker(Use); // Doom II: straight to NoState
         Assert.Equal(WiStuff.stateenum_t.NoState, flow.Wi.state);
         Tics(flow, 10);

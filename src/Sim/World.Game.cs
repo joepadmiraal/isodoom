@@ -37,7 +37,6 @@ public struct wbplayerstruct_t
 /// <summary>
 /// d_player.h <c>wbstartstruct_t</c>: what the intermission (M7) shows and
 /// where the game goes next, filled by <see cref="World.G_DoCompleted"/>.
-/// The par time waits for M7.
 /// </summary>
 public sealed class wbstartstruct_t
 {
@@ -51,6 +50,8 @@ public sealed class wbstartstruct_t
     public int maxitems;
     public int maxsecret;
     public int maxfrags;
+    /// <summary>The par time, in tics (T7.4: <see cref="World.pars"/>, <see cref="World.cpars"/>).</summary>
+    public int partime;
     /// <summary>Index of this player in game.</summary>
     public int pnum;
     public readonly wbplayerstruct_t[] plyr = new wbplayerstruct_t[World.MAXPLAYERS];
@@ -84,6 +85,24 @@ public sealed partial class World
     /// levels has no secret exit). The game sets it from the WAD; true by default.
     /// </summary>
     public bool map31exists = true;
+
+    /// <summary>g_game.c <c>pars</c>: the par times of episodes 1–3 in seconds, by episode and map (T7.4).</summary>
+    public static readonly int[,] pars =
+    {
+        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        { 0, 30, 75, 120, 90, 165, 180, 180, 30, 165 },
+        { 0, 90, 90, 90, 120, 90, 360, 240, 30, 170 },
+        { 0, 90, 45, 90, 150, 90, 90, 165, 30, 135 },
+    };
+
+    /// <summary>g_game.c <c>cpars</c>: DOOM II par times in seconds, by map less 1 (T7.4).</summary>
+    public static readonly int[] cpars =
+    {
+        30, 90, 120, 120, 90, 150, 120, 120, 270, 90, //  1-10
+        210, 150, 150, 150, 210, 150, 420, 150, 210, 150, // 11-20
+        240, 150, 180, 150, 150, 300, 330, 420, 300, 180, // 21-30
+        120, 30, // 31-32
+    };
 
     /// <summary>g_game.c <c>G_ExitLevel</c>.</summary>
     public void G_ExitLevel()
@@ -204,7 +223,17 @@ public sealed partial class World
         wminfo.maxitems = totalitems;
         wminfo.maxsecret = totalsecret;
         wminfo.maxfrags = 0;
-        // wminfo.partime: the par tables (M7)
+
+        // Set par time. Doom episode 4 doesn't have a par time, so this
+        // overflows into the cpars array. It's necessary to emulate this
+        // for statcheck regression testing.
+        // (Not vanilla: a map past the tables, which vanilla reads out of bounds, has no par.)
+        if (gamemode == GameMode.commercial)
+            wminfo.partime = SimInfo.TICRATE * (gamemap - 1 is >= 0 and < 32 ? cpars[gamemap - 1] : 0);
+        else if (gameepisode < 4)
+            wminfo.partime = SimInfo.TICRATE * (gameepisode >= 0 && gamemap is >= 0 and < 10 ? pars[gameepisode, gamemap] : 0);
+        else
+            wminfo.partime = SimInfo.TICRATE * (gamemap is >= 0 and < 32 ? cpars[gamemap] : 0);
         wminfo.pnum = consoleplayer;
 
         for (int i = 0; i < MAXPLAYERS; i++)

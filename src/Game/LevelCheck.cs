@@ -232,7 +232,7 @@ public partial class LevelCheck : Godot.Node
             + $"{_translatedSlots} slots drawn as the sim's translation says, {_scrollingWalls} scrolling walls (special 48) drawn scrolled as far as the sim moved them; "
             + $"{_scrollChecks} maps scrolled a wall's texture through side_textures and back");
         GD.Print($"Level check: exits (T5.8): {_exitMaps} maps left through a use exit: {_exitsToNext} went on to the next map in the same world "
-            + $"(health kept, keys taken) through the intermission (T7.1: its stats, then use; at most {_intermissionTics} tics; {_textScreens} with Doom II's text screen after it), "
+            + $"(health kept, keys taken) through the intermission (T7.1, T7.4: vanilla's par; counting, use: all the stats, use: the next location, use: the end; at most {_intermissionTics} tics; {_textScreens} with Doom II's text screen after it), "
             + $"{_exitsEnded} stopped (the finale, or no next map: the title loop); messages, health and sounds shown in the overlay");
         if (_exitMaps == 0)
             Fail("no map has a use exit (special 11) the player could use");

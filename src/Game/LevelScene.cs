@@ -26,7 +26,7 @@ namespace IsoDoom.Game;
 /// states and actions and d_main.c's title loop) runs every tic, with this
 /// scene as its <see cref="IGameHost"/>: the title loop's pages, a new game
 /// (fire, use, Enter, Escape or the pad's Start on the title until the menus,
-/// T7.2), each level, the (placeholder) intermission between levels and the
+/// T7.2), each level, the intermission between levels (T7.4) and the
 /// (placeholder) finale, drawn over the level by <see cref="Screens"/>; the
 /// pause key (Pause, the pad's Back) pauses through the <c>ticcmd</c>
 /// (vanilla's <c>BTS_PAUSE</c>), and the window's focus loss pauses too.

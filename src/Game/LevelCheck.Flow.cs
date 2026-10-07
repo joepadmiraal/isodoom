@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Sim;
@@ -112,7 +113,8 @@ public partial class LevelCheck
 
     /// <summary>
     /// T7.1, with a real renderer: the screens node shows the title loop's
-    /// first page centred over a black backdrop, and the pause graphic over
+    /// first page centred over a black backdrop, the intermission (T7.4: its
+    /// stats counting, then its next location) and the pause graphic over
     /// the level: each screen pixel's centre must be its index's colour in
     /// palette 0, the backdrop black around the page.
     /// </summary>
@@ -121,74 +123,115 @@ public partial class LevelCheck
         GameFlow flow = _scene.Flow;
         bool overlay = _scene.Overlay.Visible;
         _scene.Overlay.Visible = false;
-        int compared = 0;
-        foreach (bool title in new[] { true, false })
+        foreach (string kind in new[] { "title", "intermission", "pause" })
         {
+            bool title = kind == "title";
+            string what;
             if (title)
             {
                 flow.D_StartTitle(null);
                 _scene.Tic(new ticcmd_t());
+                what = $"the title loop's {flow.pagename}";
+            }
+            else if (kind == "intermission")
+            {
+                // T7.4: the intermission's stats counting (a new game's first map left at once), then its next location
+                _scene.StartNewGame();
+                flow.G_DoGameActions();
+                if (_scene.World is not { } world)
+                {
+                    Fail("the intermission: no new game");
+                    continue;
+                }
+                world.G_ExitLevel();
+                for (int t = 0; t < 50; t++)
+                    _scene.Tic(new ticcmd_t());
+                what = $"the intermission ({flow.StateText()})";
             }
             else
             {
+                if (flow.gamestate == gamestate_t.GS_INTERMISSION)
+                {
+                    // the intermission's next location (fire: all the stats, fire again: the next location), compared too
+                    _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
+                    _scene.Tic(new ticcmd_t());
+                    _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
+                    _scene.Tic(new ticcmd_t());
+                    _scene.UpdateScreens();
+                    // (a WAD without the graphics, the synthetic IWAD, may draw nothing here: its font lacks the stand-ins' letters)
+                    if (_scene.Screens.Screen.Opaque.Any(o => o != 0) || _scene.Wad?.W_CheckNumForName("WIMAP0") >= 0)
+                        await CompareScreen($"the intermission ({flow.StateText()})", false);
+                }
                 _scene.StartNewGame();
                 flow.G_DoGameActions();
                 _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE });
+                what = "the pause graphic over the level";
             }
             _scene.UpdateScreens();
-            string what = title ? $"the title loop's {flow.pagename}" : "the pause graphic over the level";
-            if (!_scene.Screens.Visible)
-            {
-                Fail($"{what}: the screens node is hidden");
-                continue;
-            }
-            if (await Capture(what) is not byte[] frame)
-                continue;
-            Vector2I size = ViewSize();
-            HudScreen screen = _scene.Screens.Screen;
-            int scale = _scene.Screens.PixelScale;
-            Vector2 at = _scene.Screens.Rect.Position;
-            byte[] pal = Playpal.GetPalette(0).ToArray();
-            int bad = 0, here = 0;
-            string firstBad = "";
-            for (int y = 0; y < screen.Height; y++)
-            {
-                for (int x = 0; x < screen.Width; x++)
-                {
-                    int k = y * screen.Width + x;
-                    if (screen.Opaque[k] == 0)
-                        continue; // the backdrop (black) or the level shows
-                    int sx = (int)at.X + x * scale + scale / 2, sy = (int)at.Y + y * scale + scale / 2;
-                    if (sx < 0 || sy < 0 || sx >= size.X || sy >= size.Y)
-                        continue;
-                    int i = (sy * size.X + sx) * 4;
-                    (int r, int g, int b) = (pal[screen.Pixels[k] * 3], pal[screen.Pixels[k] * 3 + 1], pal[screen.Pixels[k] * 3 + 2]);
-                    here++;
-                    if (frame[i] == r && frame[i + 1] == g && frame[i + 2] == b)
-                        continue;
-                    if (bad++ == 0)
-                        firstBad = $"pixel ({x}, {y}) at ({sx}, {sy}): drawn ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}), expected ({r}, {g}, {b})";
-                }
-            }
-            if (title && at.Y > 0)
-            {
-                // the backdrop above the page
-                int i = ((int)at.Y / 2 * size.X + size.X / 2) * 4;
-                if (frame[i] != 0 || frame[i + 1] != 0 || frame[i + 2] != 0)
-                    Fail($"{what}: the backdrop above the page is ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}), not black");
-            }
-            if (here == 0)
-                Fail($"{what}: nothing drawn");
-            if (bad > 0)
-                Fail($"{what}: {bad} of {here} pixels differ; first: {firstBad}");
-            compared += here;
+            await CompareScreen(what, title);
         }
         _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE }); // unpause
         _scene.UpdateScreens();
         if (_scene.Screens.Visible)
             Fail("the screens node still shows over the unpaused level");
         _scene.Overlay.Visible = overlay;
-        _pixels += compared;
-        GD.Print($"Level check: screens (T7.1): the title page and the pause graphic at scale {_scene.Screens.PixelScale}, {compared} pixels compared");
+        GD.Print($"Level check: screens (T7.1, T7.4): the title page, the intermission (counting, the next location) and the pause graphic at scale {_scene.Screens.PixelScale}, {_screenPixels} pixels compared");
+    }
+
+    private int _screenPixels;
+
+    /// <summary>
+    /// The screens node's frame against its 320×200 screen (<see cref="CheckScreensDrawn"/>):
+    /// each drawn pixel's centre must be its index's colour in palette 0;
+    /// with <paramref name="title"/>, the backdrop above the page black.
+    /// </summary>
+    private async Task CompareScreen(string what, bool title)
+    {
+        if (!_scene.Screens.Visible)
+        {
+            Fail($"{what}: the screens node is hidden");
+            return;
+        }
+        if (await Capture(what) is not byte[] frame)
+            return;
+        Vector2I size = ViewSize();
+        HudScreen screen = _scene.Screens.Screen;
+        int scale = _scene.Screens.PixelScale;
+        Vector2 at = _scene.Screens.Rect.Position;
+        byte[] pal = Playpal.GetPalette(0).ToArray();
+        int bad = 0, here = 0;
+        string firstBad = "";
+        for (int y = 0; y < screen.Height; y++)
+        {
+            for (int x = 0; x < screen.Width; x++)
+            {
+                int k = y * screen.Width + x;
+                if (screen.Opaque[k] == 0)
+                    continue; // the backdrop (black) or the level shows
+                int sx = (int)at.X + x * scale + scale / 2, sy = (int)at.Y + y * scale + scale / 2;
+                if (sx < 0 || sy < 0 || sx >= size.X || sy >= size.Y)
+                    continue;
+                int i = (sy * size.X + sx) * 4;
+                (int r, int g, int b) = (pal[screen.Pixels[k] * 3], pal[screen.Pixels[k] * 3 + 1], pal[screen.Pixels[k] * 3 + 2]);
+                here++;
+                if (frame[i] == r && frame[i + 1] == g && frame[i + 2] == b)
+                    continue;
+                if (bad++ == 0)
+                    firstBad = $"pixel ({x}, {y}) at ({sx}, {sy}): drawn ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}), expected ({r}, {g}, {b})";
+            }
+        }
+        if (title && at.Y > 0)
+        {
+            // the backdrop above the page
+            int i = ((int)at.Y / 2 * size.X + size.X / 2) * 4;
+            if (frame[i] != 0 || frame[i + 1] != 0 || frame[i + 2] != 0)
+                Fail($"{what}: the backdrop above the page is ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}), not black");
+        }
+        if (here == 0)
+            Fail($"{what}: nothing drawn");
+        if (bad > 0)
+            Fail($"{what}: {bad} of {here} pixels differ; first: {firstBad}");
+        _screenPixels += here;
+        _pixels += here;
     }
 }

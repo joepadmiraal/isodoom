@@ -64,8 +64,8 @@ public interface IGameHost
 /// <see cref="D_DoAdvanceDemo"/>, <see cref="D_PageTicker"/>) without its
 /// demos (SPEC §7.6). The sim's part of the flow is the world's
 /// (<c>World.Game.cs</c>, T5.8); the level itself is the host's
-/// (<see cref="IGameHost"/>). The intermission (<see cref="WiStuff"/>) and
-/// the finale (<see cref="FFinale"/>) are placeholders until T7.4 and T7.5.
+/// (<see cref="IGameHost"/>). The intermission is <see cref="WiStuff"/>
+/// (T7.4); the finale (<see cref="FFinale"/>) is a placeholder until T7.5.
 /// </summary>
 public sealed class GameFlow
 {
@@ -144,7 +144,7 @@ public sealed class GameFlow
     /// <summary>d_main.c <c>pagename</c>: the page the title loop shows (<c>TITLEPIC</c>, <c>CREDIT</c>, <c>HELP2</c>).</summary>
     public string pagename = "TITLEPIC";
 
-    /// <summary>The intermission (wi_stuff.c; a placeholder until T7.4).</summary>
+    /// <summary>The intermission (wi_stuff.c, T7.4).</summary>
     public WiStuff Wi { get; }
 
     /// <summary>The finale (f_finale.c; a placeholder until T7.5).</summary>
@@ -218,6 +218,12 @@ public sealed class GameFlow
     /// </summary>
     public bool MenuHolds(World world) =>
         !world.netgame && Menu.menuactive && world.players[world.consoleplayer].viewz != 1;
+
+    /// <summary>
+    /// s_sound.c <c>S_StartSound(NULL, …)</c> for the game's screens (the
+    /// intermission's, T7.4): to the menus' host, whose UI sounds play from T7.7.
+    /// </summary>
+    public void S_StartSound(sfxenum_t sfx) => Menu.Host?.StartSound(sfx);
 
     /// <summary>g_game.c <c>savegameslot</c> and <c>savedescription</c>: the save the menu asked for last (saved from T7.6).</summary>
     public int savegameslot = -1;
@@ -547,7 +553,7 @@ public sealed class GameFlow
     public string StateText() => gamestate switch
     {
         gamestate_t.GS_LEVEL => "level",
-        gamestate_t.GS_INTERMISSION => $"intermission ({Wi.state}, {Wi.cnt} tics)",
+        gamestate_t.GS_INTERMISSION => $"intermission ({Wi.StateText()})",
         gamestate_t.GS_FINALE => $"finale (stage {Finale.finalestage}, tic {Finale.finalecount})",
         _ => $"title loop: {pagename} ({pagetic} tics)",
     } + (paused ? ", paused" : "");

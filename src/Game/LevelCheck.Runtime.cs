@@ -6,6 +6,7 @@ using Godot;
 using IsoDoom.Map;
 using IsoDoom.Render;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Game;
@@ -159,13 +160,29 @@ public partial class LevelCheck
                 Fail($"{map}: after the exit the game is at {_scene.Flow.StateText()} on {_scene.Mesh?.Level.Name}, not the intermission's stats on {map}");
                 return;
             }
+            // T7.4: the par from vanilla's tables
+            GameFlow flow = _scene.Flow;
+            int par = flow.gamemode == GameMode.commercial ? (world.gamemap is >= 1 and <= 32 ? World.cpars[world.gamemap - 1] : 0)
+                : world.gameepisode < 4 ? (world.gamemap is >= 0 and < 10 ? World.pars[world.gameepisode, world.gamemap] : 0)
+                : World.cpars[world.gamemap];
+            if (world.wminfo.partime != par * SimInfo.TICRATE)
+                Fail($"{map}: the intermission's par is {world.wminfo.partime} tics, vanilla's {par} s");
             int intermission = 0;
             bool text = false;
+            var stages = new List<string>();
             for (; intermission < 400 && _scene.GameState is gamestate_t.GS_INTERMISSION or gamestate_t.GS_FINALE; intermission++)
             {
                 text |= _scene.GameState == gamestate_t.GS_FINALE; // Doom II's text screens (G_WorldDone's F_StartFinale)
                 _scene.Tic(new ticcmd_t { buttons = intermission % 2 == 1 ? buttoncode_t.BT_USE : (byte)0 });
+                // T7.4: a press shows the stats whole, the next press the next location (Doom II: the end), the next the end
+                string stage = _scene.GameState != gamestate_t.GS_INTERMISSION ? "" : flow.Wi.state == WiStuff.stateenum_t.StatCount
+                    ? flow.Wi.sp_state == 10 ? "stats" : "counting" : flow.Wi.state.ToString();
+                if (stage != "" && (stages.Count == 0 || stages[^1] != stage))
+                    stages.Add(stage);
             }
+            string expectedStages = flow.gamemode == GameMode.commercial ? "counting stats NoState" : "counting stats ShowNextLoc NoState";
+            if (string.Join(' ', stages) != expectedStages)
+                Fail($"{map}: the intermission went through {string.Join(", ", stages)}, expected {expectedStages}");
             if (text)
                 _textScreens++;
             else

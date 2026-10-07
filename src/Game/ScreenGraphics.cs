@@ -132,9 +132,6 @@ public sealed class ScreenGraphics
         }
     }
 
-    /// <summary><paramref name="text"/> ending at <paramref name="right"/>.</summary>
-    public void DrawTextRight(HudScreen screen, int right, int y, string text) => DrawText(screen, right - TextWidth(text), y, text);
-
     /// <summary>Patch <paramref name="patch"/> at <paramref name="x"/>, <paramref name="y"/>, or <paramref name="text"/> there without it.</summary>
     public void DrawLabel(HudScreen screen, int x, int y, string patch, string text)
     {
@@ -142,21 +139,5 @@ public sealed class ScreenGraphics
             screen.V_DrawPatch(x, y, p);
         else
             DrawText(screen, x, y, text);
-    }
-
-    /// <summary>
-    /// Patch <paramref name="patch"/> centred across the screen with its top
-    /// at <paramref name="y"/> (wi_stuff.c's level names), or
-    /// <paramref name="text"/> without it; returns the row below it.
-    /// </summary>
-    public int DrawCentred(HudScreen screen, int y, string patch, string text)
-    {
-        if (Patch(patch) is { } p)
-        {
-            screen.V_DrawPatch((HudScreen.SCREENWIDTH - p.Width) / 2 + p.LeftOffset, y + p.TopOffset, p);
-            return y + 5 * p.Height / 4;
-        }
-        DrawText(screen, (HudScreen.SCREENWIDTH - TextWidth(text)) / 2, y, text);
-        return y + 5 * FontHeight / 4;
     }
 }

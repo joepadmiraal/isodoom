@@ -92,6 +92,7 @@
 #include "st_lib.h"
 #include "hu_stuff.h"
 #include "hu_lib.h"
+#include "wi_stuff.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -425,6 +426,93 @@ void dump_posttic(void)
     extern gameaction_t gameaction;
     fprintf(ticfile, "%d\n", gameaction == ga_completed ? secretexit ? 2 : 1 : 0);
     fflush(ticfile);
+}
+
+// The intermission (T7.4): with $DUMP_WI set (and $DUMP_TICS), called by the
+// patched g_game.c after WI_Ticker in every G_Ticker of the intermission;
+// appends a line per tic to the file $DUMP_WI (its first line, at the
+// intermission's first tic: "presses $DUMP_WI_PRESSES" (the route tool's
+// schedule, echoed), then "wminfo EPSD DIDSECRET LAST NEXT MAXKILLS MAXITEMS
+// MAXSECRET PARTIME SKILLS SITEMS SSECRET STIME" as WI_Start left them): BCNT
+// STATE HASH RNDINDEX SOUNDS, STATE wi_stuff.c's
+// state:sp_state:cnt_kills:cnt_items:cnt_secret:cnt_time:cnt_par:cnt_pause:cnt:acceleratestage:snl_pointeron:ANIMS
+// (ANIMS the animations' ctr joined by dots, - for none; ref.patch's
+// WI_dumpState, which writes BCNT too), HASH the 32-bit FNV-1a of WI_Drawer's 320x200 screen drawn
+// now (twice, over two clear colours: 256 where nothing is drawn; word-wise,
+// 8 hex digits), RNDINDEX M_Random's index, SOUNDS the tic's S_StartSound calls
+// as for the route dump. With $DUMP_WI_DIR and $DUMP_WI_TICS ("N,M,..." or
+// "all", intermission tics: bcnt), the screen of those tics as DIR/wiN.ppm
+// (320x200, palette 0, as D_Display sets it off the level). It exits once the
+// intermission ends (G_WorldDone: ga_worlddone).
+void dump_witic(void)
+{
+    static FILE *wifile;
+    char *path = getenv("DUMP_WI");
+    if (!path || !*path)
+        return;
+    extern int rndindex;
+    extern wbstartstruct_t wminfo;
+    extern gameaction_t gameaction;
+    extern void WI_dumpState(char *, int);
+    if (!wifile)
+    {
+        if (!(wifile = fopen(path, "w")))
+        {
+            perror(path);
+            exit(1);
+        }
+        char *presses = getenv("DUMP_WI_PRESSES");
+        wbplayerstruct_t *p = &wminfo.plyr[consoleplayer];
+        fprintf(wifile, "presses %s\nwminfo %d %d %d %d %d %d %d %d %d %d %d %d\n", presses && *presses ? presses : "-",
+                wminfo.epsd, wminfo.didsecret, wminfo.last, wminfo.next, wminfo.maxkills, wminfo.maxitems, wminfo.maxsecret,
+                wminfo.partime, p->skills, p->sitems, p->ssecret, p->stime);
+    }
+    static byte wi[2][SCREENWIDTH * SCREENHEIGHT];
+    for (int k = 0; k < 2; k++)
+    {
+        memset(I_VideoBuffer, k ? 4 : 0, sizeof wi[k]);
+        WI_Drawer();
+        memcpy(wi[k], I_VideoBuffer, sizeof wi[k]);
+    }
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
+        hash = (hash ^ (wi[0][i] == wi[1][i] ? wi[0][i] : 256u)) * 16777619u;
+    char state[512];
+    WI_dumpState(state, sizeof state);
+    fprintf(wifile, "%s %08x %d %s\n", state, hash, rndindex, soundslen ? sounds : "-");
+    soundslen = 0;
+    char *dir = getenv("DUMP_WI_DIR"), *tics = getenv("DUMP_WI_TICS");
+    if (dir && tics)
+    {
+        char want[16];
+        snprintf(want, sizeof want, "%d", atoi(state)); // bcnt
+        int hit = !strcmp(tics, "all");
+        for (char *t = strtok(strdup(tics), ","); t && !hit; t = strtok(NULL, ","))
+            hit = !strcmp(t, want);
+        if (hit)
+        {
+            char out[1024];
+            snprintf(out, sizeof out, "%s/wi%s.ppm", dir, want);
+            FILE *f = fopen(out, "wb");
+            if (!f)
+            {
+                perror(out);
+                exit(1);
+            }
+            byte *pal = (byte *)W_CacheLumpName("PLAYPAL", PU_CACHE);
+            static const byte none[3] = { 0, 255, 255 };
+            fprintf(f, "P6\n%d %d\n255\n", SCREENWIDTH, SCREENHEIGHT);
+            for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
+                fwrite(wi[0][i] == wi[1][i] ? pal + 3 * wi[0][i] : none, 1, 3, f);
+            fclose(f);
+        }
+    }
+    fflush(wifile);
+    if (gameaction == ga_worlddone)
+    {
+        fclose(wifile);
+        exit(0);
+    }
 }
 
 // A lump of the map (ML_SECTORS, ...).

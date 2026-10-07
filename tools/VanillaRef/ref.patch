@@ -13,10 +13,10 @@ index 9012e5f..42c574f 100644
  			       "version. Register!"));
  
 diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
-index 9954d78..a29348d 100644
+index 9954d78..bc014e3 100644
 --- a/doomgeneric/g_game.c
 +++ b/doomgeneric/g_game.c
-@@ -1009,6 +1009,7 @@ void G_Ticker (void)
+@@ -1009,10 +1009,12 @@ void G_Ticker (void)
  	ST_Ticker (); 
  	AM_Ticker (); 
  	HU_Ticker ();            
@@ -24,7 +24,12 @@ index 9954d78..a29348d 100644
  	break; 
  	 
        case GS_INTERMISSION: 
-@@ -1882,7 +1883,8 @@ G_InitNew
+ 	WI_Ticker (); 
++	{ extern void dump_witic(void); dump_witic(); } // IsoDoom reference (T7.4): the intermission after the tic
+ 	break; 
+ 			 
+       case GS_FINALE: 
+@@ -1882,7 +1884,8 @@ G_InitNew
  
      skytexturename = DEH_String(skytexturename);
  
@@ -34,7 +39,7 @@ index 9954d78..a29348d 100644
  
  
      G_DoLoadLevel ();
-@@ -1899,6 +1901,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
+@@ -1899,6 +1902,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
  { 
      if (*demo_p == DEMOMARKER) 
      {
@@ -207,3 +212,23 @@ index e25accc..d174cf3 100644
  
  void ST_doPaletteStuff(void)
  {
+diff --git a/doomgeneric/wi_stuff.c b/doomgeneric/wi_stuff.c
+index ddb9a66..b08ac62 100644
+--- a/doomgeneric/wi_stuff.c
++++ b/doomgeneric/wi_stuff.c
+@@ -1827,3 +1827,15 @@ void WI_Start(wbstartstruct_t* wbstartstruct)
+     else
+ 	WI_initStats();
+ }
++
++// IsoDoom reference (T7.4): bcnt and the intermission's state for the dump (dump.c dump_witic)
++void WI_dumpState(char *buf, int size)
++{
++    int n = snprintf(buf, size, "%d %d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:", bcnt, state, sp_state, cnt_kills[0], cnt_items[0], cnt_secret[0],
++                     cnt_time, cnt_par, cnt_pause, cnt, acceleratestage, snl_pointeron ? 1 : 0);
++    if (gamemode != commercial && wbs->epsd <= 2)
++        for (int i = 0; i < NUMANIMS[wbs->epsd] && n < size - 8; i++)
++            n += snprintf(buf + n, size - n, "%s%d", i ? "." : "", anims[wbs->epsd][i].ctr);
++    else
++        snprintf(buf + n, size - n, "-");
++}
