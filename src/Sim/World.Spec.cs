@@ -708,7 +708,51 @@ public sealed partial class World
         }
     }
 
-    // P_ShootSpecialLine (gun-triggered lines) waits for M6's hitscan (T6.3).
+    /// <summary>
+    /// p_spec.c <c>P_ShootSpecialLine</c>: a hitscan by <paramref name="thing"/>
+    /// crossed <paramref name="line"/> (T6.3, from <see cref="PTR_ShootTraverse"/>):
+    /// the gun lines G1 24 (raise floor), GR 46 (open door, the only one a
+    /// monster triggers) and G1 47 (raise to the nearest floor and change),
+    /// each switching its texture. From either side, whatever the result.
+    /// </summary>
+    public void P_ShootSpecialLine(mobj_t thing, line_t line)
+    {
+        //	Impacts that other things can activate.
+        if (thing.player == null)
+        {
+            bool ok = false;
+            switch (line.special)
+            {
+                case 46:
+                    // OPEN DOOR IMPACT
+                    ok = true;
+                    break;
+            }
+            if (!ok)
+                return;
+        }
+
+        switch (line.special)
+        {
+            case 24:
+                // RAISE FLOOR
+                EV_DoFloor(line, floor_e.raiseFloor);
+                P_ChangeSwitchTexture(line, 0);
+                break;
+
+            case 46:
+                // OPEN DOOR
+                EV_DoDoor(line, vldoor_e.vld_open);
+                P_ChangeSwitchTexture(line, 1);
+                break;
+
+            case 47:
+                // RAISE FLOOR NEAR AND CHANGE
+                EV_DoPlat(line, plattype_e.raiseToNearestAndChange, 0);
+                P_ChangeSwitchTexture(line, 0);
+                break;
+        }
+    }
 
     /// <summary>p_spec.c <c>anims</c>: the animations <see cref="P_InitPicAnims"/> found, up to <see cref="lastanim"/>.</summary>
     public readonly anim_t?[] anims = new anim_t?[PicAnims.MAXANIMS];

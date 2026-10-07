@@ -241,13 +241,17 @@ public class TeleportTests
         World world = Specials();
         line_t line = world.lines[Line];
         mobj_t me = Player(world);
-        // A barrel (shootable) on the destination: the player still arrives (the damage is M6's stub).
+        // A barrel (shootable) on the destination: the player arrives and telefrags it (10000 damage, T6.3).
         mobj_t barrel = world.P_SpawnMobj(F(70), F(196), World.ONFLOORZ, mobjtype_t.MT_BARREL);
         Assert.Equal(1, world.EV_Teleport(line, 0, me));
         Assert.Equal((F(64), F(196)), (me.x, me.y));
+        Assert.True(barrel.health <= 0);
+        Assert.True((barrel.flags & mobjflag_t.MF_CORPSE) != 0);
+        Assert.Equal(statenum_t.S_BEXP, barrel.state);
 
-        // A monster is stopped by a shootable thing there: no move, no fog.
+        // A monster is stopped by a shootable thing there (a new barrel): no move, no fog.
         world.PlaceMobj(me, F(250), F(196));
+        barrel = world.P_SpawnMobj(F(70), F(196), World.ONFLOORZ, mobjtype_t.MT_BARREL);
         mobj_t trooper = world.P_SpawnMobj(F(352), F(196), World.ONFLOORZ, mobjtype_t.MT_POSSESSED);
         int fogs = Fogs(world).Length;
         Assert.Equal(0, world.EV_Teleport(line, 0, trooper));
@@ -257,6 +261,7 @@ public class TeleportTests
         world.gamemap = 30;
         Assert.Equal(1, world.EV_Teleport(line, 0, trooper));
         Assert.Equal(F(64), trooper.x);
+        Assert.True(barrel.health <= 0);
         // A thing that is not shootable never blocks.
         world.gamemap = 2;
         world.P_RemoveMobj(barrel);

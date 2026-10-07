@@ -7,7 +7,8 @@ namespace IsoDoom.Sim;
 // P_TryMove and wall sliding (P_SlideMove, PTR_SlideTraverse, P_HitSlideLine), and sector
 // height changes (P_ChangeSector, PIT_ChangeSector, P_ThingHeightClip; T5.1), and
 // the use action (P_UseLines, PTR_UseTraverse, with the use fallback of SPEC §6.3 #3; T5.2).
-// Teleport moves come with M5, aiming, shooting and radius attacks with M6.
+// Teleport moves are in World.Telept.cs, aiming, shooting and radius attacks in
+// World.Attack.cs (T6.3).
 public sealed partial class World
 {
     // ---- p_local.h ----
@@ -673,7 +674,7 @@ public sealed partial class World
     /// crunched to gibs when dead, removed when a dropped item, left alone
     /// unless shootable; a shootable one sets <see cref="nofit"/> and, while
     /// <see cref="crushchange"/> on every fourth tic, takes 10 damage
-    /// (<see cref="P_DamageMobj"/>: players only until T6.3) and
+    /// (<see cref="P_DamageMobj"/>) and
     /// sprays blood. Always keeps checking.
     /// </summary>
     public bool PIT_ChangeSector(mobj_t thing)

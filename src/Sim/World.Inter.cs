@@ -6,9 +6,8 @@ namespace IsoDoom.Sim;
 // p_inter.c: handling interactions (i.e., collisions), T5.8. The pickups of
 // P_TouchSpecialThing (keys; health, armor and power-ups, SPEC §12 T5.8; the
 // weapons, ammo and backpack with P_GiveAmmo and P_GiveWeapon, T6.1),
-// P_DamageMobj (players only until
-// T6.3) and P_KillMobj. Messages go to player_t.message (d_englsh.h), sounds
-// to the sound events.
+// P_DamageMobj (players since T5.8, everything since T6.3) and P_KillMobj.
+// Messages go to player_t.message (d_englsh.h), sounds to the sound events.
 public sealed partial class World
 {
     // d_englsh.h: the pickup messages.
@@ -634,8 +633,7 @@ public sealed partial class World
     /// counts for its killer, a player is dead (<see cref="playerstate_t.PST_DEAD"/>,
     /// counting an environment kill against itself), it enters its death
     /// (or, far enough below zero health, extreme death) state a few tics
-    /// early, and the former humans drop their weapon. Only players are
-    /// damaged before T6.3.
+    /// early, and the former humans drop their weapon.
     /// </summary>
     public void P_KillMobj(mobj_t? source, mobj_t target)
     {
@@ -716,13 +714,16 @@ public sealed partial class World
     /// (<paramref name="inflictor"/> is the thing that caused the damage:
     /// a missile, a creature or null for slime and crushers;
     /// <paramref name="source"/> the thing to target after taking damage:
-    /// a creature or null). Ported for players (T5.8): half damage on
+    /// a creature or null). Ported whole (players T5.8, the rest T6.3): a
+    /// charging lost soul stops, half damage for players on
     /// <see cref="skill_t.sk_baby"/>, the thrust away from the inflictor, the
     /// E1M8 exit sector (11) that never kills, god mode and invulnerability
     /// below 1000, the armor's share, <see cref="player_t.health"/>,
     /// <see cref="player_t.damagecount"/>, death (<see cref="P_KillMobj"/>),
-    /// the pain chance (its <c>P_Random</c>) and the target change. Other
-    /// targets take no damage until T6.3.
+    /// the pain chance (its <c>P_Random</c>; <c>MF_JUSTHIT</c> and the pain
+    /// state), waking up (<c>reactiontime</c> 0) and the target change
+    /// (infighting: a monster not intent on another target chases its
+    /// attacker, leaving its spawn state for its see state).
     /// </summary>
     public void P_DamageMobj(mobj_t target, mobj_t? inflictor, mobj_t? source, int damage)
     {
@@ -732,12 +733,10 @@ public sealed partial class World
         if (target.health <= 0)
             return;
 
-        player_t? player = target.player;
-        if (player == null)
-            return; // monsters and barrels: T6.3
-
         if ((target.flags & mobjflag_t.MF_SKULLFLY) != 0)
             target.momx = target.momy = target.momz = 0;
+
+        player_t? player = target.player;
 
         if (player != null && gameskill == skill_t.sk_baby)
             damage >>= 1; // take half damage in trainer mode
