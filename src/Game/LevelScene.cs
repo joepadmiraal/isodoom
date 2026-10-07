@@ -589,6 +589,8 @@ public partial class LevelScene : Node3D, IGameHost
                 };
             if (WadLocator.GetUserArg("--level-wipe") is string wipe)
                 ScreenWipes = ParseWipe(wipe, "--level-wipe");
+            if (WadLocator.GetUserArg("--level-fullscreen") is string fullscreen)
+                _fullscreen = Choice(fullscreen, "--level-fullscreen", "off", "on", "exclusive");
             if (WadLocator.GetUserArg("--level-opl") is string opl)
                 MusicOpl3 = ParseOpl(opl, "--level-opl"); // T7.8g
             if (WadLocator.GetUserArg("--level-hud-scale") is string hudScale)

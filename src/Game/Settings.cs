@@ -90,7 +90,7 @@ public static class Settings
         // video
         new("video/resolution", "WINDOW SIZE", SettingPage.Video, "1280x800",
             new[] { "960x600", "1024x640", "1280x720", "1280x800", "1366x768", "1440x900", "1600x900", "1680x1050", "1920x1080", "1920x1200", "2560x1440", "2560x1600", "3840x2160" }),
-        new("video/fullscreen", "FULLSCREEN", SettingPage.Video, "off", new[] { "off", "on", "exclusive" }),
+        new("video/fullscreen", "FULLSCREEN", SettingPage.Video, "on", new[] { "off", "on", "exclusive" }, "--level-fullscreen"),
         new("video/vsync", "VSYNC", SettingPage.Video, "on", new[] { "on", "off", "adaptive" }),
         new("video/frame_cap", "FRAME CAP", SettingPage.Video, "off", new[] { "off", "30", "35", "60", "75", "90", "120", "144", "165", "240" }),
         new("video/zoom", "ZOOM (VIEW HEIGHT)", SettingPage.Video, "640", Range(320, 1600, 80), "--level-zoom"),

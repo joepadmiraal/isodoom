@@ -39,7 +39,8 @@ public partial class LevelScene : ISetupHost
     private readonly Dictionary<string, (Func<string> Get, Action<string> Set)> _settingAccess = new(StringComparer.Ordinal);
 
     // The video settings (applied to the window unless headless or under the level check).
-    private string _windowSize = "1280x800", _fullscreen = "off", _vsync = "on";
+    // Fullscreen by default, but scripts and screenshots keep their window (WindowedRun).
+    private string _windowSize = "1280x800", _fullscreen = WindowedRun ? "off" : "on", _vsync = "on";
 
     // The game camera's settings when there is no game camera (the level check).
     private string _zoom = "640", _pitch = "55", _projection = "ortho";
@@ -53,10 +54,16 @@ public partial class LevelScene : ISetupHost
     {
         if (WadLocator.GetUserArg("--settings") is string arg)
             return arg == "off" ? null : arg;
-        bool debugRun = IsCheckRun || WadLocator.HasUserArg("--level-script") || WadLocator.HasUserArg("--level-screenshot")
-            || WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots");
+        bool debugRun = IsCheckRun || WindowedRun || WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots");
         return debugRun || DisplayServer.GetName() == "headless" ? null : DefaultSettingsPath;
     }
+
+    /// <summary>
+    /// The level script and screenshots stay in a window, whose size their
+    /// captures are, instead of the default fullscreen (the setting pinned
+    /// off, as <c>--level-fullscreen=off</c> would; that argument overrides it).
+    /// </summary>
+    private static bool WindowedRun => WadLocator.HasUserArg("--level-script") || WadLocator.HasUserArg("--level-screenshot");
 
     /// <summary>Every setting key: <see cref="Settings.Defs"/>' and each rebindable action's.</summary>
     public static IEnumerable<string> SettingKeys() =>
@@ -96,7 +103,7 @@ public partial class LevelScene : ISetupHost
         foreach (string key in SettingKeys())
         {
             SettingDef? def = Settings.Find(key);
-            if (pin && def is not null && def.Args.Any(WadLocator.HasUserArg))
+            if (pin && def is not null && (def.Args.Any(WadLocator.HasUserArg) || key == "video/fullscreen" && WindowedRun))
             {
                 SettingsValues.Pin(key, _settingAccess[key].Get());
                 continue;
