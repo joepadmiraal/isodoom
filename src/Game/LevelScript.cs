@@ -107,6 +107,12 @@ namespace IsoDoom.Game;
 /// facing, aimed as vanilla) before the next tic queued after it (scripted tics) or the next
 /// tic (<c>sim live</c>); e.g. <c>place X Y ANGLE; missile; cmd 0 0 0 0 10; shot FILE.png</c>
 /// with <c>--level-tweaks=vanilla</c> (a twin-stick <c>cmd</c>'s ANGLETURN sets the facing).
+/// <c>power NAME [TICS]</c> (T6.8, a debug power-up until the cheats, T7.9) gives the
+/// player power-up <c>pw_NAME</c> (<c>invulnerability</c>, <c>strength</c>,
+/// <c>invisibility</c>, <c>ironfeet</c>, <c>allmap</c>, <c>infrared</c>) as its
+/// pickup does (<c>P_GivePower</c>), optionally with TICS left, and <c>flash damage|bonus COUNT</c>
+/// sets its <c>damagecount</c> or <c>bonuscount</c> (the red or gold palette flash), both
+/// before the next tic as <c>missile</c>; e.g. <c>power infrared; cmd 0 0 0 0 1; shot FILE.png</c>.
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -260,6 +266,42 @@ public partial class LevelScript : Node
                             {
                                 if (world.players[world.consoleplayer].mo is { } mo)
                                     world.P_SpawnPlayerMissile(mo, type);
+                            });
+                            break;
+                        }
+                    case "power":
+                        {
+                            // T6.8: a debug power-up, as its pickup gives it (P_GivePower), optionally with TICS left.
+                            var power = Enum.Parse<IsoDoom.Sim.powertype_t>("pw_" + w[1].ToLowerInvariant());
+                            int? left = w.Length > 2 ? Int(w[2]) : null;
+                            _scene.BeforeNextTic(world =>
+                            {
+                                IsoDoom.Sim.player_t p = world.players[world.consoleplayer];
+                                if (p.mo is null)
+                                    return;
+                                IsoDoom.Sim.World.P_GivePower(p, power);
+                                if (left is int tics)
+                                    p.powers[(int)power] = tics;
+                            });
+                            break;
+                        }
+                    case "flash":
+                        {
+                            // T6.8: a debug palette flash: the player's damagecount or bonuscount.
+                            int count = Int(w[2]);
+                            bool damage = w[1] switch
+                            {
+                                "damage" => true,
+                                "bonus" => false,
+                                _ => throw new ArgumentException($"flash: \"{w[1]}\" (damage or bonus)"),
+                            };
+                            _scene.BeforeNextTic(world =>
+                            {
+                                IsoDoom.Sim.player_t p = world.players[world.consoleplayer];
+                                if (damage)
+                                    p.damagecount = count;
+                                else
+                                    p.bonuscount = count;
                             });
                             break;
                         }

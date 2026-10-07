@@ -43,7 +43,11 @@
 // angle, flags and health; then (T6.6) the weapon as
 // READY:PENDING:EXTRALIGHT:REFIRE:ATTACKDOWN:WSTATE:WTICS:WSX:WSY:FSTATE:FTICS:FSX:FSY
 // (readyweapon, pendingweapon, the weapon and flash psprites' statenum_t,
-// tics, sx and sy; state -1 for none); then (T5.9) exit: 0, or 1 (2) when the
+// tics, sx and sy; state -1 for none); then (T6.8) the powers as
+// INVULN:STRENGTH:INVIS:IRONFEET:ALLMAP:INFRARED:DAMAGECOUNT:BONUSCOUNT:FIXEDCOLORMAP:PALETTE
+// (powers[] in powertype_t order, damagecount, bonuscount, fixedcolormap, and
+// the palette st_stuff.c's ST_doPaletteStuff sets, called here after the
+// tic; ref.patch makes its st_palette visible); then (T5.9) exit: 0, or 1 (2) when the
 // tic left the level by its exit (secret exit): gameaction is ga_completed.
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
@@ -282,6 +286,13 @@ void dump_tic(void)
         fprintf(ticfile, ":%d:%d:%d:%d", p->psprites[i].state ? (int)(p->psprites[i].state - states) : -1,
                 p->psprites[i].tics, p->psprites[i].sx, p->psprites[i].sy);
     fputc(' ', ticfile);
+    // The powers and the palette (T6.8).
+    extern void ST_doPaletteStuff(void);
+    extern int st_palette;
+    ST_doPaletteStuff();
+    for (int i = 0; i < NUMPOWERS; i++)
+        fprintf(ticfile, "%d:", p->powers[i]);
+    fprintf(ticfile, "%d:%d:%d:%d ", p->damagecount, p->bonuscount, p->fixedcolormap, st_palette);
     // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
     extern boolean secretexit;
     extern gameaction_t gameaction;

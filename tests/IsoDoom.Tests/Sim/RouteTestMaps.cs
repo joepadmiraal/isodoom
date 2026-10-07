@@ -72,7 +72,33 @@ public static class RouteTestMaps
         // in B an imp at (940, 448) facing north and a zombieman at (760, 64) facing south; in C
         // zombiemen at (1250, 256) facing east and (1250, 400) facing north.
         ["weapons"] = Weapons,
+        // T6.8: every shareware pickup. West to east (256 deep, ceilings 128): the start room N
+        // (192 wide, special 5: 10 damage every 32 tics) and a room P (1408). The player at
+        // (96, 128) facing east; along y = 128 in P, 48 units apart from x = 240: a stimpack, a
+        // medikit, two health bonuses, a soul sphere, a stimpack (left: health over 100), an armor
+        // bonus, a green armor, a blue armor, a green armor (left: blue is better), a clip, a box
+        // of bullets, shells, a box of shells, a rocket, a box of rockets, a backpack, a shotgun,
+        // a chaingun, a rocket launcher, a chainsaw, the blue, yellow and red keycards, a blur
+        // sphere, two computer maps (the second left), a light amplification visor, and a
+        // radiation suit at (1570, 128).
+        ["pickups"] = Pickups,
     };
+
+    /// <summary>The pickups along y = 128 in <see cref="Pickups"/>' room P, west to east (doomednums), from x = 240 every 48 units.</summary>
+    public static readonly int[] PickupRow =
+    {
+        2011, 2012, 2014, 2014, 2013, 2011, 2015, 2018, 2019, 2018, 2007, 2048, 2008, 2049, 2010, 2046, 8,
+        2001, 2002, 2003, 2005, 5, 6, 13, 2024, 2026, 2026, 2045,
+    };
+
+    private static TestMap Pickups()
+    {
+        TestMap map = TestMap.Strip(0, 0, 256, new TestMap.Room(192, 0, 128), new TestMap.Room(1408, 0, 128));
+        map.SectorSpecial(0, 5);
+        for (int i = 0; i < PickupRow.Length; i++)
+            map.Thing(240 + 48 * i, 128, PickupRow[i]);
+        return map.Thing(1570, 128, 2025).Player(96, 128, 0);
+    }
 
     private static TestMap Weapons()
     {

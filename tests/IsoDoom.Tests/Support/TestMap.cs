@@ -30,7 +30,7 @@ public sealed class TestMap
 
     private readonly List<(int X, int Y)> _vertexes = new();
     private readonly List<(int V1, int V2, int Flags, int Special, int Front, int Back, int Tag)> _lines = new();
-    private readonly List<(int Floor, int Ceiling, string CeilingPic, string FloorPic, int Tag)> _sectors = new();
+    private readonly List<(int Floor, int Ceiling, string CeilingPic, string FloorPic, int Tag, int Special)> _sectors = new();
     private readonly List<(int V1, int V2, int Line, int Side)> _segs = new();
     private readonly List<(int Count, int First)> _subsectors = new();
     private readonly List<short> _nodes = new();
@@ -68,7 +68,7 @@ public sealed class TestMap
         int Top(int i) => n + 1 + i;
 
         foreach (Room r in rooms)
-            map._sectors.Add((r.Floor, r.Ceiling, Flat, Flat, 0));
+            map._sectors.Add((r.Floor, r.Ceiling, Flat, Flat, 0, 0));
 
         var south = new int[n];
         var north = new int[n];
@@ -126,7 +126,7 @@ public sealed class TestMap
     public static TestMap Polygon(int floor, int ceiling, params (int X, int Y)[] corners)
     {
         var map = new TestMap();
-        map._sectors.Add((floor, ceiling, Flat, Flat, 0));
+        map._sectors.Add((floor, ceiling, Flat, Flat, 0, 0));
         foreach (var c in corners)
             map._vertexes.Add(c);
         for (int i = 0; i < corners.Length; i++)
@@ -164,6 +164,13 @@ public sealed class TestMap
     public TestMap SectorTag(int sector, int tag)
     {
         _sectors[sector] = _sectors[sector] with { Tag = tag };
+        return this;
+    }
+
+    /// <summary>Sets a sector's special (T6.8; e.g. 5, a damage floor).</summary>
+    public TestMap SectorSpecial(int sector, int special)
+    {
+        _sectors[sector] = _sectors[sector] with { Special = special };
         return this;
     }
 
@@ -242,6 +249,7 @@ public sealed class TestMap
             Encoding.ASCII.GetBytes(_sectors[i].FloorPic, sec[4..]);
             Encoding.ASCII.GetBytes(_sectors[i].CeilingPic, sec[12..]);
             BinaryPrimitives.WriteInt16LittleEndian(sec[20..], 160);
+            BinaryPrimitives.WriteInt16LittleEndian(sec[22..], (short)_sectors[i].Special);
             BinaryPrimitives.WriteInt16LittleEndian(sec[24..], (short)_sectors[i].Tag);
         }
 

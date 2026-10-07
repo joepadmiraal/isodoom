@@ -319,6 +319,74 @@ public partial class LevelCheck
         me.tics = tics;
     }
 
+    private int _paletteMaps;
+
+    /// <summary>
+    /// T6.8: the console player's palette flashes and power-up colormaps
+    /// reach the mesh (<see cref="LevelScene.UpdatePaletteEffects"/>):
+    /// <c>damagecount</c> 20 is palette 4, a radiation suit picked up
+    /// (<c>P_TouchSpecialThing</c>) the gold palette 10 and, its flash over,
+    /// the suit's 13, a fresh berserk palette 3; <c>fixedcolormap</c> 32 and 1
+    /// the colormap override; nothing with <see cref="LevelScene.PaletteEffects"/>
+    /// off. The void (unless <c>--level-background</c>) and the blob shadows
+    /// take the palette's colour 0. The player's state is restored.
+    /// </summary>
+    private void CheckPaletteEffects(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || _scene.Mesh is not { } m)
+            return;
+        _paletteMaps++;
+        player_t p = world.players[world.consoleplayer];
+        bool tintsVoid = WadLocator.GetUserArg("--level-background") is null;
+        void Expect(int palette, int colormap, string what)
+        {
+            _scene.UpdatePaletteEffects();
+            if (m.Palette != palette || m.ColormapOverride != colormap)
+                Fail($"{map}: {what}: drawn with palette {m.Palette} and colormap override {m.ColormapOverride}, expected {palette} and {colormap}");
+            (byte r, byte g, byte b) = Playpal.GetColor(palette, 0);
+            Color zero = Color.Color8(r, g, b);
+            if (tintsVoid && !_scene.Environment.BackgroundColor.IsEqualApprox(zero))
+                Fail($"{map}: {what}: the void is {_scene.Environment.BackgroundColor.ToHtml(false)}, expected palette {palette}'s colour 0 {zero.ToHtml(false)}");
+            if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(zero.SrgbToLinear()))
+                Fail($"{map}: {what}: the blob shadows are {shadow}, expected palette {palette}'s colour 0");
+        }
+        int health = p.health, mohealth = me.health, itemcount = p.itemcount, damagecount = p.damagecount, bonuscount = p.bonuscount, fixedcolormap = p.fixedcolormap;
+        int[] powers = (int[])p.powers.Clone();
+        string? message = p.message;
+        // (the game loop may have walked the player over a pickup)
+        p.damagecount = p.bonuscount = p.fixedcolormap = 0;
+        Array.Clear(p.powers);
+        Expect(0, -1, "no effect");
+        p.damagecount = 20;
+        Expect(StStuff.STARTREDPALS + 3, -1, "damagecount 20");
+        p.damagecount = 0;
+        mobj_t suit = world.P_SpawnMobj(me.x, me.y, me.z, mobjtype_t.MT_MISC14);
+        world.P_TouchSpecialThing(suit, me);
+        if (suit.function != think_t.REMOVED)
+            Fail($"{map}: the radiation suit at the player was not picked up");
+        Expect(StStuff.STARTBONUSPALS + 1, -1, "a radiation suit picked up (bonuscount 6)");
+        p.bonuscount = 0;
+        Expect(StStuff.RADIATIONPAL, -1, "the radiation suit");
+        p.powers[(int)powertype_t.pw_ironfeet] = 0;
+        p.powers[(int)powertype_t.pw_strength] = 1;
+        Expect(StStuff.STARTREDPALS + 2, -1, "a fresh berserk");
+        p.powers[(int)powertype_t.pw_strength] = 0;
+        p.fixedcolormap = World.INVERSECOLORMAP;
+        Expect(0, World.INVERSECOLORMAP, "invulnerability (fixedcolormap 32)");
+        p.fixedcolormap = 1;
+        Expect(0, 1, "the light amplification visor (fixedcolormap 1)");
+        p.damagecount = 20;
+        _scene.PaletteEffects = false;
+        Expect(0, -1, "the effects off");
+        _scene.PaletteEffects = true;
+        p.damagecount = 0;
+        p.fixedcolormap = 0;
+        Expect(0, -1, "no effect again");
+        (p.health, me.health, p.itemcount, p.message) = (health, mohealth, itemcount, message);
+        (p.damagecount, p.bonuscount, p.fixedcolormap) = (damagecount, bonuscount, fixedcolormap);
+        powers.CopyTo(p.powers, 0); // (the mesh stays at palette 0 for the checks after this one)
+    }
+
     private int _teleportMaps;
 
     /// <summary>
@@ -518,6 +586,10 @@ public partial class LevelCheck
         m.SetColormapOverride(Colormap.INVERSECOLORMAP);
         compared += await CompareSprite(m, things, atlas, bright, basis, $"{map}: thing {bright}, fixed colormap {Colormap.INVERSECOLORMAP}");
         m.SetColormapOverride(-1);
+        // T6.8: a palette flash (damage red) on a lit thing.
+        m.SetPalette(StStuff.STARTREDPALS + 3);
+        compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, palette {StStuff.STARTREDPALS + 3}");
+        m.SetPalette(0);
 
         // T3.6: vanilla's look (no outline) side-on, and the full tilt from the game camera's pitch, where the
         // billboard faces the camera: the patch again at 1 unit per pixel (an upright one would be squashed).

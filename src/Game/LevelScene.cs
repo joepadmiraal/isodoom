@@ -62,6 +62,10 @@ namespace IsoDoom.Game;
 /// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
 /// player's weapon flash, <c>player_t.extralight</c>, lights the level as
 /// vanilla's lights the view; default on);
+/// <c>--level-palette-effects=on|off</c> (T6.8, <see cref="PaletteEffects"/>:
+/// the console player's palette flashes, st_stuff.c's red, gold and green,
+/// and its power-ups' fixed colormaps, invulnerability's inverse map and the
+/// light amplification visor's; default on);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
 /// <c>--level-monsters=on|off</c> (T5.7: off spawns no monsters, vanilla's
 /// <c>-nomonsters</c>, e.g. so the light specials' <c>P_Random</c> calls match
@@ -139,6 +143,18 @@ public partial class LevelScene : Node3D
     /// <c>extralight</c> does the whole view (<c>--level-weapon-light</c>; SPEC §12 T6.6).
     /// </summary>
     public bool WeaponLight { get; set; } = true;
+
+    /// <summary>
+    /// T6.8: whether the console player's palette flashes and power-up
+    /// colormaps show (<see cref="UpdatePaletteEffects"/>, <c>--level-palette-effects</c>;
+    /// SPEC §12 T6.8).
+    /// </summary>
+    public bool PaletteEffects { get; set; } = true;
+
+    /// <summary>The void's colour as set at start (<c>--level-background</c>, else black); a palette flash tints it unless it was set.</summary>
+    private Color _background = Colors.Black;
+    private bool _backgroundSet;
+    private int _voidPalette;
 
     /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
     public CutawaySettings Cutaway { get; set; } = new();
@@ -312,7 +328,11 @@ public partial class LevelScene : Node3D
             AmbientLightSource = Godot.Environment.AmbientSource.Disabled,
         };
         if (WadLocator.GetUserArg("--level-background") is string bg && Color.HtmlIsValid(bg))
+        {
             Environment.BackgroundColor = Color.FromHtml(bg); // T2.9: a colour in no palette shows cracks
+            _backgroundSet = true;
+        }
+        _background = Environment.BackgroundColor;
         AddChild(new WorldEnvironment { Environment = Environment });
         Overlay = new CanvasLayer();
         _message = new Label
@@ -382,6 +402,13 @@ public partial class LevelScene : Node3D
                     "on" or "vanilla" => true,
                     "off" => false,
                     _ => throw new ArgumentException($"--level-weapon-light: \"{weaponLight}\" (on or off)"),
+                };
+            if (WadLocator.GetUserArg("--level-palette-effects") is string paletteEffects)
+                PaletteEffects = paletteEffects switch
+                {
+                    "on" or "vanilla" => true,
+                    "off" => false,
+                    _ => throw new ArgumentException($"--level-palette-effects: \"{paletteEffects}\" (on or off)"),
                 };
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
@@ -798,6 +825,7 @@ public partial class LevelScene : Node3D
             RunTics(delta);
             PresentWorld();
             UpdateExtraLight();
+            UpdatePaletteEffects();
             FollowPlayer(delta);
             if (GetViewport().GetCamera3D() is Camera3D current)
                 Things?.UpdateRotations(current);
@@ -1166,6 +1194,43 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
+    /// T6.8 (SPEC §7.4): the console player's palette, st_stuff.c's
+    /// <see cref="StStuff.ST_doPaletteStuff"/> (red for damage and the
+    /// berserk, gold for pickups, green in the radiation suit; vanilla's
+    /// <c>I_SetPalette</c>, here <see cref="LevelMesh.SetPalette"/> on the level,
+    /// its sprites and the blob shadows, with the void tinted as palette index 0
+    /// unless <c>--level-background</c> set it), and its <c>fixedcolormap</c>
+    /// (r_main.c <c>R_SetupFrame</c>: 32 for invulnerability, 1 for the light
+    /// amplification visor, 0 none) as <see cref="LevelMesh.SetColormapOverride"/>;
+    /// stepped per tic as vanilla's. Palette 0 and no override with
+    /// <see cref="PaletteEffects"/> off or without a world. Sets only what
+    /// changed, so a debug override stays until the player's state changes.
+    /// </summary>
+    public void UpdatePaletteEffects()
+    {
+        if (Mesh is not { } mesh)
+            return;
+        int palette = 0, colormap = -1;
+        if (PaletteEffects && World is { } world && world.players[world.consoleplayer] is { mo: not null } p)
+        {
+            palette = StStuff.ST_doPaletteStuff(p);
+            if (p.fixedcolormap != 0)
+                colormap = p.fixedcolormap;
+        }
+        if (mesh.Palette != palette)
+            mesh.SetPalette(palette);
+        // (tracked apart from the mesh's: a new map's mesh starts at palette 0)
+        if (_voidPalette != palette && !_backgroundSet && Playpal is { } playpal && palette < playpal.Count)
+        {
+            _voidPalette = palette;
+            (byte r, byte g, byte b) = playpal.GetColor(palette, 0);
+            Environment.BackgroundColor = palette == 0 ? _background : Color.Color8(r, g, b);
+        }
+        if (mesh.ColormapOverride != colormap)
+            mesh.SetColormapOverride(colormap);
+    }
+
+    /// <summary>
     /// T5.6: whether a tic moved the player mobj without interpolation (a
     /// teleport: <see cref="mobj_t.interp"/> false after the tic), so the game
     /// camera snaps to it (<see cref="SnapCameraIfPending"/>) instead of
@@ -1362,11 +1427,16 @@ public partial class LevelScene : Node3D
         var powers = new List<string>();
         for (int i = 0; i < p.powers.Length; i++)
         {
-            if (p.powers[i] != 0)
-                powers.Add(((powertype_t)i).ToString()[3..]);
+            if (p.powers[i] == 0)
+                continue;
+            bool timed = (powertype_t)i is not (powertype_t.pw_strength or powertype_t.pw_allmap);
+            powers.Add(((powertype_t)i).ToString()[3..] + (timed ? $" {(p.powers[i] + SimInfo.TICRATE - 1) / SimInfo.TICRATE}s" : ""));
         }
+        // T6.8: the palette flash and the fixed colormap the scene shows (UpdatePaletteEffects).
+        int palette = StStuff.ST_doPaletteStuff(p);
+        string effects = (palette != 0 ? $"   palette {palette}" : "") + (p.fixedcolormap != 0 ? $"   colormap {p.fixedcolormap}" : "");
         return $"health {p.health}{(p.playerstate == playerstate_t.PST_DEAD ? " (dead)" : "")}   armor {p.armorpoints}{(p.armortype != 0 ? (p.armortype == 1 ? " green" : " blue") : "")}"
-            + $"   keys {(keys.Count == 0 ? "none" : string.Join(", ", keys))}{(powers.Count == 0 ? "" : "   powers " + string.Join(", ", powers))}"
+            + $"   keys {(keys.Count == 0 ? "none" : string.Join(", ", keys))}{(powers.Count == 0 ? "" : "   powers " + string.Join(", ", powers))}{effects}"
             + $"   kills {p.killcount}/{world.totalkills}  items {p.itemcount}/{world.totalitems}  secrets {p.secretcount}/{world.totalsecret}"
             + $"\n{WeaponText(p)}";
     }

@@ -65,7 +65,9 @@ namespace IsoDoom.Tests.Sim;
 /// thinker order (<see cref="ThingsHash"/>: every map thing animates as in
 /// vanilla), then (T6.6) the <c>weapon</c>: <c>READY:PENDING:EXTRALIGHT:REFIRE:ATTACKDOWN</c>
 /// and the weapon's and the flash's psprite as <c>STATE:TICS:SX:SY</c>
-/// (<see cref="Weapon"/>), then (T5.9)
+/// (<see cref="Weapon"/>), then (T6.8) the <c>powers</c>:
+/// <c>INVULN:STRENGTH:INVIS:IRONFEET:ALLMAP:INFRARED:DAMAGECOUNT:BONUSCOUNT:FIXEDCOLORMAP:PALETTE</c>
+/// (<see cref="Powers"/>; the palette vanilla's <c>ST_doPaletteStuff</c> sets after the tic), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
 /// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
@@ -80,7 +82,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "exit" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "exit" };
 
     public string Name { get; }
     public string Path { get; }
@@ -236,7 +238,7 @@ public sealed class VanillaRoute
         int exit = world.gameaction == gameaction_t.ga_completed ? world.secretexit ? 2 : 1 : 0;
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
-            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + exit.ToString(CultureInfo.InvariantCulture);
+            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + Powers(p) + " " + exit.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -248,6 +250,18 @@ public sealed class VanillaRoute
         var v = new List<int> { (int)p.readyweapon, (int)p.pendingweapon, p.extralight, p.refire, p.attackdown ? 1 : 0 };
         foreach (pspdef_t psp in p.psprites)
             v.AddRange(new[] { psp.state == statenum_t.S_NULL ? -1 : (int)psp.state, psp.tics, psp.sx, psp.sy });
+        return string.Join(':', v.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// The dump's <c>powers</c> column (T6.8): the six <c>powers</c>
+    /// (<c>powertype_t</c> order), <c>damagecount</c>, <c>bonuscount</c>,
+    /// <c>fixedcolormap</c> and the palette st_stuff.c's <c>ST_doPaletteStuff</c>
+    /// picks (<see cref="StStuff.ST_doPaletteStuff"/>), joined by colons.
+    /// </summary>
+    public static string Powers(player_t p)
+    {
+        var v = new List<int>(p.powers) { p.damagecount, p.bonuscount, p.fixedcolormap, StStuff.ST_doPaletteStuff(p) };
         return string.Join(':', v.Select(x => x.ToString(CultureInfo.InvariantCulture)));
     }
 

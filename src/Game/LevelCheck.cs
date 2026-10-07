@@ -193,6 +193,7 @@ public partial class LevelCheck : Godot.Node
             CheckScrollData(m, map);
             CheckGameLoop(map); // it moves the player and spawns a mobj
             CheckWeaponFlash(map);
+            CheckPaletteEffects(map);
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
             CheckExit(map); // last: it may load the next map (T5.8)
@@ -208,6 +209,8 @@ public partial class LevelCheck : Godot.Node
             + "at tic fractions 0, ½ and 1 (interpolated between the last two tics), a mobj spawned between tics is drawn where it is, and one removed is dropped");
         GD.Print($"Level check: weapon flash (T6.6): {_weaponMaps} maps drew the player's extralight 1 and 2 (none with the weapon light off) "
             + "and its firing frame full bright");
+        GD.Print($"Level check: palette effects (T6.8): {_paletteMaps} maps drew the player's damage, pickup (a radiation suit picked up), suit and berserk palettes "
+            + "and its invulnerability and visor colormaps (none with the effects off), the void and the blob shadows tinted with the palette");
         GD.Print($"Level check: teleports (T5.6): {_teleportMaps} maps teleported the player across a teleport line in a tic: drawn where it lands "
             + "(not interpolated), the camera snap asked for, fog drawn at both ends");
         GD.Print($"Level check: animations (T5.7): {_animSequences} animation sequences drawn with every frame in the atlas; {_animatedMaps} maps ran them: "
@@ -916,7 +919,16 @@ public partial class LevelCheck : Godot.Node
         m.SetLightDiminishing(LightDiminishing.Player);
         m.SetColormapOverride(Colormap.INVERSECOLORMAP);
         await CheckFloorsTopDown(m, "fixed colormap 32", 1);
+        // T6.8: the light amplification visor's colormap, and the palette flashes (red, gold, the suit's green).
+        m.SetColormapOverride(1);
+        await CheckFloorsTopDown(m, "fixed colormap 1", 1);
         m.SetColormapOverride(-1);
+        foreach (int palette in new[] { StStuff.STARTREDPALS + 3, StStuff.STARTBONUSPALS + 1, StStuff.RADIATIONPAL })
+        {
+            m.SetPalette(palette);
+            await CheckFloorsTopDown(m, $"palette {palette}", 1);
+        }
+        m.SetPalette(0);
 
         var sizeTiling = new List<WallSection>();
         int walls = 0, wallPixels = 0, maskedWalls = 0, maskedCandidates = 0;
@@ -1658,11 +1670,11 @@ public partial class LevelCheck : Godot.Node
         return colormap;
     }
 
-    /// <summary>The colour the level shader draws for palette index <paramref name="index"/> through COLORMAP row <paramref name="colormap"/> (palette 0).</summary>
+    /// <summary>The colour the level shader draws for palette index <paramref name="index"/> through COLORMAP row <paramref name="colormap"/> (in the mesh's PLAYPAL palette, T6.8).</summary>
     private (int R, int G, int B) Shade(byte index, int colormap)
     {
         byte mapped = Colormap.GetMap(colormap)[index];
-        (byte r, byte g, byte b) = Playpal.GetColor(0, mapped);
+        (byte r, byte g, byte b) = Playpal.GetColor(_scene.Mesh?.Palette ?? 0, mapped);
         return (r, g, b);
     }
 

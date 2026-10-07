@@ -25,6 +25,7 @@
     <Compile Include="../../src/Game/TiccmdBuilder.cs" Link="Game/TiccmdBuilder.cs" />
     <Compile Include="../../src/Game/InputLatches.cs" Link="Game/InputLatches.cs" />
     <Compile Include="../../src/Game/RouteFile.cs" Link="Game/RouteFile.cs" />
+    <Compile Include="../../src/Game/StStuff.cs" Link="Game/StStuff.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />

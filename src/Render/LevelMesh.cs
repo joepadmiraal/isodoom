@@ -501,8 +501,26 @@ public sealed class LevelMesh
         ShadowMaterial.SetShaderParameter("shadow_opacity", settings.ShadowOpacity);
     }
 
-    /// <summary>Selects the PLAYPAL palette.</summary>
-    public void SetPalette(int palette) => SetParameter("palette_index", palette);
+    /// <summary>
+    /// Selects the PLAYPAL palette (0 normal, 1–8 red, 9–12 gold, 13 radiation
+    /// suit; T6.8: st_stuff.c's flashes) for the level and its sprites; the
+    /// blob shadows take its colour 0 (black in palette 0).
+    /// </summary>
+    public void SetPalette(int palette)
+    {
+        Palette = palette;
+        SetParameter("palette_index", palette);
+        if (_playpal is { } playpal && palette >= 0 && palette < playpal.Count)
+        {
+            (byte r, byte g, byte b) = playpal.GetColor(palette, 0);
+            ShadowMaterial.SetShaderParameter("shadow_colour", Color.Color8(r, g, b).SrgbToLinear());
+        }
+    }
+
+    /// <summary>The PLAYPAL palette as last set (<see cref="SetPalette"/>).</summary>
+    public int Palette { get; private set; }
+
+    private Playpal? _playpal;
 
     /// <summary>A sector's floor and ceiling heights to draw, in map units (T5.1: interpolated between tics).</summary>
     public delegate (float Floor, float Ceiling) SectorHeights(Sector sector);
@@ -694,6 +712,7 @@ public sealed class LevelMesh
 
     private void CreateTextures(Playpal playpal, Colormap colormap)
     {
+        _playpal = playpal;
         AtlasTexture = IndexedTextures.CreateTexture(Atlas.Image);
 
         var info = _infoImage = Image.CreateEmpty(DataWidth, Rows(Atlas.Rects.Count), false, Image.Format.Rgbaf);

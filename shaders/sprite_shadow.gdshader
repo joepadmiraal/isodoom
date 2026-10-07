@@ -8,7 +8,8 @@
 //   VERTEX              x, z in −1…1 (the disc's square)
 // `shadow_mode`: 0 off, 1 black blended at `shadow_opacity` and fading out
 // over the outer 40 % of the radius, 2 black pixels in a 4×4 ordered dither
-// (half of the disc's pixels: palette colours only).
+// (half of the disc's pixels: palette colours only). `shadow_colour` is the
+// current palette's colour 0 (black, tinted by a palette flash; T6.8), linear.
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled, blend_mix;
 
@@ -17,6 +18,7 @@ const float SHADOW_LIFT = 0.5;
 
 uniform int shadow_mode = 0;
 uniform float shadow_opacity = 0.5;
+uniform vec3 shadow_colour = vec3(0.0);
 
 varying vec2 v_disc;
 
@@ -35,7 +37,7 @@ void fragment() {
 	if (d > 1.0) {
 		discard;
 	}
-	ALBEDO = vec3(0.0);
+	ALBEDO = shadow_colour;
 	if (shadow_mode == 2) {
 		ivec2 p = ivec2(FRAGCOORD.xy) & ivec2(3);
 		// 4×4 Bayer matrix: keep the pixels below the threshold (half).

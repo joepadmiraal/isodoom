@@ -116,3 +116,16 @@ index ea1611c..6053e51 100644
  	if (pl->minx > pl->maxx)
  	    continue;
  
+diff --git a/doomgeneric/st_stuff.c b/doomgeneric/st_stuff.c
+index e25accc..2ccb8ae 100644
+--- a/doomgeneric/st_stuff.c
++++ b/doomgeneric/st_stuff.c
+@@ -931,7 +931,7 @@ void ST_Ticker (void)
+ 
+ }
+ 
+-static int st_palette = 0;
++int st_palette = 0; // IsoDoom reference (T6.8): read by the dump (was static)
+ 
+ void ST_doPaletteStuff(void)
+ {

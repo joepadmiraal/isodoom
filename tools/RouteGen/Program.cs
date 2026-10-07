@@ -1265,6 +1265,32 @@ monsters
             g.Wait(40);
             Log("emptied " + State());
         }, Monsters: true),
+        ["testmap-pickups"] = new(() => TestMapWad("pickups"), "E1M1", """
+# The pickups test map (T6.8, RouteTestMaps) on skill 1 (ammo doubled,
+# damage halved): stand in the damage room N for three hits (the red
+# palette), walk east along the row of every shareware pickup (health,
+# armor, ammo, the backpack, the weapons, the keys, the blur sphere, the
+# computer map, the light amplification visor; the gold palette; a stimpack
+# at full health, a green armor over blue and a second computer map stay)
+# to the radiation suit, back west into N, unhurt there in the suit (the
+# green palette). Written by tools/RouteGen (testmap-pickups).
+iwad testmap
+map pickups
+skill 1
+
+""", (g, Log) =>
+        {
+            IsoDoom.Sim.player_t p = g.w.players[0];
+            string Status() => $"health {p.health} armor {p.armorpoints}/{p.armortype} items {p.itemcount} damage {p.damagecount} bonus {p.bonuscount} colormap {p.fixedcolormap}";
+            g.Wait(70);
+            Log("hurt " + Status());
+            g.GoTo(1560, 128);
+            Log("at the suit " + Status());
+            g.GoTo(96, 128);
+            Log("back in N " + Status());
+            g.Wait(100);
+            Log("suited " + Status());
+        }, Skill: IsoDoom.Sim.skill_t.sk_baby),
         ["testmap-stairs"] = new(() => TestMapWad("stairs"), "E1M1", """
 # The stairs test map (T5.5, RouteTestMaps): west across the W1 stairs
 # line (8, boundary 7): the four steps rise by 8 a step at a quarter unit

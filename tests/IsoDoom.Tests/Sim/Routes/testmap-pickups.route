@@ -1,0 +1,80 @@
+# The pickups test map (T6.8, RouteTestMaps) on skill 1 (ammo doubled,
+# damage halved): stand in the damage room N for three hits (the red
+# palette), walk east along the row of every shareware pickup (health,
+# armor, ammo, the backpack, the weapons, the keys, the blur sphere, the
+# computer map, the light amplification visor; the gold palette; a stimpack
+# at full health, a green armor over blue and a second computer map stay)
+# to the radiation suit, back west into N, unhurt there in the suit (the
+# green palette). Written by tools/RouteGen (testmap-pickups).
+iwad testmap
+map pickups
+skill 1
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x70
+25 0 0 0 x69
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x3
+25 1 0 0
+25 0 0 0 x11
+24 0 0 0
+25 0 0 0 x9
+25 1 0 0
+23 0 0 0
+-3 0 0 0
+-2 0 0 0 x2
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x4
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0
+0 0 1 0
+0 0 0 0 x12
+25 0 127 0
+25 0 0 0 x68
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x15
+24 0 0 0
+25 0 0 0 x7
+25 1 0 0
+25 0 0 0 x7
+24 0 0 0
+25 0 0 0 x14
+25 1 0 0
+24 0 0 0
+25 0 0 0 x11
+-2 0 0 0 x4
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x112
