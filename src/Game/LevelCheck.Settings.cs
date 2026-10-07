@@ -213,6 +213,14 @@ public partial class LevelCheck
             Expect("gameplay/masked_back", (mesh.MaskedBacks == Render.MaskedBackFaces.Mirrored ? "mirror" : "off") == changed["gameplay/masked_back"], $"the mesh's {mesh.MaskedBacks}");
         }
         Expect("hud/mode", s.Hud.Mode.ToString().ToLowerInvariant() == changed["hud/mode"], $"the HUD's {s.Hud.Mode}");
+        if (s.MusicDevice is { } music && changed.TryGetValue("sound/opl", out string? opl))
+        {
+            // T7.8g: the player (and its driver, with a bank) switched at once
+            bool opl3 = opl == "opl3", driver;
+            lock (music.Lock)
+                driver = music.Driver?.Opl3Mode ?? opl3;
+            Expect("sound/opl", music.Opl3 == opl3 && driver == opl3, $"the player's OPL3 {music.Opl3}, its driver's {driver}");
+        }
         Expect("hud/messages", (s.Menu.showMessages != 0 ? "on" : "off") == changed["hud/messages"], $"showMessages {s.Menu.showMessages}");
     }
 }

@@ -43,6 +43,7 @@
     <Compile Include="../../src/Audio/MusicDevice.cs" Link="Audio/MusicDevice.cs" />
     <Compile Include="../../src/Audio/Opl3.cs" Link="Audio/Opl3.cs" />
     <Compile Include="../../src/Audio/OplMusic.cs" Link="Audio/OplMusic.cs" />
+    <Compile Include="../../src/Audio/OplMusicMixer.cs" Link="Audio/OplMusicMixer.cs" />
     <Compile Include="../../src/Audio/Mus2Mid.cs" Link="Audio/Mus2Mid.cs" />
     <Compile Include="../../src/Audio/MidiFile.cs" Link="Audio/MidiFile.cs" />
     <Compile Include="../../src/Render/DoorLids.cs" Link="Render/DoorLids.cs" />

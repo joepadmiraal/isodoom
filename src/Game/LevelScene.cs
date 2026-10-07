@@ -589,6 +589,8 @@ public partial class LevelScene : Node3D, IGameHost
                 };
             if (WadLocator.GetUserArg("--level-wipe") is string wipe)
                 ScreenWipes = ParseWipe(wipe, "--level-wipe");
+            if (WadLocator.GetUserArg("--level-opl") is string opl)
+                MusicOpl3 = ParseOpl(opl, "--level-opl"); // T7.8g
             if (WadLocator.GetUserArg("--level-hud-scale") is string hudScale)
                 Hud.FixedScale = hudScale == "auto" ? 0
                     : int.TryParse(hudScale, out int n) && n >= 1 && n <= 16 ? n

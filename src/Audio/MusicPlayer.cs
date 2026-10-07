@@ -44,7 +44,8 @@ public partial class MusicPlayer : Node, IMusicDevice
     public const double FadeSeconds = 0.02;
 
     private readonly object _lock = new();
-    private readonly OplMusic? _opl;
+    private readonly OplMusicMixer? _mixer; // the driver, and the OPL2/OPL3 switch (T7.8g)
+    private bool _opl3;
     private readonly AudioStreamPlayer _player;
     private readonly AudioStreamGenerator _stream;
     private AudioStreamGeneratorPlayback? _playback;
@@ -74,10 +75,20 @@ public partial class MusicPlayer : Node, IMusicDevice
     public double BufferSeconds { get; }
 
     /// <summary>Whether the device can play songs (the WAD has a <c>GENMIDI</c> bank).</summary>
-    public bool CanPlay => _opl is not null;
+    public bool CanPlay => _mixer is not null;
 
-    /// <summary>The driver (null without a bank); hold <see cref="Lock"/> to touch it.</summary>
-    public OplMusic? Driver => _opl;
+    /// <summary>The driver (null without a bank); hold <see cref="Lock"/> to touch it (a mode switch replaces it).</summary>
+    public OplMusic? Driver => _mixer?.Driver;
+
+    /// <summary>The driver's mixer (null without a bank); hold <see cref="Lock"/> to touch it.</summary>
+    public OplMusicMixer? Mixer => _mixer;
+
+    /// <summary>
+    /// T7.8g: whether the chip is an OPL3 (18 voices, the default) or an OPL2
+    /// (9 voices: Chocolate Doom's default, the AdLib's sound); the option's
+    /// value, kept without a bank too.
+    /// </summary>
+    public bool Opl3 => _opl3;
 
     /// <summary>The lock over <see cref="Driver"/>.</summary>
     public object Lock => _lock;
@@ -127,14 +138,15 @@ public partial class MusicPlayer : Node, IMusicDevice
     /// (the <c>GENMIDI</c> lump, or null: no songs), its ring buffer
     /// <paramref name="bufferSeconds"/> long. It plays once in the tree.
     /// </summary>
-    public MusicPlayer(ReadOnlyMemory<byte>? genmidi, string bus, double bufferSeconds = DefaultBufferSeconds)
+    public MusicPlayer(ReadOnlyMemory<byte>? genmidi, string bus, double bufferSeconds = DefaultBufferSeconds, bool opl3 = true)
     {
         Name = "MusicPlayer";
         ProcessMode = ProcessModeEnum.Always;
         MixRate = (int)AudioServer.GetMixRate();
         BufferSeconds = Math.Max(bufferSeconds, DriverMinimumSeconds(MixRate));
+        _opl3 = opl3;
         if (genmidi is { } bank)
-            _opl = new OplMusic(bank.Span, MixRate); // OPL3, Doom 1.9's driver (T7.8d)
+            _mixer = new OplMusicMixer(bank.Span, MixRate, opl3); // Doom 1.9's driver (T7.8d)
         _stream = new AudioStreamGenerator { MixRate = MixRate, BufferLength = (float)BufferSeconds };
         _player = new AudioStreamPlayer { Name = "Music", Stream = _stream, Bus = bus };
         AddChild(_player);
@@ -199,6 +211,27 @@ public partial class MusicPlayer : Node, IMusicDevice
         }
     }
 
+    /// <summary>
+    /// T7.8g: switches the chip to OPL3 or OPL2 (<paramref name="opl3"/>) at
+    /// once: a new driver, made off the lock, takes the volume and the song
+    /// (played again from its start) under it, while the old one's notes are
+    /// keyed off and fade out beneath (<see cref="OplMusicMixer.SwitchTo"/>):
+    /// no click, no stuck note, and the render thread only ever sees one
+    /// driver per block. Returns whether the mode changed.
+    /// </summary>
+    public bool SetOpl3(bool opl3)
+    {
+        if (opl3 == _opl3)
+            return false;
+        _opl3 = opl3;
+        if (_mixer is null)
+            return true;
+        OplMusic next = _mixer.CreateDriver(opl3);
+        lock (_lock)
+            _mixer.SwitchTo(next);
+        return true;
+    }
+
     /// <summary>The wall-clock time a fade takes to be heard out: the fade and the ring buffer behind it.</summary>
     public double FadeOutSeconds => FadeSeconds + (BufferFrames > 0 ? (double)BufferFrames / MixRate : BufferSeconds) + 0.02;
 
@@ -222,8 +255,8 @@ public partial class MusicPlayer : Node, IMusicDevice
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             lock (_lock)
             {
-                if (_opl is { } opl)
-                    opl.OPL_Mix_Callback(block);
+                if (_mixer is { } mixer)
+                    mixer.Mix(block);
                 else
                     Array.Clear(block);
                 fadeFrom = _fadeFrames;
@@ -263,7 +296,7 @@ public partial class MusicPlayer : Node, IMusicDevice
     {
         midi_file_t? song;
         lock (_lock)
-            song = _opl?.I_OPL_RegisterSong(data.Span);
+            song = _mixer?.Driver.I_OPL_RegisterSong(data.Span);
         _refuseNext = song is null;
         object? recorded = Record.I_RegisterSong(lumpName, data);
         _refuseNext = false;
@@ -276,7 +309,7 @@ public partial class MusicPlayer : Node, IMusicDevice
         var h = (Handle)handle;
         Record.I_UnRegisterSong(h.Recorded);
         lock (_lock)
-            _opl?.I_OPL_UnRegisterSong(h.Song);
+            _mixer?.Driver.I_OPL_UnRegisterSong(h.Song);
     }
 
     /// <inheritdoc/>
@@ -285,7 +318,7 @@ public partial class MusicPlayer : Node, IMusicDevice
         var h = (Handle)handle;
         Record.I_PlaySong(h.Recorded, looping);
         lock (_lock)
-            _opl?.I_OPL_PlaySong(h.Song, looping);
+            _mixer?.PlaySong(h.Song, looping);
     }
 
     /// <inheritdoc/>
@@ -293,7 +326,7 @@ public partial class MusicPlayer : Node, IMusicDevice
     {
         Record.I_StopSong();
         lock (_lock)
-            _opl?.I_OPL_StopSong();
+            _mixer?.StopSong();
     }
 
     /// <inheritdoc/>
@@ -301,7 +334,7 @@ public partial class MusicPlayer : Node, IMusicDevice
     {
         Record.I_PauseSong();
         lock (_lock)
-            _opl?.I_OPL_PauseSong();
+            _mixer?.Driver.I_OPL_PauseSong();
     }
 
     /// <inheritdoc/>
@@ -309,7 +342,7 @@ public partial class MusicPlayer : Node, IMusicDevice
     {
         Record.I_ResumeSong();
         lock (_lock)
-            _opl?.I_OPL_ResumeSong();
+            _mixer?.Driver.I_OPL_ResumeSong();
     }
 
     /// <inheritdoc/>
@@ -317,16 +350,16 @@ public partial class MusicPlayer : Node, IMusicDevice
     {
         Record.I_SetMusicVolume(volume);
         lock (_lock)
-            _opl?.I_OPL_SetMusicVolume(volume);
+            _mixer?.Driver.I_OPL_SetMusicVolume(volume);
     }
 
     /// <summary>The driver's state under the lock (<see cref="OplMusic.ToString"/>), or why it is silent.</summary>
     public string DriverText()
     {
-        if (_opl is null)
+        if (_mixer is null)
             return "no GENMIDI: silent";
         lock (_lock)
-            return _opl.ToString();
+            return _mixer.Driver.ToString();
     }
 
     /// <summary>The overlay's: the driver, the song asked for, the ring buffer's level, the underruns, the render cost.</summary>

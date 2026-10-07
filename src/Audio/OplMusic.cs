@@ -476,6 +476,9 @@ public sealed class OplMusic : IMusicDevice
     /// <summary>Whether the sequencer is paused (<c>OPL_SetPaused</c>).</summary>
     public bool Paused => opl_sdl_paused != 0;
 
+    /// <summary>The song's tracks not at their end yet (<c>running_tracks</c>; 0 once a song that does not loop has ended).</summary>
+    public int RunningTracks => (int)running_tracks;
+
     /// <summary>The voices in use (<c>voice_alloced_num</c>).</summary>
     public int VoicesInUse => voice_alloced_num;
 

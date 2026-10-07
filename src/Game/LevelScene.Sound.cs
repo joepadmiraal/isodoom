@@ -50,6 +50,21 @@ public partial class LevelScene
     /// <summary>T7.7: the menus' Quit is waiting for its sound (<see cref="QuitWaitSeconds"/>); nothing runs meanwhile.</summary>
     public bool Quitting { get; private set; }
 
+    /// <summary>
+    /// T7.8g: whether the music plays on an OPL3 (the default) or an OPL2
+    /// (<c>--level-opl=opl3|opl2</c>, the option <c>sound/opl</c>; the
+    /// player's mode, <see cref="MusicPlayer.SetOpl3"/>).
+    /// </summary>
+    public bool MusicOpl3 { get; set; } = true;
+
+    /// <summary>T7.8g: <c>--level-opl</c>'s and the option's value.</summary>
+    public static bool ParseOpl(string value, string what) => value switch
+    {
+        "opl3" => true,
+        "opl2" => false,
+        _ => throw new ArgumentException($"{what}: \"{value}\" (opl3 or opl2)"),
+    };
+
     /// <summary>T7.7: <c>--level-sound-stereo</c>'s value.</summary>
     public static SoundStereo ParseStereo(string value) => value switch
     {
@@ -73,7 +88,7 @@ public partial class LevelScene
         if (WadLocator.GetUserArg("--level-music-buffer") is string ms)
             buffer = int.TryParse(ms, out int b) && b >= 10 && b <= 1000 ? b / 1000.0
                 : throw new ArgumentException($"--level-music-buffer: \"{ms}\" (10-1000 ms)");
-        MusicDevice = new MusicPlayer(genmidi, MusicBus, buffer);
+        MusicDevice = new MusicPlayer(genmidi, MusicBus, buffer, MusicOpl3);
         AddChild(MusicDevice);
         GetTree().AutoAcceptQuit = false; // the window's close fades the music out first (CloseRequested)
         Sound = new SSound(SfxDevice, SSound.DefaultChannels, MusicDevice,

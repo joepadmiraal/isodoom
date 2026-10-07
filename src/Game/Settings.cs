@@ -132,6 +132,8 @@ public static class Settings
         new("controls/mouse_sensitivity", "MOUSE SENSITIVITY", SettingPage.Controls, "5", Range(0, 9, 1)),
         new("sound/sfx_volume", "SFX VOLUME", SettingPage.Sound, "8", Range(0, 15, 1)),
         new("sound/music_volume", "MUSIC VOLUME", SettingPage.Sound, "8", Range(0, 15, 1)),
+        // T7.8g: the music's chip (More Options → Sound, with the volumes)
+        new("sound/opl", "MUSIC CHIP", SettingPage.Sound, "opl3", new[] { "opl3", "opl2" }, "--level-opl"),
     };
 
     /// <summary>The setting with key <paramref name="key"/>, or null.</summary>

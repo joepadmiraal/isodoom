@@ -32,7 +32,7 @@ public interface ISetupHost
 }
 
 // T7.3: the options' text pages, reached from vanilla's options menu (its
-// last item, "MORE OPTIONS..."): video, gameplay, sprites, HUD and the
+// last item, "MORE OPTIONS..."): video, gameplay, sprites, HUD, sound (T7.8g) and the
 // controls with their rebinding. Not vanilla: drawn in the message font,
 // a value right of each item, ">" for the cursor.
 public sealed partial class MMenu
@@ -76,6 +76,7 @@ public sealed partial class MMenu
             ("gameplay", "GAMEPLAY", SettingPage.Gameplay, 'g'),
             ("sprites", "SPRITES", SettingPage.Sprites, 's'),
             ("hud", "HUD", SettingPage.Hud, 'h'),
+            ("soundsetup", "SOUND", SettingPage.Sound, 'u'), // T7.8g: the volumes and the music's chip
         };
 
         var setupItems = new List<menuitem_t> { new(1, "", _ => M_SetupNextMenu(ControlsDef), 'c', "CONTROLS...") };

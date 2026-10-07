@@ -648,6 +648,11 @@ public partial class LevelScene : ISetupHost
             s => Menu.mouseSensitivity = ParseInt(s, "controls/mouse_sensitivity", 0, 9));
         Add("sound/sfx_volume", () => Menu.sfxVolume.ToString(CultureInfo.InvariantCulture), s => Menu.sfxVolume = ParseInt(s, "sound/sfx_volume", 0, 15));
         Add("sound/music_volume", () => Menu.musicVolume.ToString(CultureInfo.InvariantCulture), s => Menu.musicVolume = ParseInt(s, "sound/music_volume", 0, 15));
+        Add("sound/opl", () => MusicOpl3 ? "opl3" : "opl2", s =>
+        {
+            MusicOpl3 = ParseOpl(s, "sound/opl");
+            MusicDevice?.SetOpl3(MusicOpl3); // at once: the song again from its start on the other chip (T7.8g)
+        });
 
         foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
         {

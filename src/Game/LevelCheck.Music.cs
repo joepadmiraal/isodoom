@@ -165,10 +165,57 @@ public partial class LevelCheck
         if (!held || !resumed)
             Fail($"music playback: the pause: held {held}, resumed {resumed} ({player})");
 
+        // T7.8g: the option switches the chip while the song plays: the song again from its start on an OPL2, heard, then back
+        string title = SSound.MusicName(sound.mus_playing);
+        // (on the first map's song, looping: the title's plays once and may have ended)
+        _scene.Flow.S_ChangeMusic(_scene.GameMode == GameMode.commercial ? musicenum_t.mus_runnin : musicenum_t.mus_e1m1, true);
+        string sw = "no song to switch";
+        if (sound.MusicAudible)
+        {
+            string chip = _scene.GetSetting("sound/opl");
+            sw = $"{SSound.MusicName(sound.mus_playing)}: " + await CheckOplSwitch(player, sound, chip == "opl3" ? "opl2" : "opl3");
+            sw += ", " + await CheckOplSwitch(player, sound, chip);
+        }
+
         if (player.Underruns != 0)
             Fail($"music playback: {player.Underruns} buffer underrun(s) ({player})");
         _scene.Menu.musicVolume = volume;
         _scene.UpdateSound(0);
-        GD.Print($"Level check: music playback (T7.8e): {SSound.MusicName(sound.mus_playing)} for {elapsed:0.0} s, {rendered:0.00} s rendered, peak {peak}; {player}");
+        GD.Print($"Level check: music playback (T7.8e): {title} for {elapsed:0.0} s, {rendered:0.00} s rendered, peak {peak}; switched (T7.8g): {sw}; {player}");
+    }
+
+    /// <summary>
+    /// T7.8g: the music option set to <paramref name="chip"/> through the
+    /// scene while a song plays: the driver changes mode at once, plays the
+    /// song again (from its start, the volume kept, the old chip faded out
+    /// under it), notes sound within a second, and the buffer never runs dry.
+    /// </summary>
+    private async System.Threading.Tasks.Task<string> CheckOplSwitch(MusicPlayer player, SSound sound, string chip)
+    {
+        int volume;
+        lock (player.Lock)
+            volume = player.Driver!.MusicVolume;
+        _scene.SetSetting("sound/opl", chip);
+        bool opl3, playing;
+        int volumeAfter;
+        lock (player.Lock)
+        {
+            opl3 = player.Driver!.Opl3Mode;
+            playing = player.Driver.I_OPL_MusicIsPlaying();
+            volumeAfter = player.Driver.MusicVolume;
+        }
+        if (opl3 != (chip == "opl3") || !playing || volumeAfter != volume || !sound.MusicAudible)
+            Fail($"music playback: the chip switched to {chip}: OPL3 {opl3}, playing {playing}, volume {volumeAfter} (was {volume}) ({player})");
+        player.TakePeak();
+        ulong t0 = Time.GetTicksUsec();
+        while (Time.GetTicksUsec() - t0 < 1_000_000)
+            await NextFrame();
+        int peak = player.TakePeak();
+        bool fading;
+        lock (player.Lock)
+            fading = player.Mixer!.Crossfading;
+        if (peak < 256 || fading)
+            Fail($"music playback: after the switch to {chip} the song is silent (peak {peak}) or the old chip still fades ({fading}) ({player})");
+        return $"{chip} peak {peak}";
     }
 }

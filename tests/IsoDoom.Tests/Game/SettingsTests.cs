@@ -190,6 +190,32 @@ public class SettingsTests
     }
 
     [Fact]
+    public void TheSoundPageSwitchesTheMusicChip()
+    {
+        // T7.8g: More Options → Sound (U): the volumes and the chip, OPL3 by default, toggled by left and right
+        SettingDef opl = Settings.Find("sound/opl")!;
+        Assert.Equal((SettingPage.Sound, "opl3"), (opl.Page, opl.Default));
+        Assert.Equal(new[] { "--level-opl" }, opl.Args);
+        Assert.True(opl.Wraps);
+
+        (MMenu menu, SetupHost host) = NewMenu();
+        Keys(menu, Esc, 'o', Enter, 'o', Enter, 'u', Enter);
+        Assert.Equal("soundsetup", menu.StateName);
+        Assert.Equal(new[] { "SFX VOLUME", "MUSIC VOLUME", "MUSIC CHIP" }, menu.currentMenu.menuitems.Select(i => i.text));
+        menu.itemOn = 2;
+        Assert.Contains("MUSIC CHIP: OPL3", menu.StateText());
+        Keys(menu, Right);
+        Assert.Equal("opl2", host.Values["sound/opl"]);
+        Keys(menu, Right);
+        Assert.Equal("opl3", host.Values["sound/opl"]);
+        Keys(menu, Left);
+        Assert.Equal("opl2", host.Values["sound/opl"]);
+        menu.itemOn = 1;
+        Keys(menu, Left);
+        Assert.Equal("7", host.Values["sound/music_volume"]);
+    }
+
+    [Fact]
     public void MoreOptionsReachesEveryPageAndChangesTheirSettings()
     {
         (MMenu menu, SetupHost host) = NewMenu();
@@ -205,7 +231,7 @@ public class SettingsTests
             pages.Add(menu.StateName);
             Keys(menu, Back);
         }
-        Assert.Equal(new[] { "controls", "video", "gameplay", "sprites", "hud" }, pages);
+        Assert.Equal(new[] { "controls", "video", "gameplay", "sprites", "hud", "soundsetup" }, pages);
 
         // gameplay: the cutaway steps right and left (and Enter steps on), at once through the host
         Keys(menu, 'g', Enter);
@@ -224,7 +250,7 @@ public class SettingsTests
         foreach (MMenu.menuitem_t item in menu.SettingDefs.Values.SelectMany(d => d.menuitems))
             shown.Add(item.text);
         shown.AddRange(menu.ControlsDef.menuitems.Select(i => i.text));
-        foreach (SettingDef def in Settings.Defs.Where(d => d.Page != SettingPage.Sound))
+        foreach (SettingDef def in Settings.Defs)
             Assert.Single(shown, def.Label);
 
         // back to the options, then the main menu
