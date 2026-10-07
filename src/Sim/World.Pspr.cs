@@ -576,7 +576,7 @@ public sealed partial class World
         if (player.powers[(int)powertype_t.pw_strength] != 0)
             damage *= 10;
 
-        uint angle = mo.angle;
+        uint angle = P_AimAssist(mo, MELEERANGE); // vanilla: mo->angle (SPEC §12 T6.7)
         angle = unchecked(angle + (uint)((P_Random() - P_Random()) << 18));
         int slope = P_AimLineAttack(mo, angle, MELEERANGE);
         P_LineAttack(mo, angle, MELEERANGE, slope, damage);
@@ -600,7 +600,7 @@ public sealed partial class World
     {
         mobj_t mo = player.mo!;
         int damage = 2 * (P_Random() % 10 + 1);
-        uint angle = mo.angle;
+        uint angle = P_AimAssist(mo, MELEERANGE + 1); // vanilla: mo->angle (SPEC §12 T6.7)
         angle = unchecked(angle + (uint)((P_Random() - P_Random()) << 18));
 
         // use meleerange + 1 se the puff doesn't skip the flash
@@ -651,8 +651,8 @@ public sealed partial class World
 
         P_SetPsprite(player, ps_flash, Info.weaponinfo[(int)player.readyweapon].flashstate);
 
-        P_BulletSlope(player.mo!);
-        P_GunShot(player.mo!, player.refire == 0);
+        // P_BulletSlope; P_GunShot (SPEC §12 T6.7: along the aim assist's angle)
+        P_BulletSlopeAndShoot(player.mo!, 1, player.refire == 0);
     }
 
     /// <summary>p_pspr.c <c>A_Light1</c>: extra light 1 (the flash).</summary>
@@ -671,10 +671,8 @@ public sealed partial class World
 
         P_SetPsprite(player, ps_flash, Info.weaponinfo[(int)player.readyweapon].flashstate);
 
-        P_BulletSlope(player.mo!);
-
-        for (int i = 0; i < 7; i++)
-            P_GunShot(player.mo!, false);
+        // P_BulletSlope; 7 × P_GunShot (SPEC §12 T6.7: along the aim assist's angle)
+        P_BulletSlopeAndShoot(player.mo!, 7, false);
     }
 
     /// <summary>p_pspr.c <c>A_Light2</c>: extra light 2 (the flash).</summary>
@@ -727,9 +725,8 @@ public sealed partial class World
             Info.weaponinfo[(int)player.readyweapon].flashstate
             + (psp.state - statenum_t.S_CHAIN1));
 
-        P_BulletSlope(player.mo!);
-
-        P_GunShot(player.mo!, player.refire == 0);
+        // P_BulletSlope; P_GunShot (SPEC §12 T6.7: along the aim assist's angle)
+        P_BulletSlopeAndShoot(player.mo!, 1, player.refire == 0);
     }
 
     /// <summary>

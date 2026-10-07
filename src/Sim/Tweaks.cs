@@ -19,7 +19,7 @@ public sealed record Tweaks
     {
         AbsoluteAiming = true,
         AbsoluteMovement = true,
-        AimAssist = true,
+        AimAssistCone = DefaultAimAssistCone,
         UseFallback = true,
     };
 
@@ -38,8 +38,20 @@ public sealed record Tweaks
     /// </summary>
     public bool AbsoluteMovement { get; init; }
 
-    /// <summary>SPEC §6.3 #2: hitscans and projectiles snap horizontally to the nearest target in a small cone (T6.7).</summary>
-    public bool AimAssist { get; init; }
+    /// <summary><see cref="AimAssistCone"/>'s default in <see cref="TopDown"/>: ±5° (BAM, SPEC §12 T6.7).</summary>
+    public const uint DefaultAimAssistCone = 5 * Tables.ANG1;
+
+    /// <summary>
+    /// SPEC §6.3 #2: the player's hitscans, melee attacks and missiles snap
+    /// horizontally to the nearest target within ±this angle (BAM) of the
+    /// facing when the facing itself misses (<see cref="World.P_AimAssist"/>,
+    /// T6.7); vanilla's vertical autoaim stays. 0 (the default) is off: vanilla.
+    /// The strength option.
+    /// </summary>
+    public uint AimAssistCone { get; init; }
+
+    /// <summary>Whether the aim assist is on (<see cref="AimAssistCone"/> above 0).</summary>
+    public bool AimAssist => AimAssistCone != 0;
 
     /// <summary>
     /// SPEC §6.3 #3: the use trace starts in the aim direction, and when it

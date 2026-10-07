@@ -162,7 +162,7 @@ public sealed partial class World
     public mobj_t P_SpawnPlayerMissile(mobj_t source, mobjtype_t type)
     {
         // see which target is to be aimed at
-        uint an = source.angle;
+        uint an = P_AimAssist(source, 16 * 64 * Fixed.FRACUNIT); // vanilla: source->angle (SPEC §12 T6.7)
         int slope = P_AimLineAttack(source, an, 16 * 64 * Fixed.FRACUNIT);
 
         if (linetarget == null)

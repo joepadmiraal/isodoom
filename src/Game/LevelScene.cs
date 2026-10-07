@@ -71,6 +71,8 @@ namespace IsoDoom.Game;
 /// <c>--level-tweaks=topdown|vanilla</c> (T4.7: the sim's <see cref="Tweaks"/>
 /// and the commands built for it: the twin-stick game, or vanilla's relative
 /// movement and turning; default topdown);
+/// <c>--level-aim-assist=DEG|off</c> (T6.7: the aim assist's half-cone,
+/// <see cref="Tweaks.AimAssistCone"/>, 0–45°; default 5 with topdown, off with vanilla);
 /// <c>--level-sprite-tilt=0-1|off|half|full</c> (billboards turn towards the
 /// camera by this fraction of its elevation, T3.6, <see cref="SpriteSettings"/>;
 /// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
@@ -350,6 +352,8 @@ public partial class LevelScene : Node3D
                     "vanilla" => Tweaks.Vanilla,
                     _ => throw new ArgumentException($"--level-tweaks: \"{tweaks}\" (topdown or vanilla)"),
                 };
+            if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
+                Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
             if (IsCheckRun)
             {
@@ -539,6 +543,21 @@ public partial class LevelScene : Node3D
         if (WadLocator.GetUserArg("--level-player-light") is string playerLight)
             settings = settings with { PlayerLight = SpriteSettings.ParsePlayerLight(playerLight) };
         return settings;
+    }
+
+    /// <summary>
+    /// <c>--level-aim-assist=DEG|off</c> (T6.7): the aim assist's half-cone
+    /// in degrees (0–45; 0 or off: vanilla aiming) as the sim's BAM
+    /// <see cref="Tweaks.AimAssistCone"/>.
+    /// </summary>
+    private static uint ParseAimAssistCone(string s)
+    {
+        if (s == "off")
+            return 0;
+        float deg = ParseFloat(s, "--level-aim-assist");
+        if (deg < 0 || deg > 45)
+            throw new ArgumentException($"--level-aim-assist: \"{s}\" (0-45 degrees or off)");
+        return (uint)Math.Round(deg / 360.0 * 4294967296.0);
     }
 
     private static float ParseFloat(string s, string what) =>
@@ -1298,7 +1317,7 @@ public partial class LevelScene : Node3D
             text.Append(LevelEnded + "\n");
         if (World is { } world)
             text.Append($"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
-                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}"
+                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}{(Tweaks.AimAssist ? $"   aim assist ±{Tweaks.AimAssistCone * (360.0 / 4294967296.0):0.#}°" : "")}"
                 + $"{(TeleportSnaps > 0 ? $"   teleports {TeleportSnaps}" : "")}\n");
         if (Cursor is { } hit)
         {
