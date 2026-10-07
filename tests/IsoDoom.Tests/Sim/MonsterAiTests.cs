@@ -194,11 +194,11 @@ public class MonsterAiTests
         Assert.Null(zombie.target);
 
         zombie.angle = Tables.ANG180; // facing the player
-        world.sounds.Clear();
+        world.events.Clear();
         world.A_Look(zombie);
         Assert.Same(Player(world), zombie.target);
         Assert.NotEqual(statenum_t.S_POSS_STND, zombie.state); // its see state, whose A_Chase ran
-        sound_event_t see = Assert.Single(world.sounds, s => s.sfx is >= sfxenum_t.sfx_posit1 and <= sfxenum_t.sfx_posit3);
+        sound_event_t see = Assert.Single(world.StartedSounds(), s => s.sfx is >= sfxenum_t.sfx_posit1 and <= sfxenum_t.sfx_posit3);
         Assert.Same(zombie, see.origin);
     }
 
@@ -296,7 +296,7 @@ public class MonsterAiTests
         zombie.target = Player(world);
         int before = world.random.prndindex;
         world.A_PosAttack(zombie);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_pistol && s.origin == zombie);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_pistol && s.origin == zombie);
         int one = world.random.prndindex - before;
 
         mobj_t shotguy = Spawn(world, 300, 64, mobjtype_t.MT_SHOTGUY);
@@ -304,7 +304,7 @@ public class MonsterAiTests
         world.players[0].health = 100;
         before = world.random.prndindex;
         world.A_SPosAttack(shotguy);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_shotgn && s.origin == shotguy);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_shotgn && s.origin == shotguy);
         // the spread and damage of each pellet: 3 P_Randoms each (plus any blood or puff)
         Assert.True(world.random.prndindex - before >= 9, $"{world.random.prndindex - before} P_Randoms");
         Assert.True(one >= 3);
@@ -372,7 +372,7 @@ public class MonsterAiTests
         Assert.Equal(F(400) + (ball.momx >> 1), ball.x); // half a step on
         Assert.Equal(F(32), ball.z);
         Assert.Equal(Info.states[(int)ball.info.spawnstate].tics, ball.tics);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_firsht && s.origin == ball);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_firsht && s.origin == ball);
     }
 
     [Theory]
@@ -463,12 +463,12 @@ public class MonsterAiTests
         World world = OneRoom();
         mobj_t zombie = Spawn(world, 300, 128, mobjtype_t.MT_POSSESSED);
         world.A_Scream(zombie);
-        Assert.Contains(world.sounds, s => s.sfx is >= sfxenum_t.sfx_podth1 and <= sfxenum_t.sfx_podth3 && s.origin == zombie);
+        Assert.Contains(world.StartedSounds(), s => s.sfx is >= sfxenum_t.sfx_podth1 and <= sfxenum_t.sfx_podth3 && s.origin == zombie);
         world.A_XScream(zombie);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_slop && s.origin == zombie);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_slop && s.origin == zombie);
         mobj_t imp = Spawn(world, 300, 64, mobjtype_t.MT_TROOP);
         world.A_Scream(imp);
-        Assert.Contains(world.sounds, s => s.sfx is sfxenum_t.sfx_bgdth1 or sfxenum_t.sfx_bgdth2 && s.origin == imp);
+        Assert.Contains(world.StartedSounds(), s => s.sfx is sfxenum_t.sfx_bgdth1 or sfxenum_t.sfx_bgdth2 && s.origin == imp);
     }
 
     // ---- A_BossDeath ----

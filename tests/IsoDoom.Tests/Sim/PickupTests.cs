@@ -80,7 +80,7 @@ public class PickupTests
         p.health = me.health = 50;
         mobj_t thing = world.P_SpawnMobj(me.x, me.y, World.ONFLOORZ, TypeOf(doomednum));
         Assert.NotEqual((mobjflag_t)0, thing.flags & mobjflag_t.MF_SPECIAL);
-        world.sounds.Clear();
+        world.events.Clear();
 
         world.P_TouchSpecialThing(thing, me);
 
@@ -102,8 +102,8 @@ public class PickupTests
         Assert.Equal(gives.Power == powertype_t.pw_invisibility, (me.flags & mobjflag_t.MF_SHADOW) != 0);
         Assert.Equal(gives.Item ? 1 : 0, p.itemcount);
         Assert.Equal(gives.Bonus, p.bonuscount);
-        Assert.Equal(new[] { gives.Sound }, world.sounds.Select(s => s.sfx));
-        Assert.Null(world.sounds[0].origin); // vanilla's S_StartSound(NULL, sound): heard everywhere
+        Assert.Equal(new[] { gives.Sound }, world.StartedSounds().Select(s => s.sfx));
+        Assert.Null(world.StartedSounds()[0].origin); // vanilla's S_StartSound(NULL, sound): heard everywhere
     }
 
     [Theory]

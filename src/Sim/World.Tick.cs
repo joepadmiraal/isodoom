@@ -101,7 +101,7 @@ public sealed partial class World
     public void P_Ticker()
     {
         P_StoreInterpolation(); // not vanilla: presentation only (T4.7)
-        sounds.Clear(); // not vanilla: this tic's sound events (T5.3)
+        DropStaleEvents(); // not vanilla: the events of earlier tics nobody drained (T6.10)
 
         for (int i = 0; i < MAXPLAYERS; i++)
         {

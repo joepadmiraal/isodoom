@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
@@ -955,7 +956,7 @@ public partial class LevelScene : Node3D
         PrintUnported();
         LastTiccmd = cmd;
         TicsRun++;
-        TakeMessage();
+        TakeEvents();
         if (World!.gameaction != gameaction_t.ga_nothing)
             DoGameAction();
     }
@@ -968,23 +969,61 @@ public partial class LevelScene : Node3D
 
     private int _hudMessageTics;
 
+    private readonly List<sim_event_t> _events = new();
+
+    /// <summary>How many started sounds <see cref="SoundLog"/> keeps.</summary>
+    public const int SoundLogLength = 6;
+
     /// <summary>
-    /// hu_stuff.c <c>HU_Ticker</c>'s message part (T5.8): a message the
-    /// tic left in <see cref="player_t.message"/> shows for
-    /// <see cref="HU_MSGTIMEOUT"/> tics and is taken (set back to null, as
-    /// vanilla does), so the same message again shows again.
+    /// The last <see cref="SoundLogLength"/> sounds the sim started (T6.10:
+    /// silent until M7, so the overlay lists them), oldest first, with the
+    /// tic they started in.
     /// </summary>
-    private void TakeMessage()
+    public IReadOnlyList<(int Tic, sound_event_t Sound)> SoundLog => _soundLog;
+
+    private readonly List<(int Tic, sound_event_t Sound)> _soundLog = new();
+
+    /// <summary>
+    /// The tic's events (T6.10, <see cref="World.DrainEvents"/>), drained
+    /// after each tic: the console player's message (hu_stuff.c
+    /// <c>HU_Ticker</c>'s message part, T5.8; the sim takes it from
+    /// <see cref="player_t.message"/>, <see cref="World.HU_TakeMessages"/>)
+    /// shows for <see cref="HU_MSGTIMEOUT"/> tics, so the same message
+    /// again shows again; started sounds go to <see cref="SoundLog"/>.
+    /// </summary>
+    private void TakeEvents()
     {
         if (_hudMessageTics > 0 && --_hudMessageTics == 0)
             HudMessage = null;
-        player_t p = World!.players[World.consoleplayer];
-        if (p.message is not string message)
-            return;
-        p.message = null;
-        HudMessage = message;
-        _hudMessageTics = HU_MSGTIMEOUT;
-        GD.Print($"Level: tic {World.leveltime}: \"{message}\"");
+        _events.Clear();
+        World!.DrainEvents(_events);
+        foreach (sim_event_t e in _events)
+        {
+            switch (e.type)
+            {
+                case simevent_t.se_message when e.player == World.consoleplayer:
+                    HudMessage = e.message;
+                    _hudMessageTics = HU_MSGTIMEOUT;
+                    GD.Print($"Level: tic {World.leveltime}: \"{e.message}\"");
+                    break;
+                case simevent_t.se_startsound:
+                    if (_soundLog.Count == SoundLogLength)
+                        _soundLog.RemoveAt(0);
+                    _soundLog.Add((e.tic, e.sound));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>A started sound as the overlay lists it: the name without <c>sfx_</c> and its origin (none, a sector, the player or a mobj type).</summary>
+    public string SoundText(sound_event_t s)
+    {
+        string name = s.sfx.ToString().Replace("sfx_", "", StringComparison.Ordinal);
+        if (s.sector is { } sec)
+            return $"{name}@sector {sec.Index}";
+        if (s.origin is { } mo)
+            return mo == PlayerMobj ? $"{name}@player" : $"{name}@{mo.type.ToString().Replace("MT_", "", StringComparison.Ordinal).ToLowerInvariant()}";
+        return name;
     }
 
     /// <summary>Why the world stopped (T5.8: the game ended, or the next map is not in the WAD), or null while it runs.</summary>
@@ -1389,6 +1428,8 @@ public partial class LevelScene : Node3D
             text.Append(StatusText(w, pl) + "\n");
         if (HudMessage is not null)
             text.Append($"message: {HudMessage}\n");
+        if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
+            text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
         if (LevelEnded is not null)
             text.Append(LevelEnded + "\n");
         if (World is { } world)
@@ -1587,6 +1628,7 @@ public partial class LevelScene : Node3D
         LevelEnded = null;
         HudMessage = null;
         _hudMessageTics = 0;
+        _soundLog.Clear();
         _planeMoves.Clear();
         SnapPending = false;
         TeleportSnaps = 0;

@@ -1,0 +1,12 @@
+# T6.10: the use grunt (sfx_noway, PTR_UseTraverse): turn round (the
+# synthetic E1M1's north wall is its exit switch), run into the start room's
+# south wall, then use it: held for three tics (once per press), released,
+# pressed again.
+iwad synthetic
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 -128 0
+50 0 0 0 x30
+0 0 0 2 x3
+0 0 0 0 x3
+0 0 0 2
+0 0 0 0 x5

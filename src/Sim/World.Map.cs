@@ -771,6 +771,13 @@ public sealed partial class World
     /// </summary>
     public bool usetraceused;
 
+    /// <summary>
+    /// Not vanilla: with <see cref="Tweaks.UseFallback"/>, the use trace met
+    /// a wall (<see cref="PTR_UseTraverse"/>'s <c>sfx_noway</c>, played only
+    /// if the fallback finds no line either; T6.10).
+    /// </summary>
+    public bool usetracenoway;
+
     // The use fallback's candidates (line, squared distance) and the one its trace looks for.
     private readonly System.Collections.Generic.List<(line_t line, long dist2)> _useCandidates = new();
     private line_t? _useFallbackTarget;
@@ -794,8 +801,12 @@ public sealed partial class World
             P_LineOpening(line);
             if (openrange <= 0)
             {
-                // S_StartSound (usething, sfx_noway); (T6.10; with the use fallback,
-                // only when it finds no line either, SPEC §12 T5.2)
+                // With the use fallback, the grunt waits for it: only when it
+                // finds no line either (SPEC §12 T5.2, T6.10).
+                if (tweaks.UseFallback)
+                    usetracenoway = true;
+                else
+                    S_StartSound(usething, sfxenum_t.sfx_noway);
 
                 // can't use through a wall
                 return false;
@@ -841,6 +852,7 @@ public sealed partial class World
         int y2 = y1 + (USERANGE >> Fixed.FRACBITS) * Tables.finesine[angle];
 
         usetraceused = false;
+        usetracenoway = false;
         P_PathTraverse(x1, y1, x2, y2, PT_ADDLINES, _ptrUseTraverse);
 
         if (tweaks.UseFallback && !usetraceused)
@@ -848,7 +860,8 @@ public sealed partial class World
             line_t? line = UseFallbackLine(mo);
             if (line != null)
                 P_UseSpecialLine(mo, line, 0);
-            // else S_StartSound (usething, sfx_noway) if the trace met a wall (T6.10)
+            else if (usetracenoway)
+                S_StartSound(mo, sfxenum_t.sfx_noway); // PTR_UseTraverse's grunt, held back (T6.10)
         }
     }
 

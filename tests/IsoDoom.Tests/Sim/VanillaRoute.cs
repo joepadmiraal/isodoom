@@ -67,7 +67,9 @@ namespace IsoDoom.Tests.Sim;
 /// and the weapon's and the flash's psprite as <c>STATE:TICS:SX:SY</c>
 /// (<see cref="Weapon"/>), then (T6.8) the <c>powers</c>:
 /// <c>INVULN:STRENGTH:INVIS:IRONFEET:ALLMAP:INFRARED:DAMAGECOUNT:BONUSCOUNT:FIXEDCOLORMAP:PALETTE</c>
-/// (<see cref="Powers"/>; the palette vanilla's <c>ST_doPaletteStuff</c> sets after the tic), then (T5.9)
+/// (<see cref="Powers"/>; the palette vanilla's <c>ST_doPaletteStuff</c> sets after the tic), then (T6.10)
+/// the <c>sounds</c>: every <c>S_StartSound</c> call of the tic and <c>P_RemoveMobj</c>'s
+/// <c>S_StopSound</c>, in order (<see cref="Sounds"/>), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
 /// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
@@ -82,7 +84,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "exit" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "sounds", "exit" };
 
     public string Name { get; }
     public string Path { get; }
@@ -238,7 +240,8 @@ public sealed class VanillaRoute
         int exit = world.gameaction == gameaction_t.ga_completed ? world.secretexit ? 2 : 1 : 0;
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
-            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + Powers(p) + " " + exit.ToString(CultureInfo.InvariantCulture);
+            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + Powers(p) + " " + Sounds(world)
+            + " " + exit.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -263,6 +266,50 @@ public sealed class VanillaRoute
     {
         var v = new List<int>(p.powers) { p.damagecount, p.bonuscount, p.fixedcolormap, StStuff.ST_doPaletteStuff(p) };
         return string.Join(':', v.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// The dump's <c>sounds</c> column (T6.10): the tic's sound events
+    /// (<see cref="World.events"/>: <c>S_StartSound</c> and <c>S_StopSound</c>,
+    /// with those of the route's events before the tic) in order, as
+    /// <c>NAME@ORIGIN</c> (<c>NAME</c> the <c>sfxenum_t</c> name without
+    /// <c>sfx_</c>, or <c>stop</c>; <c>ORIGIN</c> <c>-</c> for none,
+    /// <c>sN</c> for sector N, <c>TYPE:X:Y</c> for a mobj, at the event's
+    /// position) joined by commas, or <c>-</c> for none. Vanilla's <c>?</c>
+    /// (a garbage origin) matches any origin (<see cref="MatchSounds"/>).
+    /// </summary>
+    public static string Sounds(World world)
+    {
+        var list = new List<string>();
+        foreach (sim_event_t e in world.events)
+        {
+            if (e.type is not (simevent_t.se_startsound or simevent_t.se_stopsound))
+                continue;
+            string name = e.type == simevent_t.se_stopsound ? "stop" : e.sound.sfx.ToString()["sfx_".Length..];
+            string where = e.sound.sector is { } sec ? "s" + sec.Index.ToString(CultureInfo.InvariantCulture)
+                : e.sound.origin is { } mo ? string.Create(CultureInfo.InvariantCulture, $"{(int)mo.type}:{e.x}:{e.y}")
+                : "-";
+            list.Add(name + "@" + where);
+        }
+        return list.Count == 0 ? "-" : string.Join(',', list);
+    }
+
+    /// <summary>
+    /// The sim's <c>sounds</c> column with each entry that vanilla's has as
+    /// <c>NAME@?</c> (its garbage origin: p_spec.c's button release, SPEC §12
+    /// T5.4) replaced by vanilla's, when the names match: the origin is not compared there.
+    /// </summary>
+    public static string MatchSounds(string vanilla, string sim)
+    {
+        if (!vanilla.Contains("@?", StringComparison.Ordinal))
+            return sim;
+        string[] v = vanilla.Split(','), a = sim.Split(',');
+        for (int i = 0; i < Math.Min(v.Length, a.Length); i++)
+        {
+            if (v[i].EndsWith("@?", StringComparison.Ordinal) && a[i].StartsWith(v[i][..^1], StringComparison.Ordinal))
+                a[i] = v[i];
+        }
+        return string.Join(',', a);
     }
 
     /// <summary>The dump's <c>inventory</c> column (T6.1).</summary>
@@ -325,6 +372,14 @@ public sealed class VanillaRoute
             if (actual == expected[tic])
                 continue;
             string[] e = expected[tic].Split(' '), a = actual.Split(' ');
+            int sounds = Array.IndexOf(Columns, "sounds");
+            if (e.Length == Columns.Length && a.Length == Columns.Length)
+            {
+                a[sounds] = MatchSounds(e[sounds], a[sounds]);
+                actual = string.Join(' ', a);
+                if (actual == expected[tic])
+                    continue;
+            }
             var msg = new StringBuilder();
             if (e[1..5].SequenceEqual(a[1..5]) && e[0] == a[0])
                 msg.Append($"{Name}: tic {tic + 1} differs from vanilla");

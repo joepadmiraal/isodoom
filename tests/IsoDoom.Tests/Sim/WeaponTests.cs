@@ -139,7 +139,7 @@ public class WeaponTests
         World world = Armed(weapontype_t.wp_pistol, 50);
         player_t p = P(world);
         mobj_t mo = p.mo!;
-        world.sounds.Clear();
+        world.events.Clear();
         Tics(world, 1, buttoncode_t.BT_ATTACK);
         // P_FireWeapon: the player's attack frame, S_PISTOL1, the noise
         Assert.Equal((statenum_t.S_PLAY_ATK1, statenum_t.S_PISTOL1, 50), (mo.state, Weapon(world).state, p.ammo[0]));
@@ -151,7 +151,7 @@ public class WeaponTests
         // A_FirePistol: a clip, the flash (A_Light1), the firing frame, the sound, a puff on the far wall
         Assert.Equal((statenum_t.S_PLAY_ATK2, statenum_t.S_PISTOL2, statenum_t.S_PISTOLFLASH, 49, 1),
             (mo.state, Weapon(world).state, Flash(world).state, p.ammo[0], p.extralight));
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_pistol && s.origin == mo);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_pistol && s.origin == mo);
         Assert.Contains(world.Mobjs(), m => m.type == mobjtype_t.MT_PUFF);
         // the flash's 7 tics (counted from its first: P_MovePsprites moves it after the weapon), then S_LIGHTDONE's A_Light0 and nothing
         Tics(world, 5);
@@ -210,10 +210,10 @@ public class WeaponTests
         player_t p = P(world);
         Tics(world, 1, buttoncode_t.BT_ATTACK);
         Assert.Equal(0, p.ammo[0]);
-        world.sounds.Clear();
+        world.events.Clear();
         world.A_FireCGun(p, Weapon(world)); // S_CHAIN2's call with nothing left: the sound alone
         Assert.Equal((0, statenum_t.S_CHAINFLASH1), (p.ammo[0], Flash(world).state));
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_pistol);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_pistol);
     }
 
     [Fact]
@@ -294,10 +294,10 @@ public class WeaponTests
         World world = Armed(weapontype_t.wp_fist, 0);
         player_t p = P(world);
         mobj_t zombie = Zombie(world, 110, 140);
-        world.sounds.Clear();
+        world.events.Clear();
         Tics(world, 1 + 4, buttoncode_t.BT_ATTACK); // S_PUNCH1 (4 tics), then S_PUNCH2's A_Punch
         Assert.True(zombie.health < 20);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_punch);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_punch);
         Assert.Equal(Tables.R_PointToAngle2(p.mo!.x, p.mo.y, zombie.x, zombie.y), p.mo.angle);
         Assert.Contains(world.Mobjs(), m => m.type == mobjtype_t.MT_BLOOD);
 
@@ -313,10 +313,10 @@ public class WeaponTests
     {
         World world = Armed(weapontype_t.wp_fist, 0);
         mobj_t zombie = Zombie(world, 64 + 16 + 20 + 70, 128);
-        world.sounds.Clear();
+        world.events.Clear();
         Tics(world, 1 + 4, buttoncode_t.BT_ATTACK);
         Assert.Equal(20, zombie.health);
-        Assert.DoesNotContain(world.sounds, s => s.sfx == sfxenum_t.sfx_punch);
+        Assert.DoesNotContain(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_punch);
     }
 
     [Fact]
@@ -328,7 +328,7 @@ public class WeaponTests
         mobj_t zombie = Zombie(world, 114, 136);
         SawStroke(world); // S_SAW1: A_Saw at once
         Assert.True(zombie.health < 20);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_sawhit);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_sawhit);
         uint toTarget = Tables.R_PointToAngle2(mo.x, mo.y, zombie.x, zombie.y); // about 9 degrees left
         Assert.True(toTarget > Tables.ANG90 / 20);
         Assert.Equal(unchecked(toTarget - Tables.ANG90 / 21), mo.angle); // more than ANG90/20 away: just short of it
@@ -356,11 +356,11 @@ public class WeaponTests
         for (int i = 0; i < 8; i++)
         {
             Tics(idle, 1);
-            idled |= idle.sounds.Any(s => s.sfx == sfxenum_t.sfx_sawidl);
+            idled |= idle.StartedSounds().Any(s => s.sfx == sfxenum_t.sfx_sawidl);
         }
         Assert.True(idled);
         SawStroke(idle);
-        Assert.Contains(idle.sounds, s => s.sfx == sfxenum_t.sfx_sawful); // nothing in reach
+        Assert.Contains(idle.StartedSounds(), s => s.sfx == sfxenum_t.sfx_sawful); // nothing in reach
     }
 
     [Fact]
@@ -372,7 +372,7 @@ public class WeaponTests
         Assert.Equal(weapontype_t.wp_chainsaw, P(world).pendingweapon);
         while (P(world).readyweapon != weapontype_t.wp_chainsaw)
             Tics(world, 1);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_sawup); // P_BringUpWeapon, in the tic it changed
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_sawup); // P_BringUpWeapon, in the tic it changed
         UntilReady(world, weapontype_t.wp_chainsaw);
     }
 

@@ -184,7 +184,7 @@ public class StateMachineTests
         mobj_t[] fogs = world.Mobjs().Where(m => m.type == mobjtype_t.MT_TFOG).ToArray();
         Assert.Equal(2, fogs.Length);
         Assert.All(fogs, f => Assert.Equal((F(320), F(64)), (f.x, f.y)));
-        Assert.Equal(2, world.sounds.Count(s => s.sfx == sfxenum_t.sfx_telept));
+        Assert.Equal(2, world.StartedSounds().Count(s => s.sfx == sfxenum_t.sfx_telept));
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class StateMachineTests
         Assert.Equal(weapontype_t.wp_shotgun, p.pendingweapon);
         Assert.Equal(8, p.ammo[(int)ammotype_t.am_shell]); // two clips
         Assert.Equal(World.GOTSHOTGUN, p.message);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_wpnup);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_wpnup);
 
         Touch(world, mobjtype_t.MT_SHOTGUN, dropped: true); // ammo only, one clip
         Assert.Equal(12, p.ammo[(int)ammotype_t.am_shell]);

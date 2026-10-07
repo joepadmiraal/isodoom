@@ -74,7 +74,7 @@ public class PlatTests
             plat_t plat = PlatOf(world, A3);
             Assert.Equal((plat_e.down, F(0), F(136), 105, F(speed)), (plat.status, plat.low, plat.high, plat.wait, plat.speed));
             Assert.Contains(plat, world.activeplats);
-            Assert.Equal(new[] { sfxenum_t.sfx_pstart }, world.sounds.Select(s => s.sfx));
+            Assert.Equal(new[] { sfxenum_t.sfx_pstart }, world.StartedSounds().Select(s => s.sfx));
             Assert.Equal(0, world.EV_DoPlat(line, type, 0)); // busy
 
             // Down: 136 / speed steps, at the bottom (pastdest) the tic after.
@@ -84,13 +84,13 @@ public class PlatTests
             Assert.Equal(plat_e.down, plat.status);
             Run(world, 1);
             Assert.Equal(plat_e.waiting, plat.status);
-            Assert.Equal(new[] { sfxenum_t.sfx_pstop }, world.sounds.Select(s => s.sfx));
+            Assert.Equal(new[] { sfxenum_t.sfx_pstop }, world.StartedSounds().Select(s => s.sfx));
             // 105 tics, then up.
             Run(world, 104);
             Assert.Equal(plat_e.waiting, plat.status);
             Run(world, 1);
             Assert.Equal(plat_e.up, plat.status);
-            Assert.Equal(new[] { sfxenum_t.sfx_pstart }, world.sounds.Select(s => s.sfx));
+            Assert.Equal(new[] { sfxenum_t.sfx_pstart }, world.StartedSounds().Select(s => s.sfx));
             Run(world, down);
             Assert.Equal(F(136), world.sectors[A3].floorheight);
             Assert.NotNull(world.sectors[A3].specialdata);
@@ -150,7 +150,7 @@ public class PlatTests
             Assert.Equal((plat_e.up, F(high), FRACUNIT / 2, 0), (plat.status, plat.high, plat.speed, plat.wait));
             Assert.Equal("FLOOR1", world.sectors[A3].floorpic); // line 0's front sector's (the corridor), at once
             Assert.Equal(type == plattype_e.raiseToNearestAndChange ? 0 : 7, world.sectors[A3].special);
-            Assert.Equal(new[] { sfxenum_t.sfx_stnmov }, world.sounds.Select(s => s.sfx));
+            Assert.Equal(new[] { sfxenum_t.sfx_stnmov }, world.StartedSounds().Select(s => s.sfx));
             int tics = 0;
             while (world.sectors[A3].specialdata != null)
             {

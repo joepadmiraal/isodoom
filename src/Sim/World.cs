@@ -278,7 +278,7 @@ public sealed partial class World
 
         // set up world state
         unported.Clear(); // not vanilla (T5.2)
-        sounds.Clear(); // not vanilla (T5.3)
+        events.Clear(); // not vanilla (T6.10)
         P_SpawnSpecials();
     }
 

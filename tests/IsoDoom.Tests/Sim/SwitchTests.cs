@@ -62,7 +62,7 @@ public class SwitchTests
     }
 
     private static sound_event_t[] SwitchSounds(World world) =>
-        world.sounds.Where(s => s.sfx is sfxenum_t.sfx_swtchn or sfxenum_t.sfx_swtchx).ToArray();
+        world.StartedSounds().Where(s => s.sfx is sfxenum_t.sfx_swtchn or sfxenum_t.sfx_swtchx).ToArray();
 
     private static int ActiveButtons(World world) => world.buttonlist.Count(b => b.btimer != 0);
 
@@ -251,7 +251,7 @@ public class SwitchTests
     {
         World world = Specials();
         UseLine0(world); // slot 0: line 0, the corridor (sector 0)
-        world.sounds.Clear();
+        world.events.Clear();
         UseLine27(world); // slot 1: line 27, alcove 0 (sector 1)
         Assert.Equal(new[] { new sound_event_t(sfxenum_t.sfx_swtchn, null, world.sectors[0]) }, SwitchSounds(world));
         Assert.Same(world.lines[27], world.buttonlist[1].line);
@@ -259,7 +259,7 @@ public class SwitchTests
 
         // Each button's release comes from its own line's front sector.
         Run(world, World.BUTTONTIME - 1);
-        world.sounds.Clear();
+        world.events.Clear();
         Run(world, 1);
         Assert.Equal(new[]
         {

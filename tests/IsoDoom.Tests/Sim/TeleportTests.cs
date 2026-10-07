@@ -91,7 +91,7 @@ public class TeleportTests
         Assert.Equal((F(64) + 20 * Tables.finecosine[0], F(196) + 20 * Tables.finesine[0], 0), (fogs[1].x, fogs[1].y, fogs[1].z));
         Assert.All(fogs, f => Assert.False(f.interp));
         Assert.Equal(new[] { (sfxenum_t.sfx_telept, fogs[0]), (sfxenum_t.sfx_telept, fogs[1]) },
-            world.sounds.Select(s => (s.sfx, s.origin!)));
+            world.StartedSounds().Select(s => (s.sfx, s.origin!)));
         // WR: the line keeps its special.
         Assert.Equal(97, world.lines[Line].special);
     }

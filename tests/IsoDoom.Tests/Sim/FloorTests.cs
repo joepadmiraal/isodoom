@@ -111,7 +111,7 @@ public class FloorTests
             Assert.Equal(steps + (System.Math.Abs(c.To - c.From) % c.Speed == 0 ? 1 : 0), tics);
             Assert.Equal(F(c.To), world.sectors[c.Sector].floorheight);
             Assert.Equal(think_t.REMOVED, floor.function);
-            Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_pstop && s.sector == world.sectors[c.Sector]);
+            Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_pstop && s.sector == world.sectors[c.Sector]);
         }
     }
 
@@ -266,7 +266,7 @@ public class FloorTests
         {
             int leveltime = world.leveltime;
             world.G_Ticker(new ticcmd_t());
-            if (world.sounds.Any(s => s.sfx == sfxenum_t.sfx_stnmov))
+            if (world.StartedSounds().Any(s => s.sfx == sfxenum_t.sfx_stnmov))
                 stnmov.Add(leveltime);
         }
         Assert.Equal(new[] { 0, 8, 16, 24, 32 }, stnmov); // leveltime & 7 == 0

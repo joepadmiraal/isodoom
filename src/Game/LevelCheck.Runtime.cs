@@ -69,13 +69,16 @@ public partial class LevelCheck
             p.health = me.health = 77;
             p.cards[(int)card_t.it_redskull] = true;
             p.message = World.GOTREDSKULL;
+            world.S_StartSound((mobj_t?)null, sfxenum_t.sfx_getpow); // T6.10: queued before the tic, drained after it
             world.PlaceMobj(me, fx, fy, facing);
             var cmd = new ticcmd_t { angleturn = _scene.Tweaks.AbsoluteAiming ? Ticcmds.AbsoluteAngle(facing) : (short)0 };
             int completed = _scene.LevelsCompleted;
             _scene.Tic(cmd); // releases use (held since the spawn)
             if (_scene.HudMessage != World.GOTREDSKULL || !_scene.OverlayText().Contains("message: " + World.GOTREDSKULL, StringComparison.Ordinal)
-                || !_scene.OverlayText().Contains("health 77", StringComparison.Ordinal))
-                Fail($"{map}: the player's message and health are not in the overlay:\n{_scene.OverlayText()}");
+                || !_scene.OverlayText().Contains("health 77", StringComparison.Ordinal)
+                || !_scene.SoundLog.Any(l => l.Sound.sfx == sfxenum_t.sfx_getpow)
+                || !_scene.OverlayText().Split("\n").Any(l => l.StartsWith("sounds: ", StringComparison.Ordinal) && l.Contains("getpow", StringComparison.Ordinal)))
+                Fail($"{map}: the player's message, health and sound are not in the overlay:\n{_scene.OverlayText()}");
             cmd.buttons = buttoncode_t.BT_USE;
             _scene.Tic(cmd);
             if (_scene.LevelsCompleted == completed)

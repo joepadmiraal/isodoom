@@ -23,7 +23,8 @@ public sealed partial class World
     /// <summary>
     /// g_game.c <c>G_Ticker</c>'s level part: each player in the game gets its
     /// <c>ticcmd</c> (<paramref name="netcmds"/>, indexed by player), then
-    /// <see cref="P_Ticker"/> runs the tic. Demo recording/playback, the
+    /// <see cref="P_Ticker"/> runs the tic and <see cref="HU_TakeMessages"/>
+    /// queues the messages it left (T6.10). Demo recording/playback, the
     /// consistency check and the game actions are the game loop's (T4.7, M7).
     /// </summary>
     public void G_Ticker(ticcmd_t[] netcmds)
@@ -34,6 +35,7 @@ public sealed partial class World
                 players[i].cmd = netcmds[i];
         }
         P_Ticker();
+        HU_TakeMessages(); // HU_Ticker's message part (T6.10)
     }
 
     /// <summary><see cref="G_Ticker(ticcmd_t[])"/> for a game of one player (<see cref="consoleplayer"/>).</summary>
@@ -41,6 +43,7 @@ public sealed partial class World
     {
         players[consoleplayer].cmd = cmd;
         P_Ticker();
+        HU_TakeMessages(); // HU_Ticker's message part (T6.10)
     }
 
     /// <summary>p_user.c <c>P_Thrust</c>: moves the given origin along a given angle.</summary>

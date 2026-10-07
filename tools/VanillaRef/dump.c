@@ -47,7 +47,15 @@
 // INVULN:STRENGTH:INVIS:IRONFEET:ALLMAP:INFRARED:DAMAGECOUNT:BONUSCOUNT:FIXEDCOLORMAP:PALETTE
 // (powers[] in powertype_t order, damagecount, bonuscount, fixedcolormap, and
 // the palette st_stuff.c's ST_doPaletteStuff sets, called here after the
-// tic; ref.patch makes its st_palette visible); then (T5.9) exit: 0, or 1 (2) when the
+// tic; ref.patch makes its st_palette visible); then (T6.10) the sounds:
+// every S_StartSound call of the tic (ref.patch calls dump_sound first thing
+// in s_sound.c's S_StartSound, before its audibility checks) and P_RemoveMobj's
+// S_StopSound, in order, as NAME@ORIGIN (NAME the S_sfx name, e.g. pistol,
+// or stop for a stop) joined by commas, or - for none; ORIGIN is - for
+// none, sN for sector N's soundorg, TYPE:X:Y for a mobj (mobjtype_t, its
+// x and y when called; any P_MobjThinker thinker), ? for anything else
+// (p_spec.c's button release passes the address of the button's soundorg
+// field); then (T5.9) exit: 0, or 1 (2) when the
 // tic left the level by its exit (secret exit): gameaction is ga_completed.
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
@@ -70,6 +78,7 @@
 #include "w_wad.h"
 #include "z_zone.h"
 #include "i_video.h"
+#include "i_sound.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -143,6 +152,39 @@ static void parse_events(void)
             exit(1);
         }
     }
+}
+
+// The sounds of the tic so far (T6.10), written and reset by dump_tic.
+static char sounds[1 << 16];
+static size_t soundslen;
+
+// Called by the patched s_sound.c (S_StartSound, sfx_id >= 1) and p_mobj.c
+// (P_RemoveMobj's S_StopSound, sfx_id 0) (T6.10).
+void dump_sound(void *origin, int sfx_id)
+{
+    if (!ticfile)
+        return;
+    char where[64] = "?";
+    if (!origin)
+        strcpy(where, "-");
+    for (int i = 0; i < numsectors && where[0] == '?'; i++)
+        if (origin == (void *)&sectors[i].soundorg)
+            snprintf(where, sizeof where, "s%d", i);
+    for (thinker_t *th = thinkercap.next; th != &thinkercap && where[0] == '?'; th = th->next)
+        if (th == origin && th->function.acp1 == (actionf_p1)P_MobjThinker)
+        {
+            mobj_t *m = (mobj_t *)th;
+            snprintf(where, sizeof where, "%d:%d:%d", m->type, m->x, m->y);
+        }
+    extern sfxinfo_t S_sfx[];
+    int n = snprintf(sounds + soundslen, sizeof sounds - soundslen, "%s%s@%s", soundslen ? "," : "",
+                     sfx_id ? S_sfx[sfx_id].name : "stop", where);
+    if (n < 0 || soundslen + n >= sizeof sounds)
+    {
+        fprintf(stderr, "dump_sound: too many sounds in tic %d\n", leveltime + 1);
+        exit(1);
+    }
+    soundslen += n;
 }
 
 // Called by the patched p_tick.c before the players think in every P_Ticker (T5.6).
@@ -293,6 +335,9 @@ void dump_tic(void)
     for (int i = 0; i < NUMPOWERS; i++)
         fprintf(ticfile, "%d:", p->powers[i]);
     fprintf(ticfile, "%d:%d:%d:%d ", p->damagecount, p->bonuscount, p->fixedcolormap, st_palette);
+    // The sounds (T6.10).
+    fprintf(ticfile, "%s ", soundslen ? sounds : "-");
+    soundslen = 0;
     // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
     extern boolean secretexit;
     extern gameaction_t gameaction;

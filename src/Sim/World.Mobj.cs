@@ -410,7 +410,7 @@ public sealed partial class World
                     // after hitting the ground (hard),
                     // and utter appropriate sound.
                     mo.player.deltaviewheight = mo.momz >> 3;
-                    // S_StartSound (mo, sfx_oof); (T6.10)
+                    S_StartSound(mo, sfxenum_t.sfx_oof);
                 }
                 mo.momz = 0;
             }
@@ -651,7 +651,8 @@ public sealed partial class World
         // unlink from sector and block lists
         P_UnsetThingPosition(mobj);
 
-        // stop any playing sound: S_StopSound (mobj) (T6.10)
+        // stop any playing sound
+        S_StopSound(mobj);
 
         // free block
         P_RemoveThinker(mobj);

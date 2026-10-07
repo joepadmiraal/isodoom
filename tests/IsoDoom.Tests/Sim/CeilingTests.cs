@@ -117,7 +117,7 @@ public class CeilingTests
             for (int i = 0; i < 600; i++)
             {
                 world.G_Ticker(new ticcmd_t());
-                sounds.AddRange(world.sounds.Select(s => s.sfx));
+                sounds.AddRange(world.StartedSounds().Select(s => s.sfx));
                 min = System.Math.Min(min, world.sectors[A3].ceilingheight);
                 max = System.Math.Max(max, world.sectors[A3].ceilingheight);
             }

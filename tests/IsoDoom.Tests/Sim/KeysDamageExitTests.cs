@@ -44,6 +44,10 @@ public class KeysDamageExitTests
 
     private static player_t P(World world) => world.players[0];
 
+    /// <summary>The queued message events' texts (T6.10).</summary>
+    private static string?[] Messages(World world) =>
+        world.events.Where(e => e.type == simevent_t.se_message).Select(e => e.message).ToArray();
+
     private static mobj_t Mo(World world) => world.players[0].mo!;
 
     private static int Alcove(int i) => 1 + i;
@@ -82,18 +86,19 @@ public class KeysDamageExitTests
         while (!p.cards[(int)card_t.it_bluecard] && tics++ < 35)
             Tic(world, 1, forward);
         Assert.True(p.cards[(int)card_t.it_bluecard]);
-        Assert.Equal(World.GOTBLUECARD, p.message);
+        // T6.10: the message is queued as an event after the tic and taken (HU_Ticker)
+        Assert.Equal(new[] { World.GOTBLUECARD }, Messages(world));
+        Assert.Null(p.message);
         Assert.Equal(think_t.REMOVED, card.function);
-        Assert.Equal(sfxenum_t.sfx_itemup, Assert.Single(world.sounds).sfx);
-        Assert.Null(Assert.Single(world.sounds).origin);
+        Assert.Equal(sfxenum_t.sfx_itemup, Assert.Single(world.StartedSounds()).sfx);
+        Assert.Null(Assert.Single(world.StartedSounds()).origin);
         Assert.True(p.bonuscount > 0);
         Assert.Equal(0, p.itemcount); // keys are no items
 
-        p.message = null; // read by the HUD
         tics = 0;
         while (!p.cards[(int)card_t.it_yellowskull] && tics++ < 35)
             Tic(world, 1, forward);
-        Assert.Equal(World.GOTYELWSKUL, p.message);
+        Assert.Equal(new[] { World.GOTYELWSKUL }, Messages(world));
         Assert.Equal(think_t.REMOVED, skull.function);
         Assert.Equal(new[] { true, false, false, false, true, false }, p.cards);
     }
@@ -121,7 +126,7 @@ public class KeysDamageExitTests
         Assert.True(P(world).cards[(int)card_t.it_bluecard]);
         Assert.Equal(World.GOTBLUECARD, P(world).message);
         Assert.NotEqual(think_t.REMOVED, blue.function);
-        Assert.Empty(world.sounds);
+        Assert.Empty(world.StartedSounds());
     }
 
     [Fact]
@@ -177,7 +182,7 @@ public class KeysDamageExitTests
         // A soulsphere: +100 up to 200, the power-up sound.
         Touch(mobjtype_t.MT_MISC12);
         Assert.Equal((145, World.GOTSUPER), (p.health, p.message));
-        Assert.Equal(sfxenum_t.sfx_getpow, world.sounds[^1].sfx);
+        Assert.Equal(sfxenum_t.sfx_getpow, world.StartedSounds()[^1].sfx);
         // The megasphere is Doom II's only.
         Assert.NotEqual(think_t.REMOVED, Touch(mobjtype_t.MT_MEGA).function);
         // Power-ups.
@@ -224,7 +229,7 @@ public class KeysDamageExitTests
         for (int i = 0; i < 31; i++)
         {
             Tic(world);
-            heard.AddRange(world.sounds.Where(e => e.origin == Mo(world)).Select(e => e.sfx));
+            heard.AddRange(world.StartedSounds().Where(e => e.origin == Mo(world)).Select(e => e.sfx));
         }
         Assert.Equal(new[] { sfxenum_t.sfx_plpain }, heard);
         Assert.Equal(statenum_t.S_PLAY, Mo(world).state);
@@ -345,7 +350,7 @@ public class KeysDamageExitTests
         for (int i = 0; i < 70; i++)
         {
             Tic(world);
-            heard.AddRange(world.sounds.Where(e => e.origin == me).Select(e => e.sfx));
+            heard.AddRange(world.StartedSounds().Where(e => e.origin == me).Select(e => e.sfx));
         }
         Assert.Equal(new[] { sfxenum_t.sfx_pldeth }, heard);
         Assert.Equal(statenum_t.S_PLAY_DIE7, me.state);

@@ -59,7 +59,7 @@ public class ProjectileTests
     {
         World world = OneRoomMap().Load();
         mobj_t player = Player(world);
-        world.sounds.Clear();
+        world.events.Clear();
         NextRandom(world, 0); // P_SpawnMobj's lastlook 0, then 8 & 3 = 0: no tics off
         mobj_t rocket = world.P_SpawnPlayerMissile(player, mobjtype_t.MT_ROCKET);
         Assert.Null(world.linetarget);
@@ -71,7 +71,7 @@ public class ProjectileTests
         Assert.Equal(0, rocket.momz);
         Assert.Equal(player.x + (rocket.momx >> 1), rocket.x); // half a step on
         Assert.Equal(F(32), rocket.z);
-        Assert.Contains(world.sounds, s => s.sfx == sfxenum_t.sfx_rlaunc && s.origin == rocket);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_rlaunc && s.origin == rocket);
 
         Tics(world, 1);
         Assert.Equal(player.x + (rocket.momx >> 1) + rocket.momx, rocket.x);

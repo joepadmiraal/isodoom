@@ -220,7 +220,7 @@ public partial class LevelCheck : Godot.Node
             + $"{_translatedSlots} slots drawn as the sim's translation says, {_scrollingWalls} scrolling walls (special 48) drawn scrolled as far as the sim moved them; "
             + $"{_scrollChecks} maps scrolled a wall's texture through side_textures and back");
         GD.Print($"Level check: exits (T5.8): {_exitMaps} maps left through a use exit: {_exitsToNext} went on to the next map in the same world "
-            + $"(health kept, keys taken), {_exitsEnded} stopped (the game's end or no next map); messages and health shown in the overlay");
+            + $"(health kept, keys taken), {_exitsEnded} stopped (the game's end or no next map); messages, health and sounds shown in the overlay");
         if (_exitMaps == 0)
             Fail("no map has a use exit (special 11) the player could use");
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "

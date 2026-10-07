@@ -57,7 +57,7 @@ public class DoorTests
     }
 
     private static sfxenum_t[] DoorSounds(World world) =>
-        world.sounds.Where(s => s.sector == DoorSec(world)).Select(s => s.sfx).ToArray();
+        world.StartedSounds().Where(s => s.sector == DoorSec(world)).Select(s => s.sfx).ToArray();
 
     [Fact]
     public void ARaiseDoorOpensWaitsAndClosesAsVanilla()
@@ -95,7 +95,7 @@ public class DoorTests
         Run(world, 1);
         Assert.Null(DoorSec(world).specialdata);
         Assert.Equal(think_t.REMOVED, door.function);
-        Assert.Empty(world.sounds); // a raise door closes silently
+        Assert.Empty(world.StartedSounds()); // a raise door closes silently
         Run(world, 1);
         Assert.DoesNotContain(Thinkers(world), t => t is vldoor_t);
     }
@@ -236,7 +236,7 @@ public class DoorTests
             {
                 Assert.Null(DoorSec(world).specialdata);
                 Assert.Equal(message, player.message);
-                Assert.Equal(new[] { new sound_event_t(sfxenum_t.sfx_oof, null, null) }, world.sounds);
+                Assert.Equal(new[] { new sound_event_t(sfxenum_t.sfx_oof, null, null) }, world.StartedSounds());
                 Assert.Equal(special, world.lines[SyntheticIwad.DoorLineR].special);
             }
             else
@@ -318,10 +318,10 @@ public class DoorTests
         Assert.Null(DoorThinker(world));
 
         // An open door's sound only when it moves; a close door never goes back up for a thing in the way.
-        world.sounds.Clear();
+        world.events.Clear();
         DoorSec(world).ceilingheight = Top;
         Assert.Equal(1, world.EV_DoDoor(line, vldoor_e.vld_open));
-        Assert.Empty(world.sounds);
+        Assert.Empty(world.StartedSounds());
         Run(world, 1);
         Assert.Null(DoorThinker(world));
         world.PlaceMobj(Player(world), F(144), F(196));

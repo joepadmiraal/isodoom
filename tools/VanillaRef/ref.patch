@@ -34,8 +34,20 @@ index 9954d78..9f682c8 100644
  	// end of demo data stream 
  	G_CheckDemoStatus (); 
  	return; 
+diff --git a/doomgeneric/p_mobj.c b/doomgeneric/p_mobj.c
+index a3b9c43..5e9d7f8 100644
+--- a/doomgeneric/p_mobj.c
++++ b/doomgeneric/p_mobj.c
+@@ -589,6 +589,7 @@ void P_RemoveMobj (mobj_t* mobj)
+     P_UnsetThingPosition (mobj);
+     
+     // stop any playing sound
++    { extern void dump_sound(void *, int); dump_sound(mobj, 0); } // IsoDoom reference (T6.10): the stop
+     S_StopSound (mobj);
+     
+     // free block
 diff --git a/doomgeneric/p_spec.c b/doomgeneric/p_spec.c
-index 17446b5..8cdd087 100644
+index 17446b5..f7e47ce 100644
 --- a/doomgeneric/p_spec.c
 +++ b/doomgeneric/p_spec.c
 @@ -170,6 +170,10 @@ void P_InitPicAnims (void)
@@ -115,6 +127,18 @@ index ea1611c..6053e51 100644
 +	  if (dump_noceil && (pl->picnum == skyflatnum || pl->height > viewz)) continue; }
  	if (pl->minx > pl->maxx)
  	    continue;
+ 
+diff --git a/doomgeneric/s_sound.c b/doomgeneric/s_sound.c
+index f6d8be1..dfea6a7 100644
+--- a/doomgeneric/s_sound.c
++++ b/doomgeneric/s_sound.c
+@@ -397,6 +397,7 @@ void S_StartSound(void *origin_p, int sfx_id)
+     int cnum;
+     int volume;
+ 
++    { extern void dump_sound(void *, int); dump_sound(origin_p, sfx_id); } // IsoDoom reference (T6.10): every call
+     origin = (mobj_t *) origin_p;
+     volume = snd_SfxVolume;
  
 diff --git a/doomgeneric/st_stuff.c b/doomgeneric/st_stuff.c
 index e25accc..2ccb8ae 100644
