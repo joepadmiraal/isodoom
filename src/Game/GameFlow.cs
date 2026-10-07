@@ -50,6 +50,17 @@ public interface IGameHost
     /// <summary>The level was completed (<c>G_DoCompleted</c>, before the intermission or the finale).</summary>
     void LevelCompleted();
 
+    /// <summary>
+    /// d_main.c <c>D_Display</c>'s drawing after a tic (<see cref="GameFlow.D_Display"/>):
+    /// on the level the status bar (<c>ST_Drawer</c>, whole with <paramref name="wipe"/>:
+    /// the game state changed, vanilla's <c>redrawsbar</c>) and the message
+    /// line (<c>HU_Drawer</c>), else the game state's screen. Nothing by
+    /// default (the tests' hosts draw nothing).
+    /// </summary>
+    void D_Display(gamestate_t state, bool wipe)
+    {
+    }
+
     /// <summary>The game ended or stopped (<paramref name="why"/>) and the title loop starts (<see cref="GameFlow.D_StartTitle"/>): the level goes.</summary>
     void EndGame(string? why);
 }
@@ -161,22 +172,52 @@ public sealed class GameFlow
     public FFinale Finale { get; }
 
     /// <summary>
+    /// d_main.c <c>wipegamestate</c>: the game state the last
+    /// <see cref="D_Display"/> showed; <see cref="GS_FORCEWIPE"/> (vanilla's
+    /// −1) forces a wipe at the next. Vanilla's starts at the title loop's
+    /// (<see cref="gamestate_t.GS_DEMOSCREEN"/>).
+    /// </summary>
+    public gamestate_t wipegamestate = gamestate_t.GS_DEMOSCREEN;
+
+    /// <summary>d_main.c's <c>wipegamestate = -1</c>: no game state, so the next <see cref="D_Display"/> wipes.</summary>
+    public const gamestate_t GS_FORCEWIPE = (gamestate_t)(-1);
+
+    /// <summary>
+    /// T7.1a: whether <see cref="D_Display"/> melts the screen when the game
+    /// state changes (the option, <c>video/wipe</c>, <c>--level-wipe</c>).
+    /// Off, as vanilla's <c>-nodraw</c> (<c>nodrawers</c>: no
+    /// <c>D_Display</c>, so no wipe and no <c>M_Random</c> drawn for it),
+    /// unless the game scene turns it on: the tests' flows compare with
+    /// vanilla's runs without drawing.
+    /// </summary>
+    public bool Wipes;
+
+    /// <summary>Called after each tic of the game state, before <see cref="gametic"/> counts it and <see cref="D_Display"/> (the vanilla reference's dump point: the tests').</summary>
+    public Action? Ticked;
+
+    /// <summary>The melt (f_wipe.c, T7.1a): under way while <see cref="FWipe.go"/>; no tic runs meanwhile (<see cref="CanTic"/>).</summary>
+    public FWipe Wipe { get; } = new();
+
+    /// <summary>
     /// Whether a tic can run: always but on a level without a player mobj
     /// (no world, or none spawned), as before T7.1, unless a game action or
-    /// the title loop's step is due.
+    /// the title loop's step is due, and never while the screen melts
+    /// (T7.1a: d_main.c's wipe loop runs no tics).
     /// </summary>
     public bool CanTic =>
-        gamestate != gamestate_t.GS_LEVEL || advancedemo || gameaction != gameaction_t.ga_nothing
-        || host.World is { } w && w.players[w.consoleplayer].mo is not null;
+        !Wipe.go && (gamestate != gamestate_t.GS_LEVEL || advancedemo || gameaction != gameaction_t.ga_nothing
+            || host.World is { } w && w.players[w.consoleplayer].mo is not null);
 
     /// <summary>
     /// g_game.c <c>G_Ticker</c> for the console player's <paramref name="cmd"/>,
     /// after d_main.c's title loop step (<see cref="D_DoAdvanceDemo"/>, which
     /// vanilla's tic loop runs before it): the game actions due, the special
     /// buttons (<c>BTS_PAUSE</c> toggles <see cref="paused"/>; <c>BTS_SAVEGAME</c>
-    /// is T7.6's), then the tic of the <see cref="gamestate"/>. The game
-    /// actions the tic set run at its end too (not vanilla's place, which is
-    /// the next tic's start: nothing runs in between, so the same order; a
+    /// is T7.6's), then the tic of the <see cref="gamestate"/> and d_main.c's
+    /// <see cref="D_Display"/> (T7.1a: after every tic, as vanilla's at 35
+    /// frames a second or more). The game actions the tic set run at its end
+    /// (not vanilla's place, which is the next tic's start, after
+    /// <c>D_Display</c>: nothing runs in between, so the same order; a
     /// scripted run sees the next level or the intermission without
     /// another tic; SPEC §12 T5.8, T6.12, T7.1).
     /// </summary>
@@ -215,9 +256,48 @@ public sealed class GameFlow
                 D_PageTicker();
                 break;
         }
+        Ticked?.Invoke();
         gametic++;
 
+        D_Display();
+
         G_DoGameActions();
+    }
+
+    /// <summary>
+    /// d_main.c <c>D_Display</c>'s game part, after each tic (T7.1a): the
+    /// host draws (<see cref="IGameHost.D_Display"/>: the level's status bar
+    /// and message line, the bar whole after a game state change, or the
+    /// state's screen), and, when the game state is
+    /// not the one shown last (<see cref="wipegamestate"/>), a wipe
+    /// (<c>wipe_StartScreen</c>, <c>wipe_EndScreen</c> are the game scene's;
+    /// the melt's columns are set up at once, <see cref="FWipe.wipe_initMelt"/>,
+    /// as no tic runs before vanilla's first <c>wipe_ScreenWipe</c> does it)
+    /// with <see cref="Wipes"/>. The game scene also draws the screens every
+    /// frame (<c>LevelScene.UpdateScreens</c>).
+    /// </summary>
+    public void D_Display()
+    {
+        // save the current screen if about to wipe
+        bool wipe = gamestate != wipegamestate;
+        host.D_Display(gamestate, wipe); // ST_Drawer (…, redrawsbar), HU_Drawer; WI_Drawer, F_Drawer, D_PageDrawer
+        wipegamestate = gamestate;
+        if (wipe && Wipes)
+            Wipe.wipe_initMelt(MRandom);
+    }
+
+    /// <summary>
+    /// d_main.c's wipe loop (T7.1a): a step of the melt under way
+    /// (<see cref="FWipe.wipe_ScreenWipe"/>, one tic's), every 1/35 s while no
+    /// tic runs; true once it is over (or none was under way).
+    /// </summary>
+    public bool WipeStep() => Wipe.wipe_ScreenWipe(1);
+
+    /// <summary>g_game.c <c>G_DoLoadLevel</c>'s forced wipe: a level loaded over a level (a reborn, a new game) melts too.</summary>
+    private void G_DoLoadLevelWipe()
+    {
+        if (wipegamestate == gamestate_t.GS_LEVEL)
+            wipegamestate = GS_FORCEWIPE; // force a wipe
     }
 
     /// <summary>
@@ -297,11 +377,11 @@ public sealed class GameFlow
     /// <summary>
     /// g_game.c <c>G_DoLoadLevel</c> for <see cref="gameaction_t.ga_loadlevel"/>
     /// (a reborn): the host reloads the level (whose world's
-    /// <c>G_DoLoadLevel</c> ends the action). Vanilla's forced wipe is not
-    /// ported (f_wipe.c, T7.1a).
+    /// <c>G_DoLoadLevel</c> ends the action), with vanilla's forced wipe (T7.1a).
     /// </summary>
     private void G_DoLoadLevel()
     {
+        G_DoLoadLevelWipe();
         gamestate = gamestate_t.GS_LEVEL;
         if (!host.G_DoLoadLevel())
             D_StartTitle(null);
@@ -389,6 +469,7 @@ public sealed class GameFlow
         usergame = true; // will be set false if a demo
         gameskill = skill;
         // the sky (R_TextureNumForName("SKY1"…)) is the presentation's: never drawn (SPEC §7.2)
+        G_DoLoadLevelWipe();
         if (!host.G_InitNew(skill, map))
         {
             D_StartTitle(null);
@@ -466,6 +547,7 @@ public sealed class GameFlow
             D_StartTitle($"{world.level.Name} completed: the next map, {next}, is not in the WAD");
             return;
         }
+        G_DoLoadLevelWipe();
         if (!host.G_DoWorldDone(next))
         {
             D_StartTitle(null);
@@ -536,7 +618,12 @@ public sealed class GameFlow
             demosequence = (demosequence + 1) % steps;
             (string? page, int tics) = DemoStep(demosequence);
             if (page is null)
-                continue; // G_DeferedPlayDemo: no demo playback
+            {
+                // G_DeferedPlayDemo: no demo playback. Vanilla wipes to the demo and back
+                // (GS_LEVEL between the pages): one wipe from page to page (T7.1a)
+                wipegamestate = GS_FORCEWIPE;
+                continue;
+            }
             // Chocolate Doom: the BFG Edition's doom2.wad has no TITLEPIC; INTERPIC stands in
             if (gamevariant == GameVariant.bfgedition && page == "TITLEPIC" && !host.HasLump(page))
                 page = "INTERPIC";

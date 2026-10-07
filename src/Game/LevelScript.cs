@@ -151,6 +151,12 @@ namespace IsoDoom.Game;
 /// and fails after TICS tics (default 3000); on the finale it stops at the
 /// end picture, which stays until the menus start or end a game (T7.2). E.g. after an exit:
 /// <c>route tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route; gamestate intermission; skip; map E1M2 1</c>.
+/// While a screen wipe melts (T7.1a) no tic runs and queued tics wait;
+/// <c>wipe STEP [N]</c> holds the melt under way (or the next; with N, the
+/// scene's wipe number N) at melt step STEP and waits for it, so <c>shot</c>
+/// captures that frame, and <c>wipe</c> lets it go on and waits until it is over;
+/// <c>wipehold STEP [N]</c> sets the hold without waiting (before the tics
+/// that start the wipe are queued: queueing takes frames, in which the melt runs on).
 /// </para>
 /// <para>
 /// The menus (T7.2, <see cref="MMenu"/>) take the keys, the pad and the
@@ -311,7 +317,7 @@ public partial class LevelScript : Node
                     case "tics":
                         {
                             long until = _scene.TicsRun + Int(w[1]);
-                            while (_scene.TicsRun < until && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.Flow.CanTic)
+                            while (_scene.TicsRun < until && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.TicsCanRun)
                                 await Frames(1);
                             break;
                         }
@@ -494,6 +500,14 @@ public partial class LevelScript : Node
                             }
                             break;
                         }
+                    case "wipe":
+                        exit |= await Wipe(w.Length > 1 ? Int(w[1]) : null, w.Length > 2 ? Int(w[2]) : null);
+                        break;
+                    case "wipehold":
+                        // T7.1a: as wipe STEP [N], without waiting (set before the tics that start the wipe are queued)
+                        _scene.WipeHold = Int(w[1]);
+                        _scene.WipeHoldCount = w.Length > 2 ? Int(w[2]) : null;
+                        break;
                     case "skip":
                         {
                             int skipped = await Skip(w.Length > 1 ? Int(w[1]) : 3000);
@@ -554,7 +568,7 @@ public partial class LevelScript : Node
     /// <summary>Waits until the scripted tics queued so far ran (a map without a player runs none).</summary>
     private async Task Drain()
     {
-        while (_scene.QueuedTics > 0 && _scene.Flow.CanTic)
+        while (_scene.QueuedTics > 0 && _scene.TicsCanRun)
             await Frames(1);
     }
 
@@ -893,6 +907,46 @@ public partial class LevelScript : Node
         Array.Sort(ms);
         string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
         GD.Print($"Level script: frame time over {ms.Length} frames at {GetViewport().GetVisibleRect().Size}: mean {F(mean)} ms ({F(1000 / mean)} fps), median {F(ms[ms.Length / 2])}, p95 {F(ms[(int)(ms.Length * 0.95)])}, worst {F(ms[^1])}");
+    }
+
+    /// <summary>
+    /// T7.1a: <c>wipe STEP [N]</c> holds the melt under way (or the next one:
+    /// the queued tics run until it starts; with N, the scene's wipe number N
+    /// since it started, the earlier ones running through) at step STEP and
+    /// waits until it gets there, so <c>shot</c> captures that frame;
+    /// <c>wipe</c> lets it go on and waits until it is over. Fails (1) when
+    /// no melt gets there.
+    /// </summary>
+    private async Task<int> Wipe(int? step, int? number)
+    {
+        GameFlow flow = _scene.Flow;
+        if (step is not int at)
+        {
+            _scene.WipeHold = null;
+            _scene.WipeHoldCount = null;
+            while (flow.Wipe.go)
+                await Frames(1);
+            GD.Print($"Level script: wipe: over after {flow.Wipe.steps} steps (wipes so far: {flow.Wipe.count})");
+            return 0;
+        }
+        _scene.WipeHold = at;
+        _scene.WipeHoldCount = number;
+        int frames = 0;
+        while (!_scene.WipeHeld)
+        {
+            bool waiting = flow.Wipe.go || _scene.TicsCanRun && !(_scene.ScriptedTics && _scene.QueuedTics == 0);
+            if (!waiting || number is int n && flow.Wipe.count > n || ++frames > 35 * 120)
+            {
+                GD.PrintErr($"Level script: wipe {at}{(number is int k ? $" {k}" : "")}: no melt got there ({flow.StateText()}, wipes so far: {flow.Wipe.count}, the last {flow.Wipe.steps} steps)");
+                _scene.WipeHold = null;
+                _scene.WipeHoldCount = null;
+                return 1;
+            }
+            await Frames(1);
+        }
+        await Frames(1); // its frame drawn (WipeView, every frame)
+        GD.Print($"Level script: wipe: wipe {flow.Wipe.count} held at step {flow.Wipe.steps} ({flow.StateText()})");
+        return 0;
     }
 
     private async Task Frames(int n)

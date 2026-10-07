@@ -16,8 +16,8 @@ namespace IsoDoom.Game;
 /// vanilla's, until the menu (T7.2) starts another game or ends this one.
 /// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) and Doom II's cast
 /// call (M10, the title loop until then) are later tasks'; the music
-/// (<c>mus_victor</c>, <c>mus_read_m</c>, <c>mus_bunny</c>) is T7.8's, the
-/// wipe to the end picture T7.1a's. No Godot types: the tests link it.
+/// (<c>mus_victor</c>, <c>mus_read_m</c>, <c>mus_bunny</c>) is T7.8's. The
+/// end picture forces a wipe (T7.1a). No Godot types: the tests link it.
 /// </summary>
 public sealed partial class FFinale
 {
@@ -117,7 +117,8 @@ public sealed partial class FFinale
         {
             finalecount = 0;
             finalestage = F_STAGE_ARTSCREEN;
-            // wipegamestate = -1 (a wipe: T7.1a); E3's mus_bunny: T7.8
+            flow.wipegamestate = GameFlow.GS_FORCEWIPE; // force a wipe (T7.1a)
+            // E3's mus_bunny: T7.8
         }
         // finalestage 1 (the end picture) stays until the menu starts a new game or ends this one (T7.2), as vanilla's
     }

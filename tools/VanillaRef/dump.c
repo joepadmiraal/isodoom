@@ -107,6 +107,7 @@ static uint32_t fake_ms;
 int dump_noceil; // read by the patched r_main.c / r_plane.c
 int dump_nospecials; // read by the patched p_spec.c
 static FILE *ticfile;
+static FILE *wipefile; // $DUMP_WIPE (T7.1a)
 extern int prndindex;
 extern boolean nodrawers;
 static byte first[SCREENWIDTH * SCREENHEIGHT];
@@ -132,6 +133,17 @@ void DG_Init(void)
         }
         dump_nospecials = 1;
         nodrawers = true; // no rendering: the synthetic map lacks the player's sprites
+        parse_events();
+    }
+    char *w = getenv("DUMP_WIPE");
+    if (w && *w && !ticfile)
+    {
+        if (!(wipefile = fopen(w, "w")))
+        {
+            perror(w);
+            exit(1);
+        }
+        dump_nospecials = 1; // the demo's end exits (DOOM1.WAD only: drawn)
         parse_events();
     }
 }
@@ -205,7 +217,7 @@ void dump_sound(void *origin, int sfx_id)
 // Called by the patched p_tick.c before the players think in every P_Ticker (T5.6).
 void dump_pretic(void)
 {
-    if (!ticfile)
+    if (!ticfile && !wipefile)
         return;
     mobj_t *mo = players[consoleplayer].mo;
     char *start = getenv("DUMP_START");
@@ -359,8 +371,11 @@ void dump_tic(void)
 
 // Called by the patched g_game.c after HU_Ticker in every G_Ticker of a level
 // (T6.11): the HUD column, then the exit, ending the tic's line.
+static void dump_wipetic(void);
+
 void dump_posttic(void)
 {
+    dump_wipetic();
     if (!ticfile)
         return;
     // The status bar and the message line (T6.11): drawn now as in play
@@ -447,6 +462,7 @@ void dump_posttic(void)
 void dump_witic(void)
 {
     static FILE *wifile;
+    dump_wipetic();
     char *path = getenv("DUMP_WI");
     if (!path || !*path)
         return;
@@ -533,6 +549,7 @@ void dump_fitic(void)
 {
     static FILE *fifile;
     static int tic;
+    dump_wipetic();
     char *path = getenv("DUMP_FI");
     if (!path || !*path)
         return;
@@ -602,6 +619,101 @@ void dump_fitic(void)
     {
         fclose(fifile);
         exit(0);
+    }
+}
+
+// The screen wipes (T7.1a): with $DUMP_WIPE set (and not $DUMP_TICS: the
+// game is drawn, so D_Display wipes; DOOM1.WAD only), the route's start and
+// events as with $DUMP_TICS, and a line per G_Ticker of a level, the
+// intermission or the finale: "tic GAMETIC STATE RNDINDEX" (gametic before
+// it counts the tic, gamestate_t, M_Random's index after the tic); at each
+// wipe (the patched f_wipe.c's wipe_initMelt): "wipe GAMETIC STATE RNDINDEX
+// Y0 ... Y159" (D_Display's gametic and gamestate, M_Random's index after
+// the melt's draws, the 160 two-pixel columns' starting offsets, y[0..159];
+// wipe_initMelt draws 320); after each wipe_doMelt: "melt TICKS DONE HASH"
+// (the tics it was given, whether it was done, the 32-bit FNV-1a of the
+// 320x200 screen after it, 8 hex digits). With $DUMP_WIPE_DIR the start and
+// end screens of wipe N (from 1) as DIR/wipeN-start.ppm, DIR/wipeN-end.ppm
+// and with $DUMP_WIPE_STEPS ("S,T,..." or "all", steps from 1) the screen
+// after those steps as DIR/wipeN-sS.ppm (palette 0).
+static int wipes, wipesteps;
+
+static void dump_wipetic(void)
+{
+    if (!wipefile)
+        return;
+    extern int rndindex;
+    fprintf(wipefile, "tic %d %d %d\n", gametic, gamestate, rndindex);
+}
+
+static void wipe_ppm(const char *name, const byte *screen)
+{
+    char *dir = getenv("DUMP_WIPE_DIR");
+    if (!dir || !*dir)
+        return;
+    char path[1024];
+    snprintf(path, sizeof path, "%s/wipe%d-%s.ppm", dir, wipes, name);
+    FILE *f = fopen(path, "wb");
+    if (!f)
+    {
+        perror(path);
+        exit(1);
+    }
+    byte *pal = (byte *)W_CacheLumpName("PLAYPAL", PU_CACHE);
+    fprintf(f, "P6\n%d %d\n255\n", SCREENWIDTH, SCREENHEIGHT);
+    for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
+        fwrite(pal + 3 * screen[i], 1, 3, f);
+    fclose(f);
+}
+
+// Called by the patched f_wipe.c's wipe_EndScreen (both screens read).
+void dump_wipe_screens(byte *start, byte *end)
+{
+    if (!wipefile)
+        return;
+    wipes++;
+    wipesteps = 0;
+    wipe_ppm("start", start);
+    wipe_ppm("end", end);
+}
+
+// Called by the patched f_wipe.c's wipe_initMelt (the columns set up).
+void dump_wipe_init(int *y, int width)
+{
+    if (!wipefile)
+        return;
+    extern int rndindex;
+    fprintf(wipefile, "wipe %d %d %d", gametic, gamestate, rndindex);
+    for (int i = 0; i < width / 2; i++)
+        fprintf(wipefile, " %d", y[i]);
+    fprintf(wipefile, "\n");
+}
+
+// Called by the patched f_wipe.c's wipe_ScreenWipe after each wipe_doMelt.
+void dump_wipe_step(int ticks, int done)
+{
+    if (!wipefile)
+        return;
+    wipesteps++;
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
+        hash = (hash ^ I_VideoBuffer[i]) * 16777619u;
+    fprintf(wipefile, "melt %d %d %08x\n", ticks, done, hash);
+    fflush(wipefile);
+    char *steps = getenv("DUMP_WIPE_STEPS");
+    if (steps && *steps)
+    {
+        char want[16];
+        snprintf(want, sizeof want, "%d", wipesteps);
+        int hit = !strcmp(steps, "all");
+        for (char *t = strtok(strdup(steps), ","); t && !hit; t = strtok(NULL, ","))
+            hit = !strcmp(t, want);
+        if (hit)
+        {
+            char name[32];
+            snprintf(name, sizeof name, "s%d", wipesteps);
+            wipe_ppm(name, I_VideoBuffer);
+        }
     }
 }
 

@@ -74,6 +74,36 @@ public partial class ScreenView : CanvasLayer
         _rect.Position = new Vector2(MathF.Floor((size.X - _rect.Size.X) / 2), centre ?? opaque ? MathF.Floor((size.Y - _rect.Size.Y) / 2) : 0);
     }
 
+    /// <summary>
+    /// T7.1a: draws what this view showed last into <paramref name="image"/>
+    /// (RGBA8, the viewport's size) as the renderer does: the black backdrop,
+    /// then each drawn pixel of the screen as a square of <see cref="PixelScale"/>
+    /// at the screen's place. Nothing when hidden.
+    /// </summary>
+    public void ComposeInto(Image image)
+    {
+        if (!Visible || _image is null)
+            return;
+        if (_backdrop.Visible)
+            image.Fill(Colors.Black);
+        int scale = PixelScale;
+        var at = new Vector2I((int)_rect.Position.X, (int)_rect.Position.Y);
+        int w = image.GetWidth(), h = image.GetHeight();
+        for (int y = 0; y < Screen.Height; y++)
+        {
+            for (int x = 0; x < Screen.Width; x++)
+            {
+                int i = (y * Screen.Width + x) * 4;
+                if (_rgba[i + 3] == 0)
+                    continue;
+                var c = Color.Color8(_rgba[i], _rgba[i + 1], _rgba[i + 2]);
+                var block = new Rect2I(at.X + x * scale, at.Y + y * scale, scale, scale).Intersection(new Rect2I(0, 0, w, h));
+                if (block.Size.X > 0 && block.Size.Y > 0)
+                    image.FillRect(block, c);
+            }
+        }
+    }
+
     /// <summary>The screen's texture rectangle (checks read it back).</summary>
     public TextureRect Rect => _rect;
 

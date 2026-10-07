@@ -554,6 +554,8 @@ public partial class LevelScene : ISetupHost
             Iso?.SetProjectionMode(_projection == "ortho" ? IsoProjection.Orthographic : IsoProjection.Perspective);
         });
 
+        Add("video/wipe", () => ScreenWipes ? "melt" : "off", s => ScreenWipes = ParseWipe(s, "video/wipe"));
+
         // gameplay
         Add("gameplay/aim_assist", () => AimAssistText(Tweaks.AimAssistCone), s =>
         {

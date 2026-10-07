@@ -96,6 +96,7 @@ public static class Settings
         new("video/zoom", "ZOOM (VIEW HEIGHT)", SettingPage.Video, "640", Range(320, 1600, 80), "--level-zoom"),
         new("video/pitch", "CAMERA PITCH", SettingPage.Video, "55", Range(45, 60, 1), "--level-pitch"),
         new("video/projection", "PROJECTION", SettingPage.Video, "ortho", new[] { "ortho", "perspective" }, "--level-projection"),
+        new("video/wipe", "SCREEN WIPE", SettingPage.Video, "melt", new[] { "melt", "off" }, "--level-wipe"),
 
         // gameplay
         new("gameplay/aim_assist", "AIM ASSIST (DEGREES)", SettingPage.Gameplay, "5",

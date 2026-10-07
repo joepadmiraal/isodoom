@@ -82,6 +82,8 @@ namespace IsoDoom.Game;
 /// HUD, or neither; the message line shows with all; default bar) and
 /// <c>--level-hud-scale=N|auto</c> (its scale; default auto, the largest
 /// whole scale vanilla's 320×200 screen fits: 4 at 1280×800);
+/// <c>--level-wipe=melt|off</c> (T7.1a, <see cref="ScreenWipes"/>: f_wipe.c's
+/// melt at each game state change, the game holding still meanwhile; default melt);
 /// <c>--level-palette-effects=on|off</c> (T6.8, <see cref="PaletteEffects"/>:
 /// the console player's palette flashes, st_stuff.c's red, gold and green,
 /// and its power-ups' fixed colormaps, invulnerability's inverse map and the
@@ -204,6 +206,71 @@ public partial class LevelScene : Node3D, IGameHost
     public ScreenView Screens { get; } = new() { Name = "Screens" };
 
     private ScreenGraphics? _graphics;
+
+    /// <summary>T7.1a: draws the melt (f_wipe.c) over the window while one is under way (<see cref="GameFlow.Wipe"/>).</summary>
+    public WipeView WipeLayer { get; } = new() { Name = "Wipe" };
+
+    /// <summary>
+    /// T7.1a: whether a game state change melts the screen as vanilla's
+    /// (<see cref="GameFlow.Wipes"/>; <c>--level-wipe=melt|off</c>, the
+    /// option <c>video/wipe</c>; under the level check only while
+    /// <see cref="CheckWipes"/>). Turned off, a wipe under way ends at once.
+    /// </summary>
+    public bool ScreenWipes
+    {
+        get => _screenWipes;
+        set
+        {
+            _screenWipes = value;
+            ApplyWipes();
+        }
+    }
+
+    /// <summary>T7.1a: the level check's wipes, on for its wipe checks only (the option is ignored under the check).</summary>
+    public bool CheckWipes
+    {
+        get => _checkWipes;
+        set
+        {
+            _checkWipes = value;
+            ApplyWipes();
+        }
+    }
+
+    private bool _checkWipes;
+
+    private void ApplyWipes()
+    {
+        if (_flow is null)
+            return;
+        bool on = IsCheckRun ? _checkWipes : _screenWipes;
+        _flow.Wipes = on;
+        if (!on)
+        {
+            _flow.Wipe.Stop();
+            _wipeStartPending = false;
+            WipeLayer.Show(_flow.Wipe, false); // hidden
+        }
+    }
+
+    private bool _screenWipes = true;
+
+    /// <summary>
+    /// T7.1a: the level script's <c>wipe STEP [N]</c>: the melt under way (with
+    /// <see cref="WipeHoldCount"/>, only the scene's wipe number N) holds at
+    /// this step (no further step runs, nor any tic) until cleared; null: it runs.
+    /// </summary>
+    public int? WipeHold { get; set; }
+
+    /// <summary>T7.1a: the wipe <see cref="WipeHold"/> holds (<see cref="FWipe.count"/>), or null for any.</summary>
+    public int? WipeHoldCount { get; set; }
+
+    /// <summary>T7.1a: whether <see cref="WipeHold"/> holds the melt under way now.</summary>
+    public bool WipeHeld => _flow is { } flow && flow.Wipe.go && WipeHold is int hold && flow.Wipe.steps >= hold
+        && (WipeHoldCount is not int n || flow.Wipe.count == n);
+
+    /// <summary>T7.1a: whether tics will run (<see cref="GameFlow.CanTic"/>, or once the melt under way is over, unless <see cref="WipeHold"/> holds it).</summary>
+    public bool TicsCanRun => _flow is { } flow && (flow.CanTic || flow.Wipe.go && !WipeHeld);
 
     // What the screens showed last (redrawn when it changes).
     private (gamestate_t State, int Tic, bool Pause, Vector2 Size, int Palette)? _screenKey;
@@ -431,6 +498,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(Overlay);
         Hud.Visible = false;
         AddChild(Hud);
+        AddChild(WipeLayer); // T7.1a: over the HUD, the full screens and the overlay; under the menus (layer 2)
 
         try
         {
@@ -463,6 +531,7 @@ public partial class LevelScene : Node3D, IGameHost
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
             _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission); // T7.1: g_game.c's flow, d_main.c's title loop
+            ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
             _graphics = new ScreenGraphics(Wad, MessageLine);
             InitMenus(); // T7.2
             if (IsCheckRun)
@@ -516,6 +585,8 @@ public partial class LevelScene : Node3D, IGameHost
                     "off" => HudMode.Off,
                     _ => throw new ArgumentException($"--level-hud: \"{hud}\" (bar, full or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-wipe") is string wipe)
+                ScreenWipes = ParseWipe(wipe, "--level-wipe");
             if (WadLocator.GetUserArg("--level-hud-scale") is string hudScale)
                 Hud.FixedScale = hudScale == "auto" ? 0
                     : int.TryParse(hudScale, out int n) && n >= 1 && n <= 16 ? n
@@ -531,6 +602,7 @@ public partial class LevelScene : Node3D, IGameHost
                 if (map is null || map.StartsWith('-'))
                     map = DefaultMap();
                 LoadMap(map);
+                _flow.wipegamestate = gamestate_t.GS_LEVEL; // T7.1a: no melt into the map (vanilla's -warp melts its startup screen; SPEC §12 T7.1a)
                 if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
                     MoveFloors(Mesh!.Level, moves);
             }
@@ -972,6 +1044,8 @@ public partial class LevelScene : Node3D, IGameHost
             PollMenuPad(delta); // T7.2: the pad's directions in the menus
             flow.G_DoGameActions(); // T7.1: the game actions set between the tics (a new game from the title)
             RunTics(delta);
+            CaptureWipeStart(); // T7.1a: a game state changed this frame: the frame shown last melts at the next tic
+            _displayed = null;
             if (Mesh is not null)
             {
                 PresentWorld();
@@ -987,6 +1061,7 @@ public partial class LevelScene : Node3D, IGameHost
             }
             UpdateHud();
             UpdateScreens();
+            WipeLayer.Show(flow.Wipe, _wipeStartPending);
             SyncSettings(); // T7.3: what the menus, the keys and the zoom changed is saved
         }
         _crosshair.Visible = FreeFlyActive;
@@ -1030,13 +1105,31 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     private void RunTics(double delta)
     {
-        if (_flow is not { } flow || Paused || FocusPaused || !flow.CanTic)
+        if (_flow is not { } flow || Paused || FocusPaused || !flow.CanTic && !flow.Wipe.go)
             return;
         _ticTime += delta;
         int ran = 0;
         while (_ticTime >= TicSeconds)
         {
-            if (ScriptedTics && _scriptTics.Count == 0)
+            if (flow.Wipe.go)
+            {
+                // T7.1a: d_main.c's wipe loop: a melt step every tic's time, no tic (scripted tics wait)
+                if (WipeHeld)
+                {
+                    _ticTime = 0;
+                    break;
+                }
+                _ticTime -= TicSeconds;
+                flow.WipeStep();
+                TicFraction = 1;
+                if (++ran >= MaxTicsPerFrame)
+                {
+                    _ticTime = Math.Min(_ticTime, TicSeconds * 0.999);
+                    break;
+                }
+                continue;
+            }
+            if (ScriptedTics && _scriptTics.Count == 0 || !flow.CanTic)
                 break;
             _ticTime -= TicSeconds;
             RunTic();
@@ -1046,7 +1139,9 @@ public partial class LevelScene : Node3D, IGameHost
                 break;
             }
         }
-        if (ScriptedTics && _scriptTics.Count == 0)
+        if (flow.Wipe.go)
+            TicFraction = 1; // the world holds still under the melt: its last tic (vanilla's end screen)
+        else if (ScriptedTics && _scriptTics.Count == 0)
         {
             _ticTime = 0;
             TicFraction = 1;
@@ -1097,10 +1192,76 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public void Tic(in ticcmd_t cmd)
     {
+        int wipes = Flow.Wipe.count;
         Flow.G_Ticker(cmd);
         LastTiccmd = cmd;
         TicsRun++;
+        if (Flow.Wipe.count != wipes)
+        {
+            // the wipe started: from the frame captured when the game state changed, else (forced in the tic) the frame shown last
+            if (!_wipeStartPending)
+                WipeLayer.Begin(CaptureFrame());
+            _wipeStartPending = false;
+            WipeLayer.Show(Flow.Wipe, false);
+        }
     }
+
+    // T7.1a: the frame shown before the game state changed is captured, waiting for the next tic's D_Display to melt it.
+    private bool _wipeStartPending;
+
+    /// <summary>
+    /// T7.1a: d_main.c <c>wipe_StartScreen</c>: vanilla's screen shows the
+    /// game state it drew last until the next <c>D_Display</c>, which melts it
+    /// away. Here the game actions run at a tic's end and between the tics,
+    /// and the frames between would show the new state: so as soon as the game
+    /// state is not the one shown last (<see cref="GameFlow.wipegamestate"/>,
+    /// with the wipes on), the frame shown last (the viewport's, before this
+    /// frame draws) is captured and shown whole, still, until the wipe starts
+    /// (<see cref="Tic"/>). When a tic this frame drew a full screen
+    /// (<see cref="IGameHost.D_Display"/>: e.g. the intermission's last tic,
+    /// whose game action then started the next level), no frame showed it: the
+    /// screens are composed as they would draw instead (<see cref="ScreenView.ComposeInto"/>).
+    /// Nothing is captured without a renderer.
+    /// </summary>
+    private void CaptureWipeStart()
+    {
+        if (_flow is not { } flow)
+            return;
+        bool due = flow.Wipes && flow.gamestate != flow.wipegamestate && !flow.Wipe.go;
+        if (!due)
+        {
+            if (!flow.Wipe.go)
+                _wipeStartPending = false;
+            return;
+        }
+        if (_wipeStartPending)
+            return;
+        WipeLayer.Begin(_displayed is { } shown && shown != gamestate_t.GS_LEVEL ? ComposeScreens() : CaptureFrame());
+        _wipeStartPending = true;
+    }
+
+    private Image? CaptureFrame() => DisplayServer.GetName() == "headless" ? null : GetViewport().GetTexture().GetImage();
+
+    /// <summary>T7.1a: the frame the full screens (and the menus over them) draw as they stand, composed on the CPU (null without a renderer).</summary>
+    private Image? ComposeScreens()
+    {
+        if (DisplayServer.GetName() == "headless")
+            return null;
+        Vector2I size = (Vector2I)GetViewport().GetVisibleRect().Size;
+        Image image = Image.CreateEmpty(size.X, size.Y, false, Image.Format.Rgba8);
+        image.Fill(Colors.Black);
+        Screens.ComposeInto(image);
+        MenuScreens.ComposeInto(image);
+        return image;
+    }
+
+    /// <summary>T7.1a: <c>--level-wipe</c>'s and the option's value: <c>melt</c> (vanilla's) or <c>off</c>.</summary>
+    public static bool ParseWipe(string value, string what) => value switch
+    {
+        "melt" or "on" or "vanilla" => true,
+        "off" => false,
+        _ => throw new ArgumentException($"{what}: \"{value}\" (melt or off)"),
+    };
 
     /// <summary>
     /// <see cref="IGameHost.G_LevelTicker"/>: the level's tic (g_game.c
@@ -1113,12 +1274,36 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (!paused)
             WorldTic(cmd);
-        // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents), then the HUD is drawn.
+        // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents); the HUD is drawn by D_Display (T7.1a)
         StartHud();
         StatusBar?.ST_Ticker();
         TakeEvents();
+    }
+
+    /// <summary>
+    /// <see cref="IGameHost.D_Display"/> (T7.1a, d_main.c <c>D_Display</c>
+    /// after each tic): on the level the HUD (<see cref="DrawHud"/>), the
+    /// status bar whole after a game state change (<paramref name="wipe"/>,
+    /// vanilla's <c>redrawsbar</c>); else the state's screen as it stands
+    /// after this tic (<see cref="UpdateScreens"/>: a wipe started at this
+    /// tic's end melts it, though no frame draws it, <see cref="CaptureWipeStart"/>).
+    /// </summary>
+    void IGameHost.D_Display(gamestate_t state, bool wipe)
+    {
+        _displayed = state;
+        if (state != gamestate_t.GS_LEVEL)
+        {
+            if (!IsCheckRun)
+                UpdateScreens(); // (the level check draws the screens itself when it compares them)
+            return;
+        }
+        if (wipe)
+            _redrawStatusBar = true;
         DrawHud();
     }
+
+    // T7.1a: the game state a D_Display drew since the last frame was drawn (a tic ran), or null.
+    private gamestate_t? _displayed;
 
     private void WorldTic(in ticcmd_t cmd)
     {

@@ -12,6 +12,34 @@ index 9012e5f..42c574f 100644
  	    I_Error(DEH_String("\nYou cannot -file with the shareware "
  			       "version. Register!"));
  
+diff --git a/doomgeneric/f_wipe.c b/doomgeneric/f_wipe.c
+index 05852fd..0ee7f55 100644
+--- a/doomgeneric/f_wipe.c
++++ b/doomgeneric/f_wipe.c
+@@ -156,6 +156,7 @@ wipe_initMelt
+ 	if (y[i] > 0) y[i] = 0;
+ 	else if (y[i] == -16) y[i] = -15;
+     }
++    { extern void dump_wipe_init(int *, int); dump_wipe_init(y, width); } // IsoDoom reference (T7.1a): the melt's columns
+ 
+     return 0;
+ }
+@@ -248,6 +249,7 @@ wipe_EndScreen
+ {
+     wipe_scr_end = Z_Malloc(SCREENWIDTH * SCREENHEIGHT, PU_STATIC, NULL);
+     I_ReadScreen(wipe_scr_end);
++    { extern void dump_wipe_screens(byte *, byte *); dump_wipe_screens(wipe_scr_start, wipe_scr_end); } // IsoDoom reference (T7.1a)
+     V_DrawBlock(x, y, width, height, wipe_scr_start); // restore start scr.
+     return 0;
+ }
+@@ -280,6 +282,7 @@ wipe_ScreenWipe
+     // do a piece of wipe-in
+     V_MarkRect(0, 0, width, height);
+     rc = (*wipes[wipeno*3+1])(width, height, ticks);
++    { extern void dump_wipe_step(int, int); dump_wipe_step(ticks, rc); } // IsoDoom reference (T7.1a): the screen after each step
+     //  V_DrawBlock(x, y, 0, width, height, wipe_scr); // DEBUG
+ 
+     // final stuff
 diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
 index 9954d78..cba0443 100644
 --- a/doomgeneric/g_game.c
