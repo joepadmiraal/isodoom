@@ -93,6 +93,7 @@
 #include "hu_stuff.h"
 #include "hu_lib.h"
 #include "wi_stuff.h"
+#include "sounds.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -108,6 +109,7 @@ int dump_noceil; // read by the patched r_main.c / r_plane.c
 int dump_nospecials; // read by the patched p_spec.c
 static FILE *ticfile;
 static FILE *wipefile; // $DUMP_WIPE (T7.1a)
+static FILE *musicfile; // $DUMP_MUSIC (T7.8c)
 extern int prndindex;
 extern boolean nodrawers;
 static byte first[SCREENWIDTH * SCREENHEIGHT];
@@ -146,6 +148,25 @@ void DG_Init(void)
         dump_nospecials = 1; // the demo's end exits (DOOM1.WAD only: drawn)
         parse_events();
     }
+    char *m = getenv("DUMP_MUSIC");
+    if (m && *m && !(musicfile = fopen(m, "w")))
+    {
+        perror(m);
+        exit(1);
+    }
+}
+
+// The music changes (T7.8c): with $DUMP_MUSIC set, a line per S_ChangeMusic
+// call (the patched s_sound.c calls this first thing, before mus_intro
+// becomes mus_introa for an OPL device and before the same song returns):
+// "music GAMETIC STATE NAME LOOPING" (gametic, gamestate_t, the S_music
+// name, 0 or 1). S_StartMusic comes through it with LOOPING 0.
+void dump_music(int musicnum, int looping)
+{
+    if (!musicfile)
+        return;
+    fprintf(musicfile, "music %d %d %s %d\n", gametic, gamestate, S_music[musicnum].name, looping ? 1 : 0);
+    fflush(musicfile);
 }
 
 static byte *map_sectors(void);

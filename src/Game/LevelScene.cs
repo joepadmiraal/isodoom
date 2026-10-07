@@ -1985,6 +1985,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
         if (Sound is { } snd && snd.channels.Any(c => c.sfxinfo is not null))
             text.Append("channels: " + ChannelsText().Replace("\n", ", ", StringComparison.Ordinal) + "\n"); // T7.7
+        if (Sound is not null)
+            text.Append($"music: {MusicText()}\n"); // T7.8c
         if (_flow is { } flow)
             text.Append($"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}   menu: {flow.Menu.StateText()}\n");
         if (LevelEnded is not null)
@@ -2198,7 +2200,7 @@ public partial class LevelScene : Node3D, IGameHost
             throw new WadFormatException($"the WAD has no map {map}");
 
         UnloadLevel();
-        Sound?.S_Start(); // T7.7: p_setup.c P_SetupLevel's S_Start: no sound outlives its level
+        Sound?.StopChannels(); // T7.7: p_setup.c P_SetupLevel's S_Start: no sound outlives its level (its music: the flow's, T7.8c)
         SnapPending = false;
         TeleportSnaps = 0;
         TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)

@@ -294,12 +294,10 @@ public class SSoundTests
         s.S_UpdateSounds(Listener(player));
         Assert.Null(s.channels[0].sfxinfo);
         Assert.Equal("stop ch0", d.Calls[^1]); // it ended by itself: the driver is told too (its clock may lag)
-        // the game's pause holds the music only (s_sound.c S_PauseSound)
+        // the game's pause holds the music only (s_sound.c S_PauseSound; none playing: nothing to pause, as vanilla's)
         s.S_PauseSound();
-        Assert.True(s.mus_paused);
-        Assert.False(s.AllPaused);
-        s.S_ResumeSound();
         Assert.False(s.mus_paused);
+        Assert.False(s.AllPaused);
     }
 
     [Fact]
@@ -308,7 +306,7 @@ public class SSoundTests
         (SSound s, RecordingDevice d, mobj_t player) = Setup();
         Start(s, player, null, sfxenum_t.sfx_itemup);
         Start(s, player, player, sfxenum_t.sfx_pistol);
-        s.S_Start();
+        s.S_Start(1, 1);
         Assert.All(s.channels, c => Assert.Null(c.sfxinfo));
         Assert.Empty(d.Playing);
     }

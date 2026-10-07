@@ -59,6 +59,30 @@ public enum sound_result_t
 /// <summary>A start <see cref="SSound"/> handled: the sound, its origin, where it was, and what came of it (channel, volume, separation).</summary>
 public readonly record struct sound_start_t(sfxenum_t sfx, object? origin, int x, int y, sound_result_t result, int cnum, int vol, int sep);
 
+/// <summary>What an <see cref="SSound.S_ChangeMusic"/> came to (T7.8c; the level script, the overlay, the tests).</summary>
+public enum music_result_t
+{
+    /// <summary>The song started (<c>I_PlaySong</c>).</summary>
+    mr_started,
+
+    /// <summary>The song was playing already: not restarted (vanilla's <c>mus_playing == music</c>).</summary>
+    mr_same,
+
+    /// <summary>The WAD has no such song lump (vanilla's <c>I_Error</c>): silence.</summary>
+    mr_nolump,
+
+    /// <summary>The device cannot play the lump (<c>I_RegisterSong</c> gave no handle): silence.</summary>
+    mr_unplayable,
+}
+
+/// <summary>
+/// An <see cref="SSound.S_ChangeMusic"/> call (T7.8c): the song asked for
+/// (<paramref name="musicnum"/>, before <c>mus_intro</c> becomes
+/// <c>mus_introa</c>), <paramref name="looping"/>, the song it came to and
+/// what came of it.
+/// </summary>
+public readonly record struct music_change_t(musicenum_t musicnum, bool looping, musicenum_t song, music_result_t result);
+
 /// <summary>
 /// s_sound.c (Chocolate Doom's, T7.7) in plain C#, no Godot types: the
 /// channels (<see cref="snd_channels"/>, 8), their priorities
@@ -73,6 +97,11 @@ public readonly record struct sound_start_t(sfxenum_t sfx, object? origin, int x
 /// under <c>--headless</c> included). The sim's events feed it
 /// (<see cref="World.events"/>: starts with their origin, stops for removed
 /// mobjs); the menus', intermission's and finale's sounds come with no origin.
+/// The music half (T7.8c): <see cref="S_ChangeMusic"/>, <see cref="S_StartMusic"/>,
+/// <see cref="S_StopMusic"/>, the pause's <see cref="S_PauseSound"/> and
+/// <see cref="S_ResumeSound"/>, <see cref="S_SetMusicVolume"/> and
+/// <see cref="S_Start"/>'s song for the level, on an <see cref="IMusicDevice"/>;
+/// the game flow calls them where vanilla's code does (<c>GameFlow.Sound</c>).
 /// </summary>
 public sealed class SSound
 {
@@ -109,6 +138,8 @@ public sealed class SSound
     }
 
     private readonly ISoundDevice? _device;
+    private readonly IMusicDevice? _music;
+    private readonly Func<string, ReadOnlyMemory<byte>?>? _lumps;
 
     /// <summary>s_sound.c <c>channels</c>.</summary>
     public readonly channel_t[] channels;
@@ -145,9 +176,18 @@ public sealed class SSound
     /// <summary>How many times each sound took a channel (<see cref="sound_result_t.sr_played"/> or <see cref="sound_result_t.sr_nolump"/>).</summary>
     public readonly int[] ChannelStarts = new int[(int)sfxenum_t.NUMSFX];
 
-    public SSound(ISoundDevice? device, int numChannels = DefaultChannels)
+    /// <summary>
+    /// The channels on <paramref name="device"/>, the music on
+    /// <paramref name="music"/>, the song lumps from <paramref name="lumps"/>
+    /// (a lump's bytes by name, null when the WAD lacks it; without it every
+    /// song is silent).
+    /// </summary>
+    public SSound(ISoundDevice? device, int numChannels = DefaultChannels, IMusicDevice? music = null,
+        Func<string, ReadOnlyMemory<byte>?>? lumps = null)
     {
         _device = device;
+        _music = music;
+        _lumps = lumps;
         channels = new channel_t[numChannels];
         for (int i = 0; i < numChannels; i++)
             channels[i] = new channel_t();
@@ -178,18 +218,70 @@ public sealed class SSound
     }
 
     /// <summary>
-    /// s_sound.c <c>S_Start</c>'s sound part (p_setup.c <c>P_SetupLevel</c>
-    /// calls it at every level load): "kill all playing sounds at start of
-    /// level (trust me - a good idea)". The music is T7.8's.
+    /// s_sound.c <c>S_Start</c> (p_setup.c <c>P_SetupLevel</c> calls it at
+    /// every level load, map <paramref name="gamemap"/> of episode
+    /// <paramref name="gameepisode"/>): "kill all playing sounds at start of
+    /// level (trust me - a good idea)", then the level's music, looping
+    /// (<see cref="LevelMusic"/>). A map the table has no song for (vanilla's
+    /// <c>I_Error</c>) stops the music.
     /// </summary>
-    public void S_Start()
+    public void S_Start(int gameepisode, int gamemap)
+    {
+        this.gamemap = gamemap;
+        StopChannels();
+
+        // start new music for the level
+        mus_paused = false;
+        _pausedByGame = false; // not vanilla: a song the pause held and S_ChangeMusic keeps goes on (SPEC §12 T7.8c)
+        SetSongPaused(AllPaused);
+
+        musicenum_t mnum = LevelMusic(commercial, gameepisode, gamemap);
+        if (mnum <= musicenum_t.mus_None || mnum >= musicenum_t.NUMMUSIC)
+        {
+            S_StopMusic();
+            return;
+        }
+        S_ChangeMusic(mnum, true);
+    }
+
+    /// <summary>Chocolate Doom's s_sound.c <c>spmus</c>: the fourth episode's songs (the Ultimate Doom), by map.</summary>
+    private static readonly musicenum_t[] spmus =
+    {
+        // Song - Who? - Where?
+        musicenum_t.mus_e3m4, // American     e4m1
+        musicenum_t.mus_e3m2, // Romero       e4m2
+        musicenum_t.mus_e3m3, // Shawn        e4m3
+        musicenum_t.mus_e1m5, // American     e4m4
+        musicenum_t.mus_e2m7, // Tim          e4m5
+        musicenum_t.mus_e2m4, // Romero       e4m6
+        musicenum_t.mus_e2m6, // J.Anderson   e4m7 CHIRON.WAD
+        musicenum_t.mus_e2m5, // Shawn        e4m8
+        musicenum_t.mus_e1m9, // Tim          e4m9
+    };
+
+    /// <summary>
+    /// s_sound.c <c>S_Start</c>'s song for a level: Doom II's
+    /// <c>mus_runnin + gamemap − 1</c>, else <c>mus_e1m1 + (gameepisode − 1) × 9
+    /// + gamemap − 1</c>, the fourth episode's from <c>spmus</c>;
+    /// <see cref="musicenum_t.mus_None"/> or beyond the table when there is none.
+    /// </summary>
+    public static musicenum_t LevelMusic(bool commercial, int gameepisode, int gamemap)
+    {
+        if (commercial)
+            return musicenum_t.mus_runnin + gamemap - 1;
+        if (gameepisode < 4)
+            return musicenum_t.mus_e1m1 + (gameepisode - 1) * 9 + gamemap - 1;
+        return gamemap >= 1 && gamemap <= spmus.Length ? spmus[gamemap - 1] : musicenum_t.mus_None;
+    }
+
+    /// <summary>Not vanilla: stops every channel (<see cref="S_Start"/>'s sound part; the scene's quit).</summary>
+    public void StopChannels()
     {
         for (int cnum = 0; cnum < snd_channels; cnum++)
         {
             if (channels[cnum].sfxinfo is not null)
                 S_StopChannel(cnum);
         }
-        mus_paused = false;
     }
 
     /// <summary>s_sound.c <c>S_StopSound</c>: stops the first channel playing from <paramref name="origin"/> (null too: a sound with none).</summary>
@@ -353,21 +445,193 @@ public sealed class SSound
 
     /// <summary>
     /// s_sound.c <c>S_PauseSound</c> (the game's pause, g_game.c <c>G_Ticker</c>'s
-    /// <c>BTS_PAUSE</c>): vanilla pauses only the music (T7.8); the sounds play out.
+    /// <c>BTS_PAUSE</c>): vanilla pauses only the music; the sounds play out.
     /// </summary>
-    public void S_PauseSound() => mus_paused = true;
+    public void S_PauseSound()
+    {
+        if (mus_playing != musicenum_t.mus_None && !mus_paused)
+        {
+            _pausedByGame = true;
+            SetSongPaused(true); // I_PauseSong
+            mus_paused = true;
+        }
+    }
 
     /// <summary>s_sound.c <c>S_ResumeSound</c>.</summary>
-    public void S_ResumeSound() => mus_paused = false;
+    public void S_ResumeSound()
+    {
+        if (mus_playing != musicenum_t.mus_None && mus_paused)
+        {
+            _pausedByGame = false;
+            SetSongPaused(AllPaused); // I_ResumeSong (the focus pause holds it on)
+            mus_paused = false;
+        }
+    }
 
-    /// <summary>Not vanilla: holds every channel where it is (the window's focus lost), or lets them go on.</summary>
+    /// <summary>Not vanilla: holds every channel and the music where they are (the window's focus lost), or lets them go on.</summary>
     public void PauseAll(bool paused)
     {
         if (paused == AllPaused)
             return;
         AllPaused = paused;
         _device?.I_PauseSounds(paused);
+        SetSongPaused(paused || _pausedByGame);
     }
+
+    // ---- the music (T7.8c) ----
+
+    /// <summary>s_sound.c <c>mus_playing</c>: the song playing (or silent: no lump, or one the device can't play), <see cref="musicenum_t.mus_None"/> for none.</summary>
+    public musicenum_t mus_playing { get; private set; }
+
+    /// <summary>Whether <see cref="mus_playing"/> loops (<see cref="S_ChangeMusic"/>'s <c>looping</c>).</summary>
+    public bool mus_looping { get; private set; }
+
+    /// <summary>The song asked for last (<see cref="S_ChangeMusic"/>'s <c>musicnum</c> before <c>mus_intro</c> becomes <c>mus_introa</c>).</summary>
+    public musicenum_t mus_requested { get; private set; }
+
+    /// <summary>Whether <see cref="mus_playing"/> plays on the device (else silent: no lump, or not one it plays).</summary>
+    public bool MusicAudible => _handle is not null;
+
+    /// <summary>Whether the device holds the song (the game's pause or the focus pause).</summary>
+    public bool MusicHeld => _songPaused;
+
+    /// <summary>s_sound.c's music volume (<see cref="S_SetMusicVolume"/>): 0–127, −1 before it is set.</summary>
+    public int snd_MusicVolume { get; private set; } = -1;
+
+    /// <summary>doomstat.h <c>gamemode == commercial</c> (Doom II): <see cref="S_Start"/>'s songs are Doom II's.</summary>
+    public bool commercial;
+
+    /// <summary>The last <see cref="LogLength"/> <see cref="S_ChangeMusic"/> calls, oldest first.</summary>
+    public IReadOnlyList<music_change_t> MusicLog => _musicLog;
+
+    private readonly List<music_change_t> _musicLog = new();
+
+    /// <summary>How many <see cref="S_ChangeMusic"/> calls since this was made.</summary>
+    public int MusicChanges { get; private set; }
+
+    // music->handle of mus_playing (null: silent), whether the device holds the song,
+    // and whether the game's pause holds it (S_PauseSound since the song started).
+    private object? _handle;
+    private music_result_t _songResult;
+    private bool _songPaused, _pausedByGame;
+
+    // The device's I_PauseSong / I_ResumeSong, only on a change.
+    private void SetSongPaused(bool paused)
+    {
+        if (_handle is null || paused == _songPaused)
+            return;
+        _songPaused = paused;
+        if (paused)
+            _music?.I_PauseSong();
+        else
+            _music?.I_ResumeSong();
+    }
+
+    /// <summary>s_sound.c <c>S_SetMusicVolume</c> (m_menu.c <c>M_MusicVol</c>: <c>musicVolume * 8</c>): 0–127, else vanilla's <c>I_Error</c>.</summary>
+    public void S_SetMusicVolume(int volume)
+    {
+        if (volume < 0 || volume > 127)
+            throw new ArgumentOutOfRangeException(nameof(volume), $"Attempt to set music volume at {volume}");
+        snd_MusicVolume = volume;
+        _music?.I_SetMusicVolume(volume);
+    }
+
+    /// <summary>s_sound.c <c>S_StartMusic</c>: <paramref name="m_id"/> once (the title loop's).</summary>
+    public music_change_t S_StartMusic(musicenum_t m_id) => S_ChangeMusic(m_id, false);
+
+    /// <summary>
+    /// s_sound.c <c>S_ChangeMusic</c> (Chocolate Doom's): song
+    /// <paramref name="musicnum"/>, looping or once. <c>D_INTROA</c> plays for
+    /// <c>mus_intro</c> when the WAD has it (Chocolate Doom's choice for its
+    /// OPL music devices, which ours always is). The song playing is not
+    /// restarted; another is stopped (<see cref="S_StopMusic"/>), and the
+    /// lump <c>D_</c> + name is registered and played. A lump the WAD lacks
+    /// (vanilla's <c>I_Error</c>) or one the device can't play leaves the
+    /// music silent, the song still counted as playing (so asking for it
+    /// again changes nothing).
+    /// </summary>
+    public music_change_t S_ChangeMusic(musicenum_t musicnum, bool looping)
+    {
+        musicenum_t requested = musicnum;
+        // The Doom IWAD file has two versions of the intro music: d_intro
+        // and d_introa.  The latter is used for OPL playback.
+        if (musicnum == musicenum_t.mus_intro && _lumps?.Invoke(MusicInfo.LumpName(musicenum_t.mus_introa)) is not null)
+            musicnum = musicenum_t.mus_introa;
+
+        if (musicnum <= musicenum_t.mus_None || musicnum >= musicenum_t.NUMMUSIC)
+            throw new ArgumentOutOfRangeException(nameof(musicnum), $"Bad music number {(int)musicnum}");
+        mus_requested = requested;
+
+        if (mus_playing == musicnum)
+            return RecordMusic(new music_change_t(requested, looping, musicnum, music_result_t.mr_same));
+
+        // shutdown old music
+        S_StopMusic();
+
+        string lump = MusicInfo.LumpName(musicnum);
+        mus_playing = musicnum;
+        mus_looping = looping;
+        if (_lumps?.Invoke(lump) is not ReadOnlyMemory<byte> data)
+            return RecordMusic(new music_change_t(requested, looping, musicnum, music_result_t.mr_nolump));
+        _handle = _music?.I_RegisterSong(lump, data);
+        if (_handle is null)
+            return RecordMusic(new music_change_t(requested, looping, musicnum, _music is null ? music_result_t.mr_started : music_result_t.mr_unplayable));
+        _music!.I_PlaySong(_handle, looping);
+        _songPaused = false;
+        SetSongPaused(AllPaused); // not vanilla: the focus pause holds a new song too
+        return RecordMusic(new music_change_t(requested, looping, musicnum, music_result_t.mr_started));
+    }
+
+    private music_change_t RecordMusic(music_change_t change)
+    {
+        if (change.result != music_result_t.mr_same)
+            _songResult = change.result;
+        MusicChanges++;
+        if (_musicLog.Count == LogLength)
+            _musicLog.RemoveAt(0);
+        _musicLog.Add(change);
+        MusicChanged?.Invoke(change);
+        return change;
+    }
+
+    /// <summary>Called at each <see cref="S_ChangeMusic"/> (the vanilla reference's dump point: the tests').</summary>
+    public Action<music_change_t>? MusicChanged;
+
+    /// <summary>
+    /// s_sound.c <c>S_StopMusic</c>: the song playing stops (resumed first
+    /// when held, as vanilla's) and is unregistered. <see cref="mus_paused"/>
+    /// stays as it is (vanilla's).
+    /// </summary>
+    public void S_StopMusic()
+    {
+        if (mus_playing == musicenum_t.mus_None)
+            return;
+        if (_handle is not null)
+        {
+            SetSongPaused(false); // if (mus_paused) I_ResumeSong()
+            _music!.I_StopSong();
+            _music.I_UnRegisterSong(_handle);
+        }
+        _handle = null;
+        _songPaused = _pausedByGame = false;
+        mus_playing = musicenum_t.mus_None;
+    }
+
+    /// <summary>The song as the overlay and the level script show it: <c>e1m1 (D_E1M1, looping, playing)</c>, <c>none</c>.</summary>
+    public string MusicText()
+    {
+        if (mus_playing == musicenum_t.mus_None)
+            return "none";
+        string state = MusicAudible ? (_songPaused ? "paused" : "playing")
+            : _songResult == music_result_t.mr_unplayable ? "silent: the device can't play it"
+            : _songResult == music_result_t.mr_nolump ? "silent: no lump"
+            : "no device";
+        return $"{MusicName(mus_playing)} ({MusicInfo.LumpName(mus_playing)}, {(mus_looping ? "looping" : "once")}, {state})"
+            + (mus_requested != mus_playing ? $" for {MusicName(mus_requested)}" : "");
+    }
+
+    /// <summary>The song's name without <c>mus_</c> (<c>e1m1</c>, <c>intro</c>; <c>none</c>).</summary>
+    public static string MusicName(musicenum_t music) => music == musicenum_t.mus_None ? "none" : MusicInfo.S_music[(int)music].name;
 
     /// <summary>Not vanilla: <paramref name="seconds"/> of play pass (the driver's mixing, vanilla's <c>I_SoundIsPlaying</c>); nothing while <see cref="AllPaused"/>.</summary>
     public void Advance(double seconds)

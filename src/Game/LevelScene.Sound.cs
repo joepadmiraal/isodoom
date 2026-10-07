@@ -4,6 +4,7 @@ using Godot;
 using IsoDoom.Audio;
 using IsoDoom.Render;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Game;
 
@@ -30,6 +31,13 @@ public partial class LevelScene
     /// <summary>T7.7: the channels' players.</summary>
     public SfxPlayer? SfxDevice { get; private set; }
 
+    /// <summary>
+    /// T7.8c: the music device: a stand-in that records what it is asked
+    /// (<see cref="RecordingMusicDevice"/>) until T7.8e's OPL player takes
+    /// its place here (<see cref="InitSound"/>).
+    /// </summary>
+    public IMusicDevice? MusicDevice { get; private set; }
+
     /// <summary>T7.7: <c>--level-sound-stereo=screen|facing|off</c>.</summary>
     public SoundStereo Stereo { get; set; } = SoundStereo.Screen;
 
@@ -38,9 +46,6 @@ public partial class LevelScene
 
     /// <summary>T7.7: the menus' Quit is waiting for its sound (<see cref="QuitWaitSeconds"/>); nothing runs meanwhile.</summary>
     public bool Quitting { get; private set; }
-
-    // The game's pause as last seen (S_PauseSound / S_ResumeSound on a change).
-    private bool _soundPaused;
 
     /// <summary>T7.7: <c>--level-sound-stereo</c>'s value.</summary>
     public static SoundStereo ParseStereo(string value) => value switch
@@ -58,11 +63,19 @@ public partial class LevelScene
             Stereo = ParseStereo(stereo);
         SfxDevice = new SfxPlayer(Wad!, SSound.DefaultChannels, SfxBus);
         AddChild(SfxDevice);
-        Sound = new SSound(SfxDevice);
+        MusicDevice = new RecordingMusicDevice(); // T7.8c: T7.8e's OPL player goes here
+        WadArchive wad = Wad!;
+        Sound = new SSound(SfxDevice, SSound.DefaultChannels, MusicDevice,
+            name => wad.W_CheckNumForName(name) is int lump and >= 0 ? wad.W_CacheLumpNum(lump) : (ReadOnlyMemory<byte>?)null)
+        {
+            commercial = GameMode == GameMode.commercial,
+        };
+        if (_flow is not null)
+            _flow.Sound = Sound; // the flow changes the music and pauses it (T7.8c)
         SyncSoundVolume();
     }
 
-    // m_menu.c M_SfxVol: S_SetSfxVolume(sfxVolume * 8).
+    // m_menu.c M_SfxVol: S_SetSfxVolume(sfxVolume * 8); M_MusicVol: S_SetMusicVolume(musicVolume * 8) (T7.8c), on a change.
     private void SyncSoundVolume()
     {
         if (Sound is null || _flow is null)
@@ -70,6 +83,8 @@ public partial class LevelScene
         Sound.snd_SfxVolume = Menu.sfxVolume * 8;
         SfxDevice!.SfxVolume = Sound.snd_SfxVolume;
         Sound.mono = Stereo == SoundStereo.Off;
+        if (Sound.snd_MusicVolume != Menu.musicVolume * 8)
+            Sound.S_SetMusicVolume(Menu.musicVolume * 8);
     }
 
     /// <summary>
@@ -106,9 +121,9 @@ public partial class LevelScene
 
     /// <summary>
     /// T7.7, each frame (d_main.c's <c>S_UpdateSounds</c> after the tics): the
-    /// volume, the game's pause (vanilla pauses only the music) and the
-    /// focus pause (everything holds), the channels' time, then the channels
-    /// follow their origins and the listener.
+    /// volumes, the focus pause (everything holds, the music too; the game's
+    /// pause, which holds only the music, is the flow's: T7.8c), the
+    /// channels' time, then the channels follow their origins and the listener.
     /// </summary>
     public void UpdateSound(double delta)
     {
@@ -116,15 +131,6 @@ public partial class LevelScene
             return;
         SyncSoundVolume();
         Sound.gamemap = World?.gamemap ?? 0;
-        bool paused = _flow?.paused == true;
-        if (paused != _soundPaused)
-        {
-            _soundPaused = paused;
-            if (paused)
-                Sound.S_PauseSound();
-            else
-                Sound.S_ResumeSound();
-        }
         Sound.PauseAll(FocusPaused);
         Sound.Advance(delta);
         Sound.S_UpdateSounds(SoundListener());
@@ -142,6 +148,9 @@ public partial class LevelScene
         string text = string.Join("\n", lines);
         return text.Length == 0 ? "no channel playing" : text;
     }
+
+    /// <summary>T7.8c: the music as the overlay and the level script show it: the song (<see cref="SSound.MusicText"/>) and the device's state.</summary>
+    public string MusicText() => Sound is not { } s ? "no sound" : $"{s.MusicText()}; {MusicDevice}";
 
     /// <summary>A start as the overlay and the level script list it.</summary>
     public string StartText(in sound_start_t st) =>
@@ -163,9 +172,10 @@ public partial class LevelScene
     {
         if (Sound is { } s && s.channels.Any(c => c.sfxinfo is not null))
         {
-            s.S_Start();
+            s.StopChannels();
             await AudioSettled();
         }
+        Sound?.S_StopMusic(); // i_sound.c I_ShutdownMusic (T7.8c)
         GetTree().Quit(code);
     }
 

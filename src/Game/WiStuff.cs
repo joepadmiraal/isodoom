@@ -478,7 +478,7 @@ public sealed class WiStuff
         }
     }
 
-    /// <summary>wi_stuff.c <c>WI_Ticker</c>: updates stuff each tick (the music, <c>mus_inter</c>/<c>mus_dm2int</c> at <c>bcnt</c> 1, is T7.8's).</summary>
+    /// <summary>wi_stuff.c <c>WI_Ticker</c>: updates stuff each tick (the music at its first, T7.8c: <c>mus_inter</c>, Doom II <c>mus_dm2int</c>).</summary>
     public void WI_Ticker()
     {
         sounds.Clear();
@@ -486,7 +486,14 @@ public sealed class WiStuff
         // counter for general background animation
         bcnt++;
 
-        // bcnt == 1: S_ChangeMusic(mus_inter or mus_dm2int, true): T7.8
+        if (bcnt == 1)
+        {
+            // intermission music
+            if (flow.gamemode == GameMode.commercial)
+                flow.S_ChangeMusic(musicenum_t.mus_dm2int, true);
+            else
+                flow.S_ChangeMusic(musicenum_t.mus_inter, true);
+        }
 
         // check for button presses to skip delays
         WI_checkForAccelerate();
