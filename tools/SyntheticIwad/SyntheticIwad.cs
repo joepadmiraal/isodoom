@@ -1392,15 +1392,77 @@ public static class SyntheticIwad
         return lump;
     }
 
+    // D_INTRO: a type 1 MIDI file (Chocolate Doom plays a PWAD's MIDI lumps
+    // through midifile.c, T7.8d): a tempo track changing the tempo mid-song,
+    // a melodic track (program changes, volume, pan, pitch bends, running
+    // status, a note on of velocity 0 as its note off, a SysEx and a text
+    // event) and a percussion track (channel 10; one note outside GENMIDI's
+    // 35-81), 96 ticks per quarter note.
     private static byte[] BuildMidi()
     {
-        byte[] track = { 0x00, 0x90, 60, 100, 0x60, 0x80, 60, 0, 0x00, 0xFF, 0x2F, 0x00 }; // note on, note off, end of track
+        static void Vlq(List<byte> b, int v)
+        {
+            var groups = new List<byte> { (byte)(v & 0x7F) };
+            while ((v >>= 7) != 0)
+                groups.Insert(0, (byte)(0x80 | (v & 0x7F)));
+            b.AddRange(groups);
+        }
+        static void Ev(List<byte> b, int delta, params byte[] bytes)
+        {
+            Vlq(b, delta);
+            b.AddRange(bytes);
+        }
+
+        var tempo = new List<byte>();
+        Ev(tempo, 0, 0xFF, 0x51, 3, 0x07, 0xA1, 0x20);    // 500000 us per beat
+        Ev(tempo, 384, 0xFF, 0x51, 3, 0x06, 0x1A, 0x80);  // 400000
+        Ev(tempo, 384, 0xFF, 0x51, 3, 0x09, 0x27, 0xC0);  // 600000
+        Ev(tempo, 384, 0xFF, 0x2F, 0);
+
+        var melody = new List<byte>();
+        Ev(melody, 0, 0xFF, 0x01, 4, (byte)'t', (byte)'e', (byte)'s', (byte)'t');
+        Ev(melody, 0, 0xC0, 19);                 // program 20
+        Ev(melody, 0, 0xB0, 0x07, 100);          // volume
+        Ev(melody, 0, 0x0A, 20);                 // pan (running status)
+        Ev(melody, 0, 0xC1, 6);
+        Ev(melody, 0, 0xB1, 0x0A, 110);
+        int[] scale = { 60, 62, 64, 65, 67, 69, 71, 72 };
+        for (int i = 0; i < scale.Length; i++)
+        {
+            Ev(melody, i == 0 ? 0 : 48, 0x90, (byte)scale[i], (byte)(70 + 7 * i));
+            Ev(melody, 0, 0x91, (byte)(scale[i] - 12), 90);
+            if (i == 3)
+                Ev(melody, 24, 0xE0, 0x00, 0x50);     // bend up
+            if (i == 4)
+                Ev(melody, 24, 0xE0, 0x00, 0x40);     // and back
+            if (i == 5)
+                Ev(melody, 0, 0xF0, 3, 0x7E, 0x7F, 0xF7); // SysEx
+            if (i == 6)
+                Ev(melody, 0, 0xB0, 0x0A, 64);       // pan centre
+            Ev(melody, i is 3 or 4 ? 24 : 48, 0x90, (byte)scale[i], 0);  // velocity 0: off
+            Ev(melody, 0, 0x81, (byte)(scale[i] - 12), 0);
+        }
+        Ev(melody, 0, 0xB1, 0x7B, 0);            // all notes off
+        Ev(melody, 0, 0xFF, 0x2F, 0);
+
+        var drums = new List<byte>();
+        byte[] kit = { 36, 42, 38, 42, 30, 42, 38, 81 };
+        for (int i = 0; i < 16; i++)
+        {
+            Ev(drums, i == 0 ? 0 : 36, 0x99, kit[i % kit.Length], 110);
+            Ev(drums, 36, 0x89, kit[i % kit.Length], 0);
+        }
+        Ev(drums, 0, 0xFF, 0x2F, 0);
+
         var midi = new List<byte>();
         midi.AddRange(Encoding.ASCII.GetBytes("MThd"));
-        midi.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 0, 96 }); // format 0, 1 track, 96 ticks per quarter
-        midi.AddRange(Encoding.ASCII.GetBytes("MTrk"));
-        midi.AddRange(new byte[] { 0, 0, 0, (byte)track.Length });
-        midi.AddRange(track);
+        midi.AddRange(new byte[] { 0, 0, 0, 6, 0, 1, 0, 3, 0, 96 }); // format 1, 3 tracks, 96 ticks per quarter
+        foreach (List<byte> track in new[] { tempo, melody, drums })
+        {
+            midi.AddRange(Encoding.ASCII.GetBytes("MTrk"));
+            midi.AddRange(new byte[] { 0, 0, (byte)(track.Count >> 8), (byte)track.Count });
+            midi.AddRange(track);
+        }
         return midi.ToArray();
     }
 

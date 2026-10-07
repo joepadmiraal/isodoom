@@ -4,6 +4,20 @@ IsoDoom is licensed under the GNU General Public License, version 2 or (at
 your option) any later version. It includes the third-party code listed
 here under its own licence. T7.8a started this file and T8.7 completes it.
 
+## Chocolate Doom (OPL music)
+
+- **Used in:** `src/Audio/OplMusic.cs`, `src/Audio/Mus2Mid.cs` and
+  `src/Audio/MidiFile.cs`, C# ports of `src/i_oplmusic.c`, `src/mus2mid.c`,
+  `src/midifile.c` and parts of `opl/opl.c`, `opl/opl_sdl.c` and
+  `opl/opl_queue.c` (T7.8d).
+- **Upstream:** <https://github.com/chocolate-doom/chocolate-doom>, commit
+  `895f581c5d91497bdda0516612da803fe5843e28`.
+- **Copyright:** Copyright (C) 1993-1996 Id Software, Inc.; Copyright (C)
+  2005-2014 Simon Howard; mus2mid.c Copyright (C) 2006 Ben Ryves.
+- **Licence:** GNU General Public License, version 2 or (at your option) any
+  later version, IsoDoom's own licence. The ports keep the original file
+  headers.
+
 ## Nuked-OPL3
 
 - **Used in:** `src/Audio/Opl3.cs`, a C# port of `opl3.c` and `opl3.h`, the
