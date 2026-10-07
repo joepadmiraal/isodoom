@@ -32,18 +32,63 @@ public sealed partial class World
         for (int i = 0; i < MAXPLAYERS; i++)
         {
             if (playeringame[i])
+            {
                 players[i].cmd = netcmds[i];
+                G_CheckTurbo(i);
+            }
         }
         P_Ticker();
         HU_TakeMessages(); // HU_Ticker's message part (T6.10)
+        gametic++;
     }
 
     /// <summary><see cref="G_Ticker(ticcmd_t[])"/> for a game of one player (<see cref="consoleplayer"/>).</summary>
     public void G_Ticker(in ticcmd_t cmd)
     {
         players[consoleplayer].cmd = cmd;
+        G_CheckTurbo(consoleplayer);
         P_Ticker();
         HU_TakeMessages(); // HU_Ticker's message part (T6.10)
+        gametic++;
+    }
+
+    /// <summary>
+    /// d_main.c / d_loop.c <c>gametic</c>: the tics run since the game
+    /// started (this world's first <see cref="G_Ticker(in ticcmd_t)"/> runs
+    /// at 0; a new level does not reset it, as <see cref="leveltime"/> is).
+    /// Vanilla's also counts the tics before the game (title, menus); a
+    /// demo's starts as this one. Only the turbo check reads it.
+    /// </summary>
+    public int gametic;
+
+    /// <summary>g_game.c <c>turbodetected</c>: whether a player's <c>forwardmove</c> went over <see cref="TURBOTHRESHOLD"/> in the last check period.</summary>
+    public readonly bool[] turbodetected = new bool[MAXPLAYERS];
+
+    /// <summary>g_game.c <c>TURBOTHRESHOLD</c>: more <c>forwardmove</c> than running gives (vanilla's <c>-turbo</c>, SR50).</summary>
+    public const int TURBOTHRESHOLD = 0x32;
+
+    /// <summary>hu_stuff.c <c>player_names</c> (d_englsh.h <c>HUSTR_PLRGREEN</c>…).</summary>
+    public static readonly string[] player_names = { "Green: ", "Indigo: ", "Brown: ", "Red: " };
+
+    /// <summary>
+    /// g_game.c <c>G_Ticker</c>'s turbo check (T6.11; Chocolate Doom's, as
+    /// the v1.9 executable has it): a <c>forwardmove</c> over
+    /// <see cref="TURBOTHRESHOLD"/> marks the player, and every 32 tics, each
+    /// player in turn (<see cref="gametic"/> &gt;&gt; 5 modulo
+    /// <see cref="MAXPLAYERS"/>), a marked player gets the console player
+    /// the message "<c>Green: is turbo!</c>". A message only: nothing else
+    /// reads it.
+    /// </summary>
+    private void G_CheckTurbo(int i)
+    {
+        if (players[i].cmd.forwardmove > TURBOTHRESHOLD)
+            turbodetected[i] = true;
+
+        if ((gametic & 31) == 0 && ((gametic >> 5) % MAXPLAYERS) == i && turbodetected[i])
+        {
+            players[consoleplayer].message = player_names[i] + " is turbo!";
+            turbodetected[i] = false;
+        }
     }
 
     /// <summary>p_user.c <c>P_Thrust</c>: moves the given origin along a given angle.</summary>

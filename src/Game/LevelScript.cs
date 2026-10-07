@@ -86,6 +86,9 @@ namespace IsoDoom.Game;
 /// do; its <c>damage</c>, <c>alert</c> and <c>rocket</c> events (T6.4, T6.5) run before their tics. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
 /// <c>--level-monsters=off</c> (<c>on</c> for a route with the <c>monsters</c> header), the route's skill and map, or the script
 /// fails. <c>map NAME</c> after it checks that the route left by its exit.
+/// <c>route FILE TICS</c> (T6.11) queues only the route's first TICS tics, so
+/// <c>tics TICS; shot FILE.png</c> captures the scene (and its HUD) after
+/// exactly that tic, as <c>tools/VanillaRef/routes.sh</c>'s <c>DUMP_HUD_TICS</c> does vanilla's.
 /// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
 /// name (<c>LeftX</c>, <c>LeftY</c>: the move stick, <c>RightX</c>,
 /// <c>RightY</c>: the aim stick, <c>TriggerRight</c>: fire; Y down is
@@ -323,7 +326,9 @@ public partial class LevelScript : Node
                             break;
                         }
                     case "route":
-                        if (!QueueRoute(string.Join(' ', w[1..])))
+                        if (!(w.Length > 2 && int.TryParse(w[^1], out int routeTics) && routeTics >= 0
+                                ? QueueRoute(string.Join(' ', w[1..^1]), routeTics)
+                                : QueueRoute(string.Join(' ', w[1..]))))
                         {
                             GetTree().Quit(1);
                             return;
@@ -476,7 +481,7 @@ public partial class LevelScript : Node
     /// (and places the player at its <c>start</c>); false, with an error,
     /// when the scene cannot play it as vanilla does.
     /// </summary>
-    private bool QueueRoute(string path)
+    private bool QueueRoute(string path, int? tics = null)
     {
         RouteFile route;
         try
@@ -512,12 +517,13 @@ public partial class LevelScript : Node
             return false;
         }
         _scene.ScriptedTics = true;
-        for (int tic = 0; tic < route.Cmds.Count; tic++)
+        int count = Math.Min(tics ?? route.Cmds.Count, route.Cmds.Count);
+        for (int tic = 0; tic < count; tic++)
         {
             int t = tic;
             _scene.QueueTic(route.Cmds[tic], System.Linq.Enumerable.Any(route.Events, e => e.Tic == t) ? world => route.RunEvents(world, t) : null);
         }
-        GD.Print($"Level script: route {path}: {route.Cmds.Count} tics queued on {map}{(route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
+        GD.Print($"Level script: route {path}: {count} tics queued on {map}{(count < route.Cmds.Count ? $" (of {route.Cmds.Count})" : route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
         return true;
     }
 

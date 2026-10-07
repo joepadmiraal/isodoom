@@ -63,6 +63,11 @@ namespace IsoDoom.Game;
 /// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
 /// player's weapon flash, <c>player_t.extralight</c>, lights the level as
 /// vanilla's lights the view; default on);
+/// <c>--level-hud=bar|full|off</c> (T6.11, <see cref="HudView"/>: under the
+/// game camera, vanilla's status bar at the bottom, the minimal fullscreen
+/// HUD, or neither; the message line shows with all; default bar) and
+/// <c>--level-hud-scale=N|auto</c> (its scale; default auto, the largest
+/// whole scale vanilla's 320×200 screen fits: 4 at 1280×800);
 /// <c>--level-palette-effects=on|off</c> (T6.8, <see cref="PaletteEffects"/>:
 /// the console player's palette flashes, st_stuff.c's red, gold and green,
 /// and its power-ups' fixed colormaps, invulnerability's inverse map and the
@@ -122,8 +127,9 @@ namespace IsoDoom.Game;
 /// the sprite wall pull (on, off), H the upright hiding (depth, upright), B
 /// the player's minimum light (on, off), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
-/// cap (dark, flat, off), V the things it cuts (decor, all, off), F1 shows
-/// the controls, F3 hides the overlay.
+/// cap (dark, flat, off), V the things it cuts (decor, all, off), = and -
+/// the HUD (T6.11: as vanilla's screen size keys, = bar, fullscreen HUD,
+/// none, - back), F1 shows the controls, F3 hides the overlay.
 /// </para>
 /// </summary>
 public partial class LevelScene : Node3D
@@ -154,6 +160,27 @@ public partial class LevelScene : Node3D
     /// SPEC §12 T6.8).
     /// </summary>
     public bool PaletteEffects { get; set; } = true;
+
+    /// <summary>
+    /// T6.11: m_random.c's <c>M_Random</c> index of the presentation (the
+    /// status bar's face; later the wipes and the intermission): cleared at
+    /// a new game as vanilla's <c>G_InitNew</c>, never read by the sim (the
+    /// world's own <c>rndindex</c> stays unused), so the sim's state does not
+    /// depend on it.
+    /// </summary>
+    public DoomRandom MRandom { get; } = new();
+
+    /// <summary>T6.11: the console player's status bar (st_stuff.c), from the WAD's graphics; null until a WAD is open.</summary>
+    public StStuff? StatusBar { get; private set; }
+
+    /// <summary>T6.11: the message line (hu_stuff.c), in the WAD's <c>STCFN*</c> font; null until a WAD is open.</summary>
+    public HuStuff? MessageLine { get; private set; }
+
+    /// <summary>T6.11: shows <see cref="StatusBar"/> and <see cref="MessageLine"/> under the game camera (<c>--level-hud</c>); hidden under the other cameras and the level check.</summary>
+    public HudView Hud { get; } = new() { Name = "Hud" };
+
+    // The player mobj the status bar was started for (ST_Start: each level, and a reborn player's new mobj).
+    private mobj_t? _hudMobj;
 
     /// <summary>The void's colour as set at start (<c>--level-background</c>, else black); a palette flash tints it unless it was set.</summary>
     private Color _background = Colors.Black;
@@ -292,7 +319,7 @@ public partial class LevelScene : Node3D
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   =/- HUD (bar, fullscreen, none)   F1 controls   F3 overlay\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -348,6 +375,8 @@ public partial class LevelScene : Node3D
         _crosshair = Crosshair();
         Overlay.AddChild(_crosshair);
         AddChild(Overlay);
+        Hud.Visible = false;
+        AddChild(Hud);
 
         try
         {
@@ -414,6 +443,18 @@ public partial class LevelScene : Node3D
                     "off" => false,
                     _ => throw new ArgumentException($"--level-palette-effects: \"{paletteEffects}\" (on or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-hud") is string hud)
+                Hud.Mode = hud switch
+                {
+                    "bar" or "vanilla" => HudMode.Bar,
+                    "full" => HudMode.Full,
+                    "off" => HudMode.Off,
+                    _ => throw new ArgumentException($"--level-hud: \"{hud}\" (bar, full or off)"),
+                };
+            if (WadLocator.GetUserArg("--level-hud-scale") is string hudScale)
+                Hud.FixedScale = hudScale == "auto" ? 0
+                    : int.TryParse(hudScale, out int n) && n >= 1 && n <= 16 ? n
+                    : throw new ArgumentException($"--level-hud-scale: \"{hudScale}\" (1-16 or auto)");
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
@@ -811,6 +852,13 @@ public partial class LevelScene : Node3D
                 MaskedBacks = MaskedBacks == MaskedBackFaces.Mirrored ? MaskedBackFaces.Off : MaskedBackFaces.Mirrored;
                 Mesh?.SetMaskedBackFaces(MaskedBacks);
                 break;
+            case Key.Equal:
+                // T6.11: vanilla's screen size keys: = shows more of the view (bar, fullscreen HUD, none), - less.
+                Hud.Mode = Hud.Mode == HudMode.Bar ? HudMode.Full : HudMode.Off;
+                break;
+            case Key.Minus:
+                Hud.Mode = Hud.Mode == HudMode.Off ? HudMode.Full : HudMode.Bar;
+                break;
             case Key.F1:
                 _showHelp = !_showHelp;
                 break;
@@ -837,6 +885,7 @@ public partial class LevelScene : Node3D
                 Things?.UpdateRotations(current);
             Mesh.SetLightOrigin(LightOrigin());
             UpdateCutaway();
+            UpdateHud();
             if (Mesh.Sprites != SpriteOptions)
                 Mesh.SetSprites(SpriteOptions);
         }
@@ -956,18 +1005,61 @@ public partial class LevelScene : Node3D
         PrintUnported();
         LastTiccmd = cmd;
         TicsRun++;
+        // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents), then the HUD is drawn.
+        StartHud();
+        StatusBar?.ST_Ticker();
         TakeEvents();
+        DrawHud();
         if (World!.gameaction != gameaction_t.ga_nothing)
             DoGameAction();
     }
 
-    /// <summary>hu_stuff.c <c>HU_MSGTIMEOUT</c>: how long a message shows, in tics.</summary>
-    public const int HU_MSGTIMEOUT = 4 * SimInfo.TICRATE;
+    /// <summary>The player's last message (<see cref="player_t.message"/>: pickups, locked doors) while it shows, else null (T5.8; T6.11: the message line's, <see cref="HuStuff.Message"/>).</summary>
+    public string? HudMessage => MessageLine?.Message;
 
-    /// <summary>The player's last message (<see cref="player_t.message"/>: pickups, locked doors) while it shows, else null (T5.8; the overlay shows it until the HUD, M6).</summary>
-    public string? HudMessage { get; private set; }
+    /// <summary>
+    /// T6.11: st_stuff.c <c>ST_Start</c> and hu_stuff.c <c>HU_Start</c> when
+    /// the console player has a new mobj (vanilla's <c>P_SpawnPlayer</c>
+    /// calls them: each level start, and a reborn player).
+    /// </summary>
+    private void StartHud()
+    {
+        mobj_t? mo = PlayerMobj;
+        if (mo == _hudMobj)
+            return;
+        _hudMobj = mo;
+        if (mo is null || World is not { } world)
+            return;
+        StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
+        if (StatusBar is not null)
+            StatusBar.ConsolePlayer = world.consoleplayer;
+        MessageLine?.HU_Start();
+    }
 
-    private int _hudMessageTics;
+    /// <summary>T6.11: draws the status bar (as vanilla's <c>ST_Drawer</c>, what changed), the fullscreen HUD and the message line after a tic.</summary>
+    private void DrawHud()
+    {
+        if (PlayerMobj is null)
+            return;
+        StatusBar?.ST_Drawer();
+        StatusBar?.ST_DrawFullscreen();
+        MessageLine?.HU_Drawer();
+    }
+
+    /// <summary>
+    /// T6.11: shows the HUD under the game camera (<see cref="Hud"/>, in
+    /// the level's palette: the flashes tint it as vanilla's) and keeps the
+    /// game camera's focus above the bar (<see cref="IsoCamera.BottomInset"/>).
+    /// </summary>
+    private void UpdateHud()
+    {
+        Hud.Visible = IsoActive && PlayerMobj is not null && StatusBar is not null;
+        if (Hud.Visible && Playpal is not null)
+            Hud.Show(StatusBar, MessageLine, Playpal, Mesh?.Palette ?? 0);
+        if (Iso is not null)
+            Iso.BottomInset = Hud.BottomInset;
+        _message.Position = new Vector2(8, 8 + Hud.TopInset);
+    }
 
     private readonly List<sim_event_t> _events = new();
 
@@ -986,15 +1078,15 @@ public partial class LevelScene : Node3D
     /// <summary>
     /// The tic's events (T6.10, <see cref="World.DrainEvents"/>), drained
     /// after each tic: the console player's message (hu_stuff.c
-    /// <c>HU_Ticker</c>'s message part, T5.8; the sim takes it from
+    /// <c>HU_Ticker</c>, T5.8; the sim takes it from
     /// <see cref="player_t.message"/>, <see cref="World.HU_TakeMessages"/>)
-    /// shows for <see cref="HU_MSGTIMEOUT"/> tics, so the same message
-    /// again shows again; started sounds go to <see cref="SoundLog"/>.
+    /// goes to the message line (<see cref="HuStuff.HU_Ticker"/>: it shows
+    /// for <see cref="HuStuff.HU_MSGTIMEOUT"/> tics, the same message again
+    /// too); started sounds go to <see cref="SoundLog"/>.
     /// </summary>
     private void TakeEvents()
     {
-        if (_hudMessageTics > 0 && --_hudMessageTics == 0)
-            HudMessage = null;
+        string? message = null;
         _events.Clear();
         World!.DrainEvents(_events);
         foreach (sim_event_t e in _events)
@@ -1002,8 +1094,7 @@ public partial class LevelScene : Node3D
             switch (e.type)
             {
                 case simevent_t.se_message when e.player == World.consoleplayer:
-                    HudMessage = e.message;
-                    _hudMessageTics = HU_MSGTIMEOUT;
+                    message = e.message;
                     GD.Print($"Level: tic {World.leveltime}: \"{e.message}\"");
                     break;
                 case simevent_t.se_startsound:
@@ -1013,6 +1104,7 @@ public partial class LevelScene : Node3D
                     break;
             }
         }
+        MessageLine?.HU_Ticker(message);
     }
 
     /// <summary>A started sound as the overlay lists it: the name without <c>sfx_</c> and its origin (none, a sector, the player or a mobj type).</summary>
@@ -1426,6 +1518,9 @@ public partial class LevelScene : Node3D
         }
         if (World is { } w && w.players[w.consoleplayer] is { mo: not null } pl)
             text.Append(StatusText(w, pl) + "\n");
+        if (StatusBar is { plyr: not null } st)
+            text.Append($"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", scale {Hud.Scale}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
+                + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
         if (HudMessage is not null)
             text.Append($"message: {HudMessage}\n");
         if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
@@ -1573,6 +1668,8 @@ public partial class LevelScene : Node3D
         }
         Playpal = Playpal.Load(wad);
         Colormap = Colormap.Load(wad);
+        StatusBar = new StStuff(StStuff.Graphics.Load(wad), MRandom); // T6.11: st_stuff.c ST_Init
+        MessageLine = new HuStuff(wad); // hu_stuff.c HU_Init
         MapNames = FindMaps(wad);
         Wad = wad;
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
@@ -1626,8 +1723,6 @@ public partial class LevelScene : Node3D
         _drawn.Clear();
         World = null;
         LevelEnded = null;
-        HudMessage = null;
-        _hudMessageTics = 0;
         _soundLog.Clear();
         _planeMoves.Clear();
         SnapPending = false;
@@ -1662,7 +1757,11 @@ public partial class LevelScene : Node3D
             _chunks.Add(node);
             Chunks[s] = node;
         }
+        if (carry is null)
+            MRandom.M_ClearRandom(); // T6.11: g_game.c G_InitNew's, a new game
         StartWorld(level, carry);
+        _hudMobj = null;
+        StartHud(); // T6.11: P_SpawnPlayer's ST_Start and HU_Start (drawn after the first tic's ST_Ticker, as vanilla's)
         BuildThings(level, mesh);
         clock.Stop();
         LastLoadMilliseconds = clock.Elapsed.TotalMilliseconds;

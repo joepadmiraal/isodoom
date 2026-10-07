@@ -26,6 +26,8 @@
     <Compile Include="../../src/Game/InputLatches.cs" Link="Game/InputLatches.cs" />
     <Compile Include="../../src/Game/RouteFile.cs" Link="Game/RouteFile.cs" />
     <Compile Include="../../src/Game/StStuff.cs" Link="Game/StStuff.cs" />
+    <Compile Include="../../src/Game/HuStuff.cs" Link="Game/HuStuff.cs" />
+    <Compile Include="../../src/Game/HudScreen.cs" Link="Game/HudScreen.cs" />
     <Compile Include="../../src/Render/Fuzz.cs" Link="Render/Fuzz.cs" />
   </ItemGroup>
   <ItemGroup>

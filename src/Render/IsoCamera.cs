@@ -146,17 +146,41 @@ public partial class IsoCamera : Camera3D
         ? OrthoDistanceUnits / LevelMesh.MapUnitsPerMetre
         : ViewUnits / LevelMesh.MapUnitsPerMetre / 2f / MathF.Tan(Mathf.DegToRad(PerspectiveFov) / 2f);
 
+    /// <summary>
+    /// T6.11: how many viewport pixels at the bottom the HUD covers (the
+    /// status bar). The camera moves down by half of it (<c>VOffset</c>, its
+    /// own up axis), so the focus shows in the middle of the view above the
+    /// bar, and <see cref="CursorOrCentre"/> without a cursor is that point.
+    /// </summary>
+    public float BottomInset
+    {
+        get => _bottomInset;
+        set
+        {
+            if (_bottomInset == value && (!IsInsideTree() || _insetHeight == GetViewport().GetVisibleRect().Size.Y))
+                return;
+            _bottomInset = value;
+            UpdateTransform();
+        }
+    }
+
+    private float _bottomInset, _insetHeight;
+
     private void UpdateTransform()
     {
         Size = ViewUnits / LevelMesh.MapUnitsPerMetre;
+        float height = IsInsideTree() ? GetViewport().GetVisibleRect().Size.Y : 0;
+        // The view height at the focus is Size in either projection (perspective: ViewUnits at the focus distance).
+        VOffset = height > 0 ? -_bottomInset / 2 * Size / height : 0;
+        _insetHeight = height;
         Basis basis = ViewBasis;
         Transform = new Transform3D(basis, Focus + basis.Z * Distance);
         Near = Mode == IsoProjection.Orthographic ? 1f : 0.5f;
         Far = Distance + 1000f;
     }
 
-    /// <summary>The cursor (or the screen centre without one), viewport pixels.</summary>
-    public Vector2 CursorOrCentre => Cursor ?? GetViewport().GetVisibleRect().Size / 2;
+    /// <summary>The cursor (or the screen centre without one, above the HUD: <see cref="BottomInset"/>), viewport pixels.</summary>
+    public Vector2 CursorOrCentre => Cursor ?? GetViewport().GetVisibleRect().Size / 2 - new Vector2(0, _bottomInset / 2);
 
     private bool Active => InputEnabled && Current && IsInsideTree();
 

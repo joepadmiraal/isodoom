@@ -13,10 +13,18 @@ index 9012e5f..42c574f 100644
  			       "version. Register!"));
  
 diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
-index 9954d78..9f682c8 100644
+index 9954d78..a29348d 100644
 --- a/doomgeneric/g_game.c
 +++ b/doomgeneric/g_game.c
-@@ -1882,7 +1882,8 @@ G_InitNew
+@@ -1009,6 +1009,7 @@ void G_Ticker (void)
+ 	ST_Ticker (); 
+ 	AM_Ticker (); 
+ 	HU_Ticker ();            
++	{ extern void dump_posttic(void); dump_posttic(); } // IsoDoom reference (T6.11): the HUD after the tic
+ 	break; 
+ 	 
+       case GS_INTERMISSION: 
+@@ -1882,7 +1883,8 @@ G_InitNew
  
      skytexturename = DEH_String(skytexturename);
  
@@ -26,7 +34,7 @@ index 9954d78..9f682c8 100644
  
  
      G_DoLoadLevel ();
-@@ -1899,6 +1900,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
+@@ -1899,6 +1901,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
  { 
      if (*demo_p == DEMOMARKER) 
      {
@@ -34,6 +42,26 @@ index 9954d78..9f682c8 100644
  	// end of demo data stream 
  	G_CheckDemoStatus (); 
  	return; 
+diff --git a/doomgeneric/hu_stuff.c b/doomgeneric/hu_stuff.c
+index b63cac7..03d5b0b 100644
+--- a/doomgeneric/hu_stuff.c
++++ b/doomgeneric/hu_stuff.c
+@@ -93,12 +93,12 @@ static boolean		always_off = false;
+ static char		chat_dest[MAXPLAYERS];
+ static hu_itext_t w_inputbuffer[MAXPLAYERS];
+ 
+-static boolean		message_on;
++boolean		message_on; // IsoDoom reference (T6.11): read by the dump (was static)
+ boolean			message_dontfuckwithme;
+ static boolean		message_nottobefuckedwith;
+ 
+-static hu_stext_t	w_message;
+-static int		message_counter;
++hu_stext_t	w_message; // IsoDoom reference (T6.11): read by the dump (was static)
++int		message_counter; // IsoDoom reference (T6.11): read by the dump (was static)
+ 
+ extern int		showMessages;
+ 
 diff --git a/doomgeneric/p_mobj.c b/doomgeneric/p_mobj.c
 index a3b9c43..5e9d7f8 100644
 --- a/doomgeneric/p_mobj.c
@@ -141,9 +169,35 @@ index f6d8be1..dfea6a7 100644
      volume = snd_SfxVolume;
  
 diff --git a/doomgeneric/st_stuff.c b/doomgeneric/st_stuff.c
-index e25accc..2ccb8ae 100644
+index e25accc..d174cf3 100644
 --- a/doomgeneric/st_stuff.c
 +++ b/doomgeneric/st_stuff.c
+@@ -332,7 +332,7 @@ static patch_t*		armsbg;
+ static patch_t*		arms[6][2]; 
+ 
+ // ready-weapon widget
+-static st_number_t	w_ready;
++st_number_t	w_ready; // IsoDoom reference (T6.11): read by the dump (was static)
+ 
+  // in deathmatch only, summary of frags stats
+ static st_number_t	w_frags;
+@@ -374,13 +374,13 @@ static int	st_oldhealth = -1;
+ static boolean	oldweaponsowned[NUMWEAPONS]; 
+ 
+  // count until face changes
+-static int	st_facecount = 0;
++int	st_facecount = 0; // IsoDoom reference (T6.11): read by the dump (was static)
+ 
+ // current face index, used by w_faces
+-static int	st_faceindex = 0;
++int	st_faceindex = 0; // IsoDoom reference (T6.11): read by the dump (was static)
+ 
+ // holds key-type for each key box on bar
+-static int	keyboxes[3]; 
++int	keyboxes[3]; // IsoDoom reference (T6.11): read by the dump (was static)
+ 
+ // a random number per tick
+ static int	st_randomnumber;  
 @@ -931,7 +931,7 @@ void ST_Ticker (void)
  
  }

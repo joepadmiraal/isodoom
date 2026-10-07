@@ -95,7 +95,8 @@ public partial class LevelCheck
             string next = world.NextMapName();
             if (_scene.Mesh?.Level.Name != next || _scene.World != world || world.level != _scene.Mesh.Level
                 || world.gameaction != gameaction_t.ga_nothing || world.leveltime != 0 || _scene.PlayerMobj is not { } mo2
-                || p.health != 77 || mo2.health != 77 || p.cards.Any(c => c) || _scene.HudMessage is not null)
+                || p.health != 77 || mo2.health != 77 || p.cards.Any(c => c) || _scene.HudMessage is not null
+                || _scene.StatusBar is { } st && (st.plyr != p || !st.st_firsttime || st.keyboxes.Any(k => k != -1))) // T6.11: ST_Start for the new map
                 Fail($"{map}: line {line.Index}'s exit: the scene shows {_scene.Mesh?.Level.Name} (expected {next}), same world {_scene.World == world}, "
                     + $"gameaction {world.gameaction}, leveltime {world.leveltime}, health {p.health}, keys {string.Join(",", p.cards)}");
             return;

@@ -55,7 +55,13 @@
 // none, sN for sector N's soundorg, TYPE:X:Y for a mobj (mobjtype_t, its
 // x and y when called; any P_MobjThinker thinker), ? for anything else
 // (p_spec.c's button release passes the address of the button's soundorg
-// field); then (T5.9) exit: 0, or 1 (2) when the
+// field); then (T6.11, written after ST_Ticker and HU_Ticker: dump_posttic) the HUD as
+// FACE:FACECOUNT:KEY0:KEY1:KEY2:READY:MSGON:MSGCOUNTER:TEXT:PIXELS (st_faceindex,
+// st_facecount, keyboxes[], *w_ready.num (1994 for none), message_on,
+// message_counter, the 32-bit FNV-1a of the message line's text bytes, and
+// of the status bar's pixels (rows 168-199, drawn as in play: ST_Drawer(false,
+// false) each tic) then the message line's (rows 0-15, 256 where HU_Drawer draws
+// nothing), word-wise; 8 hex digits each); then (T5.9) exit: 0, or 1 (2) when the
 // tic left the level by its exit (secret exit): gameaction is ga_completed.
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
@@ -79,6 +85,10 @@
 #include "z_zone.h"
 #include "i_video.h"
 #include "i_sound.h"
+#include "st_stuff.h"
+#include "st_lib.h"
+#include "hu_stuff.h"
+#include "hu_lib.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -338,6 +348,73 @@ void dump_tic(void)
     // The sounds (T6.10).
     fprintf(ticfile, "%s ", soundslen ? sounds : "-");
     soundslen = 0;
+    // (T6.11: the line goes on in dump_posttic, after ST_Ticker and HU_Ticker.)
+}
+
+// Called by the patched g_game.c after HU_Ticker in every G_Ticker of a level
+// (T6.11): the HUD column, then the exit, ending the tic's line.
+void dump_posttic(void)
+{
+    if (!ticfile)
+        return;
+    // The status bar and the message line (T6.11): drawn now as in play
+    // (ST_Drawer(false, false): the whole bar after ST_Start, then what
+    // changed, onto the bar left on screen, which nothing else draws over
+    // with nodrawers), HU_Drawer over two clear colours (pixels that differ
+    // were not drawn).
+    extern int st_faceindex, st_facecount, keyboxes[3], message_counter, st_palette;
+    extern st_number_t w_ready;
+    extern boolean message_on;
+    extern hu_stext_t w_message;
+    static byte hu[2][SCREENWIDTH * 16];
+    ST_Drawer(false, false);
+    for (int k = 0; k < 2; k++)
+    {
+        memset(I_VideoBuffer, k ? 4 : 0, sizeof hu[k]);
+        HU_Drawer();
+        memcpy(hu[k], I_VideoBuffer, sizeof hu[k]);
+    }
+    uint32_t pixels = 2166136261u, text = 2166136261u;
+    for (int i = ST_Y * SCREENWIDTH; i < SCREENWIDTH * SCREENHEIGHT; i++)
+        pixels = (pixels ^ I_VideoBuffer[i]) * 16777619u;
+    for (int i = 0; i < SCREENWIDTH * 16; i++)
+        pixels = (pixels ^ (hu[0][i] == hu[1][i] ? hu[0][i] : 256u)) * 16777619u;
+    hu_textline_t *l = &w_message.l[w_message.cl];
+    for (int i = 0; i < l->len; i++)
+        text = (text ^ (byte)l->l[i]) * 16777619u;
+    fprintf(ticfile, "%d:%d:%d:%d:%d:%d:%d:%d:%08x:%08x ", st_faceindex, st_facecount, keyboxes[0], keyboxes[1], keyboxes[2],
+            *w_ready.num, message_on ? 1 : 0, message_counter, text, pixels);
+    // $DUMP_HUD_DIR and $DUMP_HUD_TICS ("N,M,..." or "all"; T6.11): the HUD of those tics as
+    // DIR/hudN.ppm, 320x48 in the palette of the tic: the message line (rows 0-15,
+    // black where nothing is drawn) over the status bar (rows 168-199).
+    char *dir = getenv("DUMP_HUD_DIR"), *tics = getenv("DUMP_HUD_TICS");
+    if (dir && tics)
+    {
+        char want[16];
+        snprintf(want, sizeof want, "%d", leveltime);
+        int hit = !strcmp(tics, "all");
+        for (char *t = strtok(strdup(tics), ","); t && !hit; t = strtok(NULL, ","))
+            hit = !strcmp(t, want);
+        if (hit)
+        {
+            char path[1024];
+            snprintf(path, sizeof path, "%s/hud%d.ppm", dir, leveltime);
+            FILE *f = fopen(path, "wb");
+            if (!f)
+            {
+                perror(path);
+                exit(1);
+            }
+            byte *pal = (byte *)W_CacheLumpName("PLAYPAL", PU_CACHE) + 768 * st_palette;
+            static const byte black[3] = { 0, 0, 0 };
+            fprintf(f, "P6\n%d %d\n255\n", SCREENWIDTH, 16 + ST_HEIGHT);
+            for (int i = 0; i < SCREENWIDTH * 16; i++)
+                fwrite(hu[0][i] == hu[1][i] ? pal + 3 * hu[0][i] : black, 1, 3, f);
+            for (int i = ST_Y * SCREENWIDTH; i < SCREENWIDTH * SCREENHEIGHT; i++)
+                fwrite(pal + 3 * I_VideoBuffer[i], 1, 3, f);
+            fclose(f);
+        }
+    }
     // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
     extern boolean secretexit;
     extern gameaction_t gameaction;

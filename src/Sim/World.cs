@@ -205,6 +205,7 @@ public sealed partial class World
     {
         for (int i = 0; i < MAXPLAYERS; i++)
         {
+            turbodetected[i] = false; // T6.11
             if (playeringame[i] && players[i].playerstate == playerstate_t.PST_DEAD)
                 players[i].playerstate = playerstate_t.PST_REBORN;
             Array.Clear(players[i].frags);

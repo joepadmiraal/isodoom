@@ -69,7 +69,13 @@ namespace IsoDoom.Tests.Sim;
 /// <c>INVULN:STRENGTH:INVIS:IRONFEET:ALLMAP:INFRARED:DAMAGECOUNT:BONUSCOUNT:FIXEDCOLORMAP:PALETTE</c>
 /// (<see cref="Powers"/>; the palette vanilla's <c>ST_doPaletteStuff</c> sets after the tic), then (T6.10)
 /// the <c>sounds</c>: every <c>S_StartSound</c> call of the tic and <c>P_RemoveMobj</c>'s
-/// <c>S_StopSound</c>, in order (<see cref="Sounds"/>), then (T5.9)
+/// <c>S_StopSound</c>, in order (<see cref="Sounds"/>), then (T6.11) the <c>hud</c>
+/// after <c>ST_Ticker</c> and <c>HU_Ticker</c>:
+/// <c>FACE:FACECOUNT:KEY0:KEY1:KEY2:READY:MSGON:MSGCOUNTER:TEXT:PIXELS</c>
+/// (<see cref="Hud"/>: the status bar's face and its count, key boxes and
+/// ready ammo, the message line's state and text hash, and the hash of the
+/// pixels both draw; the pixels are compared only where the test has
+/// DOOM1.WAD's graphics, <see cref="HudGraphics"/>), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
 /// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
@@ -84,7 +90,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "sounds", "exit" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "sounds", "hud", "exit" };
 
     public string Name { get; }
     public string Path { get; }
@@ -196,7 +202,7 @@ public sealed class VanillaRoute
     /// textures (<see cref="MapTextures"/>), <paramref name="mapLights"/> the
     /// sectors' light levels (<see cref="MapLights"/>).
     /// </summary>
-    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights, string[] mapTextures, short[] mapLights)
+    public static string Line(World world, (int Floor, int Ceiling)[] mapHeights, string[] mapTextures, short[] mapLights, string hud)
     {
         player_t p = world.players[world.consoleplayer];
         mobj_t mo = p.mo!;
@@ -241,7 +247,7 @@ public sealed class VanillaRoute
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
             + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + Powers(p) + " " + Sounds(world)
-            + " " + exit.ToString(CultureInfo.InvariantCulture);
+            + " " + hud + " " + exit.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -312,6 +318,78 @@ public sealed class VanillaRoute
         return string.Join(',', a);
     }
 
+    /// <summary>
+    /// The dump's <c>hud</c> column (T6.11), after the status bar's and the
+    /// message line's tickers: <c>st_faceindex</c>, <c>st_facecount</c>, the
+    /// three <c>keyboxes</c>, the ready weapon's ammo as drawn
+    /// (<see cref="StStuff.largeammo"/> for none), <c>message_on</c>,
+    /// <c>message_counter</c>, the FNV-1a of the message's text
+    /// (<see cref="HuStuff.TextHash"/>) and of the pixels both draw
+    /// (<see cref="HudScreen.Hash"/>: the bar, then the message line), 8 hex
+    /// digits each; the pixels' hash is <c>-</c> without graphics.
+    /// </summary>
+    public static string Hud(StStuff st, HuStuff hu, bool pixels)
+    {
+        string pix = "-";
+        if (pixels)
+        {
+            st.ST_Drawer();
+            hu.HU_Drawer();
+            pix = hu.Screen.Hash(st.Screen.Hash()).ToString("x8", CultureInfo.InvariantCulture);
+        }
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{st.st_faceindex}:{st.st_facecount}:{st.keyboxes[0]}:{st.keyboxes[1]}:{st.keyboxes[2]}:{st.w_ready_num}:{(hu.message_on ? 1 : 0)}:{hu.message_counter}:{HuStuff.TextHash(hu.text):x8}:{pix}");
+    }
+
+    /// <summary>
+    /// The WAD whose status bar and font vanilla drew a route with
+    /// (T6.11): DOOM1.WAD, with the synthetic IWAD or the test map over it
+    /// as <c>-file</c> as <c>routes.py</c> plays them (the synthetic IWAD's
+    /// <c>STBAR</c> and three font glyphs replace DOOM1's); null without DOOM1.WAD.
+    /// </summary>
+    public WadArchive? HudGraphics()
+    {
+        if (TestWads.Doom1Path is not string doom1)
+            return null;
+        var files = new List<WadFile> { WadFile.Open(doom1) };
+        if (Iwad == "synthetic")
+            files.Add(WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName));
+        else if (Iwad == "testmap")
+            files.Add(WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad"));
+        return new WadArchive(files);
+    }
+
+    /// <summary>The environment variables of <see cref="WriteHud"/> (dump.c's <c>DUMP_HUD_DIR</c>/<c>DUMP_HUD_TICS</c>).</summary>
+    public const string HudDirEnvVar = "ISODOOM_HUD_DIR", HudTicsEnvVar = "ISODOOM_HUD_TICS";
+
+    /// <summary>
+    /// T6.11 (a debugging aid): with <see cref="HudDirEnvVar"/> and
+    /// <see cref="HudTicsEnvVar"/> (<c>N,M,…</c> or <c>all</c>) set, the
+    /// HUD as drawn after those tics goes to <c>DIR/ROUTE-simhudN.ppm</c> in
+    /// dump.c's <c>hudN.ppm</c> layout (320×48 in the tic's palette: the
+    /// message line, black where nothing is drawn, over the status bar), for
+    /// comparing with vanilla's (WAD-derived: keep them out of the repo).
+    /// </summary>
+    private static void WriteHud(string name, WadArchive graphics, World world, StStuff st, HuStuff hu)
+    {
+        string? dir = Environment.GetEnvironmentVariable(HudDirEnvVar), tics = Environment.GetEnvironmentVariable(HudTicsEnvVar);
+        string tic = world.leveltime.ToString(CultureInfo.InvariantCulture);
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(tics) || (tics != "all" && !tics.Split(',').Contains(tic)))
+            return;
+        byte[] pal = Playpal.Load(graphics).GetPalette(StStuff.ST_doPaletteStuff(world.players[world.consoleplayer])).ToArray();
+        using var f = System.IO.File.Create(System.IO.Path.Combine(dir, $"{name}-simhud{tic}.ppm"));
+        f.Write(Encoding.ASCII.GetBytes($"P6\n{HudScreen.SCREENWIDTH} {HuStuff.ScreenRows + StStuff.ST_HEIGHT}\n255\n"));
+        byte[] black = new byte[3];
+        foreach (HudScreen screen in new[] { hu.Screen, st.Screen })
+        {
+            for (int i = 0; i < screen.Pixels.Length; i++)
+            {
+                int c = screen.Pixels[i] * 3;
+                f.Write(screen.Opaque[i] != 0 ? pal.AsSpan(c, 3) : black);
+            }
+        }
+    }
+
     /// <summary>The dump's <c>inventory</c> column (T6.1).</summary>
     public static string Inventory(player_t p)
     {
@@ -362,20 +440,39 @@ public sealed class VanillaRoute
         (int, int)[] mapHeights = MapHeights(world);
         string[] mapTextures = MapTextures(world);
         short[] mapLights = MapLights(world);
+        // T6.11: the status bar and message line, as vanilla's P_SpawnPlayer starts them (after M_ClearRandom in G_InitNew).
+        WadArchive? graphics = HudGraphics();
+        var st = new StStuff(graphics is null ? new StStuff.Graphics() : StStuff.Graphics.Load(graphics), new DoomRandom());
+        var hu = new HuStuff(graphics);
+        st.ST_Start(world.players[world.consoleplayer]);
+        hu.HU_Start();
+        var messages = new List<sim_event_t>();
         Assert.True(expected.Length == Cmds.Count,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
             File.RunEvents(world, tic);
             world.G_Ticker(Cmds[tic]);
-            string actual = Line(world, mapHeights, mapTextures, mapLights);
+            st.ST_Ticker();
+            string? message = null;
+            foreach (sim_event_t ev in world.events)
+            {
+                if (ev.type == simevent_t.se_message && ev.player == world.consoleplayer)
+                    message = ev.message;
+            }
+            hu.HU_Ticker(message);
+            string actual = Line(world, mapHeights, mapTextures, mapLights, Hud(st, hu, graphics is not null));
+            if (graphics is not null)
+                WriteHud(Name, graphics, world, st, hu);
             if (actual == expected[tic])
                 continue;
             string[] e = expected[tic].Split(' '), a = actual.Split(' ');
-            int sounds = Array.IndexOf(Columns, "sounds");
+            int sounds = Array.IndexOf(Columns, "sounds"), hud = Array.IndexOf(Columns, "hud");
             if (e.Length == Columns.Length && a.Length == Columns.Length)
             {
                 a[sounds] = MatchSounds(e[sounds], a[sounds]);
+                if (graphics is null && a[hud].EndsWith(":-", StringComparison.Ordinal))
+                    a[hud] = a[hud][..^1] + e[hud][(e[hud].LastIndexOf(':') + 1)..]; // no graphics: the pixels are not compared
                 actual = string.Join(' ', a);
                 if (actual == expected[tic])
                     continue;
