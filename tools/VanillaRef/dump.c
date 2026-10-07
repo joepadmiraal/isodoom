@@ -35,13 +35,16 @@
 // sectors whose light level differs from the map's SECTORS lump, as
 // SECTOR:LIGHT joined by commas in sector order, or - for none; then (T5.8)
 // the player's health, its mobj's health, armorpoints, armortype, cards (bit
-// i set for card_t i) and secretcount. With $DUMP_START
+// i set for card_t i) and secretcount; then (T5.9) exit: 0, or 1 (2) when the
+// tic left the level by its exit (secret exit): gameaction is ga_completed.
+// With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
 // of at its map start: before the first tic it is moved with P_TeleportMove
 // onto the floor, facing ANGLE (no fog, nothing else changed).
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
+#include "d_event.h"
 #include "p_local.h"
 #include "r_main.h"
 #include "r_state.h"
@@ -174,7 +177,11 @@ void dump_tic(void)
     int cards = 0;
     for (int i = 0; i < NUMCARDS; i++)
         cards |= p->cards[i] ? 1 << i : 0;
-    fprintf(ticfile, "%d %d %d %d %d %d\n", p->health, mo->health, p->armorpoints, p->armortype, cards, p->secretcount);
+    fprintf(ticfile, "%d %d %d %d %d %d ", p->health, mo->health, p->armorpoints, p->armortype, cards, p->secretcount);
+    // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
+    extern boolean secretexit;
+    extern gameaction_t gameaction;
+    fprintf(ticfile, "%d\n", gameaction == ga_completed ? secretexit ? 2 : 1 : 0);
     fflush(ticfile);
 }
 

@@ -9,6 +9,7 @@
 # the exit switch (line 330, SW1STRTN -> SW2STRTN), the last tic. Written
 # by tools/RouteGen (e1m1-exit).
 iwad doom1
+exit normal
 # forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
 25 -1 -1 0
 25 0 0 0 x2

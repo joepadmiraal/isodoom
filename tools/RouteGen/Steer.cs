@@ -35,6 +35,13 @@ public sealed class Steer
     /// <summary>Sector ceiling heights (units) the planner assumes (doors <see cref="GoToDoors"/> opens).</summary>
     public readonly Dictionary<int, int> AssumeCeil = new();
 
+    /// <summary>
+    /// T5.9: a diagonal grid step whose orthogonal neighbours are blocked is
+    /// allowed when the player fits at its midpoint (corners tighter than the
+    /// grid, e.g. E1M3's sector 157). Off for the routes written before.
+    /// </summary>
+    public bool TightCorners;
+
     /// <summary>Prints the steering every 10 tics.</summary>
     public bool Verbose;
 
@@ -108,6 +115,40 @@ public sealed class Steer
         Tic(0, 0, 0, 0);
     }
 
+    /// <summary>T5.9: waits until a tic leaves the level (e.g. E1M8's damage-and-exit sector 11): the route's last tic.</summary>
+    public void WaitExit(int max = 2000)
+    {
+        for (int i = 0; i < max && w.gameaction != gameaction_t.ga_completed; i++)
+            Tic(0, 0, 0, 0);
+        if (w.gameaction != gameaction_t.ga_completed)
+            throw new InvalidOperationException($"WaitExit: no exit by tic {w.leveltime}");
+    }
+
+    /// <summary>
+    /// T5.9: walks straight towards (x, y) at <paramref name="speed"/> for
+    /// <paramref name="tics"/> tics (no planning: e.g. into a gap narrower
+    /// than the planner's grid), then settles.
+    /// </summary>
+    public void Walk(double x, double y, int tics, int speed = 10)
+    {
+        for (int i = 0; i < tics; i++)
+            Tic(speed, 0, TurnTo(x, y), 0);
+        Settle();
+    }
+
+    /// <summary>
+    /// T5.9: turns towards (x, y) and, on the next tic, presses use: the
+    /// route's last tic (an exit switch; vanilla's demo leaves the level there).
+    /// Fails unless the sim left the level.
+    /// </summary>
+    public void Exit(double x, double y)
+    {
+        Face(x, y);
+        Tic(0, 0, 0, 2);
+        if (w.gameaction != gameaction_t.ga_completed)
+            throw new InvalidOperationException($"Exit: no exit at ({X:F1}, {Y:F1}) by tic {w.leveltime}");
+    }
+
     /// <summary>
     /// Opens the door of <paramref name="sector"/> (use, facing (fx, fy),
     /// unless it is open and not closing) and waits until it is open.
@@ -115,12 +156,22 @@ public sealed class Steer
     public void Door(int sector, double fx, double fy)
     {
         sector_t sec = w.sectors[sector];
-        bool Open() => sec.ceilingheight - sec.floorheight >= 64 * FU && sec.specialdata is not vldoor_t { direction: -1 };
+        bool Open() => IsOpen(sec);
         if (!Open())
             Use(fx, fy);
         WaitUntil(() => sec.ceilingheight - sec.floorheight >= 72 * FU || sec.specialdata is vldoor_t { direction: 0 }
             || (sec.specialdata == null && sec.ceilingheight - sec.floorheight >= 56 * FU));
     }
+
+    /// <summary>
+    /// Whether a door sector is open and not closing: 64 units high, or (T5.9)
+    /// waiting at the top, high enough for the player (a door lower than 64,
+    /// e.g. E1M3's sector 174: using it again would close it).
+    /// </summary>
+    private bool IsOpen(sector_t sec) =>
+        sec.specialdata is not vldoor_t { direction: -1 }
+        && (sec.ceilingheight - sec.floorheight >= 64 * FU
+            || (sec.specialdata is vldoor_t { direction: 0 } && sec.ceilingheight - sec.floorheight >= Mo.height));
 
     /// <summary>"F S T B [xN]" lines with the header (comments, iwad, map) first.</summary>
     public string Route(string header)
@@ -152,10 +203,38 @@ public sealed class Steer
 
     private readonly Dictionary<(int, int), Cell> _cache = new();
 
-    private Cell ProbeAt(int x, int y) =>
-        w.P_CheckPosition(Mo, x, y) && w.tmceilingz - w.tmfloorz >= Mo.height
-            ? new Cell(true, w.tmfloorz, w.tmceilingz)
-            : new Cell(false, w.tmfloorz, w.tmceilingz);
+    /// <summary>T5.9 (<c>--probe</c>): whether the player fits at (x, y) (units), and the floor and ceiling there.</summary>
+    public string ProbeText(double x, double y)
+    {
+        Cell c = ProbeAt((int)(x * FU), (int)(y * FU));
+        return $"({x}, {y}): {(c.Ok ? "fits" : "blocked")} floor {c.Floor / FU} ceiling {c.Ceil / FU}";
+    }
+
+    private Cell ProbeAt(int x, int y)
+    {
+        if (Avoid.Count > 0)
+        {
+            int r = Mo.radius;
+            foreach ((int ax, int ay) in new[] { (x, y), (x - r, y - r), (x + r, y - r), (x - r, y + r), (x + r, y + r) })
+            {
+                if (Avoid.Contains(w.R_PointInSubsector(ax, ay).sector.Index))
+                    return new Cell(false, 0, 0);
+            }
+        }
+        // T5.9: without MF_PICKUP, or PIT_CheckThing would pick up the items the probe touches
+        mobjflag_t flags = Mo.flags;
+        Mo.flags &= ~mobjflag_t.MF_PICKUP;
+        try
+        {
+            return w.P_CheckPosition(Mo, x, y) && w.tmceilingz - w.tmfloorz >= Mo.height
+                ? new Cell(true, w.tmfloorz, w.tmceilingz)
+                : new Cell(false, w.tmfloorz, w.tmceilingz);
+        }
+        finally
+        {
+            Mo.flags = flags;
+        }
+    }
 
     private Cell Probe(int gx, int gy)
     {
@@ -215,7 +294,8 @@ public sealed class Steer
                 if (!Step(cc, Probe(nb.Item1, nb.Item2)))
                     continue;
                 // diagonals: both orthogonal neighbours too
-                if (k >= 4 && (!Step(cc, Probe(cur.Item1 + dx[k], cur.Item2)) || !Step(cc, Probe(cur.Item1, cur.Item2 + dy[k]))))
+                if (k >= 4 && (!Step(cc, Probe(cur.Item1 + dx[k], cur.Item2)) || !Step(cc, Probe(cur.Item1, cur.Item2 + dy[k])))
+                    && !(TightCorners && Step(cc, ProbeAt((cur.Item1 * 2 + dx[k]) * Grid / 2 * FU, (cur.Item2 * 2 + dy[k]) * Grid / 2 * FU))))
                     continue;
                 double c = cost[cur] + (k >= 4 ? 1.4142 : 1);
                 if (!cost.TryGetValue(nb, out double old) || c < old)
@@ -229,7 +309,7 @@ public sealed class Steer
         if (!from.ContainsKey(end))
         {
             var reached = new SortedSet<int>(cost.Keys.Select(p => w.R_PointInSubsector(p.Item1 * Grid * FU, p.Item2 * Grid * FU).sector.Index));
-            throw new InvalidOperationException(
+            throw new NoPathException(
                 $"No path from ({X:F0}, {Y:F0}) to ({tx}, {ty}) at tic {w.leveltime}; reachable sectors: {string.Join(",", reached)}");
         }
         var path = new List<(double, double)>();
@@ -363,14 +443,34 @@ public sealed class Steer
         throw new InvalidOperationException($"Teleport towards ({x}, {y}): no teleport at ({X:F1}, {Y:F1}) by tic {w.leveltime}");
     }
 
+    /// <summary>T5.9: sectors the player's box must not touch (e.g. a teleporter on the way: E1M5's sector 56).</summary>
+    public readonly HashSet<int> Avoid = new();
+
     /// <summary>T5.6: door sectors <see cref="GoToDoors"/> must not plan through (e.g. a door that opens from the other side only).</summary>
     public readonly HashSet<int> ShutDoors = new();
 
     private static readonly int[] ManualDoors = { 1, 31, 117, 118 };
 
     /// <summary>
+    /// T5.9: whether <see cref="GoToDoors"/> may open a door of line special
+    /// <paramref name="special"/>: the manual doors without keys, and the
+    /// locked ones (26-28, 32-34) once the player holds their card or skull.
+    /// </summary>
+    private bool CanOpen(int special)
+    {
+        bool[] c = w.players[0].cards;
+        return ManualDoors.Contains(special) || special switch
+        {
+            26 or 32 => c[(int)card_t.it_bluecard] || c[(int)card_t.it_blueskull],
+            27 or 34 => c[(int)card_t.it_yellowcard] || c[(int)card_t.it_yellowskull],
+            28 or 33 => c[(int)card_t.it_redcard] || c[(int)card_t.it_redskull],
+            _ => false,
+        };
+    }
+
+    /// <summary>
     /// <see cref="GoTo"/>, opening the manual doors without keys (specials 1,
-    /// 31, 117 and 118) on the way: plans as if they were open, stops in front
+    /// 31, 117 and 118) and the locked ones whose key the player holds (T5.9) on the way: plans as if they were open, stops in front
     /// of the first closed one on the path, opens it, and plans again.
     /// </summary>
     public void GoToDoors(double x, double y, double tol = 8, int speed = 25)
@@ -381,7 +481,7 @@ public sealed class Steer
             AssumeCeil.Clear();
             foreach (line_t l in w.lines)
             {
-                if (ManualDoors.Contains(l.special) && l.backsector is { } d && !ShutDoors.Contains(d.Index) && doors.Add(d.Index))
+                if (CanOpen(l.special) && l.backsector is { } d && !ShutDoors.Contains(d.Index) && doors.Add(d.Index))
                     AssumeCeil[d.Index] = (World.P_FindLowestCeilingSurrounding(d) >> 16) - 4;
             }
             List<(double X, double Y)> path = Plan(x, y);
@@ -390,20 +490,36 @@ public sealed class Steer
             {
                 sector_t sec = w.R_PointInSubsector((int)(p.X * FU), (int)(p.Y * FU)).sector;
                 return doors.Contains(sec.Index)
-                    && (sec.ceilingheight - sec.floorheight < 64 * FU || sec.specialdata is vldoor_t { direction: -1 });
+                    && !IsOpen(sec);
             });
-            if (hit < 0)
+            try
             {
-                GoTo(x, y, tol, speed);
-                return;
+                if (hit < 0)
+                {
+                    GoTo(x, y, tol, speed);
+                    return;
+                }
+                var before = path[Math.Max(0, hit - 5)];
+                if (Dist(before) > 4)
+                    GoTo(before.X, before.Y, 6, speed);
+            }
+            catch (NoPathException e) when (hit < 0 || Dist(path[hit]) >= 48)
+            {
+                // T5.9: a door that was open when planned closed on the way: plan again
+                Console.Error.WriteLine($"    [{w.leveltime}] ({X:F0},{Y:F0}) replanning: {e.Message.Split(';')[0]}");
+                continue;
+            }
+            catch (NoPathException)
+            {
+                // T5.9: already at the door (its closing blocks the last steps): open it from here
             }
             int door = w.R_PointInSubsector((int)(path[hit].X * FU), (int)(path[hit].Y * FU)).sector.Index;
-            var before = path[Math.Max(0, hit - 5)];
-            if (Dist(before) > 4)
-                GoTo(before.X, before.Y, 6, speed);
             Console.Error.WriteLine($"    [{w.leveltime}] ({X:F0},{Y:F0}) opening door {door} at ({path[hit].X:F0},{path[hit].Y:F0})");
             Door(door, path[hit].X, path[hit].Y);
         }
         throw new InvalidOperationException("GoToDoors: more than 20 doors");
     }
 }
+
+/// <summary>T5.9: <see cref="Steer.Plan"/> found no path (e.g. a door closed on the way).</summary>
+public sealed class NoPathException(string message) : InvalidOperationException(message);

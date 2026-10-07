@@ -25,6 +25,45 @@ public class VanillaRouteTests
         Assert.Contains(VanillaRoute.Names(), n => VanillaRoute.Load(n).Iwad == "testmap");
     }
 
+    /// <summary>
+    /// T5.9: every map of DOOM1.WAD's episode has a route to its exit (E1M3
+    /// to its secret exit too; E1M8's starts in the arena, which only the
+    /// barons' death opens: SPEC §12 T5.9), each ending on the tic that leaves
+    /// the level in vanilla and the sim (<see cref="VanillaRoute.Check"/>).
+    /// </summary>
+    [Fact]
+    public void EveryEpisode1MapHasAnExitRoute()
+    {
+        var exits = VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0).ToList();
+        for (int m = 1; m <= 9; m++)
+            Assert.Contains(exits, r => r.Map == $"E1M{m}" && r.Exit == 1);
+        Assert.Contains(exits, r => r.Map == "E1M3" && r.Exit == 2);
+    }
+
+    /// <summary>T5.9: the <c>exit</c> header.</summary>
+    [Theory]
+    [InlineData("exit normal\n", 1)]
+    [InlineData("exit secret\n", 2)]
+    [InlineData("", 0)]
+    [InlineData("exit\n", -1)]
+    [InlineData("exit nowhere\n", -1)]
+    public void ParsesTheExitHeader(string header, int exit)
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isodoom-route-{System.Guid.NewGuid():N}.route");
+        System.IO.File.WriteAllText(path, "iwad synthetic\n" + header + "0 0 0 2\n");
+        try
+        {
+            if (exit < 0)
+                Assert.Throws<System.FormatException>(() => VanillaRoute.Parse(path));
+            else
+                Assert.Equal(exit, VanillaRoute.Parse(path).Exit);
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
+    }
+
     /// <summary>The environment variable naming the directory <see cref="WritesTheTestMapPwads"/> writes to.</summary>
     public const string TestMapWadsEnvVar = "ISODOOM_TESTMAP_WADS";
 

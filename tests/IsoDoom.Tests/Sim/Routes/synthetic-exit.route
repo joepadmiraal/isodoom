@@ -1,0 +1,21 @@
+# The synthetic E1M1 (T5.9): from the start north to its S1 exit switch
+# (line 0, 11, 128 units ahead), the last tic, so the dump's exit column is
+# checked in CI. Written by tools/RouteGen (synthetic-exit).
+iwad synthetic
+exit normal
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+25 0 0 0 x10
+4 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x4
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x13
+0 0 0 2

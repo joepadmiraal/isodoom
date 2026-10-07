@@ -23,7 +23,9 @@ namespace IsoDoom.Tests.Sim;
 /// <c>map ExMy</c> (default <c>E1M1</c>; for <c>testmap</c> the name of a
 /// <see cref="RouteTestMaps"/> map, required, T4.8a), <c>skill 1-5</c> (default 3) and
 /// <c>start X Y ANGLE</c> (T5.6: player 1 starts at map point X, Y facing ANGLE
-/// degrees instead of at its map start: <see cref="RouteStart.Place"/>);
+/// degrees instead of at its map start: <see cref="RouteStart.Place"/>) and
+/// <c>exit normal|secret</c> (T5.9: the route's last tic, and no other, leaves the
+/// level by its exit or secret exit, in vanilla and the sim);
 /// then one line per <c>ticcmd</c>: <c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>,
 /// <c>forwardmove</c> and <c>sidemove</c> as signed bytes, <c>TURN</c> the
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
@@ -48,7 +50,9 @@ namespace IsoDoom.Tests.Sim;
 /// <c>SECTOR:LIGHT</c> joined by commas, or <c>-</c> for none (the light
 /// specials), then (T5.8) the player's <c>health</c>, its mobj's health
 /// (<c>mohealth</c>), <c>armorpoints</c>, <c>armortype</c>, <c>cards</c>
-/// (bit <c>i</c> for <c>card_t</c> <c>i</c>) and <c>secretcount</c>. For the synthetic
+/// (bit <c>i</c> for <c>card_t</c> <c>i</c>) and <c>secretcount</c>, then (T5.9)
+/// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
+/// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -61,7 +65,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "exit" };
 
     public string Name { get; }
     public string Path { get; }
@@ -71,11 +75,14 @@ public sealed class VanillaRoute
     public skill_t Skill { get; }
     /// <summary>The <c>start</c> header (map units, degrees), or null for the map's player 1 start (T5.6).</summary>
     public (int X, int Y, int Angle)? Start { get; }
+    /// <summary>The <c>exit</c> header (T5.9): 1 for <c>normal</c>, 2 for <c>secret</c>, 0 without one (the dump's <c>exit</c> column).</summary>
+    public int Exit { get; }
     public IReadOnlyList<ticcmd_t> Cmds { get; }
 
-    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, List<ticcmd_t> cmds)
+    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, int exit, List<ticcmd_t> cmds)
     {
         Start = start;
+        Exit = exit;
         Name = System.IO.Path.GetFileNameWithoutExtension(path);
         Path = path;
         Iwad = iwad;
@@ -101,6 +108,7 @@ public sealed class VanillaRoute
         string? map = null;
         int skill = 3;
         (int, int, int)? start = null;
+        int exit = 0;
         var cmds = new List<ticcmd_t>();
         int n = 0;
         foreach (string raw in File.ReadLines(path))
@@ -121,6 +129,11 @@ public sealed class VanillaRoute
                     continue;
                 case "skill":
                     skill = int.Parse(f[1], CultureInfo.InvariantCulture);
+                    continue;
+                case "exit":
+                    exit = f.Length == 2 ? f[1] switch { "normal" => 1, "secret" => 2, _ => 0 } : 0;
+                    if (exit == 0)
+                        throw new FormatException($"{where}: expected exit normal|secret");
                     continue;
                 case "start":
                     if (f.Length != 4)
@@ -160,7 +173,7 @@ public sealed class VanillaRoute
         {
             map = (map ?? "E1M1").ToUpperInvariant();
         }
-        return new VanillaRoute(path, iwad, map, (skill_t)(skill - 1), start, cmds);
+        return new VanillaRoute(path, iwad, map, (skill_t)(skill - 1), start, exit, cmds);
     }
 
     /// <summary>
@@ -255,9 +268,10 @@ public sealed class VanillaRoute
             cards |= p.cards[i] ? 1 << i : 0;
         string status = string.Join(' ', new[] { p.health, mo.health, p.armorpoints, p.armortype, cards, p.secretcount }
             .Select(v => v.ToString(CultureInfo.InvariantCulture)));
+        int exit = world.gameaction == gameaction_t.ga_completed ? world.secretexit ? 2 : 1 : 0;
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
-            + " " + status;
+            + " " + status + " " + exit.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>The sectors' light levels of a world before its first tic: the map's (the light thinkers spawn without changing them).</summary>
@@ -305,5 +319,9 @@ public sealed class VanillaRoute
             msg.Append($"\n  sim overruns so far (not emulated): intercepts {world.interceptoverruns}, spechit {world.spechitoverruns}");
             Assert.Fail(msg.ToString());
         }
+        // T5.9: the exit column is checked on every tic above; the header says the last tic leaves the level.
+        string last = expected.Length > 0 ? expected[^1].Split(' ')[^1] : "0";
+        Assert.True(last == Exit.ToString(CultureInfo.InvariantCulture),
+            $"{Name}: the last tic's exit is {last} in vanilla, the route's header says {Exit} (0 none, 1 normal, 2 secret)");
     }
 }

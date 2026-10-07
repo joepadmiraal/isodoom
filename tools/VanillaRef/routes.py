@@ -20,7 +20,7 @@ SKILLS = range(1, 6)
 
 def parse(path):
     """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
-    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None}
+    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None}
     cmds = []
     for n, line in enumerate(open(path), 1):
         line = line.split('#', 1)[0].split()
@@ -31,6 +31,11 @@ def parse(path):
             if len(line) != 4:
                 sys.exit(f'{where}: expected start X Y ANGLE')
             head['start'] = ' '.join(str(int(v)) for v in line[1:])
+            continue
+        if line[0] == 'exit':  # T5.9: normal|secret, the last tic leaves the level
+            if len(line) != 2 or line[1] not in ('normal', 'secret'):
+                sys.exit(f'{where}: expected exit normal|secret')
+            head['exit'] = line[1]
             continue
         if line[0] in head:
             head[line[0]] = line[1] if line[0] != 'skill' else int(line[1])
@@ -95,6 +100,10 @@ def main():
         tics = sum(1 for _ in open(out)) if os.path.exists(out) else 0
         if r.returncode != 0 or tics != len(cmds):
             sys.exit(f'{route}: vanilla exited with {r.returncode} after {tics} of {len(cmds)} tics\n{r.stderr.strip()}')
+        exits = [l.split()[-1] for l in open(out)]
+        want = {None: '0', 'normal': '1', 'secret': '2'}[head['exit']]
+        if exits[-1] != want or any(e != '0' for e in exits[:-1]):
+            sys.exit(f'{route}: vanilla left the level at tic {next((i + 1 for i, e in enumerate(exits) if e != "0"), "-")} (exit {exits[-1]} at the last), the header says exit {head["exit"]}')
         print(f'{route}: {tics} tics -> {out}')
 
 

@@ -36,6 +36,9 @@ public static class Program
     private static WadArchive Doom1() =>
         WadArchive.Open(Environment.GetEnvironmentVariable("ISODOOM_DOOM1_WAD") is { Length: > 0 } p ? p : Path.Combine(RepoRoot(), "wads", "DOOM1.WAD"));
 
+    private static WadArchive Synthetic() =>
+        new(new[] { WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName) });
+
     private static WadArchive TestMapWad(string name) =>
         new(new[] { WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad") });
 
@@ -56,6 +59,7 @@ public static class Program
 # the exit switch (line 330, SW1STRTN -> SW2STRTN), the last tic. Written
 # by tools/RouteGen (e1m1-exit).
 iwad doom1
+exit normal
 
 """, (g, Log) =>
         {
@@ -117,6 +121,330 @@ iwad doom1
             g.Tic(0, 0, 0, 2); // the last tic: vanilla's G_ExitLevel ends the level (and the dump) here
             Log("textures " + g.w.sides[g.w.lines[330].sidenum[0]].midtexture + " " + string.Join(",", g.w.unported));
         }),
+        ["e1m2-exit"] = new(Doom1, "E1M2", """
+# DOOM1.WAD E1M2 (T5.9): from the start to the exit switch. East for the
+# red keycard (1136, 352), back west through the red door (sector 99) and
+# north to the exit lift (sector 49, tag 13): crossing its WR lines (88)
+# lowers it to the exit room (sector 48); off it while it is down and the
+# exit switch (line 873, 11), the last tic. Written by tools/RouteGen
+# (e1m2-exit).
+iwad doom1
+map E1M2
+exit normal
+
+""", (g, Log) =>
+        {
+            g.GoToDoors(1136, 352, 8, 50);
+            Log("red key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-1536, 2070, 8, 50);
+            Log("at line 777 " + g.Heights(124, 129));
+            g.Use(-1536, 2112);
+            g.WaitIdle(124);
+            Log("doors open " + g.Heights(124, 129));
+            g.GoToDoors(-440, 2336, 8, 50);
+            Log("at the exit lift " + g.Heights(49));
+            g.GoTo(-352, 2336);
+            g.WaitUntil(() => g.w.sectors[49].floorheight == -232 * (1 << 16));
+            Log("lift down " + g.Heights(49));
+            g.Assume[49] = -232;
+            g.GoTo(-280, 2336);
+            g.Assume.Clear();
+            g.Exit(-240, 2336);
+        }),
+        ["e1m4-exit"] = new(Doom1, "E1M4", """
+# DOOM1.WAD E1M4 (T5.9): from the start to the exit switch (line 554,
+# 11), the last tic. Into sector 104 across the WR door lines (90, tag 1:
+# the doors 10, 106, 133, 138 around the cage open), through door 106 to
+# the blue keycard (sector 134, inside the WR open-stay lines 348-351);
+# the blue door (sector 27) to the yellow keycard (sector 13); the S1
+# switch line 592 (18, tag 2: sector 52 rises to the next floor, 192);
+# the yellow door (sector 41), over sector 52, door 58 and the switch.
+# Written by tools/RouteGen (e1m4-exit).
+iwad doom1
+map E1M4
+exit normal
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            bool Open(int sec) => g.w.sectors[sec].ceilingheight - g.w.sectors[sec].floorheight >= 64 * (1 << 16) && g.w.sectors[sec].specialdata is not IsoDoom.Sim.vldoor_t { direction: -1 };
+            g.GoToDoors(32, 390, 8, 50);
+            Log("in sector 104 " + g.Heights(106));
+            g.WaitUntil(() => Open(106));
+            g.GoTo(152, 792, 8, 50);
+            Log("blue key " + string.Join(",", g.w.players[0].cards) + " " + g.Heights(106));
+            g.GoToDoors(-1248, 1280, 8, 50);
+            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-1088, 1500, 8, 50);
+            Log("at line 592 " + g.Heights(52));
+            g.Use(-1088, 1560);
+            g.WaitIdle(52);
+            Log("sector 52 raised " + g.Heights(52));
+            g.GoToDoors(-1560, 1888, 8, 50);
+            g.Exit(-1620, 1888);
+        }),
+        ["e1m5-exit"] = new(Doom1, "E1M5", """
+# DOOM1.WAD E1M5 (T5.9): from the start to the exit switch (line 409,
+# 11), the last tic. Across the W1 line 271 (22, tag 6: sector 91 rises
+# to 56), the yellow keycard (sector 92); through the yellow door (15)
+# down into the nukage pit (sector 19) onto the pillar 21, across its WR
+# lines (98, tag 1: sectors 20 and 35 lower), the S1 switch line 189
+# (103, tag 2: door 82 opens); back up on the lift 12 (WR lines 478/479,
+# 88, tag 3); through door 82 to the blue keycard (sector 130), the S1
+# switch line 420 (103, tag 7: door 141 opens), the blue door (109) and
+# the switch. The teleporter closet's door (sector 52) opens from inside
+# only; the route keeps clear of the teleporter (sector 56). Written by
+# tools/RouteGen (e1m5-exit).
+iwad doom1
+map E1M5
+exit normal
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            g.ShutDoors.UnionWith(new[] { 52, 58 }); // open from the other side only (58 is blue from this one)
+            g.Avoid.UnionWith(new[] { 55, 56 }); // the teleporter (lines 787-796) in room 54
+            g.GoToDoors(888, 300, 8, 50);
+            Log("across line 271 " + g.Heights(91));
+            g.WaitIdle(91);
+            Log("sector 91 raised " + g.Heights(91));
+            g.GoToDoors(688, 800, 8, 50);
+            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-1130, 832, 8, 50);
+            Log("on sector 21 " + g.Heights(20, 35, 82));
+            g.Use(-1060, 832);
+            g.WaitIdle(82);
+            Log("door 82 open " + g.Heights(20, 35, 82));
+            g.GoToDoors(-980, 730, 8, 50);
+            Log("south of line 478 " + g.Heights(12));
+            g.Assume[12] = -104;
+            g.GoTo(-980, 832, 8, 50);
+            Log("across line 478 " + g.Heights(12));
+            g.GoTo(-800, 832);
+            g.Assume.Clear();
+            Log("on lift 12 " + g.Heights(12));
+            g.WaitIdle(12);
+            Log("lift 12 up " + g.Heights(12));
+            g.GoToDoors(192, 1040, 8, 50);
+            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            g.GoTo(200, 950, 8, 50);
+            g.Use(200, 890);
+            g.WaitIdle(141);
+            Log("door 141 open " + g.Heights(141));
+            g.GoToDoors(-288, 2460, 8, 50);
+            g.Exit(-288, 2520);
+        }),
+        ["e1m6-exit"] = new(Doom1, "E1M6", """
+# DOOM1.WAD E1M6 (T5.9): from the start to the exit switch (line 627,
+# 11), the last tic. The red keycard (sector 185) inside the W1 door
+# lines 1319-1322 (2, tag 10: five doors open); entering crossed line 206
+# (16, tag 9: door 187 closes for 30 s), so wait for it; the red doors
+# (174, 175) to the blue keycard (sector 179); the S1 switch line 438
+# (103, tag 4: door 242 opens), the blue door (214) to the yellow keycard
+# (sector 208); the S1 switch line 822 (103, tag 1: door 37 opens), across
+# line 868 (76, tag 1: door 37 closes for 30 s), down to the big room
+# (sector 20), the S1 switch line 599 (103, tag 3: door 28 opens), door
+# 30 and the switch. Written by tools/RouteGen (e1m6-exit).
+iwad doom1
+map E1M6
+exit normal
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            g.GoToDoors(1680, -1344, 8, 50);
+            Log("red key " + string.Join(",", g.w.players[0].cards));
+            g.WaitUntil(() => g.w.sectors.Where(s => s.tag == 10).All(s => s.specialdata == null));
+            Log("tag 10 doors open " + g.Heights(195, 199, 201, 203, 241));
+            g.WaitUntil(() => g.w.sectors[187].specialdata == null && g.w.sectors[187].ceilingheight > g.w.sectors[187].floorheight);
+            Log("door 187 open " + g.Heights(187));
+            g.GoToDoors(-1536, -1728, 8, 50);
+            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(2624, -2260, 8, 50);
+            Log("at line 438 " + g.Heights(242));
+            g.Use(2624, -2320);
+            g.WaitIdle(242);
+            Log("door 242 open " + g.Heights(242));
+            g.GoToDoors(1088, -608, 8, 50);
+            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-64, 2330, 8, 50);
+            Log("at line 822 " + g.Heights(37));
+            g.Use(-64, 2400);
+            g.WaitUntil(() => g.w.sectors[37].specialdata == null);
+            Log("door 37 open " + g.Heights(37));
+            g.GoToDoors(-1488, 1384, 8, 50);
+            Log("at line 599 " + g.Heights(28));
+            g.Use(-1440, 1384);
+            g.WaitUntil(() => g.w.sectors[28].specialdata == null);
+            Log("door 28 open " + g.Heights(28));
+            g.GoToDoors(-1920, 2016, 8, 50);
+            g.Exit(-1860, 2016);
+        }),
+        ["e1m7-exit"] = new(Doom1, "E1M7", """
+# DOOM1.WAD E1M7 (T5.9): from the start to the exit switch (line 810,
+# 11), the last tic. Across line 396 (WR lift 88, tag 1) onto lift 23,
+# ridden up to the yellow keycard (sector 47); across line 248 (WR lift
+# 88, tag 9) onto lift 70, up to the red keycard (sector 73), back down
+# on it (line 644); the red door (79) to the blue keycard, picked up from
+# the pit (sector 77) below its 32-unit ledge (sector 76); the blue door
+# (89), the S1 switch line 762 (103, tag 14: door 104 opens), door 114
+# and the switch. Written by tools/RouteGen (e1m7-exit).
+iwad doom1
+map E1M7
+exit normal
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            g.GoToDoors(1344, -700, 8, 50);
+            Log("in sector 22 " + g.Heights(23));
+            g.Assume[23] = 32;
+            g.GoTo(1440, -704, 8, 50);
+            g.Assume.Clear();
+            Log("on lift 23 " + g.Heights(23));
+            g.WaitIdle(23);
+            Log("lift 23 up " + g.Heights(23));
+            g.GoTo(1344, -192, 8, 50);
+            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-1120, -120, 8, 50);
+            Log("east of line 248 " + g.Heights(70));
+            g.Assume[70] = 48;
+            g.GoTo(-1240, -60, 8, 50);
+            Log("across line 248 " + g.Heights(70));
+            g.GoTo(-1376, -64, 8, 50);
+            g.Assume.Clear();
+            Log("on lift 70 " + g.Heights(70));
+            g.WaitIdle(70);
+            Log("lift 70 up " + g.Heights(70));
+            g.GoTo(-1424, 384, 8, 50);
+            Log("red key " + string.Join(",", g.w.players[0].cards));
+            g.GoTo(-1376, 40, 8, 50);
+            g.GoTo(-1376, -64);
+            Log("across line 644 " + g.Heights(70));
+            g.WaitUntil(() => g.w.sectors[70].floorheight == 48 * (1 << 16));
+            g.Assume[70] = 48;
+            g.GoTo(-1220, -80, 8, 50);
+            g.Assume.Clear();
+            Log("off lift 70 " + g.Heights(70));
+            g.GoToDoors(-990, 272, 8, 50);
+            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(352, -1760, 8, 50);
+            Log("at line 762 " + g.Heights(104));
+            g.Use(352, -1700);
+            g.WaitIdle(104);
+            Log("door 104 open " + g.Heights(104));
+            g.GoToDoors(1920, -2304, 8, 50);
+            g.Exit(1980, -2304);
+        }),
+        ["e1m8-arena"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 (T5.9): from the start as far as the map goes without
+# monsters (e1m8-exit goes on from the arena): the S1 lower-floor switch
+# line 141 (23, tag 1: sector 10, the start closet's wall, lowers to 48),
+# the door 21, the SR lift line 231 (62, tag 6: lift 28 lowers to the
+# tunnel 26), ridden up, through sector 27 into the hall 31 up to the
+# wall (sector 30, tag 666) that the barons' death would lower into the
+# arena. Written by tools/RouteGen (e1m8-arena).
+iwad doom1
+map E1M8
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            g.GoTo(-88, -224);
+            g.Use(-40, -224);
+            g.WaitIdle(10);
+            Log("sector 10 lowered " + g.Heights(10));
+            g.GoToDoors(416, 2390, 8, 50);
+            Log("at line 231 " + g.Heights(28));
+            g.Use(416, 2450);
+            g.WaitUntil(() => g.w.sectors[28].floorheight == -96 * (1 << 16));
+            g.Assume[28] = -96;
+            g.GoTo(416, 2464);
+            g.Assume.Clear();
+            Log("on lift 28 " + g.Heights(28));
+            g.WaitIdle(28);
+            Log("lift 28 up " + g.Heights(28));
+            g.GoToDoors(416, 3300, 8, 50);
+            Log("at the wall");
+        }),
+        ["e1m8-exit"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 (T5.9): the way to the exit opens when the barons die
+# (A_BossDeath lowers the pillar, sector 30, tag 666, into the arena,
+# sector 29), which cannot happen without monsters, in vanilla too; so the
+# route starts in the arena south of the stairs (SPEC 12 T5.9): the S1
+# stairs switch line 233 (7, tag 9: sectors 53 to 67 rise 8 a step), up
+# them onto sector 52, north across the WR teleport line 299 (97, tag 3)
+# from its front: to the destination in the damage-and-exit sector 66
+# (11), and wait there until its 20-unit hits leave 10 health or less:
+# G_ExitLevel, the last tic. Written by tools/RouteGen (e1m8-exit).
+iwad doom1
+map E1M8
+exit normal
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            g.Wait(1); // G_PlayerReborn's usedown: use needs a tic without it first
+            g.Use(320, 4440);
+            g.WaitUntil(() => g.w.sectors.All(s => s.specialdata is not IsoDoom.Sim.floormove_t));
+            Log("stairs built " + g.Heights(53, 54, 60, 67));
+            g.GoTo(448, 4980, 8, 50);
+            Log("on sector 52");
+            g.Teleport(448, 5120);
+            Log("teleported, health " + g.w.players[0].health);
+            g.WaitExit();
+            Log("health " + g.w.players[0].health);
+        }, (320, 4384, 90)),
+        ["e1m9-exit"] = new(Doom1, "E1M9", """
+# DOOM1.WAD E1M9 (T5.9): from the start to the exit switch (line 551,
+# 11), the last tic. The yellow keycard (sector 88); the yellow door
+# (142) to the red keycard (sector 132, inside the W1 door lines 524-527,
+# 2, tag 8); the red doors (111, 103) to the S1 switch line 362 (103,
+# tag 1: doors 107, 126, 130 open), used over the barrels in front of
+# it; the blue keycard (sector 129); the blue door (27), down into the
+# nukage (sector 21) to the S1 switch line 567 (20, tag 9: the nukage
+# 17 rises to 88); across the WR door lines 570/571 (90, tag 11: door 48
+# opens), the SR lift line 587 (62, tag 10: lift 49), ridden up, door 51
+# and the switch. Written by tools/RouteGen (e1m9-exit).
+iwad doom1
+map E1M9
+exit normal
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            g.GoToDoors(-576, 64, 8, 50);
+            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(1856, -1088, 8, 50);
+            Log("red key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-576, -1344, 4, 50); // barrels (y -1376) in front of the switch: use over them
+            g.Walk(-576, -1400, 4);
+            Log("at line 362 " + g.Heights(107, 126, 130));
+            g.Use(-576, -1430);
+            g.WaitUntil(() => g.w.sectors[130].specialdata == null);
+            Log("tag 1 doors open " + g.Heights(107, 126, 130));
+            g.GoToDoors(704, -1024, 8, 50);
+            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(384, 1444, 8, 50);
+            Log("at line 567 " + g.Heights(17));
+            g.Use(384, 1380);
+            g.WaitIdle(17);
+            Log("sector 17 raised " + g.Heights(17));
+            g.GoTo(200, 1450, 8, 50);
+            Log("across lines 570/571 " + g.Heights(48));
+            g.WaitUntil(() => g.w.sectors[48].specialdata is IsoDoom.Sim.vldoor_t { direction: 0 });
+            g.GoTo(224, 960, 8, 50);
+            Log("at line 587 " + g.Heights(49));
+            g.Use(300, 960);
+            g.WaitUntil(() => g.w.sectors[49].floorheight == 0);
+            g.Assume[49] = 0;
+            g.GoTo(288, 960);
+            g.Assume.Clear();
+            Log("on lift 49 " + g.Heights(49));
+            g.WaitIdle(49);
+            Log("lift 49 up " + g.Heights(49));
+            g.GoToDoors(456, 1328, 8, 50);
+            g.Exit(400, 1384);
+        }),
         ["e1m2-lifts"] = new(Doom1, "E1M2", """
 # DOOM1.WAD E1M2 (T5.5): the two lifts near the start, both ways. Lift 1
 # (sector 89, tag 1): into sector 85 across line 315 (WR 88), onto the
@@ -177,6 +505,109 @@ map E1M2
             Log("lift 4 lowering " + g.Heights(109));
             g.WaitIdle(109);
             Log("lift 4 idle " + g.Heights(109));
+        }),
+        ["e1m3-exit"] = new(Doom1, "E1M3", """
+# DOOM1.WAD E1M3 (T5.9): from the start to the exit switch (line 982,
+# 11), the last tic. Through the keyless doors for the blue keycard (on
+# the raised pad, sector 28), back through the blue door (sector 61) to
+# the hall (sector 7), across the W1 stairs line 967 (8, tag 14: the
+# steps from sector 16 rise 8 a step), up the stairs, door 2 and the
+# switch. Written by tools/RouteGen (e1m3-exit).
+iwad doom1
+map E1M3
+exit normal
+
+""", (g, Log) =>
+        {
+            g.GoToDoors(-160, -864, 8, 50);
+            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            g.GoToDoors(-290, -1600, 8, 50);
+            g.GoTo(-240, -1600);
+            Log("across line 967 " + g.Heights(16, 17, 18, 13));
+            g.WaitUntil(() => g.w.sectors.All(s => s.specialdata == null || s.specialdata is not IsoDoom.Sim.floormove_t));
+            Log("stairs built " + g.Heights(16, 17, 18, 13));
+            g.GoToDoors(704, -1720, 8, 50);
+            g.Exit(704, -1770);
+        }),
+        ["e1m3-secret-exit"] = new(Doom1, "E1M3", """
+# DOOM1.WAD E1M3 (T5.9): from the start to the secret exit switch (line
+# 785, 51, in sector 35), the last tic. Its way (sectors 51-53, 32, 31)
+# starts in the start's nukage (sector 66, floor 0), 64 units below the
+# secret door 51, which the S1 switch line 360 (20, tag 27) far north-west
+# raises: the S1 door switch line 535 (103, tag 10: sector 121); up the
+# steps to line 116 (WR lift 88, tag 2: sectors 133 and 165 lower); onto
+# lift 165 while it is down across line 231 (W1 door 2, tag 3: sector
+# 167 opens), ride it up; through door 167 to sector 173 and its switch
+# (line 360: the nukage 66 rises to 64, half speed); back through the
+# secret door 174, across line 462 (WR lift 88, tag 7: lift 171 lowers),
+# ride it up, door 172 (line 459), across line 181 (WR 88, tag 4: lift
+# 168 lowers), ride it down; back south to the raised nukage across line
+# 988 (W1 door 2, tag 12: the secret door 51 opens), north through it
+# across line 54 (W1 door 2, tag 48: 53 opens), across line 88 (W1 door 2,
+# tag 51: 33 and 34 open), door 45 and the switch. Written by
+# tools/RouteGen (e1m3-secret-exit).
+iwad doom1
+map E1M3
+exit secret
+
+""", (g, Log) =>
+        {
+            g.TightCorners = true;
+            bool Open(int sec) => g.w.sectors[sec].ceilingheight - g.w.sectors[sec].floorheight >= 64 * (1 << 16) && g.w.sectors[sec].specialdata == null;
+            g.GoToDoors(-1936, -2120, 8, 50);
+            Log("south of line 535 " + g.Heights(121));
+            g.Use(-1936, -2060);
+            g.WaitUntil(() => Open(121));
+            Log("door 121 open " + g.Heights(121));
+            g.GoToDoors(-2220, -2190, 8, 50);
+            Log("in sector 120 " + g.Heights(165));
+            g.Assume[165] = 128;
+            g.GoTo(-2664, -1360, 6, 50);
+            g.Assume.Clear();
+            Log("at lift 165 " + g.Heights(165));
+            g.Walk(-2700, -1324, 3, 25);
+            Log("on lift 165 " + g.Heights(165, 167));
+            g.WaitIdle(165);
+            g.WaitUntil(() => Open(167));
+            Log("lift up, door 167 open " + g.Heights(165, 167));
+            g.GoToDoors(-2416, -944, 4, 50);
+            Log("in sector 173 " + g.Heights(66));
+            g.Use(-2380, -910);
+            g.WaitIdle(66);
+            Log("nukage raised " + g.Heights(66));
+            g.GoToDoors(-2080, -1250, 8, 50);
+            g.GoTo(-2080, -1350, 8, 50);
+            Log("across line 462 " + g.Heights(171));
+            g.Assume[171] = 112;
+            g.GoTo(-2080, -1436);
+            g.Assume.Clear();
+            Log("on lift 171 " + g.Heights(171));
+            g.WaitIdle(171);
+            Log("lift 171 up " + g.Heights(171));
+            g.Door(172, -2064, -1470);
+            g.GoTo(-2144, -1700, 8, 50);
+            Log("in sector 169 " + g.Heights(168));
+            g.Assume[168] = 32;
+            g.GoTo(-2144, -1760);
+            g.Assume.Clear();
+            Log("on lift 168 " + g.Heights(168));
+            g.WaitUntil(() => g.w.sectors[168].floorheight == 32 * (1 << 16));
+            g.Assume[168] = 32;
+            g.GoToDoors(-1450, -2680, 8, 50);
+            g.Assume.Clear();
+            Log("in sector 66 " + g.Heights(51));
+            g.GoTo(-1580, -2760, 8, 50);
+            Log("across line 988 " + g.Heights(51));
+            g.WaitUntil(() => Open(51));
+            g.GoTo(-1504, -2300, 8, 50);
+            g.GoTo(-1504, -2080, 8, 50);
+            Log("across line 54 " + g.Heights(53));
+            g.WaitUntil(() => Open(53));
+            g.GoTo(-1504, -1880, 8, 50);
+            Log("across line 88 " + g.Heights(33, 34));
+            g.WaitUntil(() => Open(33));
+            g.GoToDoors(-1088, -1500, 8, 50);
+            g.Exit(-1088, -1560);
         }),
         ["e1m3-lifts"] = new(Doom1, "E1M3", """
 # DOOM1.WAD E1M3 (T5.5): out of the start through its open-stay door
@@ -259,7 +690,32 @@ map E1M8
             g.Wait(80);
             Log("fog gone: " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
         }, (448, 4980, 90)),
-        ["synthetic-keys"] = new(() => new WadArchive(new[] { WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName) }), "E1M2", """
+        ["synthetic-exit"] = new(Synthetic, "E1M1", """
+# The synthetic E1M1 (T5.9): from the start north to its S1 exit switch
+# (line 0, 11, 128 units ahead), the last tic, so the dump's exit column is
+# checked in CI. Written by tools/RouteGen (synthetic-exit).
+iwad synthetic
+exit normal
+
+""", (g, Log) =>
+        {
+            g.GoTo(0, 80);
+            g.Exit(0, 140);
+        }),
+        ["synthetic-secret-exit"] = new(Synthetic, "E1M2", """
+# The synthetic E1M2 (T5.9): starts in room S facing its north wall's S1
+# secret exit switch (line 84, 51) and uses it, the last tic (the first
+# tic releases use: G_PlayerReborn's usedown). Written by tools/RouteGen
+# (synthetic-secret-exit).
+iwad synthetic
+map E1M2
+exit secret
+""", (g, Log) =>
+        {
+            g.Wait(1);
+            g.Exit(224, 260);
+        }, (224, 212, 90)),
+        ["synthetic-keys"] = new(Synthetic, "E1M2", """
 # The synthetic E1M2 (T5.8): from the start east along the corridor over
 # the blue keycard (560, -96) and the yellow skull key (624, -96), so the
 # dump's cards column checks both pickups (the items vanish, the sound and
@@ -375,6 +831,15 @@ map stairs
 
     public static int Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--probe")
+        {
+            var probe = new Steer(Doom1(), args[1]);
+            foreach (string pt in args[2].Split(';'))
+                Console.WriteLine(probe.ProbeText(double.Parse(pt.Split(',')[0]), double.Parse(pt.Split(',')[1])));
+            return 0;
+        }
+        if (args.Length is 2 or 3 && args[0] == "--info")
+            return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? args[2].Split(',').Select(int.Parse).ToArray() : null);
         if (args.Length is < 1 or > 2 || !Scripts.TryGetValue(args[0], out Script? script))
         {
             Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", Scripts.Keys)}");
