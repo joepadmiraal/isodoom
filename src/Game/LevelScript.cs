@@ -161,7 +161,18 @@ namespace IsoDoom.Game;
 /// <c>menu [NAME [ITEM]]</c> prints what they show after a frame and fails
 /// unless it is NAME (<c>closed</c>, <c>message</c>, <c>main</c>,
 /// <c>episode</c>, <c>skill</c>, <c>options</c>, <c>sound</c>, <c>load</c>,
-/// <c>save</c>, <c>readthis1</c>, <c>readthis2</c>) with the skull on item ITEM.
+/// <c>save</c>, <c>readthis1</c>, <c>readthis2</c>; T7.3: <c>setup</c>, <c>video</c>,
+/// <c>gameplay</c>, <c>sprites</c>, <c>hud</c>, <c>controls</c>, <c>movement</c>,
+/// <c>actions</c>, <c>menukeys</c>, <c>binding</c> while one waits for an input to
+/// bind) with the skull (or the cursor) on item ITEM.
+/// </para>
+/// <para>
+/// The settings (T7.3, <see cref="Settings"/>): <c>setting KEY</c> prints one
+/// (e.g. <c>gameplay/cutaway</c>, <c>controls/attack</c>), <c>setting KEY VALUE</c>
+/// changes it as the options menu does (applied at once, saved when the run
+/// has a settings file: <c>--settings=FILE</c>), <c>checksetting KEY VALUE</c>
+/// fails the script unless it is VALUE, <c>settings</c> prints them all.
+/// A script runs on the defaults unless <c>--settings=FILE</c> names a file.
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -499,6 +510,31 @@ public partial class LevelScript : Node
                         break;
                     case "joybutton":
                         Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = Enum.Parse<JoyButton>(w[1], true), Pressed = w[2] == "down", Pressure = w[2] == "down" ? 1 : 0 });
+                        break;
+                    case "setting":
+                        // T7.3: prints setting KEY, or sets it to VALUE as the options menu does (applied at once, saved to --settings's file)
+                        if (w.Length > 2)
+                            _scene.SetSetting(w[1], string.Join(' ', w[2..]));
+                        GD.Print($"Level script: setting {w[1]} = {_scene.GetSetting(w[1])}");
+                        break;
+                    case "checksetting":
+                        {
+                            // T7.3: fails unless setting KEY is VALUE now
+                            string value = string.Join(' ', w[2..]), now = _scene.GetSetting(w[1]);
+                            GD.Print($"Level script: checksetting {w[1]} = {now}");
+                            if (now != value)
+                            {
+                                GD.PrintErr($"Level script: checksetting: {w[1]} is \"{now}\", expected \"{value}\"");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "settings":
+                        // T7.3: every setting's value, and the file
+                        GD.Print($"Level script: settings ({_scene.SettingsPath ?? "no file"}):");
+                        foreach (string key in LevelScene.SettingKeys())
+                            GD.Print($"  {key} = {_scene.GetSetting(key)}{(_scene.SettingsValues.IsPinned(key) ? " (command line)" : "")}");
+                        GD.Print($"  (the window: {DisplayServer.WindowGetSize().X}x{DisplayServer.WindowGetSize().Y} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, Engine.MaxFps {Engine.MaxFps})");
                         break;
                     case "quit": GetTree().Quit(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using IsoDoom.Sim;
 
@@ -61,8 +62,49 @@ public partial class LevelScene : IMenuHost
     private void InitMenus()
     {
         Menu.Host = this;
+        Menu.SetupHost = this; // T7.3: the options' text pages
         if (_graphics is not null)
             Menu.Graphics = _graphics;
+        // T7.3: yes and no come from their actions (menu_yes, menu_no), so a rebound Y is only a letter
+        Menu.key_menu_confirm = KEY_MENU_YES;
+        Menu.key_menu_abort = KEY_MENU_NO;
+    }
+
+    /// <summary>T7.3: the menus' yes and no (<see cref="MMenu.key_menu_confirm"/>, <see cref="MMenu.key_menu_abort"/>) from the <c>menu_yes</c> and <c>menu_no</c> actions, apart from the letters.</summary>
+    public const int KEY_MENU_YES = 0x102, KEY_MENU_NO = 0x103;
+
+    /// <summary>
+    /// T7.3: the menu key of a menu action's input event (<see cref="Settings.MenuActions"/>,
+    /// rebindable): open/close, the arrows, select (Enter; the pad's
+    /// <see cref="MMenu.KEY_PAD_ACCEPT"/>), back (Backspace; the pad's
+    /// <see cref="MMenu.KEY_PAD_CANCEL"/>), yes and no; 0 for none. The pad's
+    /// directions are polled (<see cref="PollMenuPad"/>), not taken here.
+    /// </summary>
+    public static int MenuActionKey(InputEvent e, MMenu menu)
+    {
+        bool pad = e is InputEventJoypadButton or InputEventJoypadMotion;
+        bool Is(string action) => InputMap.HasAction(action) && e.IsActionPressed(action, allowEcho: true);
+        if (Is(GameInput.MenuOpen))
+            return menu.key_menu_activate;
+        if (Is(GameInput.MenuSelect))
+            return pad ? MMenu.KEY_PAD_ACCEPT : menu.key_menu_forward;
+        if (Is(GameInput.MenuBack))
+            return pad ? MMenu.KEY_PAD_CANCEL : menu.key_menu_back;
+        if (Is(GameInput.MenuYes))
+            return menu.key_menu_confirm;
+        if (Is(GameInput.MenuNo))
+            return menu.key_menu_abort;
+        if (pad)
+            return 0;
+        if (Is(GameInput.MenuUp))
+            return menu.key_menu_up;
+        if (Is(GameInput.MenuDown))
+            return menu.key_menu_down;
+        if (Is(GameInput.MenuLeft))
+            return menu.key_menu_left;
+        if (Is(GameInput.MenuRight))
+            return menu.key_menu_right;
+        return 0;
     }
 
     /// <summary>
@@ -82,6 +124,8 @@ public partial class LevelScene : IMenuHost
             return false;
         MMenu menu = flow.Menu;
         bool title = flow.gamestate == gamestate_t.GS_DEMOSCREEN;
+        if (menu.WaitingBinding is { } binding)
+            return BindingEvent(e, menu, binding); // T7.3: the next input binds
         switch (e)
         {
             case InputEventMouseMotion motion:
@@ -114,22 +158,18 @@ public partial class LevelScene : IMenuHost
                 return menu.Active;
             case InputEventJoypadButton { Pressed: true } pad:
                 {
-                    int key = pad.ButtonIndex switch
-                    {
-                        JoyButton.A => MMenu.KEY_PAD_ACCEPT,
-                        JoyButton.B => MMenu.KEY_PAD_CANCEL,
-                        JoyButton.Start => menu.key_menu_activate,
-                        _ => 0,
-                    };
+                    int key = MenuActionKey(pad, menu); // T7.3: the menu actions' (A, B, Start by default)
                     if (menu.Active)
                     {
                         if (key != 0)
                             menu.M_Responder(key);
+                        else if (pad.ButtonIndex == JoyButton.X)
+                            menu.M_ClearBinding(true); // T7.3: on a binding page, the pad's bindings go
                         return true;
                     }
                     if (key == menu.key_menu_activate)
                         return menu.M_Responder(key);
-                    if (title && pad.ButtonIndex is not (JoyButton.DpadUp or JoyButton.DpadDown or JoyButton.DpadLeft or JoyButton.DpadRight))
+                    if (title && !IsMenuDirection(pad))
                     {
                         menu.M_StartControlPanel();
                         return true;
@@ -144,7 +184,12 @@ public partial class LevelScene : IMenuHost
                         return false;
                     if (KeyOf(key) == Key.Escape && Input.MouseMode == Input.MouseModeEnum.Captured)
                         return false; // the free-fly camera lets the mouse go first
-                    int code = MenuKeyOf(key), ch = CharOf(key);
+                    if (menu.Active && !menu.saveStringEnter && KeyOf(key) == Key.Delete && menu.M_ClearBinding(false))
+                        return true; // T7.3: on a binding page, the keyboard's and mouse's bindings go
+                    // T7.3: the menu actions' keys (rebindable), else a letter, digit or space; typing a save's description takes the keys as they are
+                    int code = menu.saveStringEnter ? MenuKeyOf(key) : MenuActionKey(key, menu), ch = CharOf(key);
+                    if (code == 0)
+                        code = LetterKeyOf(key);
                     if ((code != 0 || ch != 0) && menu.M_Responder(code, ch))
                         return true;
                     if (title && !key.Echo && !IsFunctionKey(key))
@@ -160,7 +205,18 @@ public partial class LevelScene : IMenuHost
 
     private static Key KeyOf(InputEventKey key) => key.Keycode != Key.None ? key.Keycode : key.PhysicalKeycode;
 
-    /// <summary>A key as doomkeys.h's code (the menu keys), a lower-case letter, a digit or a space; 0 for any other.</summary>
+    /// <summary>A letter (lower case), a digit or a space as typed; 0 for any other key.</summary>
+    public static int LetterKeyOf(InputEventKey key)
+    {
+        int code = MenuKeyOf(key);
+        return code is ' ' or (>= 'a' and <= 'z') or (>= '0' and <= '9') ? code : 0;
+    }
+
+    /// <summary>Whether a pad button is one of the menus' directions (<c>menu_up</c>… : polled, not an "any key" on the title).</summary>
+    private static bool IsMenuDirection(InputEventJoypadButton pad) =>
+        new[] { GameInput.MenuUp, GameInput.MenuDown, GameInput.MenuLeft, GameInput.MenuRight }.Any(a => InputMap.HasAction(a) && InputMap.EventIsAction(pad, a, true));
+
+    /// <summary>A key as doomkeys.h's code (Chocolate Doom's default menu keys, for typing a save's description), a lower-case letter, a digit or a space; 0 for any other.</summary>
     public static int MenuKeyOf(InputEventKey key) => KeyOf(key) switch
     {
         Key.Escape => MMenu.KEY_ESCAPE,
@@ -194,7 +250,9 @@ public partial class LevelScene : IMenuHost
     /// </summary>
     private void PollMenuPad(double delta)
     {
-        if (_flow is not { } flow || !flow.Menu.Active)
+        if (_flow is { } f)
+            TickBindingWait(f.Menu, delta); // T7.3
+        if (_flow is not { } flow || !flow.Menu.Active || flow.Menu.WaitingBinding is not null)
         {
             _padDirection = 0;
             return;
@@ -220,22 +278,25 @@ public partial class LevelScene : IMenuHost
         }
     }
 
+    /// <summary>The menu direction a pad holds: the pad inputs bound to <c>menu_up</c>, <c>menu_down</c>, <c>menu_left</c>, <c>menu_right</c> (T7.3; the D-pad and the left stick by default).</summary>
     private static int PadDirection(MMenu menu)
     {
         var devices = new List<int>(Input.GetConnectedJoypads());
         if (!devices.Contains(0))
             devices.Add(0); // the level script's pad
-        foreach (int d in devices)
+        foreach ((string action, int key) in new[] { (GameInput.MenuUp, menu.key_menu_up), (GameInput.MenuDown, menu.key_menu_down), (GameInput.MenuLeft, menu.key_menu_left), (GameInput.MenuRight, menu.key_menu_right) })
         {
-            float x = Input.GetJoyAxis(d, JoyAxis.LeftX), y = Input.GetJoyAxis(d, JoyAxis.LeftY);
-            if (Input.IsJoyButtonPressed(d, JoyButton.DpadUp) || y < -0.5f)
-                return menu.key_menu_up;
-            if (Input.IsJoyButtonPressed(d, JoyButton.DpadDown) || y > 0.5f)
-                return menu.key_menu_down;
-            if (Input.IsJoyButtonPressed(d, JoyButton.DpadLeft) || x < -0.5f)
-                return menu.key_menu_left;
-            if (Input.IsJoyButtonPressed(d, JoyButton.DpadRight) || x > 0.5f)
-                return menu.key_menu_right;
+            if (!InputMap.HasAction(action))
+                continue;
+            foreach (InputEvent e in InputMap.ActionGetEvents(action))
+            {
+                foreach (int d in devices)
+                {
+                    if (e is InputEventJoypadButton b && Input.IsJoyButtonPressed(d, b.ButtonIndex)
+                        || e is InputEventJoypadMotion m && Input.GetJoyAxis(d, m.Axis) * Math.Sign(m.AxisValue) > 0.5f)
+                        return key;
+                }
+            }
         }
         return 0;
     }

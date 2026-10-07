@@ -34,6 +34,9 @@ public struct TiccmdInput
     /// <summary>The mouse moved since the last tic: the cursor takes over the aim from the stick.</summary>
     public bool CursorMoved;
 
+    /// <summary>T7.3: the mouse's horizontal motion since the last tic, in pixels (right positive): vanilla's mouse turning.</summary>
+    public float MouseX;
+
     /// <summary>The cursor ground point (T3.3), map units, or null when the cursor is off the level.</summary>
     public (float X, float Y)? Cursor;
 
@@ -105,6 +108,13 @@ public sealed class TiccmdBuilder
     /// <summary>Where the aim comes from.</summary>
     public AimSource Aim { get; private set; }
 
+    /// <summary>
+    /// T7.3: m_menu.c <c>mouseSensitivity</c> (0–9, default 5), which scales
+    /// the mouse's turning without the absolute aiming (g_game.c
+    /// <c>G_Responder</c>: <c>mousex = data2 * (mouseSensitivity + 5) / 10</c>).
+    /// </summary>
+    public int MouseSensitivity { get; set; } = 5;
+
     /// <summary>A new level (or a respawn): the player keeps its angle until something aims, and turning starts slow.</summary>
     public void Reset()
     {
@@ -168,6 +178,11 @@ public sealed class TiccmdBuilder
                 cmd.angleturn -= Ticcmds.angleturn[tspeed];
             if (turnLeft)
                 cmd.angleturn += Ticcmds.angleturn[tspeed];
+
+            // T7.3: g_game.c's mouse turning (G_Responder's mousex, G_BuildTiccmd's angleturn -= mousex*0x8);
+            // its forward motion (mousey) is left out, as Chocolate Doom's novert: the mouse only turns
+            int mousex = (int)(input.MouseX * (MouseSensitivity + 5) / 10);
+            cmd.angleturn = (short)(cmd.angleturn - mousex * 0x8);
         }
 
         // The move.

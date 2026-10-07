@@ -368,7 +368,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
         "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
-        + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them   Intermission: fire or use go on\n"
+        + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
@@ -464,6 +464,7 @@ public partial class LevelScene : Node3D, IGameHost
             InitMenus(); // T7.2
             if (IsCheckRun)
             {
+                InitSettings(); // T7.3: the defaults (no file), for the check's settings round trip
                 AddChild(new LevelCheck(this)); // loads every map itself; no free-fly camera, no keys
                 return;
             }
@@ -519,6 +520,7 @@ public partial class LevelScene : Node3D, IGameHost
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
+            InitSettings(); // T7.3: the saved settings, but those the arguments above give
             if (WadLocator.HasUserArg("--level"))
             {
                 // A map from the command line (vanilla's -warp): a new game on it, no title loop.
@@ -864,6 +866,8 @@ public partial class LevelScene : Node3D, IGameHost
         }
         if (IsCheckRun || e is not InputEventKey { Pressed: true, Echo: false } key)
             return;
+        if (IsGameInput(key))
+            return; // T7.3: a key rebound to a game action is the game's, not a debug key
         switch (key.PhysicalKeycode)
         {
             case Key.Tab:
@@ -980,6 +984,7 @@ public partial class LevelScene : Node3D, IGameHost
             }
             UpdateHud();
             UpdateScreens();
+            SyncSettings(); // T7.3: what the menus, the keys and the zoom changed is saved
         }
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
@@ -1685,8 +1690,8 @@ public partial class LevelScene : Node3D, IGameHost
 
     public override void _Input(InputEvent e)
     {
-        if (e is InputEventMouseMotion && !IsCheckRun)
-            GameInput.CursorMoved();
+        if (e is InputEventMouseMotion motion && !IsCheckRun)
+            GameInput.CursorMoved(motion.Relative.X);
         // T7.2: the menus before anything else (d_main.c D_ProcessEvents: M_Responder first; on the title loop
         // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
         if (!IsCheckRun && MenuEvent(e))

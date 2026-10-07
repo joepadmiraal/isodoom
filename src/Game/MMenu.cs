@@ -53,7 +53,7 @@ public interface IMenuHost
 /// quicksave and quickload (T7.6), the net game and demo checks (single
 /// player only).
 /// </summary>
-public sealed class MMenu
+public sealed partial class MMenu
 {
     // doomkeys.h
     public const int KEY_RIGHTARROW = 0xae, KEY_LEFTARROW = 0xac, KEY_UPARROW = 0xad, KEY_DOWNARROW = 0xaf;
@@ -150,6 +150,9 @@ public sealed class MMenu
         public char alphaKey;
         public readonly string text;
 
+        /// <summary>Not vanilla (T7.3): a text menu's item shows this value right of its text.</summary>
+        public Func<string>? value;
+
         public menuitem_t(short status, string name, Action<int>? routine, char alphaKey, string text = "")
         {
             this.status = status;
@@ -171,6 +174,12 @@ public sealed class MMenu
         public short x, y;
         public short lastOn;
 
+        /// <summary>Not vanilla (T7.3): the options' text pages, items in the message font every <see cref="lineHeight"/> rows with their values, no skull.</summary>
+        public bool textItems;
+
+        /// <summary>The rows between items (<see cref="LINEHEIGHT"/> but on text pages).</summary>
+        public short lineHeight = LINEHEIGHT;
+
         public menu_t(string name, short numitems, menu_t? prevMenu, menuitem_t[] menuitems, Action? routine, short x, short y, short lastOn)
         {
             Name = name;
@@ -188,7 +197,7 @@ public sealed class MMenu
     private const int newgame = 0, options = 1, loadgame = 2, savegame = 3, readthis = 4, quitdoom = 5, main_end = 6;
     private const int ep1 = 0, ep_end = 4;
     private const int hurtme = 2, nightmare = 4, newg_end = 5;
-    private const int endgame = 0, messages = 1, detail = 2, scrnsize = 3, mousesens = 5, soundvol = 7, opt_end = 8;
+    private const int endgame = 0, messages = 1, detail = 2, scrnsize = 3, mousesens = 5, soundvol = 7, setup = 8, opt_end = 9;
     private const int sfx_vol = 0, music_vol = 2, sound_end = 4;
     private const int load_end = 6;
 
@@ -249,6 +258,7 @@ public sealed class MMenu
             new(2, "M_MSENS", M_ChangeSensitivity, 'm', "MOUSE SENSITIVITY"),
             new(-1, "", null, '\0'),
             new(1, "M_SVOL", M_Sound, 's', "SOUND VOLUME"),
+            new(1, "M_ISOSET", M_Setup, 'o', "MORE OPTIONS..."), // not vanilla (T7.3): the text pages; no such patch, the text shows
         };
         OptionsDef = new menu_t("options", opt_end, MainDef, OptionsMenu, M_DrawOptions, 60, 37, 0);
 
@@ -277,6 +287,7 @@ public sealed class MMenu
         LoadDef = new menu_t("load", load_end, MainDef, LoadMenu, M_DrawLoad, 80, 54, 0);
         SaveDef = new menu_t("save", load_end, MainDef, SaveMenu, M_DrawSave, 80, 54, 0);
 
+        SetupMenus(); // T7.3
         currentMenu = MainDef;
         M_Init();
     }
@@ -863,6 +874,14 @@ public sealed class MMenu
 
     private bool Respond(int key, int ch)
     {
+        // T7.3: waiting for an input to bind (the glue takes it): Escape cancels
+        if (WaitingBinding is not null)
+        {
+            if (key == KEY_ESCAPE)
+                M_CancelBinding();
+            return true;
+        }
+
         // Save Game string input
         if (saveStringEnter)
         {
@@ -1055,12 +1074,12 @@ public sealed class MMenu
     /// <summary>The item of the current menu at screen point <paramref name="x"/>, <paramref name="y"/> (320×200), or −1.</summary>
     public int ItemAt(int x, int y)
     {
-        if (!menuactive || messageToPrint || x < currentMenu.x + SKULLXOFF || x >= HudScreen.SCREENWIDTH)
+        if (!menuactive || messageToPrint || WaitingBinding is not null || x < currentMenu.x + (currentMenu.textItems ? TEXTCURSORXOFF : SKULLXOFF) || x >= HudScreen.SCREENWIDTH)
             return -1;
-        int row = y - currentMenu.y + 3;
+        int row = y - currentMenu.y + (currentMenu.textItems ? 1 : 3);
         if (row < 0)
             return -1;
-        int i = row / LINEHEIGHT;
+        int i = row / currentMenu.lineHeight;
         return i < currentMenu.numitems && currentMenu.menuitems[i].status != -1 ? i : -1;
     }
 
@@ -1091,9 +1110,11 @@ public sealed class MMenu
             return false;
         if (!left)
             return M_Responder(KEY_PAD_CANCEL);
+        if (WaitingBinding is not null)
+            return true; // the glue binds the button
         if (messageToPrint || saveStringEnter || currentMenu == ReadDef1 || currentMenu == ReadDef2)
             return M_Responder(saveStringEnter ? KEY_ENTER : KEY_PAD_ACCEPT);
-        if (Thermo(x, y) is (int item, int cell, int value))
+        if (!currentMenu.textItems && Thermo(x, y) is (int item, int cell, int value))
         {
             itemOn = (short)item;
             Action<int> routine = currentMenu.menuitems[item].routine!;
@@ -1177,6 +1198,12 @@ public sealed class MMenu
             if (!menuactive)
                 return;
 
+            if (WaitingBinding is not null || currentMenu.textItems)
+            {
+                M_DrawTextMenu(); // T7.3
+                return;
+            }
+
             currentMenu.routine?.Invoke(); // call Draw routine
 
             // DRAW MENU
@@ -1241,9 +1268,11 @@ public sealed class MMenu
     public string StateText() =>
         messageToPrint ? $"message \"{messageString.Replace("\n", " ")}\""
         : !menuactive ? "closed"
+        : WaitingBinding is { } waiting ? $"binding, waiting for an input for {waiting}"
+        : currentMenu.textItems ? $"{currentMenu.Name}, item {itemOn} ({currentMenu.menuitems[itemOn].text}{(currentMenu.menuitems[itemOn].value is { } v ? $": {v()}" : "")})"
         : saveStringEnter ? $"{currentMenu.Name}, typing in slot {saveSlot + 1}: \"{savegamestrings[saveSlot]}\""
         : $"{currentMenu.Name}, item {itemOn}{(currentMenu.menuitems[itemOn].name is { Length: > 0 } n ? $" ({DEH_String(n)})" : "")}";
 
     /// <summary>The name of what shows (<see cref="menu_t.Name"/>, <c>message</c> or <c>closed</c>), as the level script's <c>menu NAME</c>.</summary>
-    public string StateName => messageToPrint ? "message" : !menuactive ? "closed" : currentMenu.Name;
+    public string StateName => messageToPrint ? "message" : !menuactive ? "closed" : WaitingBinding is not null ? "binding" : currentMenu.Name;
 }

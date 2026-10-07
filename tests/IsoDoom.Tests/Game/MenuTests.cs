@@ -77,9 +77,10 @@ public class MenuTests
             Keys(menu, Down);
             seen.Add(menu.itemOn);
         }
-        Assert.Equal(new[] { 1, 2, 3, 5, 7, 0, 1 }, seen);
+        Assert.Equal(new[] { 1, 2, 3, 5, 7, 8, 0 }, seen); // 8: More Options (T7.3)
 
         // a letter jumps to the next item with it (vanilla's 'm' finds MESSAGES then MOUSE SENSITIVITY)
+        Keys(menu, Down);
         Keys(menu, 'm');
         Assert.Equal(5, menu.itemOn);
         Keys(menu, 'm');

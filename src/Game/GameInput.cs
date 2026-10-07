@@ -28,7 +28,11 @@ public sealed class GameInput
     /// <summary>The weapon slot actions <c>weapon_1</c>–<c>weapon_8</c>.</summary>
     public static string Weapon(int slot) => "weapon_" + slot;
 
-    /// <summary>Every action the game reads (the level check fails when one is missing).</summary>
+    /// <summary>T7.3: the menus' actions (Chocolate Doom's <c>key_menu_*</c>, rebindable: <see cref="Settings.MenuActions"/>).</summary>
+    public const string MenuOpen = "menu_open", MenuUp = "menu_up", MenuDown = "menu_down", MenuLeft = "menu_left", MenuRight = "menu_right";
+    public const string MenuSelect = "menu_select", MenuBack = "menu_back", MenuYes = "menu_yes", MenuNo = "menu_no";
+
+    /// <summary>Every action the game reads, the menus' too (the level check fails when one is missing).</summary>
     public static string[] Actions()
     {
         var actions = new System.Collections.Generic.List<string>
@@ -38,6 +42,7 @@ public sealed class GameInput
         };
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
             actions.Add(Weapon(i));
+        actions.AddRange(new[] { MenuOpen, MenuUp, MenuDown, MenuLeft, MenuRight, MenuSelect, MenuBack, MenuYes, MenuNo });
         return actions.ToArray();
     }
 
@@ -46,6 +51,7 @@ public sealed class GameInput
 
     private readonly InputLatches _latches = new();
     private bool _cursorMoved;
+    private float _mouseX;
 
     /// <summary>The move axes, screen-relative (X right, Y up), each in [−1, 1]; keys give whole steps (W+D = (1, 1)).</summary>
     public static Vector2 Move() => new(Input.GetAxis(MoveLeft, MoveRight), Input.GetAxis(MoveDown, MoveUp));
@@ -53,8 +59,12 @@ public sealed class GameInput
     /// <summary>The run key is held.</summary>
     public static bool RunHeld() => Input.IsActionPressed(Run);
 
-    /// <summary>Records mouse motion (call from <c>_Input</c>): the cursor takes over the aim.</summary>
-    public void CursorMoved() => _cursorMoved = true;
+    /// <summary>Records mouse motion (call from <c>_Input</c>): the cursor takes over the aim; <paramref name="dx"/> (pixels) turns as vanilla's mouse (T7.3).</summary>
+    public void CursorMoved(float dx = 0)
+    {
+        _cursorMoved = true;
+        _mouseX += dx;
+    }
 
     /// <summary>
     /// T6.6: latches a next or previous weapon press from an input event (call
@@ -106,6 +116,7 @@ public sealed class GameInput
             TurnLeft = Input.IsActionPressed(TurnLeft),
             TurnRight = Input.IsActionPressed(TurnRight),
             CursorMoved = _cursorMoved,
+            MouseX = _mouseX,
             Cursor = cursor,
             Attack = _latches.Attack,
             Use = _latches.Use,
@@ -115,6 +126,7 @@ public sealed class GameInput
         };
         _latches.Clear();
         _cursorMoved = false;
+        _mouseX = 0;
         return input;
     }
 

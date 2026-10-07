@@ -71,8 +71,12 @@ public sealed partial class World
     /// <summary>The game settings (doomstat.h <c>gamemode</c>, <c>gameskill</c>, <c>netgame</c>, <c>deathmatch</c>, <c>nomonsters</c>).</summary>
     public readonly SpawnSettings settings;
 
-    /// <summary>The deviations from vanilla in use (SPEC §6.3).</summary>
-    public readonly Tweaks tweaks;
+    /// <summary>
+    /// The deviations from vanilla in use (SPEC §6.3). T7.3: the options menu
+    /// changes the aim assist's strength between tics, so it is not read-only
+    /// (a lockstep game would send the change with the tic's commands).
+    /// </summary>
+    public Tweaks tweaks;
 
     public skill_t gameskill => settings.gameskill;
     public GameMode gamemode => settings.gamemode;

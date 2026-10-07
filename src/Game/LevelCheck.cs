@@ -119,6 +119,7 @@ public partial class LevelCheck : Godot.Node
             CheckAllMaps();
             CheckGameFlow(); // T7.1: the title loop, a new game, the pause
             CheckMenus(); // T7.2: the menus through the input glue
+            CheckSettings(); // T7.3: every setting applies at once and survives a restart (through a file of its own)
 
             string map = RenderMapName();
             _scene.LoadMap(map);

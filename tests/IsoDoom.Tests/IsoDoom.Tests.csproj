@@ -33,6 +33,8 @@
     <Compile Include="../../src/Game/FFinale.cs" Link="Game/FFinale.cs" />
     <Compile Include="../../src/Game/ScreenGraphics.cs" Link="Game/ScreenGraphics.cs" />
     <Compile Include="../../src/Game/MMenu.cs" Link="Game/MMenu.cs" />
+    <Compile Include="../../src/Game/MMenu.Setup.cs" Link="Game/MMenu.Setup.cs" />
+    <Compile Include="../../src/Game/Settings.cs" Link="Game/Settings.cs" />
     <Compile Include="../../src/Render/Fuzz.cs" Link="Render/Fuzz.cs" />
     <Compile Include="../../src/Render/DoorLids.cs" Link="Render/DoorLids.cs" />
   </ItemGroup>
