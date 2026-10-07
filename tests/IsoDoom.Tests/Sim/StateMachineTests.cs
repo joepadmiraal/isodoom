@@ -49,9 +49,9 @@ public class StateMachineTests
     {
         World world = NewWorld();
         mobj_t mo = world.players[0].mo!;
-        var psp = new pspdef_t();
         foreach (actionf_t action in Actions())
         {
+            var psp = new pspdef_t { state = statenum_t.S_CHAIN1 }; // (A_FireCGun's flash follows the frame)
             if (World.IsWeaponAction(action))
             {
                 world.A_CallWeapon(action, world.players[0], psp);

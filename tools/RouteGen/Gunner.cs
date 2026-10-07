@@ -6,8 +6,8 @@ using IsoDoom.Sim;
 namespace IsoDoom.Tools.RouteGen;
 
 /// <summary>
-/// T6.4: the player's stand-in gun for monster routes (until T6.6 ports the
-/// weapons): after every tic of a <see cref="Steer"/> it notes the monsters
+/// T6.4: the player's stand-in gun for monster routes (from before T6.6
+/// ported the weapons; with <see cref="Guns"/> it fires them): after every tic of a <see cref="Steer"/> it notes the monsters
 /// that attacked (entered their melee or missile state) and, every
 /// <see cref="Every"/> tics, "shoots" the nearest of them that is still
 /// alive: an <c>alert</c> (the shot's noise, as <c>P_FireWeapon</c>) and a
@@ -41,6 +41,13 @@ public sealed class Gunner
     /// (nearer ones, or ones out of sight, get a <c>damage</c> event as before).
     /// </summary>
     public bool Rockets;
+
+    /// <summary>
+    /// T6.6: shoot with the player's weapon (<c>BT_ATTACK</c>, turning
+    /// towards the target every tic) from <see cref="Clear"/>, at the nearest
+    /// monster in sight that attacked, instead of route events.
+    /// </summary>
+    public bool Guns;
 
     /// <summary>T6.5: the nearest a rocket's target may be (its blast reaches 128 units).</summary>
     public double RocketMin = 200;
@@ -92,7 +99,7 @@ public sealed class Gunner
             _shot.Remove(m);
             Kills[m.type.ToString()] = Kills.GetValueOrDefault(m.type.ToString()) + 1;
         }
-        if (!Firing || Rockets || me.health <= 0 || --_wait > 0)
+        if (!Firing || Rockets || Guns || me.health <= 0 || --_wait > 0)
             return;
         Shoot();
     }
@@ -139,6 +146,22 @@ public sealed class Gunner
     {
         for (int i = 0; i < max && _attacked.Any(m => m.health > 0 && m.function != think_t.REMOVED); i++)
         {
+            if (Guns)
+            {
+                mobj_t me = _g.Mo;
+                mobj_t? target = _attacked.Where(m => m.health > 0 && m.function != think_t.REMOVED && _g.w.P_CheckSight(me, m))
+                    .OrderBy(m => Dist(m, me)).FirstOrDefault();
+                if (Firing && me.health > 0 && target != null)
+                {
+                    _shot.Add(target);
+                    _g.Fire(target.x / (double)FU, target.y / (double)FU);
+                }
+                else
+                {
+                    _g.Wait(1);
+                }
+                continue;
+            }
             if (Rockets && Firing && _g.Mo.health > 0 && --_wait <= 0)
                 Shoot();
             _g.Wait(1);

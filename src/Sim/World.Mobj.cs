@@ -725,7 +725,8 @@ public sealed partial class World
         p.fixedcolormap = 0;
         p.viewheight = player_t.VIEWHEIGHT;
 
-        // setup gun psprite: P_SetupPsprites (p) (T6.6)
+        // setup gun psprite
+        P_SetupPsprites(p);
 
         // give all cards in death match mode
         if (deathmatch != 0)

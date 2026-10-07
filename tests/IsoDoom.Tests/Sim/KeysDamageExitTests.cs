@@ -332,7 +332,7 @@ public class KeysDamageExitTests
         Assert.NotEqual((mobjflag_t)0, me.flags & mobjflag_t.MF_CORPSE);
         Assert.Equal(56 * FRACUNIT / 4, me.height);
         Assert.Equal(1, p.frags[0]); // an environment kill counts against the player
-        Assert.Contains("P_DropWeapon()", world.unported);
+        Assert.Equal(statenum_t.S_PISTOLDOWN, p.psprites[World.ps_weapon].state); // P_DropWeapon (T6.6)
 
         // Dead: no more damage, no movement (P_DeathThink is T6.12).
         int x = me.x;

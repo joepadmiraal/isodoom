@@ -1,3 +1,5 @@
+using System;
+
 namespace IsoDoom.Game;
 
 /// <summary>
@@ -24,6 +26,12 @@ public sealed class InputLatches
     /// <summary>The weapon slot pressed since the last <see cref="Clear"/> (1–8), or 0.</summary>
     public int Weapon { get; private set; }
 
+    /// <summary>T6.6: the next (+1) or previous (−1) weapon asked for since the last <see cref="Clear"/> (the last one asked), or 0.</summary>
+    public int WeaponStep { get; private set; }
+
+    /// <summary>T6.6: latches a next (+1) or previous (−1) weapon press (an input event: the mouse wheel's presses last no frame).</summary>
+    public void StepWeapon(int direction) => WeaponStep = Math.Sign(direction);
+
     /// <summary>
     /// Latches one poll in process frame <paramref name="frame"/>: the held
     /// buttons, and on the frame's first poll only, the edges pressed in it.
@@ -44,6 +52,6 @@ public sealed class InputLatches
     public void Clear()
     {
         Attack = Use = RunToggle = false;
-        Weapon = 0;
+        Weapon = WeaponStep = 0;
     }
 }

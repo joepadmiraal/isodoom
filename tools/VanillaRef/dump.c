@@ -40,7 +40,10 @@
 // weapontype_t i) and the mobjs (every
 // P_MobjThinker thinker, in thinker order) as COUNT:HASH, HASH the 32-bit
 // FNV-1a (word-wise, 8 hex digits) of each one's type, state, tics, x, y, z,
-// angle, flags and health; then (T5.9) exit: 0, or 1 (2) when the
+// angle, flags and health; then (T6.6) the weapon as
+// READY:PENDING:EXTRALIGHT:REFIRE:ATTACKDOWN:WSTATE:WTICS:WSX:WSY:FSTATE:FTICS:FSX:FSY
+// (readyweapon, pendingweapon, the weapon and flash psprites' statenum_t,
+// tics, sx and sy; state -1 for none); then (T5.9) exit: 0, or 1 (2) when the
 // tic left the level by its exit (secret exit): gameaction is ga_completed.
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
@@ -273,6 +276,12 @@ void dump_tic(void)
         count++;
     }
     fprintf(ticfile, "%d:%08x ", count, hash);
+    // The weapon and its psprites (T6.6).
+    fprintf(ticfile, "%d:%d:%d:%d:%d", p->readyweapon, p->pendingweapon, p->extralight, p->refire, p->attackdown ? 1 : 0);
+    for (int i = 0; i < NUMPSPRITES; i++)
+        fprintf(ticfile, ":%d:%d:%d:%d", p->psprites[i].state ? (int)(p->psprites[i].state - states) : -1,
+                p->psprites[i].tics, p->psprites[i].sx, p->psprites[i].sy);
+    fputc(' ', ticfile);
     // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
     extern boolean secretexit;
     extern gameaction_t gameaction;

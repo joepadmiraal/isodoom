@@ -1,6 +1,7 @@
 using System;
 using IsoDoom.Map;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Game;
 
@@ -44,6 +45,9 @@ public struct TiccmdInput
 
     /// <summary>The weapon slot key pressed since the last tic, 1–8 (vanilla's keys '1'–'8'), or 0.</summary>
     public int Weapon;
+
+    /// <summary>T6.6: the next (+1) or previous (−1) weapon asked for since the last tic (the mouse wheel, LB/RB), or 0; it wins over <see cref="Weapon"/>.</summary>
+    public int WeaponStep;
 }
 
 /// <summary>Where the aim of <see cref="TiccmdBuilder"/> comes from.</summary>
@@ -111,7 +115,13 @@ public sealed class TiccmdBuilder
     /// facing <paramref name="playerAngle"/> (BAM), under <paramref name="tweaks"/>,
     /// with screen up pointing to world direction <paramref name="screenUp"/> (BAM, 0 = east, <c>ANG90</c> = north).
     /// </summary>
-    public ticcmd_t G_BuildTiccmd(in TiccmdInput input, Tweaks tweaks, uint screenUp, int playerX, int playerY, uint playerAngle)
+    /// <para>
+    /// T6.6: a <see cref="TiccmdInput.WeaponStep"/> picks the next or previous
+    /// weapon <paramref name="player"/> can select (<see cref="G_NextWeapon"/>;
+    /// without a player it is ignored).
+    /// </para>
+    public ticcmd_t G_BuildTiccmd(in TiccmdInput input, Tweaks tweaks, uint screenUp, int playerX, int playerY, uint playerAngle,
+        player_t? player = null, GameMode gamemode = GameMode.shareware)
     {
         var cmd = new ticcmd_t();
         if (input.RunToggle)
@@ -184,9 +194,84 @@ public sealed class TiccmdBuilder
             cmd.buttons |= buttoncode_t.BT_ATTACK;
         if (input.Use)
             cmd.buttons |= buttoncode_t.BT_USE;
-        if (input.Weapon is >= 1 and <= WeaponSlots)
+        if (input.WeaponStep != 0 && player is not null)
+            cmd.buttons |= (byte)(buttoncode_t.BT_CHANGE | ((int)G_NextWeapon(player, gamemode, input.WeaponStep) << buttoncode_t.BT_WEAPONSHIFT));
+        else if (input.Weapon is >= 1 and <= WeaponSlots)
             cmd.buttons |= (byte)(buttoncode_t.BT_CHANGE | ((input.Weapon - 1) << buttoncode_t.BT_WEAPONSHIFT));
         return cmd;
+    }
+
+    /// <summary>
+    /// Chocolate Doom's g_game.c <c>weapon_order_table</c>: the weapons in
+    /// cycling order, each with the weapon number its <c>BT_CHANGE</c> carries
+    /// (p_user.c turns the fist into the chainsaw and the shotgun into the
+    /// super shotgun when they are owned).
+    /// </summary>
+    private static readonly (weapontype_t weapon, weapontype_t weapon_num)[] weapon_order_table =
+    {
+        (weapontype_t.wp_fist, weapontype_t.wp_fist),
+        (weapontype_t.wp_chainsaw, weapontype_t.wp_fist),
+        (weapontype_t.wp_pistol, weapontype_t.wp_pistol),
+        (weapontype_t.wp_shotgun, weapontype_t.wp_shotgun),
+        (weapontype_t.wp_supershotgun, weapontype_t.wp_shotgun),
+        (weapontype_t.wp_chaingun, weapontype_t.wp_chaingun),
+        (weapontype_t.wp_missile, weapontype_t.wp_missile),
+        (weapontype_t.wp_plasma, weapontype_t.wp_plasma),
+        (weapontype_t.wp_bfg, weapontype_t.wp_bfg),
+    };
+
+    /// <summary>Chocolate Doom's g_game.c <c>WeaponSelectable</c>: whether the next/previous weapon keys may stop at <paramref name="weapon"/>.</summary>
+    public static bool WeaponSelectable(player_t player, GameMode gamemode, weapontype_t weapon)
+    {
+        // Can't select the super shotgun in Doom 1.
+        if (weapon == weapontype_t.wp_supershotgun && gamemode != GameMode.commercial)
+            return false;
+
+        // These weapons aren't available in shareware.
+        if ((weapon == weapontype_t.wp_plasma || weapon == weapontype_t.wp_bfg) && gamemode == GameMode.shareware)
+            return false;
+
+        // Can't select a weapon if we don't own it.
+        if (!player.weaponowned[(int)weapon])
+            return false;
+
+        // Can't select the fist if we have the chainsaw, unless
+        // we also have the berserk pack.
+        if (weapon == weapontype_t.wp_fist
+            && player.weaponowned[(int)weapontype_t.wp_chainsaw]
+            && player.powers[(int)powertype_t.pw_strength] == 0)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Chocolate Doom's g_game.c <c>G_NextWeapon</c> (T6.6): the weapon number
+    /// for <c>BT_CHANGE</c> of the next (<paramref name="direction"/> +1) or
+    /// previous (−1) selectable weapon after the pending one (else the ready one), in
+    /// <see cref="weapon_order_table"/>'s order, wrapping round.
+    /// </summary>
+    public static weapontype_t G_NextWeapon(player_t player, GameMode gamemode, int direction)
+    {
+        // Find index in the table.
+        weapontype_t weapon = player.pendingweapon == weapontype_t.wp_nochange ? player.readyweapon : player.pendingweapon;
+
+        int i;
+        for (i = 0; i < weapon_order_table.Length; ++i)
+        {
+            if (weapon_order_table[i].weapon == weapon)
+                break;
+        }
+
+        // Switch weapon. Don't loop forever.
+        int start_i = i;
+        do
+        {
+            i += direction;
+            i = (i + weapon_order_table.Length) % weapon_order_table.Length;
+        } while (i != start_i && !WeaponSelectable(player, gamemode, weapon_order_table[i].weapon));
+
+        return weapon_order_table[i].weapon_num;
     }
 
     /// <summary>

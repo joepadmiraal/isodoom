@@ -38,7 +38,8 @@ namespace IsoDoom.Tests.Sim;
 /// makes a noise, as a shot would) and (T6.5) <c>rocket</c> (player 1 fires
 /// a rocket, <c>P_SpawnPlayerMissile</c>) run at the start of the next tic, before
 /// the players think (<see cref="RouteEvent"/>): stand-ins for the player's
-/// shots until its weapons are ported (T6.6).
+/// shots from before its weapons were ported (T6.6; <c>BT_ATTACK</c> fires
+/// them since, and <c>BT_CHANGE</c> changes them).
 /// </para>
 /// <para>
 /// The reference dump (<c>NAME.vanilla</c>; dump.c) has one line per tic,
@@ -62,7 +63,9 @@ namespace IsoDoom.Tests.Sim;
 /// the <c>inventory</c>, <c>ITEMCOUNT:CLIP:SHELL:CELL:MISL:OWNED:BACKPACK</c>
 /// (<c>OWNED</c>: bit <c>i</c> for <c>weapontype_t</c> <c>i</c>), and the mobjs' states, <c>things</c>: <c>COUNT:HASH</c> over every mobj in
 /// thinker order (<see cref="ThingsHash"/>: every map thing animates as in
-/// vanilla), then (T5.9)
+/// vanilla), then (T6.6) the <c>weapon</c>: <c>READY:PENDING:EXTRALIGHT:REFIRE:ATTACKDOWN</c>
+/// and the weapon's and the flash's psprite as <c>STATE:TICS:SX:SY</c>
+/// (<see cref="Weapon"/>), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
 /// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
@@ -77,7 +80,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "exit" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "exit" };
 
     public string Name { get; }
     public string Path { get; }
@@ -233,7 +236,19 @@ public sealed class VanillaRoute
         int exit = world.gameaction == gameaction_t.ga_completed ? world.secretexit ? 2 : 1 : 0;
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
-            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + exit.ToString(CultureInfo.InvariantCulture);
+            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + exit.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// The dump's <c>weapon</c> column (T6.6): <c>READY:PENDING:EXTRALIGHT:REFIRE:ATTACKDOWN</c>
+    /// and each psprite's <c>STATE:TICS:SX:SY</c> (state −1 for none).
+    /// </summary>
+    public static string Weapon(player_t p)
+    {
+        var v = new List<int> { (int)p.readyweapon, (int)p.pendingweapon, p.extralight, p.refire, p.attackdown ? 1 : 0 };
+        foreach (pspdef_t psp in p.psprites)
+            v.AddRange(new[] { psp.state == statenum_t.S_NULL ? -1 : (int)psp.state, psp.tics, psp.sx, psp.sy });
+        return string.Join(':', v.Select(x => x.ToString(CultureInfo.InvariantCulture)));
     }
 
     /// <summary>The dump's <c>inventory</c> column (T6.1).</summary>

@@ -1,0 +1,365 @@
+# The weapons test map (T6.6, RouteTestMaps) with monsters: every shareware
+# weapon fired with BT_ATTACK and changed with BT_CHANGE, as vanilla's
+# psprites run them. In room A the pistol comes up; weapon key 1 lowers it
+# and raises the fist, which punches the zombieman ahead to death (the
+# noise wakes the room); key 2 brings the pistol back, which shoots the
+# monsters near (held: refire); the shotgun is walked over (the pickup
+# switches to it) and shoots the rest, then the barrel (it explodes). Across
+# the W1 line the door to room B opens; the rocket launcher is walked over
+# and fires its two rockets at the nearest monster at least 200 units
+# away (held: A_ReFire), then
+# P_CheckAmmo switches to the shotgun; the chaingun is walked over and
+# shoots the rest. Across the next W1 line the door to room C opens; the
+# chainsaw is walked over and saws the zombiemen (the pull forward); key 1
+# keeps it (the chainsaw stands for the fist); key 4 while sawing changes
+# to the chaingun after the stroke, which empties into the east wall until
+# P_CheckAmmo switches again. Written by tools/RouteGen (testmap-weapons).
+iwad testmap
+map weapons
+monsters
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x15
+0 0 0 4
+0 0 0 0 x30
+25 0 0 0 x7
+11 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x3
+1 0 0 0 x2
+2 0 0 0 x2
+0 0 0 0 x8
+0 0 0 1 x76
+0 0 1 1
+0 0 0 1 x4
+0 0 1 1
+0 0 0 1 x16
+0 0 1 1
+0 0 0 1 x24
+0 0 -2 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -2 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -2 1
+0 0 0 1
+0 0 1 1
+0 0 0 1
+0 0 -2 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -2 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x7
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x2
+0 0 1 1
+0 0 0 1
+0 0 1 1
+0 0 0 1 x2
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x13
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x6
+0 0 1 1
+0 0 0 1 x4
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x5
+0 0 1 1
+0 0 0 1
+0 0 1 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x19
+0 0 -1 1
+0 0 0 1 x19
+0 0 0 0
+0 0 0 12
+0 0 0 0 x48
+0 0 -96 1
+0 0 0 1 x2
+0 0 1 1 x3
+0 0 0 1
+0 0 1 1
+0 0 0 1
+0 0 1 1
+0 0 2 1
+0 0 0 1
+0 0 1 1
+0 0 0 1
+0 0 3 1
+0 0 0 1
+0 0 1 1
+0 0 0 1
+0 0 4 1
+0 0 0 1 x2
+0 0 1 1
+0 0 0 1 x2
+0 0 5 1
+0 0 0 1 x3
+0 0 9 1
+0 0 0 1 x9
+0 0 7 1
+0 0 0 1 x3
+0 0 7 1
+0 0 1 1 x3
+0 0 5 1
+0 0 0 0
+0 0 36 1
+0 0 -1 1
+0 0 0 1 x23
+0 0 -1 1
+0 0 0 1 x57
+0 0 0 0
+25 1 8 0
+25 0 0 0 x24
+25 1 0 0
+25 0 0 0 x19
+25 1 0 0
+16 0 0 0
+-3 0 0 0
+-2 0 0 0 x2
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x2
+0 -1 0 0
+-1 1 0 0
+-1 -1 0 0
+-1 1 0 0
+0 -1 0 0
+-1 1 0 0
+0 -1 0 0
+-1 1 0 0
+0 -1 0 0
+0 1 0 0
+-1 -1 0 0
+0 0 0 0 x17
+0 0 -67 1
+0 0 0 1 x3
+0 0 0 0 x31
+25 0 62 0
+25 0 0 0 x10
+25 1 0 0
+25 0 0 0 x6
+0 0 0 0
+-2 0 0 0 x2
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x36
+25 0 0 0 x17
+0 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x7
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x18
+0 0 -48 1
+0 0 0 1 x5
+0 0 -1 1
+0 0 0 1 x7
+0 0 -1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x37
+0 0 0 0
+25 3 50 0
+25 0 0 0 x6
+25 1 0 0
+25 0 0 0 x6
+25 1 0 0
+25 0 0 0 x5
+5 0 0 0
+-2 0 0 0 x2
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x17
+0 0 118 1
+0 0 0 1 x3
+0 0 4 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x7
+0 0 2 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 0
+25 0 127 0
+25 0 0 0 x20
+-2 0 0 0 x4
+-1 0 0 0 x8
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x37
+25 0 0 0 x11
+16 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x7
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x18
+25 0 0 0 x13
+7 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x14
+0 0 0 1 x5
+0 0 4 1
+0 0 0 1 x3
+0 0 4 1
+0 0 0 1 x3
+0 0 3 1
+0 0 0 1 x3
+0 0 4 1
+0 0 0 1 x3
+0 0 3 1
+0 0 0 1 x3
+0 0 3 1
+0 0 0 1 x3
+0 0 3 1
+0 0 0 1 x3
+0 0 3 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x3
+0 0 1 1
+0 0 0 1 x3
+0 0 2 1
+0 0 0 1 x24
+0 0 1 1
+0 0 0 1 x12
+0 0 1 1
+0 0 0 1 x7
+0 0 1 1
+0 0 -13 1 x2
+0 0 0 1 x2
+0 0 -14 1 x2
+0 0 -1 1 x2
+0 0 -17 1
+0 0 -16 1
+0 0 0 1
+0 0 1 1
+0 0 0 1
+0 0 1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1
+0 0 -1 1
+0 0 0 1 x2
+0 0 -1 1
+0 0 0 1
+0 0 -1 1
+0 0 0 1 x3
+0 0 -1 1
+0 0 0 1 x3
+0 0 3 1 x2
+0 0 0 1 x2
+0 0 3 1
+0 0 5 1
+0 0 1 1
+0 0 2 1
+0 0 0 0
+0 0 0 4
+0 0 0 0 x10
+0 0 -53 1
+0 0 -1 1
+0 0 0 1
+0 0 -1 1
+0 0 0 1
+0 0 -1 1
+0 0 0 29
+0 0 0 1 x12
+0 0 0 0 x23
+0 0 -3 1
+0 0 0 1 x287
+0 0 0 0 x40

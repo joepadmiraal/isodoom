@@ -2,6 +2,7 @@ using System;
 using IsoDoom.Game;
 using IsoDoom.Map;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 using IsoDoom.Tests.Support;
 using Xunit;
 
@@ -187,6 +188,48 @@ public class TiccmdBuilderTests
         }
         Assert.Equal(0, Build(new TiccmdInput { Weapon = 9 }).buttons);
         Assert.Equal(buttoncode_t.BT_ATTACK, Build(new TiccmdInput { Attack = true }, Tweaks.Vanilla).buttons);
+    }
+
+    /// <summary>T6.6: the next/previous weapon (Chocolate Doom's <c>G_NextWeapon</c>) as <c>BT_CHANGE</c> with a weapon number.</summary>
+    [Fact]
+    public void NextAndPreviousWeapon()
+    {
+        var p = new player_t { readyweapon = weapontype_t.wp_pistol, pendingweapon = weapontype_t.wp_nochange };
+        p.weaponowned[(int)weapontype_t.wp_fist] = p.weaponowned[(int)weapontype_t.wp_pistol] = true;
+        weapontype_t Step(int direction, GameMode mode = GameMode.shareware, int slot = 0)
+        {
+            byte b = new TiccmdBuilder().G_BuildTiccmd(new TiccmdInput { WeaponStep = direction, Weapon = slot }, TwinStick, IsoUp, 0, 0, 0, p, mode).buttons;
+            Assert.Equal(buttoncode_t.BT_CHANGE, b & buttoncode_t.BT_CHANGE);
+            return (weapontype_t)((b & buttoncode_t.BT_WEAPONMASK) >> buttoncode_t.BT_WEAPONSHIFT);
+        }
+        Assert.Equal(weapontype_t.wp_fist, Step(1)); // wraps round past the weapons not owned
+        Assert.Equal(weapontype_t.wp_fist, Step(-1));
+        Assert.Equal(weapontype_t.wp_fist, Step(1, slot: 3)); // the step wins over a slot key
+        p.weaponowned[(int)weapontype_t.wp_shotgun] = p.weaponowned[(int)weapontype_t.wp_missile] = true;
+        Assert.Equal(weapontype_t.wp_shotgun, Step(1));
+        Assert.Equal(weapontype_t.wp_fist, Step(-1));
+        p.pendingweapon = weapontype_t.wp_shotgun; // from the pending weapon
+        Assert.Equal(weapontype_t.wp_missile, Step(1));
+        p.pendingweapon = weapontype_t.wp_nochange;
+        // the chainsaw stands for the fist (weapon number 0), which it hides without berserk
+        p.weaponowned[(int)weapontype_t.wp_chainsaw] = true;
+        p.readyweapon = weapontype_t.wp_missile;
+        Assert.Equal(weapontype_t.wp_fist, Step(1)); // the chainsaw's number
+        p.readyweapon = weapontype_t.wp_chainsaw;
+        Assert.Equal(weapontype_t.wp_missile, Step(-1)); // not the fist
+        p.powers[(int)powertype_t.pw_strength] = 1;
+        Assert.Equal(weapontype_t.wp_fist, Step(-1));
+        p.powers[(int)powertype_t.pw_strength] = 0;
+        // plasma and BFG only outside shareware, the super shotgun only in Doom II
+        p.weaponowned[(int)weapontype_t.wp_plasma] = p.weaponowned[(int)weapontype_t.wp_supershotgun] = true;
+        p.readyweapon = weapontype_t.wp_missile;
+        Assert.Equal(weapontype_t.wp_fist, Step(1));
+        Assert.Equal(weapontype_t.wp_plasma, Step(1, GameMode.registered));
+        p.readyweapon = weapontype_t.wp_shotgun;
+        Assert.Equal(weapontype_t.wp_missile, Step(1));
+        Assert.Equal(weapontype_t.wp_shotgun, Step(1, GameMode.commercial)); // the super shotgun's number
+        // without a player the step is ignored
+        Assert.Equal(0, new TiccmdBuilder().G_BuildTiccmd(new TiccmdInput { WeaponStep = 1 }, TwinStick, IsoUp, 0, 0, 0).buttons);
     }
 
     [Fact]

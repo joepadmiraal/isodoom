@@ -101,7 +101,7 @@ namespace IsoDoom.Game;
 /// the sector's floor or ceiling towards HEIGHT by SPEED units (default 2, a
 /// door's speed) at the end of each tic, as a mover thinker would, with
 /// <c>P_ChangeSector</c>; it runs with the tics (queue some, or <c>sim live</c>).
-/// <c>missile [TYPE]</c> (T6.5, a debug shot until the weapons, T6.6) makes the player
+/// <c>missile [TYPE]</c> (T6.5, a debug shot from before the weapons, T6.6) makes the player
 /// fire a missile of <c>mobjtype_t</c> <c>MT_TYPE</c> (default <c>rocket</c>; e.g.
 /// <c>troopshot</c>, <c>bruisershot</c>) through <c>P_SpawnPlayerMissile</c> (along its
 /// facing, aimed as vanilla) before the next tic queued after it (scripted tics) or the next

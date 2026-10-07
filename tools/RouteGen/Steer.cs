@@ -135,13 +135,33 @@ public sealed class Steer
             Tic(0, 0, 0, 0);
     }
 
-    private int TurnTo(double x, double y)
+    /// <summary>The demo's angleturn byte that turns the player towards (x, y) (clamped to ±127).</summary>
+    public int TurnTo(double x, double y)
     {
         double want = Math.Atan2(y - Y, x - X);
         long wantBam = (long)Math.Round(want / (2 * Math.PI) * 4294967296.0);
         int diff = unchecked((int)((uint)wantBam - Mo.angle));
         return Math.Clamp((int)Math.Round(diff / 16777216.0), -127, 127);
     }
+
+    /// <summary>T6.6: turns towards (x, y) with fire held, one tic (BT_ATTACK: the weapon fires as vanilla's).</summary>
+    public void Fire(double x, double y) => Tic(0, 0, TurnTo(x, y), IsoDoom.Sim.buttoncode_t.BT_ATTACK);
+
+    /// <summary>
+    /// T6.6: fires at <paramref name="target"/>, turning towards it every tic,
+    /// until it dies (or is removed) or <paramref name="max"/> tics pass; then
+    /// releases fire for a tic.
+    /// </summary>
+    public void FireAt(mobj_t target, int max = 300)
+    {
+        for (int i = 0; i < max && target.health > 0 && target.function != think_t.REMOVED; i++)
+            Fire(target.x / (double)FU, target.y / (double)FU);
+        Tic(0, 0, 0, 0);
+    }
+
+    /// <summary>T6.6: presses weapon key <paramref name="weapon"/> (weapontype_t: 0 the fist … 7 the chainsaw) for one tic (BT_CHANGE).</summary>
+    public void Change(IsoDoom.Sim.weapontype_t weapon) =>
+        Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_CHANGE | ((int)weapon << IsoDoom.Sim.buttoncode_t.BT_WEAPONSHIFT));
 
     /// <summary>Turns towards (x, y) in one tic.</summary>
     public void Face(double x, double y) => Tic(0, 0, TurnTo(x, y), 0);

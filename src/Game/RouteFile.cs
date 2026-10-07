@@ -163,9 +163,10 @@ public enum RouteEventKind
 /// <summary>
 /// T6.4: a scripted act of player 1 in a route, run at the start of tic
 /// <see cref="Tic"/> (0-based) before the players think, in the vanilla
-/// reference (<c>dump.c</c>'s <c>dump_pretic</c>) and the sim alike. Until
-/// the player's weapons are ported (T6.6) these stand in for its shots, so
-/// that monster routes can wake and kill monsters:
+/// reference (<c>dump.c</c>'s <c>dump_pretic</c>) and the sim alike. Before
+/// the player's weapons were ported (T6.6; <c>BT_ATTACK</c> fires them since)
+/// these stood in for its shots, so that monster routes can wake and kill
+/// monsters; they stay for scripted cases:
 /// <see cref="RouteEventKind.Damage"/> calls <c>P_DamageMobj(thing, mo, mo, AMOUNT)</c>
 /// (<c>mo</c> the player's mobj) on the first mobj in thinker order that
 /// was spawned at map point (<see cref="X"/>, <see cref="Y"/>)

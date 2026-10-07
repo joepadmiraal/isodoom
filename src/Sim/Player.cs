@@ -74,7 +74,8 @@ public enum playerstate_t
 
 /// <summary>
 /// d_player.h <c>player_t</c>: the player's state beyond its mobj. The
-/// <c>ticcmd</c> drives it (<see cref="World.P_PlayerThink"/>); the psprites (T6.6) come with their task.
+/// <c>ticcmd</c> drives it (<see cref="World.P_PlayerThink"/>), and its
+/// weapon through the psprites (p_pspr.c, T6.6).
 /// </summary>
 public sealed class player_t
 {
@@ -164,6 +165,9 @@ public sealed class player_t
     /// <summary>Player skin colorshift, 0-3 for which color to draw player.</summary>
     public int colormap;
 
+    /// <summary>Overlay view sprites (gun, etc): indexed by <see cref="World.ps_weapon"/> and <see cref="World.ps_flash"/>.</summary>
+    public readonly pspdef_t[] psprites = { new(), new() };
+
     /// <summary>True if secret level has been done.</summary>
     public bool didsecret;
 
@@ -193,6 +197,8 @@ public sealed class player_t
         damagecount = bonuscount = 0;
         attacker = null;
         extralight = fixedcolormap = colormap = 0;
+        foreach (pspdef_t psp in psprites)
+            psp.Clear();
         didsecret = false;
     }
 }

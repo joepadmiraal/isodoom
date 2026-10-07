@@ -40,6 +40,20 @@ public class InputLatchesTests
         Assert.Equal(5, latches.Weapon);
     }
 
+    /// <summary>T6.6: a next/previous weapon step latches until a tic takes it (the last one wins).</summary>
+    [Fact]
+    public void WeaponStepsLatchUntilATicTakesThem()
+    {
+        var latches = new InputLatches();
+        latches.StepWeapon(1);
+        latches.Poll(1, false, false, false, 0);
+        Assert.Equal(1, latches.WeaponStep);
+        latches.StepWeapon(-3);
+        Assert.Equal(-1, latches.WeaponStep);
+        latches.Clear();
+        Assert.Equal(0, latches.WeaponStep);
+    }
+
     [Fact]
     public void HeldButtonsLatchOnEveryPoll()
     {

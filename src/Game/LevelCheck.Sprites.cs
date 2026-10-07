@@ -279,6 +279,46 @@ public partial class LevelCheck
         _scene.SetTicFraction(1);
     }
 
+    private int _weaponMaps;
+
+    /// <summary>
+    /// T6.6: the weapon flash in the world. The console player's
+    /// <see cref="player_t.extralight"/> (1 and 2, the flash states') reaches
+    /// the level's <c>extralight</c> through <see cref="LevelScene.UpdateExtraLight"/>,
+    /// not with <see cref="LevelScene.WeaponLight"/> off; the player's firing
+    /// frame (<c>S_PLAY_ATK2</c>, PLAYF) draws full bright. Set directly, not
+    /// fired: a shot's noise would wake the monsters for the checks after it.
+    /// </summary>
+    private void CheckWeaponFlash(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || _scene.Mesh is not { } m)
+            return;
+        _weaponMaps++;
+        player_t p = world.players[world.consoleplayer];
+        foreach (int light in new[] { 1, 2, 0 })
+        {
+            p.extralight = light;
+            _scene.UpdateExtraLight();
+            if (m.ExtraLight != light)
+                Fail($"{map}: the player's extralight {light} is drawn as {m.ExtraLight}");
+        }
+        p.extralight = 2;
+        _scene.WeaponLight = false;
+        _scene.UpdateExtraLight();
+        if (m.ExtraLight != 0)
+            Fail($"{map}: with the weapon light off the player's extralight 2 is drawn as {m.ExtraLight}");
+        _scene.WeaponLight = true;
+        p.extralight = 0;
+        _scene.UpdateExtraLight();
+        statenum_t state = me.state;
+        int tics = me.tics;
+        world.P_SetMobjState(me, statenum_t.S_PLAY_ATK2);
+        if (!LevelScene.ThingEntry(me).FullBright)
+            Fail($"{map}: the player's firing frame (S_PLAY_ATK2) is not drawn full bright");
+        world.P_SetMobjState(me, state);
+        me.tics = tics;
+    }
+
     private int _teleportMaps;
 
     /// <summary>

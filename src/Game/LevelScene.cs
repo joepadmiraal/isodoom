@@ -59,6 +59,9 @@ namespace IsoDoom.Game;
 /// <c>--level-masked-back=mirror|off</c> (T3.1a, <see cref="MaskedBackFaces"/>:
 /// a masked middle on one side of a line only is drawn from behind too,
 /// mirrored, or as vanilla only from its own side; default mirror);
+/// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
+/// player's weapon flash, <c>player_t.extralight</c>, lights the level as
+/// vanilla's lights the view; default on);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
 /// <c>--level-monsters=on|off</c> (T5.7: off spawns no monsters, vanilla's
 /// <c>-nomonsters</c>, e.g. so the light specials' <c>P_Random</c> calls match
@@ -125,6 +128,15 @@ public partial class LevelScene : Node3D
 
     /// <summary>Whether one-sided masked middles are drawn from behind (T3.1a, <c>--level-masked-back</c>, key M); applied to every level.</summary>
     public MaskedBackFaces MaskedBacks { get; private set; } = MaskedBackFaces.Mirrored;
+
+    /// <summary>
+    /// T6.6: whether the console player's weapon flash (<see cref="player_t.extralight"/>,
+    /// 0–2, set by the flash states' <c>A_Light1</c>/<c>A_Light2</c>) goes to
+    /// <see cref="LevelMesh.SetExtraLight"/> every frame, lighting walls,
+    /// flats and sprites one or two light levels up as vanilla's r_main.c
+    /// <c>extralight</c> does the whole view (<c>--level-weapon-light</c>; SPEC §12 T6.6).
+    /// </summary>
+    public bool WeaponLight { get; set; } = true;
 
     /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
     public CutawaySettings Cutaway { get; set; } = new();
@@ -259,7 +271,7 @@ public partial class LevelScene : Node3D
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
         "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   F1 controls   F3 overlay\n"
-        + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, Ctrl+wheel zoom, O orthographic/perspective\n"
+        + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
 
@@ -360,6 +372,13 @@ public partial class LevelScene : Node3D
                 _playerLight = SpriteOptions.PlayerLight;
             if (WadLocator.GetUserArg("--level-masked-back") is string backs)
                 MaskedBacks = ParseMaskedBacks(backs);
+            if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
+                WeaponLight = weaponLight switch
+                {
+                    "on" or "vanilla" => true,
+                    "off" => false,
+                    _ => throw new ArgumentException($"--level-weapon-light: \"{weaponLight}\" (on or off)"),
+                };
             FreeFly = new FreeFlyCamera { Name = "FreeFly" };
             AddChild(FreeFly);
             CreateGameCamera();
@@ -676,6 +695,13 @@ public partial class LevelScene : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
+        // T6.6: the next/previous weapon (the wheel without Ctrl: the game camera zooms with it) for the game camera's next tic.
+        if (!IsCheckRun && IsoActive && !(e is InputEventWithModifiers { CtrlPressed: true } || Input.IsPhysicalKeyPressed(Key.Ctrl))
+            && GameInput.WeaponEvent(e))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (IsCheckRun || e is not InputEventKey { Pressed: true, Echo: false } key)
             return;
         switch (key.PhysicalKeycode)
@@ -752,6 +778,7 @@ public partial class LevelScene : Node3D
             UpdateCursor();
             RunTics(delta);
             PresentWorld();
+            UpdateExtraLight();
             FollowPlayer(delta);
             if (GetViewport().GetCamera3D() is Camera3D current)
                 Things?.UpdateRotations(current);
@@ -1106,6 +1133,20 @@ public partial class LevelScene : Node3D
     }
 
     /// <summary>
+    /// T6.6: the level's <c>extralight</c> (<see cref="LevelMesh.SetExtraLight"/>)
+    /// from the console player's weapon flash, stepped per tic as vanilla's
+    /// (0 with <see cref="WeaponLight"/> off or without a world).
+    /// </summary>
+    public void UpdateExtraLight()
+    {
+        if (Mesh is not { } mesh)
+            return;
+        int extralight = WeaponLight && World is { } world ? world.players[world.consoleplayer].extralight : 0;
+        if (mesh.ExtraLight != extralight)
+            mesh.SetExtraLight(extralight);
+    }
+
+    /// <summary>
     /// T5.6: whether a tic moved the player mobj without interpolation (a
     /// teleport: <see cref="mobj_t.interp"/> false after the tic), so the game
     /// camera snaps to it (<see cref="SnapCameraIfPending"/>) instead of
@@ -1187,9 +1228,11 @@ public partial class LevelScene : Node3D
             input = new TiccmdInput();
         mobj_t? mo = PlayerMobj;
         uint screenUp = Iso is not null ? GameInput.ScreenUp(Iso.GroundUp) : Tables.ANG90;
+        player_t? player = World?.players[World.consoleplayer];
+        GameMode mode = World?.gamemode ?? GameMode.shareware;
         return mo is null
-            ? TiccmdBuilder.G_BuildTiccmd(input, tweaks, screenUp, 0, 0, Tables.ANG90)
-            : TiccmdBuilder.G_BuildTiccmd(input, tweaks, screenUp, mo.x, mo.y, mo.angle);
+            ? TiccmdBuilder.G_BuildTiccmd(input, tweaks, screenUp, 0, 0, Tables.ANG90, player, mode)
+            : TiccmdBuilder.G_BuildTiccmd(input, tweaks, screenUp, mo.x, mo.y, mo.angle, player, mode);
     }
 
     /// <summary>A small cross at the screen centre (the free-fly camera's view direction; straight down it marks the floor the overlay names).</summary>
@@ -1305,7 +1348,27 @@ public partial class LevelScene : Node3D
         }
         return $"health {p.health}{(p.playerstate == playerstate_t.PST_DEAD ? " (dead)" : "")}   armor {p.armorpoints}{(p.armortype != 0 ? (p.armortype == 1 ? " green" : " blue") : "")}"
             + $"   keys {(keys.Count == 0 ? "none" : string.Join(", ", keys))}{(powers.Count == 0 ? "" : "   powers " + string.Join(", ", powers))}"
-            + $"   kills {p.killcount}/{world.totalkills}  items {p.itemcount}/{world.totalitems}  secrets {p.secretcount}/{world.totalsecret}";
+            + $"   kills {p.killcount}/{world.totalkills}  items {p.itemcount}/{world.totalitems}  secrets {p.secretcount}/{world.totalsecret}"
+            + $"\n{WeaponText(p)}";
+    }
+
+    /// <summary>
+    /// T6.6: the weapon line of the overlay (until the status bar, T6.11): the
+    /// ready weapon (and the pending one), its ammo, the weapons owned and every ammo count.
+    /// </summary>
+    public static string WeaponText(player_t p)
+    {
+        string Name(weapontype_t w) => w.ToString()[3..];
+        ammotype_t ammo = Info.weaponinfo[(int)p.readyweapon].ammo;
+        var owned = new List<string>();
+        for (int i = 0; i < p.weaponowned.Length; i++)
+        {
+            if (p.weaponowned[i])
+                owned.Add(Name((weapontype_t)i));
+        }
+        return $"weapon {Name(p.readyweapon)}{(p.pendingweapon != weapontype_t.wp_nochange ? $" -> {Name(p.pendingweapon)}" : "")}"
+            + $"{(ammo != ammotype_t.am_noammo ? $" ({p.ammo[(int)ammo]})" : "")}   owned {string.Join(", ", owned)}"
+            + $"   ammo {p.ammo[0]}/{p.maxammo[0]} bullets, {p.ammo[1]}/{p.maxammo[1]} shells, {p.ammo[3]}/{p.maxammo[3]} rockets, {p.ammo[2]}/{p.maxammo[2]} cells";
     }
 
     /// <summary>

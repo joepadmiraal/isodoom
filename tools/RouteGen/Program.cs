@@ -785,6 +785,45 @@ monsters
             Log("door 81 " + g.Monsters());
             Log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
+        ["e1m1-weapons"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 on skill 4 with monsters (T6.6): e1m1-monsters' way
+# from the start through door 4, the monsters that attacked shot with the
+# player's own weapons (BT_ATTACK, turning towards the nearest one in
+# sight every tic; no route events): the pistol, then the shotgun a
+# shotgun guy dropped (walked over: the pickup switches to it). Written by
+# tools/RouteGen (e1m1-weapons).
+iwad doom1
+skill 4
+monsters
+
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Guns = true };
+            IsoDoom.Sim.player_t p = g.w.players[0];
+            string State() => $"weapon {p.readyweapon} ammo {string.Join(",", p.ammo)} " + g.Monsters();
+            g.GoTo(1500, -2496);
+            Log("at door 4 " + State());
+            g.Door(4, 1544, -2496);
+            gun.Clear(400);
+            Log("door 4 clear " + State());
+            g.GoTo(1600, -2496);
+            gun.Clear(400);
+            Log("through door 4 " + State());
+            g.Wait(60);
+            gun.Clear(400);
+            Log("waited " + State());
+            // the shotgun a shotgun guy dropped: walk over it (the pickup switches to it)
+            if (g.w.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_SHOTGUN).OrderBy(m => System.Math.Abs(m.x - g.Mo.x) + System.Math.Abs(m.y - g.Mo.y)).FirstOrDefault() is { } sg)
+            {
+                g.GoTo(sg.x / 65536.0, sg.y / 65536.0, 4);
+                g.Wait(30);
+                Log("shotgun " + State());
+            }
+            g.Wait(100);
+            gun.Clear(400);
+            Log("waited " + State());
+            Log(gun.ToString());
+        }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
         ["e1m1-rockets"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 on skill 4 with monsters (T6.5): e1m1-monsters' way
 # through door 4, but the monsters that attacked are shot with rocket events
@@ -1106,6 +1145,125 @@ monsters
             g.Rocket();
             g.Wait(20);
             Log("rocket west from x 290 " + Missiles());
+        }, Monsters: true),
+        ["testmap-weapons"] = new(() => TestMapWad("weapons"), "E1M1", """
+# The weapons test map (T6.6, RouteTestMaps) with monsters: every shareware
+# weapon fired with BT_ATTACK and changed with BT_CHANGE, as vanilla's
+# psprites run them. In room A the pistol comes up; weapon key 1 lowers it
+# and raises the fist, which punches the zombieman ahead to death (the
+# noise wakes the room); key 2 brings the pistol back, which shoots the
+# monsters near (held: refire); the shotgun is walked over (the pickup
+# switches to it) and shoots the rest, then the barrel (it explodes). Across
+# the W1 line the door to room B opens; the rocket launcher is walked over
+# and fires its two rockets at the nearest monster at least 200 units
+# away (held: A_ReFire), then
+# P_CheckAmmo switches to the shotgun; the chaingun is walked over and
+# shoots the rest. Across the next W1 line the door to room C opens; the
+# chainsaw is walked over and saws the zombiemen (the pull forward); key 1
+# keeps it (the chainsaw stands for the fist); key 4 while sawing changes
+# to the chaingun after the stroke, which empties into the east wall until
+# P_CheckAmmo switches again. Written by tools/RouteGen (testmap-weapons).
+iwad testmap
+map weapons
+monsters
+
+""", (g, Log) =>
+        {
+            IsoDoom.Sim.player_t p = g.w.players[0];
+            string State() => $"health {p.health} armor {p.armorpoints} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}; "
+                + string.Join(" ", g.w.Mobjs().Where(m => ((m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 || m.type == IsoDoom.Sim.mobjtype_t.MT_BARREL) && m.health > 0)
+                    .Select(m => $"{m.type.ToString()[3..]}({m.x >> 16},{m.y >> 16}) h{m.health}"));
+            void Ready(IsoDoom.Sim.weapontype_t wp) => g.WaitUntil(() => p.readyweapon == wp && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange
+                && p.psprites[0].state == IsoDoom.Sim.Info.weaponinfo[(int)wp].readystate, 200);
+            double Dist(IsoDoom.Sim.mobj_t m) => System.Math.Sqrt(System.Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + System.Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
+            IsoDoom.Sim.mobj_t? Nearest(double min = 0) => g.w.Mobjs()
+                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.w.P_CheckSight(g.Mo, m) && Dist(m) >= min)
+                .OrderBy(Dist).FirstOrDefault();
+            void KillAll(int max = 6)
+            {
+                for (int i = 0; i < max && Nearest() is { } m; i++)
+                {
+                    g.FireAt(m, 250);
+                    Log("shot " + State());
+                }
+            }
+            void Door(int sector) => g.WaitUntil(() => g.w.sectors[sector].ceilingheight >= 100 * 65536, 200);
+
+            // room A
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            Log("pistol up " + State());
+            g.Change(IsoDoom.Sim.weapontype_t.wp_fist);
+            Ready(IsoDoom.Sim.weapontype_t.wp_fist);
+            Log("fist up " + State());
+            g.GoTo(122, 256, 3);
+            g.FireAt(g.Spawned(160, 256)!, 400);
+            Log("punched " + State());
+            g.Change(IsoDoom.Sim.weapontype_t.wp_pistol);
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            while (Nearest() is { } m && Dist(m) < 300)
+            {
+                g.FireAt(m, 250);
+                Log("pistol " + State());
+            }
+            g.GoTo(400, 256);
+            Ready(IsoDoom.Sim.weapontype_t.wp_shotgun);
+            Log("shotgun up " + State());
+            KillAll();
+            if (g.Spawned(410, 64) is { } barrel)
+            {
+                g.FireAt(barrel, 100);
+                g.Wait(30);
+                Log("barrel " + State());
+            }
+
+            // room B
+            g.GoTo(544, 256);
+            Door(2);
+            Log("door 1 open " + State());
+            g.GoTo(680, 256);
+            Ready(IsoDoom.Sim.weapontype_t.wp_missile);
+            Log("launcher up " + State());
+            if (Nearest(200) is { } far)
+            {
+                for (int i = 0; i < 120 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_missile; i++)
+                    g.Fire(far.x / 65536.0, far.y / 65536.0);
+                g.Tic(0, 0, 0, 0);
+            }
+            Log("rockets " + State());
+            g.GoTo(840, 256);
+            Ready(IsoDoom.Sim.weapontype_t.wp_chaingun);
+            Log("chaingun up " + State());
+            KillAll();
+
+            // room C
+            g.GoTo(1008, 256);
+            Door(5);
+            Log("door 2 open " + State());
+            g.GoTo(1100, 256);
+            Ready(IsoDoom.Sim.weapontype_t.wp_chainsaw);
+            Log("chainsaw up " + State());
+            for (int i = 0; i < 3 && Nearest() is { } m; i++)
+            {
+                if (Dist(m) > 60)
+                    g.GoTo(m.x / 65536.0 - 44, m.y / 65536.0, 12);
+                g.FireAt(m, 200);
+                Log("sawed " + State());
+            }
+            g.Change(IsoDoom.Sim.weapontype_t.wp_fist);
+            g.Wait(10);
+            Log("key 1 " + State());
+            for (int i = 0; i < 6; i++)
+                g.Fire(1400, 256);
+            g.Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_ATTACK | IsoDoom.Sim.buttoncode_t.BT_CHANGE | ((int)IsoDoom.Sim.weapontype_t.wp_chaingun << IsoDoom.Sim.buttoncode_t.BT_WEAPONSHIFT));
+            for (int i = 0; i < 12; i++)
+                g.Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_ATTACK);
+            Log("key 4 while sawing " + State());
+            g.Tic(0, 0, 0, 0);
+            Ready(IsoDoom.Sim.weapontype_t.wp_chaingun);
+            for (int i = 0; i < 600 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_chaingun; i++)
+                g.Fire(1400, 256);
+            g.Wait(40);
+            Log("emptied " + State());
         }, Monsters: true),
         ["testmap-stairs"] = new(() => TestMapWad("stairs"), "E1M1", """
 # The stairs test map (T5.5, RouteTestMaps): west across the W1 stairs

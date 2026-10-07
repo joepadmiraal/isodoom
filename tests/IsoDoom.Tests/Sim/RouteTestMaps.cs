@@ -60,7 +60,34 @@ public static class RouteTestMaps
         // rocket's 20-unit steps from there end with its centre still in S, see SPEC §12 T6.5), a
         // barrel at (136, 448), an imp at (480, 256) facing east (away from the player).
         ["missiles"] = Missiles,
+        // T6.6: the player's weapons. West to east (512 deep, ceilings 128): the start room A
+        // (512 wide), a room T1 (64), a closed door D1 (16, tag 1), a room B (384), a room T2 (64), a
+        // closed door D2 (16, tag 2) and a room C (256); A | T1 (boundary 1) and B | T2 (boundary 4)
+        // are W1 open-door lines (2) for D1 and D2. The closed doors keep each room's monsters
+        // from seeing and hearing the shots of the room before. The player at (64, 256) facing
+        // east; along y = 256 a blue armor (96), a shotgun (400), a soul sphere (544), a rocket
+        // launcher (680), a chaingun (840), a soul sphere (1008) and a chainsaw (1100). Monsters,
+        // each facing away from the player's way: in A zombiemen at (160, 256) facing east and
+        // (300, 448) facing north, an imp at (450, 64) facing south with a barrel at (410, 64);
+        // in B an imp at (940, 448) facing north and a zombieman at (760, 64) facing south; in C
+        // zombiemen at (1250, 256) facing east and (1250, 400) facing north.
+        ["weapons"] = Weapons,
     };
+
+    private static TestMap Weapons()
+    {
+        TestMap map = TestMap.Strip(0, 0, 512,
+            new TestMap.Room(512, 0, 128), new TestMap.Room(64, 0, 128), new TestMap.Room(16, 0, 0), new TestMap.Room(384, 0, 128),
+            new TestMap.Room(64, 0, 128), new TestMap.Room(16, 0, 0), new TestMap.Room(256, 0, 128));
+        map.SectorTag(2, 1).SectorTag(5, 2);
+        map.Special(map.Boundaries[1], 2, 1).Special(map.Boundaries[4], 2, 2);
+        return map.Thing(96, 256, 2019).Thing(400, 256, 2001).Thing(544, 256, 2013).Thing(680, 256, 2003).Thing(840, 256, 2002)
+            .Thing(1008, 256, 2013).Thing(1100, 256, 2005)
+            .Thing(160, 256, 3004, 0).Thing(300, 448, 3004, 90).Thing(450, 64, 3001, 270).Thing(410, 64, 2035)
+            .Thing(940, 448, 3001, 90).Thing(760, 64, 3004, 270)
+            .Thing(1250, 256, 3004, 0).Thing(1250, 400, 3004, 90)
+            .Player(64, 256, 0);
+    }
 
     private static TestMap Missiles()
     {

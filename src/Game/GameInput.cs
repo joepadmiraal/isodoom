@@ -19,6 +19,9 @@ public sealed class GameInput
     public const string TurnLeft = "turn_left", TurnRight = "turn_right";
     public const string Attack = "attack", Use = "use";
 
+    /// <summary>T6.6: the next and previous weapon (the mouse wheel, LB/RB; SPEC §6.2).</summary>
+    public const string WeaponNext = "weapon_next", WeaponPrev = "weapon_prev";
+
     /// <summary>The weapon slot actions <c>weapon_1</c>–<c>weapon_8</c>.</summary>
     public static string Weapon(int slot) => "weapon_" + slot;
 
@@ -28,7 +31,7 @@ public sealed class GameInput
         var actions = new System.Collections.Generic.List<string>
         {
             MoveLeft, MoveRight, MoveUp, MoveDown, AimLeft, AimRight, AimUp, AimDown,
-            Run, RunToggle, TurnLeft, TurnRight, Attack, Use,
+            Run, RunToggle, TurnLeft, TurnRight, Attack, Use, WeaponNext, WeaponPrev,
         };
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
             actions.Add(Weapon(i));
@@ -49,6 +52,22 @@ public sealed class GameInput
 
     /// <summary>Records mouse motion (call from <c>_Input</c>): the cursor takes over the aim.</summary>
     public void CursorMoved() => _cursorMoved = true;
+
+    /// <summary>
+    /// T6.6: latches a next or previous weapon press from an input event (call
+    /// from <c>_UnhandledInput</c>: a wheel step is pressed and released at
+    /// once, so polling would miss it). Returns whether it was one.
+    /// </summary>
+    public bool WeaponEvent(InputEvent e)
+    {
+        if (e.IsActionPressed(WeaponNext))
+            _latches.StepWeapon(1);
+        else if (e.IsActionPressed(WeaponPrev))
+            _latches.StepWeapon(-1);
+        else
+            return false;
+        return true;
+    }
 
     /// <summary>Latches this frame's presses (call every frame while the game reads input; again per tic is fine, <see cref="InputLatches"/>).</summary>
     public void Poll()
@@ -88,6 +107,7 @@ public sealed class GameInput
             Attack = _latches.Attack,
             Use = _latches.Use,
             Weapon = _latches.Weapon,
+            WeaponStep = _latches.WeaponStep,
         };
         _latches.Clear();
         _cursorMoved = false;

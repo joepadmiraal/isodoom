@@ -14,7 +14,9 @@ public sealed partial class World
     /// target as a mobj index), every sector (floor height, ceiling height,
     /// light level; since T6.4 its sound target as a mobj index) and every
     /// player in the game (player state, health, armor points, view z,
-    /// view height and its delta). Only sim state
+    /// view height and its delta; since T6.6 also the ready and pending
+    /// weapons, the ammo, refire, attackdown, extralight and each psprite's
+    /// state, tics and position). Only sim state
     /// goes in: <c>M_Random</c>'s index does not. A mobj index is the mobj's
     /// place in thinker order, -1 for none (or a removed mobj).
     /// </summary>
@@ -71,6 +73,20 @@ public sealed partial class World
             Add(ref h, p.viewz);
             Add(ref h, p.viewheight);
             Add(ref h, p.deltaviewheight);
+            Add(ref h, (int)p.readyweapon);
+            Add(ref h, (int)p.pendingweapon);
+            foreach (int a in p.ammo)
+                Add(ref h, a);
+            Add(ref h, p.refire);
+            Add(ref h, p.attackdown ? 1 : 0);
+            Add(ref h, p.extralight);
+            foreach (pspdef_t psp in p.psprites)
+            {
+                Add(ref h, (int)psp.state);
+                Add(ref h, psp.tics);
+                Add(ref h, psp.sx);
+                Add(ref h, psp.sy);
+            }
         }
         return h;
     }

@@ -1,4 +1,5 @@
 using IsoDoom.Map;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Sim;
 
@@ -169,15 +170,15 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// p_user.c <c>P_PlayerThink</c> without weapons and specials: the noclip
+    /// p_user.c <c>P_PlayerThink</c>: the noclip
     /// cheat, the chainsaw's run forward (<see cref="mobjflag_t.MF_JUSTATTACKED"/>),
     /// <see cref="P_MovePlayer"/> (not while <see cref="mobj_t.reactiontime"/>
     /// counts down after a teleport), <see cref="P_CalcHeight"/>, the power-up
     /// and palette counters and the fixed colormaps, and the use button
     /// (<see cref="P_UseLines"/> once per press, <see cref="player_t.usedown"/>).
-    /// The player's special sectors (<see cref="P_PlayerInSpecialSector"/>, T5.8).
-    /// Still to come: <c>P_DeathThink</c> (T6.12), the weapon change and
-    /// <c>P_MovePsprites</c> (T6.6).
+    /// The player's special sectors (<see cref="P_PlayerInSpecialSector"/>, T5.8),
+    /// the weapon change from <c>BT_CHANGE</c> and <see cref="P_MovePsprites"/> (T6.6).
+    /// Still to come: <c>P_DeathThink</c> (T6.12).
     /// </summary>
     public void P_PlayerThink(player_t player)
     {
@@ -226,7 +227,48 @@ public sealed partial class World
         if (mo.subsector.sector.special != 0)
             P_PlayerInSpecialSector(player);
 
-        // Check for weapon change. (T6.6)
+        // Check for weapon change.
+
+        // A special event has no other buttons.
+        if ((cmd.buttons & buttoncode_t.BT_SPECIAL) != 0)
+            cmd.buttons = 0;
+
+        if ((cmd.buttons & buttoncode_t.BT_CHANGE) != 0)
+        {
+            // The actual changing of the weapon is done
+            //  when the weapon psprite can do it
+            //  (read: not in the middle of an attack).
+            var newweapon = (weapontype_t)((cmd.buttons & buttoncode_t.BT_WEAPONMASK) >> buttoncode_t.BT_WEAPONSHIFT);
+
+            if (newweapon == weapontype_t.wp_fist
+                && player.weaponowned[(int)weapontype_t.wp_chainsaw]
+                && !(player.readyweapon == weapontype_t.wp_chainsaw
+                     && player.powers[(int)powertype_t.pw_strength] != 0))
+            {
+                newweapon = weapontype_t.wp_chainsaw;
+            }
+
+            if (gamemode == GameMode.commercial
+                && newweapon == weapontype_t.wp_shotgun
+                && player.weaponowned[(int)weapontype_t.wp_supershotgun]
+                && player.readyweapon != weapontype_t.wp_supershotgun)
+            {
+                newweapon = weapontype_t.wp_supershotgun;
+            }
+
+            if (player.weaponowned[(int)newweapon]
+                && newweapon != player.readyweapon)
+            {
+                // Do not go to plasma or BFG in shareware,
+                //  even if cheated.
+                if ((newweapon != weapontype_t.wp_plasma
+                     && newweapon != weapontype_t.wp_bfg)
+                    || gamemode != GameMode.shareware)
+                {
+                    player.pendingweapon = newweapon;
+                }
+            }
+        }
 
         // check for use
         if ((cmd.buttons & buttoncode_t.BT_USE) != 0)
@@ -240,7 +282,8 @@ public sealed partial class World
         else
             player.usedown = false;
 
-        // cycle psprites: P_MovePsprites (player); (T6.6)
+        // cycle psprites
+        P_MovePsprites(player);
 
         // Counters, time dependend power ups.
 

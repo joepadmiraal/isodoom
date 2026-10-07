@@ -192,6 +192,7 @@ public partial class LevelCheck : Godot.Node
             CheckSectorInterpolation(m, map);
             CheckScrollData(m, map);
             CheckGameLoop(map); // it moves the player and spawns a mobj
+            CheckWeaponFlash(map);
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
             CheckExit(map); // last: it may load the next map (T5.8)
@@ -205,6 +206,8 @@ public partial class LevelCheck : Godot.Node
             + "positions, sectors and the rotations of an orthographic and a perspective camera");
         GD.Print($"Level check: game loop: {_loopMaps} maps ran {GameLoopTics} tics each with the player walking; the billboards follow the mobjs "
             + "at tic fractions 0, ½ and 1 (interpolated between the last two tics), a mobj spawned between tics is drawn where it is, and one removed is dropped");
+        GD.Print($"Level check: weapon flash (T6.6): {_weaponMaps} maps drew the player's extralight 1 and 2 (none with the weapon light off) "
+            + "and its firing frame full bright");
         GD.Print($"Level check: teleports (T5.6): {_teleportMaps} maps teleported the player across a teleport line in a tic: drawn where it lands "
             + "(not interpolated), the camera snap asked for, fog drawn at both ends");
         GD.Print($"Level check: animations (T5.7): {_animSequences} animation sequences drawn with every frame in the atlas; {_animatedMaps} maps ran them: "

@@ -448,6 +448,9 @@ public class WorldTests
             };
             if (value != null)
                 f.SetValue(p, value);
+            else if (f.GetValue(p) is pspdef_t[] psprites)
+                foreach (pspdef_t psp in psprites)
+                    (psp.state, psp.tics, psp.sx, psp.sy) = (statenum_t.S_PISTOL, 7, 7, 7);
             else if (f.GetValue(p) is System.Array a)
                 for (int i = 0; i < a.Length; i++)
                     a.SetValue(a.GetType().GetElementType() == typeof(bool) ? true : 7, i);
@@ -458,7 +461,9 @@ public class WorldTests
         foreach (FieldInfo f in typeof(player_t).GetFields(BindingFlags.Public | BindingFlags.Instance))
         {
             object? v = f.GetValue(p);
-            if (v is System.Array a)
+            if (v is pspdef_t[] psprites)
+                Assert.All(psprites, psp => Assert.Equal((statenum_t.S_NULL, 0, 0, 0), (psp.state, psp.tics, psp.sx, psp.sy)));
+            else if (v is System.Array a)
                 Assert.All(a.Cast<object>(), e => Assert.Equal(System.Activator.CreateInstance(e.GetType()), e));
             else
                 Assert.True(v == null || v.Equals(System.Activator.CreateInstance(f.FieldType)), $"player_t.{f.Name} = {v}");
