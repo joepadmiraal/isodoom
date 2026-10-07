@@ -51,7 +51,11 @@ namespace IsoDoom.Tests.Sim;
 /// <c>SECTOR:LIGHT</c> joined by commas, or <c>-</c> for none (the light
 /// specials), then (T5.8) the player's <c>health</c>, its mobj's health
 /// (<c>mohealth</c>), <c>armorpoints</c>, <c>armortype</c>, <c>cards</c>
-/// (bit <c>i</c> for <c>card_t</c> <c>i</c>) and <c>secretcount</c>, then (T5.9)
+/// (bit <c>i</c> for <c>card_t</c> <c>i</c>) and <c>secretcount</c>, then (T6.1)
+/// the <c>inventory</c>, <c>ITEMCOUNT:CLIP:SHELL:CELL:MISL:OWNED:BACKPACK</c>
+/// (<c>OWNED</c>: bit <c>i</c> for <c>weapontype_t</c> <c>i</c>), and the mobjs' states, <c>things</c>: <c>COUNT:HASH</c> over every mobj in
+/// thinker order (<see cref="ThingsHash"/>: every map thing animates as in
+/// vanilla), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
 /// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
@@ -66,7 +70,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "exit" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "exit" };
 
     public string Name { get; }
     public string Path { get; }
@@ -217,7 +221,35 @@ public sealed class VanillaRoute
         int exit = world.gameaction == gameaction_t.ga_completed ? world.secretexit ? 2 : 1 : 0;
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
-            + " " + status + " " + exit.ToString(CultureInfo.InvariantCulture);
+            + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + exit.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>The dump's <c>inventory</c> column (T6.1).</summary>
+    public static string Inventory(player_t p)
+    {
+        int owned = 0;
+        for (int i = 0; i < (int)weapontype_t.NUMWEAPONS; i++)
+            owned |= p.weaponowned[i] ? 1 << i : 0;
+        return string.Join(':', new[] { p.itemcount, p.ammo[0], p.ammo[1], p.ammo[2], p.ammo[3], owned, p.backpack ? 1 : 0 }
+            .Select(v => v.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// The dump's <c>things</c> column (T6.1): the count of mobjs, a colon and
+    /// the 32-bit FNV-1a (word-wise, 8 hex digits) of each one's type, state,
+    /// tics, x, y, z, angle, flags and health, in thinker order (dump.c's).
+    /// </summary>
+    public static string ThingsHash(World world)
+    {
+        uint hash = 2166136261u;
+        int count = 0;
+        foreach (mobj_t m in world.Mobjs())
+        {
+            foreach (int v in new[] { (int)m.type, (int)m.state, m.tics, m.x, m.y, m.z, unchecked((int)m.angle), (int)m.flags, m.health })
+                hash = unchecked((hash ^ (uint)v) * 16777619u);
+            count++;
+        }
+        return string.Create(CultureInfo.InvariantCulture, $"{count}:{hash:x8}");
     }
 
     /// <summary>The sectors' light levels of a world before its first tic: the map's (the light thinkers spawn without changing them).</summary>

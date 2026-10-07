@@ -5,7 +5,8 @@ namespace IsoDoom.Sim;
 
 // p_inter.c: handling interactions (i.e., collisions), T5.8. The pickups of
 // P_TouchSpecialThing (keys; health, armor and power-ups, SPEC §12 T5.8; the
-// weapons, ammo and backpack wait for T6.8), P_DamageMobj (players only until
+// weapons, ammo and backpack with P_GiveAmmo and P_GiveWeapon, T6.1),
+// P_DamageMobj (players only until
 // T6.3) and P_KillMobj. Messages go to player_t.message (d_englsh.h), sounds
 // to the sound events.
 public sealed partial class World
@@ -32,6 +33,22 @@ public sealed partial class World
     public const string GOTMAP = "Computer Area Map";
     public const string GOTVISOR = "Light Amplification Visor";
     public const string GOTMSPHERE = "MegaSphere!";
+    public const string GOTCLIP = "Picked up a clip.";
+    public const string GOTCLIPBOX = "Picked up a box of bullets.";
+    public const string GOTROCKET = "Picked up a rocket.";
+    public const string GOTROCKBOX = "Picked up a box of rockets.";
+    public const string GOTCELL = "Picked up an energy cell.";
+    public const string GOTCELLBOX = "Picked up an energy cell pack.";
+    public const string GOTSHELLS = "Picked up 4 shotgun shells.";
+    public const string GOTSHELLBOX = "Picked up a box of shotgun shells.";
+    public const string GOTBACKPACK = "Picked up a backpack full of ammo!";
+    public const string GOTBFG9000 = "You got the BFG9000!  Oh, yes.";
+    public const string GOTCHAINGUN = "You got the chaingun!";
+    public const string GOTCHAINSAW = "A chainsaw!  Find some meat!";
+    public const string GOTLAUNCHER = "You got the rocket launcher!";
+    public const string GOTPLASMA = "You got the plasma gun!";
+    public const string GOTSHOTGUN = "You got the shotgun!";
+    public const string GOTSHOTGUN2 = "You got the super shotgun!";
 
     /// <summary>p_inter.c <c>BONUSADD</c>: the pickup flash.</summary>
     public const int BONUSADD = 6;
@@ -44,6 +61,159 @@ public sealed partial class World
 
     /// <summary>p_local.h <c>BASETHRESHOLD</c>: follow a player exclusively for 3 seconds.</summary>
     public const int BASETHRESHOLD = 100;
+
+    /// <summary>p_inter.c <c>clipammo</c>: a clip or its equivalent of each ammo type.</summary>
+    public static readonly int[] clipammo = { 10, 4, 20, 1 };
+
+    /// <summary>
+    /// p_inter.c <c>P_GiveAmmo</c>: <paramref name="num"/> is the number of
+    /// clip loads, not the individual count (0 = 1/2 clip). Returns false if
+    /// the ammo can't be picked up at all. Doubled on the baby and Nightmare
+    /// skills; ammo after none switches to a better weapon owned.
+    /// </summary>
+    public bool P_GiveAmmo(player_t player, ammotype_t ammo, int num)
+    {
+        if (ammo == ammotype_t.am_noammo)
+            return false;
+
+        if (ammo < 0 || ammo > ammotype_t.NUMAMMO)
+            throw new System.InvalidOperationException($"P_GiveAmmo: bad type {(int)ammo}");
+
+        int a = (int)ammo;
+        if (player.ammo[a] == player.maxammo[a])
+            return false;
+
+        if (num != 0)
+            num *= clipammo[a];
+        else
+            num = clipammo[a] / 2;
+
+        if (gameskill == skill_t.sk_baby
+            || gameskill == skill_t.sk_nightmare)
+        {
+            // give double ammo in trainer mode,
+            // you'll need in nightmare
+            num <<= 1;
+        }
+
+        int oldammo = player.ammo[a];
+        player.ammo[a] += num;
+
+        if (player.ammo[a] > player.maxammo[a])
+            player.ammo[a] = player.maxammo[a];
+
+        // If non zero ammo,
+        // don't change up weapons,
+        // player was lower on purpose.
+        if (oldammo != 0)
+            return true;
+
+        // We were down to zero,
+        // so select a new weapon.
+        // Preferences are not user selectable.
+        switch (ammo)
+        {
+            case ammotype_t.am_clip:
+                if (player.readyweapon == weapontype_t.wp_fist)
+                {
+                    if (player.weaponowned[(int)weapontype_t.wp_chaingun])
+                        player.pendingweapon = weapontype_t.wp_chaingun;
+                    else
+                        player.pendingweapon = weapontype_t.wp_pistol;
+                }
+                break;
+
+            case ammotype_t.am_shell:
+                if (player.readyweapon == weapontype_t.wp_fist
+                    || player.readyweapon == weapontype_t.wp_pistol)
+                {
+                    if (player.weaponowned[(int)weapontype_t.wp_shotgun])
+                        player.pendingweapon = weapontype_t.wp_shotgun;
+                }
+                break;
+
+            case ammotype_t.am_cell:
+                if (player.readyweapon == weapontype_t.wp_fist
+                    || player.readyweapon == weapontype_t.wp_pistol)
+                {
+                    if (player.weaponowned[(int)weapontype_t.wp_plasma])
+                        player.pendingweapon = weapontype_t.wp_plasma;
+                }
+                break;
+
+            case ammotype_t.am_misl:
+                if (player.readyweapon == weapontype_t.wp_fist)
+                {
+                    if (player.weaponowned[(int)weapontype_t.wp_missile])
+                        player.pendingweapon = weapontype_t.wp_missile;
+                }
+                break;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// p_inter.c <c>P_GiveWeapon</c>: the weapon and two clips of its ammo
+    /// (one when <paramref name="dropped"/> by a monster). Returns false if
+    /// neither was needed. In a cooperative netgame a placed weapon stays
+    /// for everyone (and five clips in deathmatch).
+    /// </summary>
+    public bool P_GiveWeapon(player_t player, weapontype_t weapon, bool dropped)
+    {
+        ammotype_t ammo = Info.weaponinfo[(int)weapon].ammo;
+
+        if (netgame
+            && (deathmatch != 2)
+            && !dropped)
+        {
+            // leave placed weapons forever on net games
+            if (player.weaponowned[(int)weapon])
+                return false;
+
+            player.bonuscount += BONUSADD;
+            player.weaponowned[(int)weapon] = true;
+
+            if (deathmatch != 0)
+                P_GiveAmmo(player, ammo, 5);
+            else
+                P_GiveAmmo(player, ammo, 2);
+            player.pendingweapon = weapon;
+
+            if (player == players[consoleplayer])
+                S_StartSound((mobj_t?)null, sfxenum_t.sfx_wpnup);
+            return false;
+        }
+
+        bool gaveammo;
+        if (ammo != ammotype_t.am_noammo)
+        {
+            // give one clip with a dropped weapon,
+            // two clips with a found weapon
+            if (dropped)
+                gaveammo = P_GiveAmmo(player, ammo, 1);
+            else
+                gaveammo = P_GiveAmmo(player, ammo, 2);
+        }
+        else
+        {
+            gaveammo = false;
+        }
+
+        bool gaveweapon;
+        if (player.weaponowned[(int)weapon])
+        {
+            gaveweapon = false;
+        }
+        else
+        {
+            gaveweapon = true;
+            player.weaponowned[(int)weapon] = true;
+            player.pendingweapon = weapon;
+        }
+
+        return gaveweapon || gaveammo;
+    }
 
     /// <summary>
     /// p_inter.c <c>P_GiveBody</c>: returns false if the body isn't needed at all
@@ -136,9 +306,9 @@ public sealed partial class World
     /// player: only players have <c>MF_PICKUP</c>) touches
     /// <paramref name="special"/>, identified by its sprite. Ported (T5.8):
     /// armor, the bonuses, the soul- and megasphere, the keys (left for
-    /// everyone in a netgame), the medikits and the power-ups. Weapons, ammo
-    /// and the backpack are left lying until T6.8 (vanilla's unknown thing is
-    /// an <c>I_Error</c>; both return here). A picked up thing counts as an
+    /// everyone in a netgame), the medikits and the power-ups; (T6.1) ammo,
+    /// the backpack and weapons (vanilla's unknown thing is an
+    /// <c>I_Error</c>; it returns here). A picked up thing counts as an
     /// item when <c>MF_COUNTITEM</c>, is removed, flashes the screen
     /// (<see cref="player_t.bonuscount"/>) and plays its sound.
     /// </summary>
@@ -326,8 +496,127 @@ public sealed partial class World
                 sound = sfxenum_t.sfx_getpow;
                 break;
 
-            // ammo, weapons and the backpack: T6.8
+            // ammo
+            case spritenum_t.SPR_CLIP:
+                if ((special.flags & mobjflag_t.MF_DROPPED) != 0)
+                {
+                    if (!P_GiveAmmo(player, ammotype_t.am_clip, 0))
+                        return;
+                }
+                else
+                {
+                    if (!P_GiveAmmo(player, ammotype_t.am_clip, 1))
+                        return;
+                }
+                player.message = GOTCLIP;
+                break;
+
+            case spritenum_t.SPR_AMMO:
+                if (!P_GiveAmmo(player, ammotype_t.am_clip, 5))
+                    return;
+                player.message = GOTCLIPBOX;
+                break;
+
+            case spritenum_t.SPR_ROCK:
+                if (!P_GiveAmmo(player, ammotype_t.am_misl, 1))
+                    return;
+                player.message = GOTROCKET;
+                break;
+
+            case spritenum_t.SPR_BROK:
+                if (!P_GiveAmmo(player, ammotype_t.am_misl, 5))
+                    return;
+                player.message = GOTROCKBOX;
+                break;
+
+            case spritenum_t.SPR_CELL:
+                if (!P_GiveAmmo(player, ammotype_t.am_cell, 1))
+                    return;
+                player.message = GOTCELL;
+                break;
+
+            case spritenum_t.SPR_CELP:
+                if (!P_GiveAmmo(player, ammotype_t.am_cell, 5))
+                    return;
+                player.message = GOTCELLBOX;
+                break;
+
+            case spritenum_t.SPR_SHEL:
+                if (!P_GiveAmmo(player, ammotype_t.am_shell, 1))
+                    return;
+                player.message = GOTSHELLS;
+                break;
+
+            case spritenum_t.SPR_SBOX:
+                if (!P_GiveAmmo(player, ammotype_t.am_shell, 5))
+                    return;
+                player.message = GOTSHELLBOX;
+                break;
+
+            case spritenum_t.SPR_BPAK:
+                if (!player.backpack)
+                {
+                    for (int i = 0; i < (int)ammotype_t.NUMAMMO; i++)
+                        player.maxammo[i] *= 2;
+                    player.backpack = true;
+                }
+                for (int i = 0; i < (int)ammotype_t.NUMAMMO; i++)
+                    P_GiveAmmo(player, (ammotype_t)i, 1);
+                player.message = GOTBACKPACK;
+                break;
+
+            // weapons
+            case spritenum_t.SPR_BFUG:
+                if (!P_GiveWeapon(player, weapontype_t.wp_bfg, false))
+                    return;
+                player.message = GOTBFG9000;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
+            case spritenum_t.SPR_MGUN:
+                if (!P_GiveWeapon(player, weapontype_t.wp_chaingun, (special.flags & mobjflag_t.MF_DROPPED) != 0))
+                    return;
+                player.message = GOTCHAINGUN;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
+            case spritenum_t.SPR_CSAW:
+                if (!P_GiveWeapon(player, weapontype_t.wp_chainsaw, false))
+                    return;
+                player.message = GOTCHAINSAW;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
+            case spritenum_t.SPR_LAUN:
+                if (!P_GiveWeapon(player, weapontype_t.wp_missile, false))
+                    return;
+                player.message = GOTLAUNCHER;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
+            case spritenum_t.SPR_PLAS:
+                if (!P_GiveWeapon(player, weapontype_t.wp_plasma, false))
+                    return;
+                player.message = GOTPLASMA;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
+            case spritenum_t.SPR_SHOT:
+                if (!P_GiveWeapon(player, weapontype_t.wp_shotgun, (special.flags & mobjflag_t.MF_DROPPED) != 0))
+                    return;
+                player.message = GOTSHOTGUN;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
+            case spritenum_t.SPR_SGN2:
+                if (!P_GiveWeapon(player, weapontype_t.wp_supershotgun, (special.flags & mobjflag_t.MF_DROPPED) != 0))
+                    return;
+                player.message = GOTSHOTGUN2;
+                sound = sfxenum_t.sfx_wpnup;
+                break;
+
             default:
+                // I_Error ("P_SpecialThing: Unknown gettable thing")
                 return;
         }
 

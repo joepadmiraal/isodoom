@@ -363,8 +363,12 @@ public class WorldTests
         Assert.True(world.P_SetMobjState(imp, statenum_t.S_TROO_RUN1));
         Assert.Equal((statenum_t.S_TROO_RUN1, 3, spritenum_t.SPR_TROO, 0), (imp.state, imp.tics, imp.sprite, imp.frame));
 
-        // A zero-tic state runs on into the next one: S_LIGHTDONE (0 tics) -> S_NULL removes the mobj.
-        Assert.False(world.P_SetMobjState(imp, statenum_t.S_LIGHTDONE));
+        // A zero-tic state runs on into the next one: S_SKEL_FIST1 (0 tics) -> S_SKEL_FIST2.
+        Assert.True(world.P_SetMobjState(imp, statenum_t.S_SKEL_FIST1));
+        Assert.Equal((statenum_t.S_SKEL_FIST2, Info.states[(int)statenum_t.S_SKEL_FIST2].tics), (imp.state, imp.tics));
+
+        // S_NULL removes the mobj.
+        Assert.False(world.P_SetMobjState(imp, statenum_t.S_NULL));
         Assert.Equal(statenum_t.S_NULL, imp.state);
         Assert.Equal(think_t.REMOVED, imp.function);
         Assert.DoesNotContain(imp, world.Mobjs());

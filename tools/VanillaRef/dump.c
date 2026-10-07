@@ -35,7 +35,12 @@
 // sectors whose light level differs from the map's SECTORS lump, as
 // SECTOR:LIGHT joined by commas in sector order, or - for none; then (T5.8)
 // the player's health, its mobj's health, armorpoints, armortype, cards (bit
-// i set for card_t i) and secretcount; then (T5.9) exit: 0, or 1 (2) when the
+// i set for card_t i) and secretcount; then (T6.1) the inventory as
+// ITEMCOUNT:CLIP:SHELL:CELL:MISL:OWNED:BACKPACK (OWNED: bit i set for
+// weapontype_t i) and the mobjs (every
+// P_MobjThinker thinker, in thinker order) as COUNT:HASH, HASH the 32-bit
+// FNV-1a (word-wise, 8 hex digits) of each one's type, state, tics, x, y, z,
+// angle, flags and health; then (T5.9) exit: 0, or 1 (2) when the
 // tic left the level by its exit (secret exit): gameaction is ga_completed.
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
@@ -178,6 +183,24 @@ void dump_tic(void)
     for (int i = 0; i < NUMCARDS; i++)
         cards |= p->cards[i] ? 1 << i : 0;
     fprintf(ticfile, "%d %d %d %d %d %d ", p->health, mo->health, p->armorpoints, p->armortype, cards, p->secretcount);
+    // The inventory and the mobjs' states (T6.1).
+    int owned = 0;
+    for (int i = 0; i < NUMWEAPONS; i++)
+        owned |= p->weaponowned[i] ? 1 << i : 0;
+    fprintf(ticfile, "%d:%d:%d:%d:%d:%d:%d ", p->itemcount, p->ammo[am_clip], p->ammo[am_shell], p->ammo[am_cell], p->ammo[am_misl], owned, p->backpack ? 1 : 0);
+    uint32_t hash = 2166136261u;
+    int count = 0;
+    for (thinker_t *th = thinkercap.next; th != &thinkercap; th = th->next)
+    {
+        if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+            continue;
+        mobj_t *m = (mobj_t *)th;
+        int32_t v[9] = { m->type, (int)(m->state - states), m->tics, m->x, m->y, m->z, (int32_t)m->angle, m->flags, m->health };
+        for (int k = 0; k < 9; k++)
+            hash = (hash ^ (uint32_t)v[k]) * 16777619u;
+        count++;
+    }
+    fprintf(ticfile, "%d:%08x ", count, hash);
     // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
     extern boolean secretexit;
     extern gameaction_t gameaction;

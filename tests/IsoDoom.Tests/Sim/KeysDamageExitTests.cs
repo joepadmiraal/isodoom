@@ -191,9 +191,9 @@ public class KeysDamageExitTests
         Assert.NotEqual(think_t.REMOVED, Touch(mobjtype_t.MT_MISC15).function); // already got it
         Touch(mobjtype_t.MT_MISC13);
         Assert.Equal((1, weapontype_t.wp_fist, World.GOTBERSERK), (p.powers[(int)powertype_t.pw_strength], p.pendingweapon, p.message));
-        // Weapons and ammo wait for T6.8: left lying.
-        Assert.NotEqual(think_t.REMOVED, Touch(mobjtype_t.MT_SHOTGUN).function);
-        Assert.NotEqual(think_t.REMOVED, Touch(mobjtype_t.MT_CLIP).function);
+        // Weapons and ammo (T6.1; StateMachineTests).
+        Assert.Equal(think_t.REMOVED, Touch(mobjtype_t.MT_SHOTGUN).function);
+        Assert.Equal(think_t.REMOVED, Touch(mobjtype_t.MT_CLIP).function);
     }
 
     // ---- damage floors ----

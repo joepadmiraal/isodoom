@@ -38,62 +38,6 @@ public sealed partial class World
         return true;
     }
 
-    /// <summary>
-    /// Vanilla's call through <c>st->action.acp1</c>. Every action is a stub
-    /// until its task (T6.1 dispatches them, T6.4–T6.6 fill them in), but
-    /// the player's pain and death ones (T5.8: <see cref="A_Pain"/>,
-    /// <see cref="A_PlayerScream"/>, <see cref="A_Fall"/>).
-    /// </summary>
-    private void A_Call(actionf_t action, mobj_t mobj)
-    {
-        switch (action)
-        {
-            case actionf_t.A_Pain:
-                A_Pain(mobj);
-                break;
-            case actionf_t.A_PlayerScream:
-                A_PlayerScream(mobj);
-                break;
-            case actionf_t.A_Fall:
-                A_Fall(mobj);
-                break;
-            default:
-                break;
-        }
-    }
-
-    /// <summary>p_enemy.c <c>A_Pain</c>: the pain sound (T5.8, for the player's pain state).</summary>
-    public void A_Pain(mobj_t actor)
-    {
-        if (actor.info.painsound != sfxenum_t.sfx_None)
-            S_StartSound(actor, actor.info.painsound);
-    }
-
-    /// <summary>p_enemy.c <c>A_Fall</c>: actor is on ground, it can be walked over (T5.8, for the player's death).</summary>
-    public static void A_Fall(mobj_t actor)
-    {
-        actor.flags &= ~mobjflag_t.MF_SOLID;
-
-        // So change this if corpse objects
-        // are meant to be obstacles.
-    }
-
-    /// <summary>p_enemy.c <c>A_PlayerScream</c>: the player's death sound (T5.8).</summary>
-    public void A_PlayerScream(mobj_t mo)
-    {
-        // Default death sound.
-        sfxenum_t sound = sfxenum_t.sfx_pldeth;
-
-        if (gamemode == IsoDoom.Wad.GameMode.commercial && mo.health < -50)
-        {
-            // IF THE PLAYER DIES
-            // LESS THAN -50% WITHOUT GIBBING
-            sound = sfxenum_t.sfx_pdiehi;
-        }
-
-        S_StartSound(mo, sound);
-    }
-
     // ---- p_local.h / p_mobj.c ----
 
     /// <summary>
@@ -392,8 +336,11 @@ public sealed partial class World
     /// p_mobj.c <c>P_MobjThinker</c>: momentum movement
     /// (<see cref="P_XYMovement"/> when moving or charging,
     /// <see cref="P_ZMovement"/> when off the floor or moving vertically),
-    /// then the state tics. The Nightmare respawn branch of <c>tics == -1</c>
-    /// things comes with T6.1.
+    /// then the state tics, calling the actions of the states entered
+    /// (<see cref="P_SetMobjState"/>). A thing whose state lasts forever
+    /// (<c>tics == -1</c>) is a candidate for the Nightmare respawn: a
+    /// monster's corpse, 12 seconds after it died, on every 32nd tic with
+    /// a chance of 5 in 256 (<see cref="P_NightmareRespawn"/>).
     /// </summary>
     public void P_MobjThinker(mobj_t mobj)
     {
@@ -426,7 +373,82 @@ public sealed partial class World
                     return; // freed itself
             }
         }
-        // else: check for nightmare respawn (T6.1)
+        else
+        {
+            // check for nightmare respawn
+            if ((mobj.flags & mobjflag_t.MF_COUNTKILL) == 0)
+                return;
+
+            if (!respawnmonsters)
+                return;
+
+            mobj.movecount++;
+
+            if (mobj.movecount < 12 * SimInfo.TICRATE)
+                return;
+
+            if ((leveltime & 31) != 0)
+                return;
+
+            if (P_Random() > 4)
+                return;
+
+            P_NightmareRespawn(mobj);
+        }
+    }
+
+    /// <summary>
+    /// p_mobj.c <c>P_NightmareRespawn</c>: unless something occupies its
+    /// spawn point, the monster <paramref name="mobj"/> (a corpse) is
+    /// replaced by a new one of its type at its map spot, with teleport fogs
+    /// at both places.
+    /// </summary>
+    public void P_NightmareRespawn(mobj_t mobj)
+    {
+        int x = mobj.spawnpoint.X << Fixed.FRACBITS;
+        int y = mobj.spawnpoint.Y << Fixed.FRACBITS;
+
+        // somthing is occupying it's position?
+        if (!P_CheckPosition(mobj, x, y))
+            return; // no respwan
+
+        // spawn a teleport fog at old spot
+        // because of removal of the body?
+        mobj_t mo = P_SpawnMobj(mobj.x,
+                                mobj.y,
+                                mobj.subsector.sector.floorheight, mobjtype_t.MT_TFOG);
+        // initiate teleport sound
+        S_StartSound(mo, sfxenum_t.sfx_telept);
+
+        // spawn a teleport fog at the new spot
+        subsector_t ss = R_PointInSubsector(x, y);
+
+        mo = P_SpawnMobj(x, y, ss.sector.floorheight, mobjtype_t.MT_TFOG);
+
+        S_StartSound(mo, sfxenum_t.sfx_telept);
+
+        // spawn the new monster
+        MapThing mthing = mobj.spawnpoint;
+
+        // spawn it
+        int z;
+        if ((mobj.info.flags & mobjflag_t.MF_SPAWNCEILING) != 0)
+            z = ONCEILINGZ;
+        else
+            z = ONFLOORZ;
+
+        // inherit attributes from deceased one
+        mo = P_SpawnMobj(x, y, z, mobj.type);
+        mo.spawnpoint = mobj.spawnpoint;
+        mo.angle = unchecked(Tables.ANG45 * (uint)(mthing.Angle / 45));
+
+        if ((mthing.Options & MapThing.MTF_AMBUSH) != 0)
+            mo.flags |= mobjflag_t.MF_AMBUSH;
+
+        mo.reactiontime = 18;
+
+        // remove the old monster,
+        P_RemoveMobj(mobj);
     }
 
     /// <summary>
