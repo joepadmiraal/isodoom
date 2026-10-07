@@ -13,7 +13,9 @@ namespace IsoDoom.Tests.Sim;
 /// T4.9: SPEC §9's budget of 2 ms per tic with a full map, on DOOM1 E1M9 at
 /// skill 4 (every single-player thing spawned) with the player running and
 /// turning (twin-stick tweaks, as the game). The things only count down their
-/// state tics until M6 (T6.1), so measure again then.
+/// state tics until M6 (T6.1), so measure again then. T6.4: also with every
+/// monster awake (none deaf, a noise from the player at the start; the player
+/// in god mode so they keep chasing and attacking).
 /// </summary>
 public class TicBudgetTests
 {
@@ -24,13 +26,22 @@ public class TicBudgetTests
     /// <summary>SPEC §9: the sim stays under 2 ms per tic.</summary>
     public const double BudgetMs = 2.0;
 
-    [Fact]
-    public void Doom1E1M9TicsStayInTheBudget()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Doom1E1M9TicsStayInTheBudget(bool awake)
     {
         WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_hard), Tweaks.TopDown);
         world.G_DoLoadLevel(Level.Load(wad, "E1M9"));
         int mobjs = world.Mobjs().Count();
+        if (awake)
+        {
+            foreach (mobj_t m in world.Mobjs())
+                m.flags &= ~mobjflag_t.MF_AMBUSH;
+            world.players[world.consoleplayer].cheats |= player_t.CF_GODMODE;
+            world.P_NoiseAlert(world.players[world.consoleplayer].mo!, world.players[world.consoleplayer].mo!);
+        }
 
         const int warmup = 105, measured = 1050;
         var ms = new double[measured];
@@ -57,7 +68,8 @@ public class TicBudgetTests
         double mean = ms.Average();
         Array.Sort(ms);
         double median = ms[measured / 2], p95 = ms[(int)(measured * 0.95)], worst = ms[^1];
-        _output.WriteLine($"E1M9 skill 4, {mobjs} mobjs, player through {sectors.Count} sectors, {travelled >> 16} units, {measured} tics: mean {mean:F4} ms, median {median:F4}, p95 {p95:F4}, worst {worst:F4}");
+        int chasing = world.Mobjs().Count(m => (m.flags & mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && m.target != null);
+        _output.WriteLine($"E1M9 skill 4, {mobjs} mobjs ({chasing} monsters with a target), player through {sectors.Count} sectors, {travelled >> 16} units, {measured} tics: mean {mean:F4} ms, median {median:F4}, p95 {p95:F4}, worst {worst:F4}");
         Assert.True(mobjs > 100, $"{mobjs} mobjs");
         Assert.True(sectors.Count > 1, "the player stayed in one sector");
         // The median and 95th percentile, not the worst tic: a GC pause or the test host can stall one.

@@ -210,6 +210,19 @@ public sealed class Line
     /// <summary>The back side's sector (<c>backsector</c>), null without a back side.</summary>
     public Sector? BackSector { get; internal set; }
 
+    /// <summary>
+    /// A line in no map (index -1, both ends at the origin, no sides) with
+    /// only <paramref name="tag"/> set: p_enemy.c's <c>line_t junk</c>, which
+    /// <c>A_BossDeath</c> and <c>A_KeenDie</c> hand to the tagged specials (T6.4).
+    /// </summary>
+    public static Line Unlinked(short tag)
+    {
+        var origin = new Vertex(-1, 0, 0);
+        var line = new Line(-1, origin, origin) { Tag = tag };
+        line.SideNum[0] = line.SideNum[1] = -1;
+        return line;
+    }
+
     public override string ToString() => $"line {Index}";
 }
 

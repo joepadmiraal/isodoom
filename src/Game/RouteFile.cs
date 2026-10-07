@@ -9,13 +9,20 @@ namespace IsoDoom.Game;
 /// <summary>
 /// A <c>.route</c> file (T4.8; the format is described at the tests'
 /// <c>VanillaRoute</c>): a header (<c>iwad</c>, <c>map</c>, <c>skill</c>,
-/// <c>start X Y ANGLE</c>, <c>exit normal|secret</c>) and one vanilla
+/// <c>start X Y ANGLE</c>, <c>exit normal|secret</c>, <c>monsters</c>) and one vanilla
 /// <c>ticcmd</c> per tic (<c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>, a demo's
-/// relative turn byte). Plain C#: the tests parse their routes with it, and
+/// relative turn byte), between which (T6.4) <c>damage X Y AMOUNT</c> and
+/// <c>alert</c> lines are <see cref="RouteEvent"/>s run at the start of the
+/// next tic. Plain C#: the tests parse their routes with it, and
 /// the level script's <c>route FILE</c> (T5.10) plays one in the level scene.
 /// </summary>
 public sealed class RouteFile
 {
+    /// <summary>The <c>monsters</c> header (T6.4): the demo spawns monsters (no <c>nomonsters</c>).</summary>
+    public bool Monsters { get; private init; }
+    /// <summary>The route's events (T6.4), in order, each before the tic of its <see cref="RouteEvent.Tic"/> (0-based).</summary>
+    public IReadOnlyList<RouteEvent> Events { get; private init; } = Array.Empty<RouteEvent>();
+
     /// <summary><c>synthetic</c>, <c>doom1</c> or <c>testmap</c> (not checked here).</summary>
     public string? Iwad { get; private init; }
     /// <summary>The <c>map</c> header as written, or null.</summary>
@@ -36,7 +43,9 @@ public sealed class RouteFile
         string? iwad = null, map = null;
         int skill = 3, exit = 0;
         (int, int, int)? start = null;
+        bool monsters = false;
         var cmds = new List<ticcmd_t>();
+        var events = new List<RouteEvent>();
         int n = 0;
         foreach (string raw in lines)
         {
@@ -67,6 +76,21 @@ public sealed class RouteFile
                         throw new FormatException($"{where}: expected start X Y ANGLE");
                     start = (Int(f[1]), Int(f[2]), Int(f[3]));
                     continue;
+                case "monsters":
+                    if (f.Length != 1)
+                        throw new FormatException($"{where}: expected monsters");
+                    monsters = true;
+                    continue;
+                case "damage":
+                    if (f.Length != 4 || Int(f[3]) < 1)
+                        throw new FormatException($"{where}: expected damage X Y AMOUNT (AMOUNT at least 1)");
+                    events.Add(new RouteEvent(cmds.Count, RouteEventKind.Damage, Int(f[1]), Int(f[2]), Int(f[3])));
+                    continue;
+                case "alert":
+                    if (f.Length != 1)
+                        throw new FormatException($"{where}: expected alert");
+                    events.Add(new RouteEvent(cmds.Count, RouteEventKind.Alert, 0, 0, 0));
+                    continue;
             }
             int count = 1;
             if (f[^1].StartsWith('x'))
@@ -96,8 +120,75 @@ public sealed class RouteFile
         }
         if (skill < 1 || skill > 5)
             throw new FormatException($"{path}: skill {skill} (1-5)");
-        return new RouteFile { Iwad = iwad, Map = map, Skill = skill, Start = start, Exit = exit, Cmds = cmds };
+        if (events.Count > 0 && events[^1].Tic >= cmds.Count)
+            throw new FormatException($"{path}: an event after the last tic");
+        return new RouteFile { Iwad = iwad, Map = map, Skill = skill, Start = start, Exit = exit, Cmds = cmds, Monsters = monsters, Events = events };
+    }
+
+    /// <summary>
+    /// Runs the events of tic <paramref name="tic"/> (0-based) in
+    /// <paramref name="world"/>, as the vanilla reference does before the
+    /// players think in that tic's <c>P_Ticker</c>; call it before that tic's <c>G_Ticker</c>.
+    /// </summary>
+    public void RunEvents(World world, int tic)
+    {
+        foreach (RouteEvent e in Events)
+        {
+            if (e.Tic == tic)
+                e.Run(world);
+        }
     }
 
     private static int Int(string s) => int.Parse(s, CultureInfo.InvariantCulture);
+}
+
+/// <summary>A <see cref="RouteEvent"/>'s kind (T6.4).</summary>
+public enum RouteEventKind
+{
+    /// <summary><c>damage X Y AMOUNT</c>: player 1 hurts a thing as a shot would.</summary>
+    Damage,
+
+    /// <summary><c>alert</c>: player 1 makes a noise as a shot would.</summary>
+    Alert,
+}
+
+/// <summary>
+/// T6.4: a scripted act of player 1 in a route, run at the start of tic
+/// <see cref="Tic"/> (0-based) before the players think, in the vanilla
+/// reference (<c>dump.c</c>'s <c>dump_pretic</c>) and the sim alike. Until
+/// the player's weapons are ported (T6.6) these stand in for its shots, so
+/// that monster routes can wake and kill monsters:
+/// <see cref="RouteEventKind.Damage"/> calls <c>P_DamageMobj(thing, mo, mo, AMOUNT)</c>
+/// (<c>mo</c> the player's mobj) on the first mobj in thinker order that
+/// was spawned at map point (<see cref="X"/>, <see cref="Y"/>)
+/// (<c>spawnpoint</c>) and is shootable and alive;
+/// <see cref="RouteEventKind.Alert"/> calls <c>P_NoiseAlert(mo, mo)</c>, as
+/// <c>P_FireWeapon</c> does (SPEC §12 T6.4).
+/// </summary>
+public readonly record struct RouteEvent(int Tic, RouteEventKind Kind, int X, int Y, int Amount)
+{
+    /// <summary>Runs the event; throws <see cref="InvalidOperationException"/> when no thing fits a damage event.</summary>
+    public void Run(World world)
+    {
+        mobj_t mo = world.players[world.consoleplayer].mo ?? throw new InvalidOperationException("RouteEvent: no player");
+        if (Kind == RouteEventKind.Alert)
+        {
+            world.P_NoiseAlert(mo, mo);
+            return;
+        }
+        foreach (mobj_t m in world.Mobjs())
+        {
+            if (m.spawnpoint.X == X && m.spawnpoint.Y == Y && (m.flags & mobjflag_t.MF_SHOOTABLE) != 0 && m.health > 0)
+            {
+                world.P_DamageMobj(m, mo, mo, Amount);
+                return;
+            }
+        }
+        throw new InvalidOperationException($"RouteEvent: tic {Tic + 1}: nothing shootable spawned at ({X}, {Y}) to damage");
+    }
+
+    /// <summary>The event's route line.</summary>
+    public override string ToString() => Kind == RouteEventKind.Alert
+        ? "alert"
+        : string.Create(CultureInfo.InvariantCulture, $"damage {X} {Y} {Amount}");
 }

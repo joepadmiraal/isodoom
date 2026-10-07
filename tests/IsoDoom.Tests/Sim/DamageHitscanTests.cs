@@ -256,8 +256,9 @@ public class DamageHitscanTests
         Assert.Equal(10, zombie.health);
         Assert.Equal(0, zombie.reactiontime);
         Assert.Same(me, zombie.target);
-        Assert.Equal(World.BASETHRESHOLD, zombie.threshold);
-        Assert.Equal(statenum_t.S_POSS_RUN1, zombie.state); // from its spawn state to its see state
+        Assert.Equal(World.BASETHRESHOLD - 1, zombie.threshold); // (T6.4: the see state's A_Chase counted it down)
+        // from its spawn state to its see state, whose A_Chase (T6.4) fires at once: in sight, awake, no steps left
+        Assert.Equal(statenum_t.S_POSS_ATK1, zombie.state);
         Assert.True((zombie.flags & mobjflag_t.MF_JUSTHIT) == 0);
         // thrust away from the inflictor: 10 * 100 / mass 100 units / 8
         int thrust = 10 * (FRACUNIT >> 3) * 100 / 100;
@@ -299,7 +300,7 @@ public class DamageHitscanTests
         NextRandom(world, 3);
         world.P_DamageMobj(zombie, imp, imp, 1);
         Assert.Same(imp, zombie.target);
-        Assert.Equal(World.BASETHRESHOLD, zombie.threshold);
+        Assert.Equal(World.BASETHRESHOLD - 1, zombie.threshold); // (T6.4: the see state's A_Chase counted it down)
 
         // its own or environment damage never changes the target
         zombie.threshold = 0;

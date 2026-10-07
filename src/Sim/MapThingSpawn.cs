@@ -18,9 +18,12 @@ public enum skill_t
 /// The game settings <c>P_LoadThings</c> and <c>P_SpawnMapThing</c> read
 /// (doomstat.h globals): <c>gamemode</c>, <c>gameskill</c>, <c>netgame</c>,
 /// <c>deathmatch</c> (0 cooperative or single player, 1 deathmatch, 2
-/// altdeath) and <c>nomonsters</c>.
+/// altdeath) and <c>nomonsters</c>; and (T6.4) d_main.c's <c>respawnparm</c>
+/// (<c>-respawn</c>: monsters respawn as on Nightmare) and <c>fastparm</c>
+/// (<c>-fast</c>: fast monsters as on Nightmare), which the world reads.
 /// </summary>
-public readonly record struct SpawnSettings(GameMode gamemode, skill_t gameskill, bool netgame = false, int deathmatch = 0, bool nomonsters = false);
+public readonly record struct SpawnSettings(GameMode gamemode, skill_t gameskill, bool netgame = false, int deathmatch = 0, bool nomonsters = false,
+    bool respawnparm = false, bool fastparm = false);
 
 /// <summary>What <see cref="MapThingSpawning.Select"/> decided for one map thing.</summary>
 public enum MapThingSpawnKind

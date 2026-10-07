@@ -1,0 +1,149 @@
+# DOOM1.WAD E1M8 on Nightmare (skill 5) with monsters (T6.4): as
+# e1m8-barons, with fast monsters (the spectres' halved run, attack and
+# pain states, 20-unit baron balls, attacks between steps) and Nightmare
+# respawns (fogs; a baron comes back and is killed again). Written by
+# tools/RouteGen (e1m8-nightmare).
+iwad doom1
+map E1M8
+skill 5
+monsters
+start 416 2390 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x25
+25 0 0 0 x9
+11 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x107
+25 0 0 0 x17
+0 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x19
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x12
+alert
+damage 960 2272 75
+0 0 0 0 x4
+alert
+damage 960 2272 75
+0 0 0 0 x4
+alert
+damage -128 2288 75
+0 0 0 0 x4
+alert
+damage -128 2288 75
+0 0 0 0 x4
+alert
+damage -160 2208 75
+0 0 0 0 x4
+alert
+damage -160 2208 75
+0 0 0 0 x4
+alert
+damage 528 2864 200
+0 0 0 0 x4
+alert
+damage 528 2864 200
+0 0 0 0 x4
+alert
+damage 528 2864 200
+0 0 0 0 x4
+alert
+damage 528 2864 200
+0 0 0 0 x4
+alert
+damage 528 2864 200
+0 0 0 0 x8
+alert
+damage -128 3200 75
+0 0 0 0 x4
+alert
+damage -128 3200 75
+0 0 0 0 x4
+alert
+damage 992 2208 75
+0 0 0 0 x4
+alert
+damage 992 2208 75
+0 0 0 0 x5
+alert
+damage -192 3136 75
+0 0 0 0 x4
+alert
+damage -192 3136 75
+0 0 0 0 x31
+alert
+damage 1312 3328 75
+0 0 0 0 x4
+alert
+damage 1312 3328 75
+0 0 0 0 x4
+alert
+damage 1232 3280 75
+0 0 0 0 x4
+alert
+damage 1232 3280 75
+0 0 0 0 x545
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 304 2864 200
+0 0 0 0 x4
+alert
+damage 960 2272 75
+0 0 0 0 x4
+alert
+damage 960 2272 75
+0 0 0 0 x73
+alert
+damage -128 2288 75
+0 0 0 0 x4
+alert
+damage -128 2288 75
+0 0 0 0 x8

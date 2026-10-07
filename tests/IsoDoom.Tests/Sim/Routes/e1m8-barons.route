@@ -1,0 +1,174 @@
+# DOOM1.WAD E1M8 on skill 4 with monsters (T6.4): starts in the tunnel
+# at the lift switch (line 231), rides lift 28 up and crosses line 176
+# (W1 doors, tag 5): the barons' cages open; the barons and the spectres
+# of hall 31 attack (balls, claws, bites) and are shot dead with route
+# events; the last baron's A_BossDeath lowers the wall (sector 30, tag
+# 666) to the arena, -136. Written by tools/RouteGen (e1m8-barons).
+iwad doom1
+map E1M8
+skill 4
+monsters
+start 416 2390 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x25
+25 0 0 0 x9
+11 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x107
+25 0 0 0 x17
+0 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x79
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 960 2272 50
+0 0 0 0 x6
+alert
+damage 960 2272 50
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage -160 2208 50
+0 0 0 0 x6
+alert
+damage -160 2208 50
+0 0 0 0 x6
+alert
+damage -160 2208 50
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 992 2208 50
+0 0 0 0 x6
+alert
+damage 992 2208 50
+0 0 0 0 x6
+alert
+damage 992 2208 50
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage -128 2288 50
+0 0 0 0 x6
+alert
+damage -128 2288 50
+0 0 0 0 x6
+alert
+damage -128 2288 50
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 304 2864 100
+0 0 0 0 x6
+alert
+damage 1232 3280 50
+0 0 0 0 x6
+alert
+damage 1232 3280 50
+0 0 0 0 x6
+alert
+damage 1232 3280 50
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x6
+alert
+damage 528 2864 100
+0 0 0 0 x12
+alert
+damage -128 3200 50
+0 0 0 0 x6
+alert
+damage -128 3200 50
+0 0 0 0 x6
+alert
+damage 1312 3328 50
+0 0 0 0 x6
+alert
+damage -128 3200 50
+0 0 0 0 x6
+alert
+damage -192 3136 50
+0 0 0 0 x6
+alert
+damage -192 3136 50
+0 0 0 0 x6
+alert
+damage -192 3136 50
+0 0 0 0 x6
+alert
+damage 1312 3328 50
+0 0 0 0 x6
+alert
+damage 1312 3328 50
+0 0 0 0 x331

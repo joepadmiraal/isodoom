@@ -42,7 +42,8 @@ public static class Program
     private static WadArchive TestMapWad(string name) =>
         new(new[] { WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad") });
 
-    private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null);
+    private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null,
+        IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false);
 
     /// <summary>The steering scripts by route name.</summary>
     private static readonly SortedDictionary<string, Script> Scripts = new(StringComparer.Ordinal)
@@ -731,6 +732,210 @@ map E1M2
             Log("cards " + string.Join(",", g.w.players[0].cards));
             g.Settle();
         }),
+        ["e1m1-monsters"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 on skill 4 with monsters (T6.4): e1m1-exit's way from
+# the start through door 4, the nukage room, doors 68, 76 and 81. The
+# zombiemen, shotgun guys and imps wake (by sight, or the shots' noise),
+# chase and attack (hitscans, scratches, fireballs); each is shot dead
+# with route events once it attacked (alert + damage, standing in for
+# the player's weapons), a barrel next to them too. Written by
+# tools/RouteGen (e1m1-monsters).
+iwad doom1
+skill 4
+monsters
+
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Every = 6 };
+            g.GoTo(1500, -2496);
+            Log("at door 4 " + g.Monsters());
+            g.Door(4, 1544, -2496);
+            gun.Clear(400);
+            Log("door 4 clear " + g.Monsters());
+            g.GoTo(1600, -2496);
+            gun.Clear(400);
+            Log("through door 4 " + g.Monsters());
+            g.GoTo(2900, -2900, 12);
+            gun.Clear(400);
+            Log("nukage room " + g.Monsters());
+            g.GoTo(2900, -3100, 12);
+            gun.Clear(400);
+            Log("across line 195 " + g.Monsters());
+            g.GoTo(2980, -3840, 6);
+            g.Door(68, 2944, -3840);
+            gun.Clear(400);
+            g.GoTo(2890, -3840);
+            gun.Clear(400);
+            Log("through door 68 " + g.Monsters());
+            g.GoTo(3008, -3990);
+            g.Door(76, 3008, -4024);
+            gun.Clear(400);
+            Log("door 76 " + g.Monsters());
+            g.GoTo(3008, -4100);
+            gun.Clear(400);
+            Log("through door 76 " + g.Monsters());
+            g.Wait(100);
+            gun.Clear(400);
+            g.GoTo(3008, -4600, 6);
+            gun.Clear(400);
+            Log("at door 81 " + g.Monsters());
+            g.Door(81, 3008, -4640);
+            g.Wait(60);
+            gun.Clear(400);
+            Log("door 81 " + g.Monsters());
+            Log(gun.ToString());
+        }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
+        ["e1m2-monsters"] = new(Doom1, "E1M2", """
+# DOOM1.WAD E1M2 on skill 4 with monsters (T6.4): a shot's noise at the
+# start, north through door 116 and east to the red keycard, a wait there
+# and back to the start: zombiemen and imps wake, chase and attack and are
+# shot dead with route events once they attacked; the shotgun guys wake
+# and chase. Written by tools/RouteGen (e1m2-monsters).
+iwad doom1
+map E1M2
+skill 4
+monsters
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Every = 6 };
+            g.Wait(1);
+            g.Alert();
+            g.Wait(60);
+            gun.Clear(400);
+            Log("start " + g.Monsters());
+            g.GoToDoors(300, 300, 8, 25);
+            gun.Clear(400);
+            Log("north " + g.Monsters());
+            g.GoToDoors(1136, 352, 8, 25);
+            gun.Clear(400);
+            Log("red key " + g.Monsters());
+            g.Wait(150);
+            gun.Clear(600);
+            Log("red key, waited " + g.Monsters());
+            g.GoToDoors(300, 300, 8, 25);
+            gun.Clear(400);
+            Log("north again " + g.Monsters());
+            g.GoToDoors(-32, -240, 8, 25);
+            g.Wait(100);
+            gun.Clear(400);
+            Log("start again " + g.Monsters());
+            Log(gun.ToString());
+        }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
+        ["e1m8-demons"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 on skill 2 with monsters (T6.4): the start closet's
+# floor switch (line 141) lowers its wall, the four demons east wake and
+# come; the player steps down to them (sector 1) and shoots each dead
+# with route events once it attacked. Written by tools/RouteGen
+# (e1m8-demons).
+iwad doom1
+map E1M8
+skill 2
+monsters
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Amount = m => 75, Every = 6 };
+            g.GoTo(-88, -224);
+            g.Use(-40, -224);
+            g.WaitIdle(10);
+            Log("sector 10 lowered " + g.Heights(10) + " " + g.Monsters());
+            g.GoTo(250, -224);
+            g.Wait(150);
+            gun.Clear(600);
+            g.Wait(100);
+            gun.Clear(600);
+            Log("demons " + g.Monsters());
+            Log(gun.ToString());
+        }, Skill: IsoDoom.Sim.skill_t.sk_easy, Monsters: true),
+        ["e1m8-nightmare"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 on Nightmare (skill 5) with monsters (T6.4): as
+# e1m8-barons, with fast monsters (the spectres' halved run, attack and
+# pain states, 20-unit baron balls, attacks between steps) and Nightmare
+# respawns (fogs; a baron comes back and is killed again). Written by
+# tools/RouteGen (e1m8-nightmare).
+iwad doom1
+map E1M8
+skill 5
+monsters
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Amount = m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER ? 200 : 75, Every = 4 };
+            g.TightCorners = true;
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            g.Use(416, 2450);
+            g.WaitUntil(() => g.w.sectors[28].floorheight == -96 * (1 << 16));
+            g.Assume[28] = -96;
+            g.GoTo(416, 2464);
+            g.Assume.Clear();
+            g.WaitIdle(28);
+            Log("lift 28 up " + g.Monsters());
+            g.GoToDoors(416, 2600, 8, 25);
+            Log("hall " + g.Monsters());
+            for (int i = 0; i < 20; i++)
+            {
+                g.Wait(40);
+                Log(g.Monsters() + " " + g.Heights(30) + " fogs " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
+            }
+            Log(gun.ToString());
+        }, (416, 2390, 90), IsoDoom.Sim.skill_t.sk_nightmare, true),
+        ["synthetic-monsters"] = new(Synthetic, "E1M1", """
+# The synthetic E1M1 on skill 1 with monsters (T6.4): the eight imps
+# around the start and the one east wake, scratch and throw fireballs and
+# are shot dead with route events once they attacked; then the barrel is
+# shot: it explodes (A_Explode) and hurts the player. Written by
+# tools/RouteGen (synthetic-monsters).
+iwad synthetic
+skill 1
+monsters
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Every = 8, Amount = m => 30 };
+            for (int i = 0; i < 8; i++)
+            {
+                g.Wait(30);
+                Log(g.Monsters());
+            }
+            gun.Clear(600);
+            Log(g.Monsters());
+            // the barrel (64, 64): shot, it explodes (A_Explode) and hurts the player
+            g.Alert();
+            g.Damage(64, 64, 20);
+            g.Wait(40);
+            Log("barrel " + g.Monsters());
+            Log(gun.ToString());
+        }, Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["e1m8-barons"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 on skill 4 with monsters (T6.4): starts in the tunnel
+# at the lift switch (line 231), rides lift 28 up and crosses line 176
+# (W1 doors, tag 5): the barons' cages open; the barons and the spectres
+# of hall 31 attack (balls, claws, bites) and are shot dead with route
+# events; the last baron's A_BossDeath lowers the wall (sector 30, tag
+# 666) to the arena, -136. Written by tools/RouteGen (e1m8-barons).
+iwad doom1
+map E1M8
+skill 4
+monsters
+""", (g, Log) =>
+        {
+            var gun = new Gunner(g) { Amount = m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER ? 100 : 50, Every = 6 };
+            g.TightCorners = true;
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            g.Use(416, 2450);
+            g.WaitUntil(() => g.w.sectors[28].floorheight == -96 * (1 << 16));
+            g.Assume[28] = -96;
+            g.GoTo(416, 2464);
+            g.Assume.Clear();
+            Log("on lift 28 " + g.Heights(28));
+            g.WaitIdle(28);
+            Log("lift 28 up " + g.Monsters());
+            g.GoToDoors(416, 2600, 8, 25);
+            Log("hall " + g.Monsters());
+            g.WaitUntil(() => g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER && m.health > 0) == 0, 1000);
+            Log("barons dead " + g.Monsters() + " " + g.Heights(30));
+            g.WaitUntil(() => g.w.sectors[30].specialdata != null, 50);
+            g.WaitIdle(30);
+            Log("wall down " + g.Heights(30));
+            Log(gun.ToString());
+        }, (416, 2390, 90), IsoDoom.Sim.skill_t.sk_hard, true),
         ["testmap-lifts"] = new(() => TestMapWad("lifts"), "E1M1", """
 # The lifts test map (T5.5, RouteTestMaps): east into the perpetual lift P
 # across its W1 line (53: P_Random picks its first direction) and back;
@@ -838,6 +1043,8 @@ map stairs
                 Console.WriteLine(probe.ProbeText(double.Parse(pt.Split(',')[0]), double.Parse(pt.Split(',')[1])));
             return 0;
         }
+        if (args.Length is 2 or 3 && args[0] == "--monsters")
+            return MapInfo.PrintMonsters(Doom1(), args[1], args.Length == 3 ? int.Parse(args[2]) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
             return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? args[2].Split(',').Select(int.Parse).ToArray() : null);
         if (args.Length is < 1 or > 2 || !Scripts.TryGetValue(args[0], out Script? script))
@@ -847,15 +1054,16 @@ map stairs
         }
         string name = args[0];
         string path = args.Length > 1 ? args[1] : Path.Combine(RepoRoot(), "tests", "IsoDoom.Tests", "Sim", "Routes", name + ".route");
-        var g = new Steer(script.Wad(), script.Map, script.Start);
+        var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
         void Log(string s) => Console.Error.WriteLine($"[{g.w.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
         script.Run(g, Log);
         Log($"done, {g.Cmds.Count} tics");
 
         // The planning must not have changed the play: replay the ticcmds in a fresh world.
-        var replay = new Steer(script.Wad(), script.Map, script.Start);
+        var replay = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
+        replay.Events.AddRange(g.Events);
         foreach (var c in g.Cmds)
-            replay.w.G_Ticker(new IsoDoom.Sim.ticcmd_t { forwardmove = (sbyte)c.Forward, sidemove = (sbyte)c.Side, angleturn = (short)(c.Turn << 8), buttons = (byte)c.Buttons });
+            replay.Tic(c.Forward, c.Side, c.Turn, c.Buttons); // (with the events)
         if (replay.w.Checksum() != g.w.Checksum())
         {
             Console.Error.WriteLine("The replayed ticcmds end in another state: the planning changed the play.");

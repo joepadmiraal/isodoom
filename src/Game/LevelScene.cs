@@ -196,7 +196,7 @@ public partial class LevelScene : Node3D
     public const int MaxTicsPerFrame = 8;
 
     private double _ticTime;
-    private readonly Queue<ticcmd_t?> _scriptTics = new();
+    private readonly Queue<(ticcmd_t? Cmd, Action<World>? Before)> _scriptTics = new();
 
     // Debug plane moves (T5.1, the level script's plane): run after each tic, as a mover thinker would.
     private readonly List<(sector_t Sector, bool Ceiling, int Target, int Speed)> _planeMoves = new();
@@ -830,8 +830,17 @@ public partial class LevelScene : Node3D
     /// without <see cref="ScriptedTics"/>, <see cref="BuildTiccmd(Tweaks)"/>)
     /// through <see cref="World.G_Ticker(in ticcmd_t)"/>.
     /// </summary>
-    private void RunTic() =>
-        Tic(ScriptedTics && _scriptTics.Dequeue() is ticcmd_t scripted ? scripted : BuildTiccmd(World!.tweaks));
+    private void RunTic()
+    {
+        if (!ScriptedTics)
+        {
+            Tic(BuildTiccmd(World!.tweaks));
+            return;
+        }
+        (ticcmd_t? cmd, Action<World>? before) = _scriptTics.Dequeue();
+        before?.Invoke(World!); // T6.4: a route's events, before the tic
+        Tic(cmd ?? BuildTiccmd(World!.tweaks));
+    }
 
     /// <summary>Runs one tic of <paramref name="cmd"/> (the game loop's, and the level check's).</summary>
     public void Tic(in ticcmd_t cmd)
@@ -970,7 +979,8 @@ public partial class LevelScene : Node3D
     /// Queues one scripted tic (<see cref="ScriptedTics"/>): <paramref name="cmd"/>,
     /// or null for a command built from the input at that tic.
     /// </summary>
-    public void QueueTic(ticcmd_t? cmd) => _scriptTics.Enqueue(cmd);
+    /// <remarks>T6.4: <paramref name="before"/> runs on the world just before that tic (a route's events).</remarks>
+    public void QueueTic(ticcmd_t? cmd, Action<World>? before = null) => _scriptTics.Enqueue((cmd, before));
 
     /// <summary>Drops the scripted tics not run yet.</summary>
     public void ClearQueuedTics() => _scriptTics.Clear();

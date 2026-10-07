@@ -1,0 +1,60 @@
+# The synthetic E1M1 on skill 1 with monsters (T6.4): the eight imps
+# around the start and the one east wake, scratch and throw fireballs and
+# are shot dead with route events once they attacked; then the barrel is
+# shot: it explodes (A_Explode) and hurts the player. Written by
+# tools/RouteGen (synthetic-monsters).
+iwad synthetic
+skill 1
+monsters# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x12
+alert
+damage 0 80 30
+0 0 0 0 x8
+alert
+damage 0 -80 30
+0 0 0 0 x8
+alert
+damage 0 80 30
+0 0 0 0 x8
+alert
+damage 80 -80 30
+0 0 0 0 x8
+alert
+damage -80 0 30
+0 0 0 0 x8
+alert
+damage -80 0 30
+0 0 0 0 x8
+alert
+damage 0 -80 30
+0 0 0 0 x8
+alert
+damage 80 -80 30
+0 0 0 0 x8
+alert
+damage -80 -80 30
+0 0 0 0 x8
+alert
+damage -80 80 30
+0 0 0 0 x8
+alert
+damage -80 80 30
+0 0 0 0 x8
+alert
+damage -80 -80 30
+0 0 0 0 x8
+alert
+damage 80 0 30
+0 0 0 0 x8
+alert
+damage 80 0 30
+0 0 0 0 x8
+alert
+damage 320 64 30
+0 0 0 0 x8
+alert
+damage 320 64 30
+0 0 0 0 x108
+alert
+damage 64 64 20
+0 0 0 0 x40

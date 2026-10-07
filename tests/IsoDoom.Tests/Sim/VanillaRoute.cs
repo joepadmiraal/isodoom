@@ -31,7 +31,13 @@ namespace IsoDoom.Tests.Sim;
 /// <c>forwardmove</c> and <c>sidemove</c> as signed bytes, <c>TURN</c> the
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
 /// angleturn is 8 bits wide), <c>xCOUNT</c> repeats the line. The game has no
-/// monsters (the demo's <c>nomonsters</c>) and player 1 alone.
+/// monsters (the demo's <c>nomonsters</c>) unless the header has a line
+/// <c>monsters</c> (T6.4), and player 1 alone. Between the ticcmds (T6.4),
+/// <c>damage X Y AMOUNT</c> (player 1 hurts the live shootable thing spawned
+/// at map point X, Y by AMOUNT, as a shot would) and <c>alert</c> (player 1
+/// makes a noise, as a shot would) run at the start of the next tic, before
+/// the players think (<see cref="RouteEvent"/>): stand-ins for the player's
+/// shots until its weapons are ported (T6.6).
 /// </para>
 /// <para>
 /// The reference dump (<c>NAME.vanilla</c>; dump.c) has one line per tic,
@@ -83,9 +89,14 @@ public sealed class VanillaRoute
     /// <summary>The <c>exit</c> header (T5.9): 1 for <c>normal</c>, 2 for <c>secret</c>, 0 without one (the dump's <c>exit</c> column).</summary>
     public int Exit { get; }
     public IReadOnlyList<ticcmd_t> Cmds { get; }
+    /// <summary>The parsed file: the <c>monsters</c> header and the events (T6.4).</summary>
+    public RouteFile File { get; }
+    /// <summary>The <c>monsters</c> header (T6.4).</summary>
+    public bool Monsters => File.Monsters;
 
-    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, int exit, IReadOnlyList<ticcmd_t> cmds)
+    private VanillaRoute(string path, string iwad, string map, skill_t skill, (int, int, int)? start, int exit, IReadOnlyList<ticcmd_t> cmds, RouteFile file)
     {
+        File = file;
         Start = start;
         Exit = exit;
         Name = System.IO.Path.GetFileNameWithoutExtension(path);
@@ -123,7 +134,7 @@ public sealed class VanillaRoute
         {
             map = (map ?? "E1M1").ToUpperInvariant();
         }
-        return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds);
+        return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds, route);
     }
 
     /// <summary>
@@ -144,10 +155,10 @@ public sealed class VanillaRoute
             if (string.IsNullOrEmpty(dir))
                 dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes");
             path = System.IO.Path.Combine(dir, Name + ".vanilla");
-            if (!File.Exists(path))
+            if (!System.IO.File.Exists(path))
                 Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/routes.sh (or set {DumpDirEnvVar}).");
         }
-        return File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+        return System.IO.File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
     }
 
     /// <summary>A new game on the route's map with every tweak off (<see cref="Tweaks.Vanilla"/>), as the demo starts it.</summary>
@@ -159,7 +170,7 @@ public sealed class VanillaRoute
             "testmap" => new WadArchive(new[] { WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad") }),
             _ => WadArchive.Open(TestWads.RequireDoom1()),
         };
-        var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: true), Tweaks.Vanilla)
+        var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: !Monsters), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
@@ -278,6 +289,7 @@ public sealed class VanillaRoute
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
+            File.RunEvents(world, tic);
             world.G_Ticker(Cmds[tic]);
             string actual = Line(world, mapHeights, mapTextures, mapLights);
             if (actual == expected[tic])

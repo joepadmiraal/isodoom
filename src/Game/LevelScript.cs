@@ -83,8 +83,8 @@ namespace IsoDoom.Game;
 /// (<see cref="RouteFile"/>, e.g. <c>tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route</c>)
 /// and does not wait for them, so <c>tics N; shot FILE.png</c> can follow
 /// along; a <c>start</c> header places the player first, as the route tests
-/// do. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
-/// <c>--level-monsters=off</c>, the route's skill and map, or the script
+/// do; its <c>damage</c> and <c>alert</c> events (T6.4) run before their tics. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
+/// <c>--level-monsters=off</c> (<c>on</c> for a route with the <c>monsters</c> header), the route's skill and map, or the script
 /// fails. <c>map NAME</c> after it checks that the route left by its exit.
 /// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
 /// name (<c>LeftX</c>, <c>LeftY</c>: the move stick, <c>RightX</c>,
@@ -416,8 +416,8 @@ public partial class LevelScript : Node
         var wrong = new List<string>();
         if (_scene.Tweaks != IsoDoom.Sim.Tweaks.Vanilla)
             wrong.Add("needs --level-tweaks=vanilla (a route is a vanilla demo)");
-        if (!_scene.NoMonsters)
-            wrong.Add("needs --level-monsters=off (routes are -nomonsters)");
+        if (_scene.NoMonsters == route.Monsters)
+            wrong.Add(route.Monsters ? "needs --level-monsters=on (the route has monsters)" : "needs --level-monsters=off (the route is -nomonsters)");
         if ((int)_scene.Skill + 1 != route.Skill)
             wrong.Add($"needs --level-skill={route.Skill}");
         if (!string.Equals(shown, map, StringComparison.OrdinalIgnoreCase))
@@ -435,8 +435,11 @@ public partial class LevelScript : Node
             return false;
         }
         _scene.ScriptedTics = true;
-        foreach (var cmd in route.Cmds)
-            _scene.QueueTic(cmd);
+        for (int tic = 0; tic < route.Cmds.Count; tic++)
+        {
+            int t = tic;
+            _scene.QueueTic(route.Cmds[tic], System.Linq.Enumerable.Any(route.Events, e => e.Tic == t) ? world => route.RunEvents(world, t) : null);
+        }
         GD.Print($"Level script: route {path}: {route.Cmds.Count} tics queued on {map}{(route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
         return true;
     }

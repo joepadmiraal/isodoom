@@ -1,0 +1,62 @@
+# DOOM1.WAD E1M8 on skill 2 with monsters (T6.4): the start closet's
+# floor switch (line 141) lowers its wall, the four demons east wake and
+# come; the player steps down to them (sector 1) and shoots each dead
+# with route events once it attacked. Written by tools/RouteGen
+# (e1m8-demons).
+iwad doom1
+map E1M8
+skill 2
+monsters# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+25 0 0 0 x5
+4 0 0 0
+-1 0 0 0 x3
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x11
+0 0 0 2
+0 0 0 0 x96
+25 0 0 0 x31
+19 0 0 0 x6
+25 0 0 0 x6
+-1 0 0 0
+-2 0 0 0 x4
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x4
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 -1 0
+0 0 0 0 x23
+alert
+damage 272 -320 75
+0 0 0 0 x6
+alert
+damage 272 -320 75
+0 0 0 0 x52
+alert
+damage 544 -128 75
+0 0 0 0 x6
+alert
+damage 544 -128 75
+0 0 0 0 x37
+alert
+damage 272 -128 75
+0 0 0 0 x6
+alert
+damage 272 -128 75
+0 0 0 0 x41
+alert
+damage 544 -320 75
+0 0 0 0 x6
+alert
+damage 544 -320 75
+0 0 0 0 x87

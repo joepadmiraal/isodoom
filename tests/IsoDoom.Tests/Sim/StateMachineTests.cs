@@ -202,6 +202,9 @@ public class StateMachineTests
         World world = NewWorld(skill_t.sk_nightmare);
         mobj_t player = world.players[0].mo!;
         world.PlaceMobj(player, F(320), F(64));
+        // T6.4: the other monsters would wake and push the player off the spot
+        foreach (mobj_t m in world.Mobjs().Where(m => (m.flags & mobjflag_t.MF_COUNTKILL) != 0 && m.spawnpoint.X != 320).ToList())
+            world.P_RemoveMobj(m);
         Assert.Equal(-1, KillAndWait(world, out mobj_t corpse, 35 * 60));
         Assert.True(corpse.movecount >= 12 * 35);
 

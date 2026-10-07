@@ -45,9 +45,18 @@ public sealed class Steer
     /// <summary>Prints the steering every 10 tics.</summary>
     public bool Verbose;
 
-    public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium)
+    /// <summary>
+    /// T6.4: the route's events (<see cref="IsoDoom.Game.RouteEvent"/>), each
+    /// run before the tic of its index (<see cref="Damage"/>, <see cref="Alert"/>).
+    /// </summary>
+    public readonly List<IsoDoom.Game.RouteEvent> Events = new();
+
+    /// <summary>T6.4: called after every tic (e.g. a <see cref="Gunner"/> adding the next tic's events).</summary>
+    public Action? OnTic;
+
+    public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
     {
-        w = new World(new SpawnSettings(GameMode.shareware, skill, nomonsters: true), Tweaks.Vanilla)
+        w = new World(new SpawnSettings(GameMode.shareware, skill, nomonsters: !monsters), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
@@ -55,7 +64,8 @@ public sealed class Steer
     }
 
     /// <summary>T5.6: a route's <c>start X Y ANGLE</c> (<see cref="RouteStart.Place"/>), before the first tic.</summary>
-    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start) : this(wad, map)
+    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start, skill_t skill = skill_t.sk_medium, bool monsters = false)
+        : this(wad, map, skill, monsters)
     {
         if (start is { } s)
             RouteStart.Place(w, s.X, s.Y, s.Angle);
@@ -69,9 +79,33 @@ public sealed class Steer
     /// <summary>Runs one tic with this ticcmd (turn: the demo's angleturn byte) and records it.</summary>
     public void Tic(int forward, int side, int turn, int buttons)
     {
+        foreach (var e in Events)
+        {
+            if (e.Tic == Cmds.Count)
+                e.Run(w);
+        }
         Cmds.Add((forward, side, turn, buttons));
         w.G_Ticker(new ticcmd_t { forwardmove = (sbyte)forward, sidemove = (sbyte)side, angleturn = (short)(turn << 8), buttons = (byte)buttons });
+        OnTic?.Invoke();
     }
+
+    /// <summary>T6.4: player 1 hurts the live thing spawned at (x, y) by <paramref name="amount"/> at the start of the next tic (a route <c>damage</c> line).</summary>
+    public void Damage(int x, int y, int amount) =>
+        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Damage, x, y, amount));
+
+    /// <summary>T6.4: player 1 makes a noise at the start of the next tic (a route <c>alert</c> line).</summary>
+    public void Alert() =>
+        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Alert, 0, 0, 0));
+
+    /// <summary>T6.4: the live mobj spawned at (x, y) (a damage event's target), or null.</summary>
+    public mobj_t? Spawned(int x, int y) =>
+        w.Mobjs().FirstOrDefault(m => m.spawnpoint.X == x && m.spawnpoint.Y == y && (m.flags & mobjflag_t.MF_SHOOTABLE) != 0 && m.health > 0);
+
+    /// <summary>T6.4: the monsters out of their spawn state (type, spawn point, position, health, state) and the player's health, for the log.</summary>
+    public string Monsters() =>
+        $"health {w.players[0].health} armor {w.players[0].armorpoints}; " + string.Join("; ", w.Mobjs()
+            .Where(m => (m.flags & mobjflag_t.MF_COUNTKILL) != 0 && m.state != m.info.spawnstate && m.state != Info.states[(int)m.info.spawnstate].nextstate)
+            .Select(m => $"{m.type.ToString()[3..]}@{m.spawnpoint.X},{m.spawnpoint.Y} ({m.x >> 16},{m.y >> 16}) h{m.health} {m.state.ToString()[2..]}"));
 
     public void Wait(int tics)
     {
@@ -180,8 +214,13 @@ public sealed class Steer
         sb.Append("# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn\n");
         for (int k = 0; k < Cmds.Count;)
         {
+            foreach (var e in Events)
+            {
+                if (e.Tic == k)
+                    sb.Append(e).Append('\n');
+            }
             int n = 1;
-            while (k + n < Cmds.Count && Cmds[k + n] == Cmds[k])
+            while (k + n < Cmds.Count && Cmds[k + n] == Cmds[k] && !Events.Any(e => e.Tic == k + n))
                 n++;
             var c = Cmds[k];
             sb.Append($"{c.Forward} {c.Side} {c.Turn} {c.Buttons}");
@@ -254,12 +293,18 @@ public sealed class Steer
             w.sectors[k].floorheight = v * FU;
         foreach (var (k, v) in AssumeCeil)
             w.sectors[k].ceilingheight = v * FU;
+        // T6.4: plan through the monsters (they move; the steering pushes past them)
+        var monsters = w.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)) == (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)).ToList();
+        foreach (mobj_t m in monsters)
+            m.flags &= ~mobjflag_t.MF_SOLID;
         try
         {
             return action();
         }
         finally
         {
+            foreach (mobj_t m in monsters)
+                m.flags |= mobjflag_t.MF_SOLID;
             foreach (var (k, v) in floors)
                 w.sectors[k].floorheight = v;
             foreach (var (k, v) in ceilings)

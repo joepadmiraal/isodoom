@@ -23,7 +23,7 @@ public sealed partial class World
 
             ref readonly state_t st = ref Info.states[(int)state];
             mobj.state = state;
-            mobj.tics = st.tics;
+            mobj.tics = StateTics(state); // st->tics (the fast monsters': T6.4)
             mobj.sprite = st.sprite;
             mobj.frame = st.frame;
 
@@ -79,7 +79,74 @@ public sealed partial class World
 
         mo.flags &= ~mobjflag_t.MF_MISSILE;
 
-        // if (mo->info->deathsound) S_StartSound (mo, mo->info->deathsound); (T6.10)
+        if (mo.info.deathsound != sfxenum_t.sfx_None)
+            S_StartSound(mo, mo.info.deathsound);
+    }
+
+    /// <summary>
+    /// p_mobj.c <c>P_CheckMissileSpawn</c>: a new missile's first tics cut by
+    /// 0-3 (a <c>P_Random</c>, at least 1), moved half a step forward so an
+    /// angle can be computed if it immediately explodes, and exploded
+    /// (<see cref="P_ExplodeMissile"/>) when it does not fit there. Pulled
+    /// forward from T6.5 for the imps' and barons' balls (T6.4).
+    /// </summary>
+    public void P_CheckMissileSpawn(mobj_t th)
+    {
+        th.tics -= P_Random() & 3;
+        if (th.tics < 1)
+            th.tics = 1;
+
+        // move a little forward so an angle can
+        // be computed if it immediately explodes
+        th.x += th.momx >> 1;
+        th.y += th.momy >> 1;
+        th.z += th.momz >> 1;
+
+        if (!P_TryMove(th, th.x, th.y))
+            P_ExplodeMissile(th);
+    }
+
+    /// <summary>
+    /// p_mobj.c <c>P_SpawnMissile</c>: a missile of <paramref name="type"/>
+    /// fired by <paramref name="source"/> (its <see cref="mobj_t.target"/>)
+    /// from 32 units above its feet at <paramref name="dest"/>: aimed at it
+    /// (up to ±22.5° off at a fuzzy one), at its speed
+    /// (<see cref="MissileSpeed"/>), climbing or dropping to reach its feet'
+    /// height over the distance; then <see cref="P_CheckMissileSpawn"/>.
+    /// Pulled forward from T6.5 (T6.4).
+    /// </summary>
+    public mobj_t P_SpawnMissile(mobj_t source, mobj_t dest, mobjtype_t type)
+    {
+        mobj_t th = P_SpawnMobj(source.x,
+                                source.y,
+                                source.z + 4 * 8 * Fixed.FRACUNIT, type);
+
+        if (th.info.seesound != sfxenum_t.sfx_None)
+            S_StartSound(th, th.info.seesound);
+
+        th.target = source; // where it came from
+        uint an = Tables.R_PointToAngle2(source.x, source.y, dest.x, dest.y);
+
+        // fuzzy player
+        if ((dest.flags & mobjflag_t.MF_SHADOW) != 0)
+            an = unchecked(an + (uint)((P_Random() - P_Random()) << 20));
+
+        int speed = MissileSpeed(type); // th->info->speed (the fast monsters': T6.4)
+        th.angle = an;
+        an >>= Tables.ANGLETOFINESHIFT;
+        th.momx = Fixed.FixedMul(speed, Tables.finecosine[(int)an]);
+        th.momy = Fixed.FixedMul(speed, Tables.finesine[(int)an]);
+
+        int dist = P_AproxDistance(dest.x - source.x, dest.y - source.y);
+        dist /= speed;
+
+        if (dist < 1)
+            dist = 1;
+
+        th.momz = (dest.z - source.z) / dist;
+        P_CheckMissileSpawn(th);
+
+        return th;
     }
 
     /// <summary>
@@ -482,7 +549,7 @@ public sealed partial class World
         ref readonly state_t st = ref Info.states[(int)info.spawnstate];
 
         mobj.state = info.spawnstate;
-        mobj.tics = st.tics;
+        mobj.tics = StateTics(info.spawnstate); // st->tics (T6.4)
         mobj.sprite = st.sprite;
         mobj.frame = st.frame;
 

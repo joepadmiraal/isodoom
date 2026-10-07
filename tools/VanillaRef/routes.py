@@ -11,7 +11,9 @@ non-id content: committed), OUTDIR/NAME.vanilla for one on DOOM1.WAD
 (WAD-derived: never committed). The synthetic map and the test maps
 (TESTMAPS/NAME.wad, written by the tests' WritesTheTestMapPwads; T4.8a) play
 as a -file over DOOM1.WAD, whose status bar and fonts the reference needs to
-start; a test map's lump is E1M1.
+start; a test map's lump is E1M1. A route with the monsters header (T6.4)
+plays without nomonsters, and its damage/alert lines go to the reference as
+$DUMP_EVENTS (dump.c), run before their tics.
 """
 import os, subprocess, sys, tempfile
 
@@ -20,8 +22,9 @@ SKILLS = range(1, 6)
 
 def parse(path):
     """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
-    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None}
+    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False}
     cmds = []
+    events = []  # T6.4: "TIC damage X Y AMOUNT" / "TIC alert", TIC the 0-based tic they start
     for n, line in enumerate(open(path), 1):
         line = line.split('#', 1)[0].split()
         if not line:
@@ -36,6 +39,21 @@ def parse(path):
             if len(line) != 2 or line[1] not in ('normal', 'secret'):
                 sys.exit(f'{where}: expected exit normal|secret')
             head['exit'] = line[1]
+            continue
+        if line[0] == 'monsters':  # T6.4: the demo spawns monsters
+            if len(line) != 1:
+                sys.exit(f'{where}: expected monsters')
+            head['monsters'] = True
+            continue
+        if line[0] == 'damage':  # T6.4: player 1 hurts a thing at the start of the next tic
+            if len(line) != 4 or int(line[3]) < 1:
+                sys.exit(f'{where}: expected damage X Y AMOUNT')
+            events.append(f'{len(cmds)} damage {int(line[1])} {int(line[2])} {int(line[3])}')
+            continue
+        if line[0] == 'alert':  # T6.4: player 1 makes a noise at the start of the next tic
+            if len(line) != 1:
+                sys.exit(f'{where}: expected alert')
+            events.append(f'{len(cmds)} alert')
             continue
         if line[0] in head:
             head[line[0]] = line[1] if line[0] != 'skill' else int(line[1])
@@ -53,15 +71,18 @@ def parse(path):
         sys.exit(f'{path}: needs "iwad synthetic|doom1|testmap" and a skill of 1-5')
     if head['iwad'] == 'testmap' and not head['map']:
         sys.exit(f'{path}: "iwad testmap" needs "map NAME"')
+    if events and int(events[-1].split()[0]) >= len(cmds):
+        sys.exit(f'{path}: an event after the last tic')
+    head['events'] = events
     return head, cmds
 
 
 def demo(head, cmds):
-    """A v1.9 demo lump: nomonsters, player 1 alone; angleturn is the turn byte << 8."""
+    """A v1.9 demo lump: nomonsters unless the monsters header (T6.4), player 1 alone; angleturn is the turn byte << 8."""
     m = 'E1M1' if head['iwad'] == 'testmap' else (head['map'] or 'E1M1').upper()
     if len(m) != 4 or m[0] != 'E' or m[2] != 'M':
         sys.exit(f'{m}: only ExMy maps')
-    data = bytearray([109, head['skill'] - 1, int(m[1]), int(m[3]), 0, 0, 0, 1, 0, 1, 0, 0, 0])
+    data = bytearray([109, head['skill'] - 1, int(m[1]), int(m[3]), 0, 0, 0, 0 if head['monsters'] else 1, 0, 1, 0, 0, 0])
     for fwd, side, turn, buttons in cmds:
         data += bytes([fwd & 255, side & 255, turn & 255, buttons])
     return bytes(data + b'\x80')
@@ -89,8 +110,11 @@ def main():
             env = dict(os.environ, DUMP_TICS=out)
             env.pop('VIEWS', None)
             env.pop('DUMP_START', None)
+            env.pop('DUMP_EVENTS', None)
             if head['start']:
                 env['DUMP_START'] = head['start']
+            if head['events']:
+                env['DUMP_EVENTS'] = ';'.join(head['events'])
             r = subprocess.run(args, cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         finally:  # (no shutil: the dev container's Python is minimal)
             for root, dirs, files in os.walk(tmp, topdown=False):

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace IsoDoom.Sim;
 
 // The per-tic state checksum (SPEC §6.1, §12 T4.2).
@@ -7,17 +9,25 @@ public sealed partial class World
     /// A cheap checksum of the play state, for tests now and desync detection
     /// in co-op later (SPEC §6.1): 64-bit FNV-1a over, in order,
     /// <see cref="leveltime"/>, <c>prndindex</c>, every mobj in thinker order
-    /// (type, x, y, z, momx, momy, momz, angle, health, state, tics, flags),
-    /// every sector (floor height, ceiling height, light level) and every
+    /// (type, x, y, z, momx, momy, momz, angle, health, state, tics, flags;
+    /// since T6.4 also movedir, movecount, reactiontime, threshold and its
+    /// target as a mobj index), every sector (floor height, ceiling height,
+    /// light level; since T6.4 its sound target as a mobj index) and every
     /// player in the game (player state, health, armor points, view z,
     /// view height and its delta). Only sim state
-    /// goes in: <c>M_Random</c>'s index does not.
+    /// goes in: <c>M_Random</c>'s index does not. A mobj index is the mobj's
+    /// place in thinker order, -1 for none (or a removed mobj).
     /// </summary>
     public ulong Checksum()
     {
         ulong h = FnvOffset;
         Add(ref h, leveltime);
         Add(ref h, random.prndindex);
+
+        // the mobjs' places in thinker order (lookups only: no iteration over the dictionary)
+        _checksumIndex.Clear();
+        foreach (mobj_t mo in Mobjs())
+            _checksumIndex[mo] = _checksumIndex.Count;
 
         foreach (mobj_t mo in Mobjs())
         {
@@ -33,6 +43,11 @@ public sealed partial class World
             Add(ref h, (int)mo.state);
             Add(ref h, mo.tics);
             Add(ref h, (int)mo.flags);
+            Add(ref h, mo.movedir);
+            Add(ref h, mo.movecount);
+            Add(ref h, mo.reactiontime);
+            Add(ref h, mo.threshold);
+            Add(ref h, MobjIndex(mo.target));
         }
 
         foreach (sector_t sec in sectors)
@@ -40,7 +55,9 @@ public sealed partial class World
             Add(ref h, sec.floorheight);
             Add(ref h, sec.ceilingheight);
             Add(ref h, sec.lightlevel);
+            Add(ref h, MobjIndex(sec.soundtarget));
         }
+        _checksumIndex.Clear();
 
         for (int i = 0; i < MAXPLAYERS; i++)
         {
@@ -57,6 +74,10 @@ public sealed partial class World
         }
         return h;
     }
+
+    private readonly System.Collections.Generic.Dictionary<mobj_t, int> _checksumIndex = new(ReferenceEqualityComparer.Instance);
+
+    private int MobjIndex(mobj_t? mo) => mo != null && _checksumIndex.TryGetValue(mo, out int i) ? i : -1;
 
     private const ulong FnvOffset = 14695981039346656037;
     private const ulong FnvPrime = 1099511628211;

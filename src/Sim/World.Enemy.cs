@@ -5,7 +5,25 @@ namespace IsoDoom.Sim;
 // p_enemy.c (and p_pspr.c's A_BFGSpray): the action functions of the mobj
 // states, dispatched by P_SetMobjState (T6.1). Each is a stub until the task
 // named in its summary; the player's pain and death ones are ported (T5.8),
-// and so are the sound alert and P_LookForPlayers (T6.2; sight in World.Sight.cs).
+// the sound alert and P_LookForPlayers (T6.2; sight in World.Sight.cs), and
+// the monsters' movement, decisions, the shareware monsters' attacks, the
+// death actions, the barrel's explosion and A_BossDeath (T6.4).
+
+/// <summary>p_enemy.c <c>dirtype_t</c>: a monster's eight movement directions (<see cref="mobj_t.movedir"/>), counter-clockwise from east.</summary>
+public enum dirtype_t
+{
+    DI_EAST,
+    DI_NORTHEAST,
+    DI_NORTH,
+    DI_NORTHWEST,
+    DI_WEST,
+    DI_SOUTHWEST,
+    DI_SOUTH,
+    DI_SOUTHEAST,
+    DI_NODIR,
+    NUMDIRS,
+}
+
 public sealed partial class World
 {
     /// <summary>
@@ -304,6 +322,824 @@ public sealed partial class World
         }
     }
 
+    // ---- Movement and decisions (T6.4) ----
+
+    /// <summary>p_enemy.c <c>opposite</c>: the direction opposite each <see cref="dirtype_t"/> (P_NewChaseDir related LUT).</summary>
+    private static readonly dirtype_t[] opposite =
+    {
+        dirtype_t.DI_WEST, dirtype_t.DI_SOUTHWEST, dirtype_t.DI_SOUTH, dirtype_t.DI_SOUTHEAST,
+        dirtype_t.DI_EAST, dirtype_t.DI_NORTHEAST, dirtype_t.DI_NORTH, dirtype_t.DI_NORTHWEST, dirtype_t.DI_NODIR,
+    };
+
+    /// <summary>p_enemy.c <c>diags</c>: the diagonal towards a target, by <c>((deltay &lt; 0) &lt;&lt; 1) + (deltax &gt; 0)</c>.</summary>
+    private static readonly dirtype_t[] diags =
+    {
+        dirtype_t.DI_NORTHWEST, dirtype_t.DI_NORTHEAST, dirtype_t.DI_SOUTHWEST, dirtype_t.DI_SOUTHEAST,
+    };
+
+    /// <summary>p_enemy.c <c>xspeed</c>: a step's x per unit of speed in each direction (fixed_t; 47000 ≈ FRACUNIT·√½).</summary>
+    private static readonly int[] xspeed = { Fixed.FRACUNIT, 47000, 0, -47000, -Fixed.FRACUNIT, -47000, 0, 47000 };
+
+    /// <summary>p_enemy.c <c>yspeed</c>: a step's y per unit of speed in each direction (fixed_t).</summary>
+    private static readonly int[] yspeed = { 0, 47000, Fixed.FRACUNIT, 47000, 0, -47000, -Fixed.FRACUNIT, -47000 };
+
+    /// <summary>
+    /// p_enemy.c <c>P_CheckMeleeRange</c>: whether <paramref name="actor"/>'s
+    /// target is close enough to hit (closer than <see cref="MELEERANGE"/>
+    /// - 20 units + the target's radius, by <see cref="P_AproxDistance"/>) and in sight.
+    /// </summary>
+    public bool P_CheckMeleeRange(mobj_t actor)
+    {
+        if (actor.target == null)
+            return false;
+
+        mobj_t pl = actor.target;
+        int dist = P_AproxDistance(pl.x - actor.x, pl.y - actor.y);
+
+        if (dist >= MELEERANGE - 20 * Fixed.FRACUNIT + pl.info.radius)
+            return false;
+
+        if (!P_CheckSight(actor, actor.target))
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>P_CheckMissileRange</c>: whether <paramref name="actor"/>
+    /// fires at its target now: in sight, and either just hurt
+    /// (<see cref="mobjflag_t.MF_JUSTHIT"/>, cleared) or awake
+    /// (<see cref="mobj_t.reactiontime"/> 0) and lucky: a <c>P_Random</c>
+    /// at least the distance in units less 64 (less 128 more without a
+    /// melee attack; halved for the revenant beyond 196, the Cyberdemon,
+    /// the Spider Mastermind and the lost soul), capped at 200 (160 for the Cyberdemon).
+    /// </summary>
+    public bool P_CheckMissileRange(mobj_t actor)
+    {
+        if (!P_CheckSight(actor, actor.target!))
+            return false;
+
+        if ((actor.flags & mobjflag_t.MF_JUSTHIT) != 0)
+        {
+            // the target just hit the enemy,
+            // so fight back!
+            actor.flags &= ~mobjflag_t.MF_JUSTHIT;
+            return true;
+        }
+
+        if (actor.reactiontime != 0)
+            return false; // do not attack yet
+
+        // OPTIMIZE: get this from a global checksight
+        int dist = P_AproxDistance(actor.x - actor.target!.x, actor.y - actor.target.y) - 64 * Fixed.FRACUNIT;
+
+        if (actor.info.meleestate == statenum_t.S_NULL)
+            dist -= 128 * Fixed.FRACUNIT; // no melee attack, so fire more
+
+        dist >>= 16;
+
+        if (actor.type == mobjtype_t.MT_VILE)
+        {
+            if (dist > 14 * 64)
+                return false; // too far away
+        }
+
+        if (actor.type == mobjtype_t.MT_UNDEAD)
+        {
+            if (dist < 196)
+                return false; // close for fist attack
+            dist >>= 1;
+        }
+
+        if (actor.type == mobjtype_t.MT_CYBORG
+            || actor.type == mobjtype_t.MT_SPIDER
+            || actor.type == mobjtype_t.MT_SKULL)
+        {
+            dist >>= 1;
+        }
+
+        if (dist > 200)
+            dist = 200;
+
+        if (actor.type == mobjtype_t.MT_CYBORG && dist > 160)
+            dist = 160;
+
+        if (P_Random() < dist)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>P_Move</c>: moves <paramref name="actor"/> one step
+    /// (its <c>speed</c> in map units) in its <see cref="mobj_t.movedir"/>;
+    /// false when the move is blocked. A blocked floater rises or sinks
+    /// towards the height it fits at (<see cref="floatok"/>); a blocked
+    /// walker tries the special lines it touched (<see cref="P_UseSpecialLine"/>:
+    /// doors it may open), true when one starts, and loses its direction.
+    /// </summary>
+    public bool P_Move(mobj_t actor)
+    {
+        if (actor.movedir == (int)dirtype_t.DI_NODIR)
+            return false;
+
+        if ((uint)actor.movedir >= 8)
+            throw new System.InvalidOperationException("Weird actor->movedir!");
+
+        int tryx = unchecked(actor.x + actor.info.speed * xspeed[actor.movedir]);
+        int tryy = unchecked(actor.y + actor.info.speed * yspeed[actor.movedir]);
+
+        bool try_ok = P_TryMove(actor, tryx, tryy);
+
+        if (!try_ok)
+        {
+            // open any specials
+            if ((actor.flags & mobjflag_t.MF_FLOAT) != 0 && floatok)
+            {
+                // must adjust height
+                if (actor.z < tmfloorz)
+                    actor.z += FLOATSPEED;
+                else
+                    actor.z -= FLOATSPEED;
+
+                actor.flags |= mobjflag_t.MF_INFLOAT;
+                return true;
+            }
+
+            if (numspechit == 0)
+                return false;
+
+            actor.movedir = (int)dirtype_t.DI_NODIR;
+            bool good = false;
+            while (numspechit-- != 0)
+            {
+                line_t ld = spechit[numspechit]!;
+                // if the special is not a door
+                // that can be opened,
+                // return false
+                if (P_UseSpecialLine(actor, ld, 0))
+                    good = true;
+            }
+            return good;
+        }
+        else
+        {
+            actor.flags &= ~mobjflag_t.MF_INFLOAT;
+        }
+
+        if ((actor.flags & mobjflag_t.MF_FLOAT) == 0)
+            actor.z = actor.floorz;
+        return true;
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>P_TryWalk</c>: attempts to move <paramref name="actor"/>
+    /// on in its current direction (<see cref="P_Move"/>); when it moved (or
+    /// a door in the way started opening), it keeps the direction for 0-15
+    /// more steps (<see cref="mobj_t.movecount"/>, a <c>P_Random</c>).
+    /// </summary>
+    public bool P_TryWalk(mobj_t actor)
+    {
+        if (!P_Move(actor))
+            return false;
+
+        actor.movecount = P_Random() & 15;
+        return true;
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>P_NewChaseDir</c>: picks <paramref name="actor"/>'s next
+    /// direction towards its target: the diagonal, then the two axes (the
+    /// larger difference first, or at random), the old direction, every
+    /// other direction in a random order and, last, turning around; each
+    /// tried with <see cref="P_TryWalk"/>. <see cref="dirtype_t.DI_NODIR"/> when none works.
+    /// </summary>
+    public void P_NewChaseDir(mobj_t actor)
+    {
+        if (actor.target == null)
+            throw new System.InvalidOperationException("P_NewChaseDir: called with no target");
+
+        System.Span<dirtype_t> d = stackalloc dirtype_t[3];
+
+        dirtype_t olddir = (dirtype_t)actor.movedir;
+        dirtype_t turnaround = opposite[(int)olddir];
+
+        int deltax = unchecked(actor.target.x - actor.x);
+        int deltay = unchecked(actor.target.y - actor.y);
+
+        if (deltax > 10 * Fixed.FRACUNIT)
+            d[1] = dirtype_t.DI_EAST;
+        else if (deltax < -10 * Fixed.FRACUNIT)
+            d[1] = dirtype_t.DI_WEST;
+        else
+            d[1] = dirtype_t.DI_NODIR;
+
+        if (deltay < -10 * Fixed.FRACUNIT)
+            d[2] = dirtype_t.DI_SOUTH;
+        else if (deltay > 10 * Fixed.FRACUNIT)
+            d[2] = dirtype_t.DI_NORTH;
+        else
+            d[2] = dirtype_t.DI_NODIR;
+
+        // try direct route
+        if (d[1] != dirtype_t.DI_NODIR
+            && d[2] != dirtype_t.DI_NODIR)
+        {
+            actor.movedir = (int)diags[((deltay < 0 ? 1 : 0) << 1) + (deltax > 0 ? 1 : 0)];
+            if (actor.movedir != (int)turnaround && P_TryWalk(actor))
+                return;
+        }
+
+        // try other directions
+        if (P_Random() > 200
+            || abs(deltay) > abs(deltax))
+        {
+            dirtype_t tdir = d[1];
+            d[1] = d[2];
+            d[2] = tdir;
+        }
+
+        if (d[1] == turnaround)
+            d[1] = dirtype_t.DI_NODIR;
+        if (d[2] == turnaround)
+            d[2] = dirtype_t.DI_NODIR;
+
+        if (d[1] != dirtype_t.DI_NODIR)
+        {
+            actor.movedir = (int)d[1];
+            if (P_TryWalk(actor))
+            {
+                // either moved forward or attacked
+                return;
+            }
+        }
+
+        if (d[2] != dirtype_t.DI_NODIR)
+        {
+            actor.movedir = (int)d[2];
+
+            if (P_TryWalk(actor))
+                return;
+        }
+
+        // there is no direct path to the player,
+        // so pick another direction.
+        if (olddir != dirtype_t.DI_NODIR)
+        {
+            actor.movedir = (int)olddir;
+
+            if (P_TryWalk(actor))
+                return;
+        }
+
+        // randomly determine direction of search
+        if ((P_Random() & 1) != 0)
+        {
+            for (int tdir = (int)dirtype_t.DI_EAST;
+                 tdir <= (int)dirtype_t.DI_SOUTHEAST;
+                 tdir++)
+            {
+                if (tdir != (int)turnaround)
+                {
+                    actor.movedir = tdir;
+
+                    if (P_TryWalk(actor))
+                        return;
+                }
+            }
+        }
+        else
+        {
+            for (int tdir = (int)dirtype_t.DI_SOUTHEAST;
+                 tdir != (int)dirtype_t.DI_EAST - 1;
+                 tdir--)
+            {
+                if (tdir != (int)turnaround)
+                {
+                    actor.movedir = tdir;
+
+                    if (P_TryWalk(actor))
+                        return;
+                }
+            }
+        }
+
+        if (turnaround != dirtype_t.DI_NODIR)
+        {
+            actor.movedir = (int)turnaround;
+            if (P_TryWalk(actor))
+                return;
+        }
+
+        actor.movedir = (int)dirtype_t.DI_NODIR; // can not move
+    }
+
+    // ---- Action routines (T6.4) ----
+
+    /// <summary>
+    /// p_enemy.c <c>A_Look</c>: stay in state until a player is sighted.
+    /// A monster in a sector a noise reached (<see cref="sector_t.soundtarget"/>,
+    /// still shootable) wakes to it, a deaf one (<see cref="mobjflag_t.MF_AMBUSH"/>)
+    /// only when it also sees it; else it looks for players
+    /// (<see cref="P_LookForPlayers"/>, 180° in front). Waking: the see
+    /// sound (one of the former humans' three or the imps' two at random)
+    /// and the see state.
+    /// </summary>
+    public void A_Look(mobj_t actor)
+    {
+        actor.threshold = 0; // any shot will wake up
+        mobj_t? targ = actor.subsector.sector.soundtarget;
+
+        bool seeyou = false;
+        if (targ != null
+            && (targ.flags & mobjflag_t.MF_SHOOTABLE) != 0)
+        {
+            actor.target = targ;
+
+            if ((actor.flags & mobjflag_t.MF_AMBUSH) != 0)
+            {
+                if (P_CheckSight(actor, actor.target))
+                    seeyou = true;
+            }
+            else
+            {
+                seeyou = true;
+            }
+        }
+
+        if (!seeyou && !P_LookForPlayers(actor, false))
+            return;
+
+        // go into chase state
+        // seeyou:
+        if (actor.info.seesound != sfxenum_t.sfx_None)
+        {
+            sfxenum_t sound;
+
+            switch (actor.info.seesound)
+            {
+                case sfxenum_t.sfx_posit1:
+                case sfxenum_t.sfx_posit2:
+                case sfxenum_t.sfx_posit3:
+                    sound = sfxenum_t.sfx_posit1 + P_Random() % 3;
+                    break;
+
+                case sfxenum_t.sfx_bgsit1:
+                case sfxenum_t.sfx_bgsit2:
+                    sound = sfxenum_t.sfx_bgsit1 + P_Random() % 2;
+                    break;
+
+                default:
+                    sound = actor.info.seesound;
+                    break;
+            }
+
+            if (actor.type == mobjtype_t.MT_SPIDER
+                || actor.type == mobjtype_t.MT_CYBORG)
+            {
+                // full volume
+                S_StartSound((mobj_t?)null, sound);
+            }
+            else
+            {
+                S_StartSound(actor, sound);
+            }
+        }
+
+        P_SetMobjState(actor, actor.info.seestate);
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_Chase</c>: actor has a melee attack, so it tries to
+    /// close as fast as possible. Counts down <see cref="mobj_t.reactiontime"/>
+    /// and <see cref="mobj_t.threshold"/>, turns 45° towards its direction;
+    /// without a live target looks all around for a player or goes back to
+    /// its spawn state; after an attack only picks a new direction (not on
+    /// Nightmare or <c>-fast</c>); attacks in melee range, or with a missile
+    /// when <see cref="P_CheckMissileRange"/> says so (between moves only,
+    /// except on Nightmare or <c>-fast</c>); else (in a netgame, looking for
+    /// another player first) steps on (<see cref="P_Move"/>,
+    /// <see cref="P_NewChaseDir"/> when its steps are counted down or it is
+    /// blocked) and sometimes makes its active sound.
+    /// </summary>
+    public void A_Chase(mobj_t actor)
+    {
+        if (actor.reactiontime != 0)
+            actor.reactiontime--;
+
+        // modify target threshold
+        if (actor.threshold != 0)
+        {
+            if (actor.target == null
+                || actor.target.health <= 0)
+            {
+                actor.threshold = 0;
+            }
+            else
+            {
+                actor.threshold--;
+            }
+        }
+
+        // turn towards movement direction if not there yet
+        if (actor.movedir < 8)
+        {
+            actor.angle &= 7u << 29;
+            int delta = unchecked((int)(actor.angle - ((uint)actor.movedir << 29)));
+
+            if (delta > 0)
+                actor.angle = unchecked(actor.angle - Tables.ANG90 / 2);
+            else if (delta < 0)
+                actor.angle = unchecked(actor.angle + Tables.ANG90 / 2);
+        }
+
+        if (actor.target == null
+            || (actor.target.flags & mobjflag_t.MF_SHOOTABLE) == 0)
+        {
+            // look for a new target
+            if (P_LookForPlayers(actor, true))
+                return; // got a new target
+
+            P_SetMobjState(actor, actor.info.spawnstate);
+            return;
+        }
+
+        // do not attack twice in a row
+        if ((actor.flags & mobjflag_t.MF_JUSTATTACKED) != 0)
+        {
+            actor.flags &= ~mobjflag_t.MF_JUSTATTACKED;
+            if (gameskill != skill_t.sk_nightmare && !fastparm)
+                P_NewChaseDir(actor);
+            return;
+        }
+
+        // check for melee attack
+        if (actor.info.meleestate != statenum_t.S_NULL
+            && P_CheckMeleeRange(actor))
+        {
+            if (actor.info.attacksound != sfxenum_t.sfx_None)
+                S_StartSound(actor, actor.info.attacksound);
+
+            P_SetMobjState(actor, actor.info.meleestate);
+            return;
+        }
+
+        // check for missile attack
+        if (actor.info.missilestate != statenum_t.S_NULL)
+        {
+            if (!(gameskill < skill_t.sk_nightmare
+                  && !fastparm && actor.movecount != 0)
+                && P_CheckMissileRange(actor))
+            {
+                P_SetMobjState(actor, actor.info.missilestate);
+                actor.flags |= mobjflag_t.MF_JUSTATTACKED;
+                return;
+            }
+        }
+
+        // ?
+        // nomissile:
+        // possibly choose another target
+        if (netgame
+            && actor.threshold == 0
+            && !P_CheckSight(actor, actor.target))
+        {
+            if (P_LookForPlayers(actor, true))
+                return; // got a new target
+        }
+
+        // chase towards player
+        if (--actor.movecount < 0
+            || !P_Move(actor))
+        {
+            P_NewChaseDir(actor);
+        }
+
+        // make active sound
+        if (actor.info.activesound != sfxenum_t.sfx_None
+            && P_Random() < 3)
+        {
+            S_StartSound(actor, actor.info.activesound);
+        }
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_FaceTarget</c>: turns <paramref name="actor"/> to face
+    /// its target (no longer deaf: <see cref="mobjflag_t.MF_AMBUSH"/> cleared),
+    /// off by up to ±45° (two <c>P_Random</c>s) for a fuzzy (<see cref="mobjflag_t.MF_SHADOW"/>) one.
+    /// </summary>
+    public void A_FaceTarget(mobj_t actor)
+    {
+        if (actor.target == null)
+            return;
+
+        actor.flags &= ~mobjflag_t.MF_AMBUSH;
+
+        actor.angle = Tables.R_PointToAngle2(actor.x,
+                                             actor.y,
+                                             actor.target.x,
+                                             actor.target.y);
+
+        if ((actor.target.flags & mobjflag_t.MF_SHADOW) != 0)
+            actor.angle = unchecked(actor.angle + (uint)((P_Random() - P_Random()) << 21));
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_PosAttack</c>: the zombieman's shot: faces the target,
+    /// aims (<see cref="P_AimLineAttack"/>) and fires one bullet up to ±22.5°
+    /// off (3-15 damage).
+    /// </summary>
+    public void A_PosAttack(mobj_t actor)
+    {
+        if (actor.target == null)
+            return;
+
+        A_FaceTarget(actor);
+        uint angle = actor.angle;
+        int slope = P_AimLineAttack(actor, angle, MISSILERANGE);
+
+        S_StartSound(actor, sfxenum_t.sfx_pistol);
+        angle = unchecked(angle + (uint)((P_Random() - P_Random()) << 20));
+        int damage = ((P_Random() % 5) + 1) * 3;
+        P_LineAttack(actor, angle, MISSILERANGE, slope, damage);
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_SPosAttack</c>: the shotgun guy's (and the Spider
+    /// Mastermind's) three pellets, each up to ±22.5° off (3-15 damage).
+    /// </summary>
+    public void A_SPosAttack(mobj_t actor)
+    {
+        if (actor.target == null)
+            return;
+
+        S_StartSound(actor, sfxenum_t.sfx_shotgn);
+        A_FaceTarget(actor);
+        uint bangle = actor.angle;
+        int slope = P_AimLineAttack(actor, bangle, MISSILERANGE);
+
+        for (int i = 0; i < 3; i++)
+        {
+            uint angle = unchecked(bangle + (uint)((P_Random() - P_Random()) << 20));
+            int damage = ((P_Random() % 5) + 1) * 3;
+            P_LineAttack(actor, angle, MISSILERANGE, slope, damage);
+        }
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_TroopAttack</c>: the imp's scratch in melee range
+    /// (3-24 damage), else its fireball (<see cref="P_SpawnMissile"/>,
+    /// <see cref="mobjtype_t.MT_TROOPSHOT"/>).
+    /// </summary>
+    public void A_TroopAttack(mobj_t actor)
+    {
+        if (actor.target == null)
+            return;
+
+        A_FaceTarget(actor);
+        if (P_CheckMeleeRange(actor))
+        {
+            S_StartSound(actor, sfxenum_t.sfx_claw);
+            int damage = (P_Random() % 8 + 1) * 3;
+            P_DamageMobj(actor.target, actor, actor, damage);
+            return;
+        }
+
+        // launch a missile
+        P_SpawnMissile(actor, actor.target, mobjtype_t.MT_TROOPSHOT);
+    }
+
+    /// <summary>p_enemy.c <c>A_SargAttack</c>: the demon's (and spectre's) bite in melee range (4-40 damage).</summary>
+    public void A_SargAttack(mobj_t actor)
+    {
+        if (actor.target == null)
+            return;
+
+        A_FaceTarget(actor);
+        if (P_CheckMeleeRange(actor))
+        {
+            int damage = ((P_Random() % 10) + 1) * 4;
+            P_DamageMobj(actor.target, actor, actor, damage);
+        }
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_BruisAttack</c>: the baron's claw in melee range (10-80
+    /// damage), else its ball (<see cref="mobjtype_t.MT_BRUISERSHOT"/>). It
+    /// does not face the target itself: its attack states' <c>A_FaceTarget</c> does.
+    /// </summary>
+    public void A_BruisAttack(mobj_t actor)
+    {
+        if (actor.target == null)
+            return;
+
+        if (P_CheckMeleeRange(actor))
+        {
+            S_StartSound(actor, sfxenum_t.sfx_claw);
+            int damage = (P_Random() % 8 + 1) * 10;
+            P_DamageMobj(actor.target, actor, actor, damage);
+            return;
+        }
+
+        // launch a missile
+        P_SpawnMissile(actor, actor.target, mobjtype_t.MT_BRUISERSHOT);
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_Scream</c>: the death sound (one of the former humans'
+    /// three or the imps' two at random), at full volume for the Spider
+    /// Mastermind and the Cyberdemon.
+    /// </summary>
+    public void A_Scream(mobj_t actor)
+    {
+        sfxenum_t sound;
+
+        switch (actor.info.deathsound)
+        {
+            case sfxenum_t.sfx_None:
+                return;
+
+            case sfxenum_t.sfx_podth1:
+            case sfxenum_t.sfx_podth2:
+            case sfxenum_t.sfx_podth3:
+                sound = sfxenum_t.sfx_podth1 + P_Random() % 3;
+                break;
+
+            case sfxenum_t.sfx_bgdth1:
+            case sfxenum_t.sfx_bgdth2:
+                sound = sfxenum_t.sfx_bgdth1 + P_Random() % 2;
+                break;
+
+            default:
+                sound = actor.info.deathsound;
+                break;
+        }
+
+        // Check for bosses.
+        if (actor.type == mobjtype_t.MT_SPIDER
+            || actor.type == mobjtype_t.MT_CYBORG)
+        {
+            // full volume
+            S_StartSound((mobj_t?)null, sound);
+        }
+        else
+        {
+            S_StartSound(actor, sound);
+        }
+    }
+
+    /// <summary>p_enemy.c <c>A_XScream</c>: the gibbing sound.</summary>
+    public void A_XScream(mobj_t actor)
+    {
+        S_StartSound(actor, sfxenum_t.sfx_slop);
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_Explode</c>: the radius attack (128) of an exploding
+    /// barrel or rocket (<see cref="P_RadiusAttack"/>), credited to its <see cref="mobj_t.target"/>.
+    /// </summary>
+    public void A_Explode(mobj_t thingy)
+    {
+        P_RadiusAttack(thingy, thingy.target, 128);
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>CheckBossEnd</c> (Chocolate Doom): whether the death of a
+    /// <paramref name="motype"/> may trigger the end of episode special. Before
+    /// The Ultimate Doom (every game mode but <see cref="IsoDoom.Wad.GameMode.retail"/>,
+    /// as Chocolate Doom's default <c>gameversion</c>): any boss on map 8,
+    /// barons only in episode 1; The Ultimate Doom: each episode's own boss.
+    /// </summary>
+    private bool CheckBossEnd(mobjtype_t motype)
+    {
+        if (gamemode != IsoDoom.Wad.GameMode.retail) // gameversion < exe_ultimate
+        {
+            if (gamemap != 8)
+                return false;
+
+            // Baron death on later episodes is nothing special.
+            if (motype == mobjtype_t.MT_BRUISER && gameepisode != 1)
+                return false;
+
+            return true;
+        }
+
+        // New logic that appeared in Ultimate Doom.
+        // Looks like the logic was overhauled while adding in the
+        // episode 4 support.  Now bosses only trigger on their
+        // specific episode.
+        return gameepisode switch
+        {
+            1 => gamemap == 8 && motype == mobjtype_t.MT_BRUISER,
+            2 => gamemap == 8 && motype == mobjtype_t.MT_CYBORG,
+            3 => gamemap == 8 && motype == mobjtype_t.MT_SPIDER,
+            4 => (gamemap == 6 && motype == mobjtype_t.MT_CYBORG)
+                 || (gamemap == 8 && motype == mobjtype_t.MT_SPIDER),
+            _ => gamemap == 8,
+        };
+    }
+
+    /// <summary>
+    /// p_enemy.c <c>A_BossDeath</c>: possibly trigger special effects if on
+    /// first boss level. When the last boss of its type dies on a boss map
+    /// (<see cref="CheckBossEnd"/>; Doom II's MAP07: the mancubi and
+    /// arachnotrons) with a player alive: E1M8 lowers the floors tagged 666
+    /// to their lowest neighbour (E4M6 opens doors 666 fast, E4M8 lowers
+    /// 666; MAP07 lowers 666 for the mancubi and raises 667 by its texture
+    /// for the arachnotrons); any other ends the level (<see cref="G_ExitLevel"/>).
+    /// </summary>
+    public void A_BossDeath(mobj_t mo)
+    {
+        if (gamemode == IsoDoom.Wad.GameMode.commercial)
+        {
+            if (gamemap != 7)
+                return;
+
+            if (mo.type != mobjtype_t.MT_FATSO
+                && mo.type != mobjtype_t.MT_BABY)
+                return;
+        }
+        else
+        {
+            if (!CheckBossEnd(mo.type))
+                return;
+        }
+
+        // make sure there is a player alive for victory
+        int i;
+        for (i = 0; i < MAXPLAYERS; i++)
+        {
+            if (playeringame[i] && players[i].health > 0)
+                break;
+        }
+
+        if (i == MAXPLAYERS)
+            return; // no one left alive, so do not end game
+
+        // scan the remaining thinkers to see
+        // if all bosses are dead
+        foreach (mobj_t mo2 in Mobjs())
+        {
+            if (mo2 != mo
+                && mo2.type == mo.type
+                && mo2.health > 0)
+            {
+                // other boss not dead
+                return;
+            }
+        }
+
+        // victory!
+        if (gamemode == IsoDoom.Wad.GameMode.commercial)
+        {
+            if (gamemap == 7)
+            {
+                if (mo.type == mobjtype_t.MT_FATSO)
+                {
+                    EV_DoFloor(JunkLine(666), floor_e.lowerFloorToLowest);
+                    return;
+                }
+
+                if (mo.type == mobjtype_t.MT_BABY)
+                {
+                    EV_DoFloor(JunkLine(667), floor_e.raiseToTexture);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            switch (gameepisode)
+            {
+                case 1:
+                    EV_DoFloor(JunkLine(666), floor_e.lowerFloorToLowest);
+                    return;
+
+                case 4:
+                    switch (gamemap)
+                    {
+                        case 6:
+                            EV_DoDoor(JunkLine(666), vldoor_e.vld_blazeOpen);
+                            return;
+
+                        case 8:
+                            EV_DoFloor(JunkLine(666), floor_e.lowerFloorToLowest);
+                            return;
+                    }
+                    break;
+            }
+        }
+
+        G_ExitLevel();
+    }
+
+    /// <summary>
+    /// p_enemy.c's <c>line_t junk</c>: a line in no map with only its tag
+    /// set, for <see cref="A_BossDeath"/> (and A_KeenDie) to start
+    /// <see cref="EV_DoFloor"/>/<see cref="EV_DoDoor"/> on the sectors tagged <paramref name="tag"/>.
+    /// </summary>
+    private static line_t JunkLine(short tag) => new(Line.Unlinked(tag), null, null);
+
     /// <summary>p_enemy.c <c>A_Pain</c>: the pain sound (T5.8, for the player's pain state).</summary>
     public void A_Pain(mobj_t actor)
     {
@@ -340,46 +1176,6 @@ public sealed partial class World
 
     /// <summary>p_pspr.c <c>A_BFGSpray</c>: the BFG ball's 40 tracers. A stub until T9.3.</summary>
     public void A_BFGSpray(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Explode</c>: the radius attack of a barrel or rocket. A stub until T6.4.</summary>
-    public void A_Explode(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_XScream</c>: the gibbing sound. A stub until T6.4.</summary>
-    public void A_XScream(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Look</c>: stay in the spawn state until a player is seen or heard. A stub until T6.4.</summary>
-    public void A_Look(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Chase</c>: walk towards the target, attack when in range. A stub until T6.4.</summary>
-    public void A_Chase(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_FaceTarget</c>: turn towards the target. A stub until T6.4.</summary>
-    public void A_FaceTarget(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_PosAttack</c>: the zombieman's shot. A stub until T6.4.</summary>
-    public void A_PosAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Scream</c>: the death sound. A stub until T6.4.</summary>
-    public void A_Scream(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SPosAttack</c>: the shotgun guy's (and the Spider Mastermind's) shots. A stub until T6.4.</summary>
-    public void A_SPosAttack(mobj_t actor)
     {
     }
 
@@ -458,11 +1254,6 @@ public sealed partial class World
     {
     }
 
-    /// <summary>p_enemy.c <c>A_BossDeath</c>: the boss level's special when the last boss dies. A stub until T6.4.</summary>
-    public void A_BossDeath(mobj_t actor)
-    {
-    }
-
     /// <summary>p_enemy.c <c>A_CPosAttack</c>: the chaingunner's shot. A stub until T10.3.</summary>
     public void A_CPosAttack(mobj_t actor)
     {
@@ -473,23 +1264,8 @@ public sealed partial class World
     {
     }
 
-    /// <summary>p_enemy.c <c>A_TroopAttack</c>: the imp's scratch or fireball. A stub until T6.4.</summary>
-    public void A_TroopAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SargAttack</c>: the demon's bite. A stub until T6.4.</summary>
-    public void A_SargAttack(mobj_t actor)
-    {
-    }
-
     /// <summary>p_enemy.c <c>A_HeadAttack</c>: the cacodemon's bite or ball. A stub until T9.2.</summary>
     public void A_HeadAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BruisAttack</c>: the baron's claw or ball. A stub until T6.4.</summary>
-    public void A_BruisAttack(mobj_t actor)
     {
     }
 

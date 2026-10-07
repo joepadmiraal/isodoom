@@ -13,6 +13,23 @@ namespace IsoDoom.Tools.RouteGen;
 /// </summary>
 public static class MapInfo
 {
+    /// <summary>
+    /// T6.4: <c>--monsters MAP [SKILL]</c>: the monsters and barrels spawned on
+    /// DOOM1 MAP at SKILL (1-5, default 3), in thinker order: type, spawn point
+    /// (a route's <c>damage X Y</c>), angle, deafness, health and sector.
+    /// </summary>
+    public static int PrintMonsters(WadArchive wad, string map, int skill)
+    {
+        var g = new Steer(wad, map, (skill_t)(skill - 1), monsters: true);
+        Console.WriteLine($"start ({g.X:F0}, {g.Y:F0}) sector {g.Mo.subsector!.sector.Index}");
+        foreach (mobj_t m in g.w.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SHOOTABLE)) != 0 && m != g.Mo))
+        {
+            string deaf = (m.flags & mobjflag_t.MF_AMBUSH) != 0 ? " deaf" : "";
+            Console.WriteLine($"{m.type} at ({m.spawnpoint.X}, {m.spawnpoint.Y}) angle {m.spawnpoint.Angle}{deaf} health {m.health} sector {m.subsector.sector.Index}");
+        }
+        return 0;
+    }
+
     public static int Print(WadArchive wad, string map, int[]? only = null)
     {
         var g = new Steer(wad, map);

@@ -54,7 +54,10 @@ public sealed partial class World
         playeringame[consoleplayer] = true;
 
         // g_game.c G_InitNew
-        respawnmonsters = settings.gameskill == skill_t.sk_nightmare; // || respawnparm (later)
+        respawnmonsters = settings.gameskill == skill_t.sk_nightmare || settings.respawnparm;
+        // (vanilla halves the global states' tics and sets the missile speeds here;
+        // the world reads them through StateTics and MissileSpeed instead: SPEC §12 T6.4)
+        fastmonsters = settings.fastparm || settings.gameskill == skill_t.sk_nightmare;
         random.M_ClearRandom();
         // force players to be initialized upon first level load
         for (int i = 0; i < MAXPLAYERS; i++)
@@ -76,8 +79,51 @@ public sealed partial class World
     public bool netgame => settings.netgame;
     public int deathmatch => settings.deathmatch;
 
-    /// <summary>g_game.c <c>respawnmonsters</c>: Nightmare (vanilla also <c>-respawn</c>).</summary>
+    /// <summary>d_main.c <c>respawnparm</c>: <c>-respawn</c> (T6.4).</summary>
+    public bool respawnparm => settings.respawnparm;
+
+    /// <summary>d_main.c <c>fastparm</c>: <c>-fast</c> (T6.4).</summary>
+    public bool fastparm => settings.fastparm;
+
+    /// <summary>g_game.c <c>respawnmonsters</c>: Nightmare or <c>-respawn</c>.</summary>
     public readonly bool respawnmonsters;
+
+    /// <summary>
+    /// Not a vanilla variable: whether <c>G_InitNew</c> made the monsters
+    /// fast (Nightmare or <c>-fast</c>): the demons' and spectres' states
+    /// from <c>S_SARG_RUN1</c> to <c>S_SARG_PAIN2</c> last half as long
+    /// (<see cref="StateTics"/>) and the imps', cacodemons' and barons' balls
+    /// fly at 20 units a tic (<see cref="MissileSpeed"/>). Vanilla changes
+    /// the global <c>states</c> and <c>mobjinfo</c>; the world keeps the
+    /// shared tables as they are (SPEC §12 T6.4).
+    /// </summary>
+    public readonly bool fastmonsters;
+
+    /// <summary>
+    /// <c>states[state].tics</c> as this game's <c>G_InitNew</c> left it:
+    /// halved for the demons' run, attack and pain states with
+    /// <see cref="fastmonsters"/>.
+    /// </summary>
+    public int StateTics(statenum_t state)
+    {
+        int tics = Info.states[(int)state].tics;
+        if (fastmonsters && state >= statenum_t.S_SARG_RUN1 && state <= statenum_t.S_SARG_PAIN2)
+            tics >>= 1;
+        return tics;
+    }
+
+    /// <summary>
+    /// <c>mobjinfo[type].speed</c> as this game's <c>G_InitNew</c> left it:
+    /// 20 units a tic for <see cref="mobjtype_t.MT_BRUISERSHOT"/>,
+    /// <see cref="mobjtype_t.MT_HEADSHOT"/> and <see cref="mobjtype_t.MT_TROOPSHOT"/>
+    /// with <see cref="fastmonsters"/> (fixed_t for missiles).
+    /// </summary>
+    public int MissileSpeed(mobjtype_t type)
+    {
+        if (fastmonsters && type is mobjtype_t.MT_BRUISERSHOT or mobjtype_t.MT_HEADSHOT or mobjtype_t.MT_TROOPSHOT)
+            return 20 * Fixed.FRACUNIT;
+        return Info.mobjinfo[(int)type].speed;
+    }
 
     /// <summary>m_random.c's indices (<c>P_Random</c>, <c>M_Random</c>).</summary>
     public readonly DoomRandom random = new();

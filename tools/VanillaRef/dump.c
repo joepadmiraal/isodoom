@@ -45,7 +45,13 @@
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
 // of at its map start: before the first tic it is moved with P_TeleportMove
-// onto the floor, facing ANGLE (no fog, nothing else changed).
+// onto the floor, facing ANGLE (no fog, nothing else changed). With
+// $DUMP_EVENTS ("TIC damage X Y AMOUNT;TIC alert;...", TIC 0-based, in
+// order; T6.4), at the start of tic TIC (leveltime TIC), before the players
+// think: P_DamageMobj(thing, mo, mo, AMOUNT) on the first mobj in thinker
+// order spawned at map point X, Y (spawnpoint) that is shootable and alive
+// (none: exit 1), or P_NoiseAlert(mo, mo), mo player 1's mobj: the route's
+// stand-ins for the player's shots.
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
@@ -74,6 +80,8 @@ extern int prndindex;
 extern boolean nodrawers;
 static byte first[SCREENWIDTH * SCREENHEIGHT];
 
+static void parse_events(void);
+
 void DG_Init(void)
 {
     char *v = getenv("VIEWS");
@@ -93,6 +101,7 @@ void DG_Init(void)
         }
         dump_nospecials = 1;
         nodrawers = true; // no rendering: the synthetic map lacks the player's sprites
+        parse_events();
     }
 }
 
@@ -102,17 +111,71 @@ static void capture_tic(void);
 // r_data.c's textures: each starts with its name (char[8], not terminated when 8 long).
 extern char **textures;
 
+// $DUMP_EVENTS (T6.4): "TIC damage X Y AMOUNT;TIC alert;..." in tic order.
+#define MAX_EVENTS 4096
+static struct { int tic, alert, x, y, amount; } events[MAX_EVENTS];
+static int nevents, nextevent;
+
+static void parse_events(void)
+{
+    char *e = getenv("DUMP_EVENTS");
+    for (char *tok = strtok(strdup(e ? e : ""), ";"); tok && nevents < MAX_EVENTS; tok = strtok(NULL, ";"))
+    {
+        int tic, x, y, amount;
+        if (sscanf(tok, "%d damage %d %d %d", &tic, &x, &y, &amount) == 4)
+            events[nevents++] = (typeof(events[0])){ tic, 0, x, y, amount };
+        else if (sscanf(tok, "%d alert", &tic) == 1 && strstr(tok, "alert"))
+            events[nevents++] = (typeof(events[0])){ tic, 1, 0, 0, 0 };
+        else
+        {
+            fprintf(stderr, "DUMP_EVENTS: bad event \"%s\"\n", tok);
+            exit(1);
+        }
+    }
+}
+
 // Called by the patched p_tick.c before the players think in every P_Ticker (T5.6).
 void dump_pretic(void)
 {
-    char *start = getenv("DUMP_START");
-    int x, y, angle;
-    if (!ticfile || leveltime != 0 || !start || sscanf(start, "%d %d %d", &x, &y, &angle) != 3)
+    if (!ticfile)
         return;
     mobj_t *mo = players[consoleplayer].mo;
-    P_TeleportMove(mo, x << FRACBITS, y << FRACBITS);
-    mo->z = mo->floorz;
-    mo->angle = (angle_t)((long long)angle * 0x100000000LL / 360);
+    char *start = getenv("DUMP_START");
+    int x, y, angle;
+    if (leveltime == 0 && start && sscanf(start, "%d %d %d", &x, &y, &angle) == 3)
+    {
+        P_TeleportMove(mo, x << FRACBITS, y << FRACBITS);
+        mo->z = mo->floorz;
+        mo->angle = (angle_t)((long long)angle * 0x100000000LL / 360);
+    }
+    // The route's events of this tic (T6.4): stand-ins for the player's shots.
+    for (; nextevent < nevents && events[nextevent].tic <= leveltime; nextevent++)
+    {
+        if (events[nextevent].tic < leveltime)
+            continue;
+        if (events[nextevent].alert)
+        {
+            P_NoiseAlert(mo, mo);
+            continue;
+        }
+        mobj_t *target = NULL;
+        for (thinker_t *th = thinkercap.next; th != &thinkercap && !target; th = th->next)
+        {
+            if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+                continue;
+            mobj_t *m = (mobj_t *)th;
+            if (m->spawnpoint.x == events[nextevent].x && m->spawnpoint.y == events[nextevent].y
+                && (m->flags & MF_SHOOTABLE) && m->health > 0)
+                target = m;
+        }
+        if (!target)
+        {
+            fprintf(stderr, "DUMP_EVENTS: tic %d: nothing shootable spawned at (%d, %d) to damage\n",
+                    leveltime + 1, events[nextevent].x, events[nextevent].y);
+            exit(1);
+        }
+        P_DamageMobj(target, mo, mo, events[nextevent].amount);
+    }
 }
 
 // Called by the patched p_tick.c at the end of every P_Ticker.
