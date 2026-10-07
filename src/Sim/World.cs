@@ -199,7 +199,10 @@ public sealed partial class World
 
     /// <summary>
     /// g_game.c <c>G_DoLoadLevel</c>'s sim part: dead players are reborn,
-    /// frags cleared, then <see cref="P_SetupLevel"/>.
+    /// frags cleared, then <see cref="P_SetupLevel"/>, and the game action is
+    /// done (<see cref="gameaction_t.ga_nothing"/>: the game loop calls it
+    /// for <see cref="gameaction_t.ga_loadlevel"/>, a reborn, with the same
+    /// map freshly loaded, T6.12).
     /// </summary>
     public void G_DoLoadLevel(Level level)
     {
@@ -211,6 +214,7 @@ public sealed partial class World
             Array.Clear(players[i].frags);
         }
         P_SetupLevel(level);
+        gameaction = gameaction_t.ga_nothing;
     }
 
     /// <summary>

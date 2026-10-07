@@ -82,6 +82,12 @@ public static class RouteTestMaps
         // sphere, two computer maps (the second left), a light amplification visor, and a
         // radiation suit at (1570, 128).
         ["pickups"] = Pickups,
+        // T6.12: death and reborn. One room (1024 wide, 512 deep, ceiling 128). The player at
+        // (96, 256) facing west; east of it along y = 256 a shotgun (160), a blue armor (224) and
+        // the blue keycard (288), so a reborn has something to take away; at the east end two
+        // imps at (704, 192) and (704, 320) and a zombieman at (832, 256), facing west (they
+        // see the player at once).
+        ["death"] = Death,
     };
 
     /// <summary>The pickups along y = 128 in <see cref="Pickups"/>' room P, west to east (doomednums), from x = 240 every 48 units.</summary>
@@ -98,6 +104,14 @@ public static class RouteTestMaps
         for (int i = 0; i < PickupRow.Length; i++)
             map.Thing(240 + 48 * i, 128, PickupRow[i]);
         return map.Thing(1570, 128, 2025).Player(96, 128, 0);
+    }
+
+    private static TestMap Death()
+    {
+        TestMap map = TestMap.Strip(0, 0, 512, new TestMap.Room(1024, 0, 128));
+        return map.Thing(160, 256, 2001).Thing(224, 256, 2019).Thing(288, 256, 5)
+            .Thing(704, 192, 3001, 180).Thing(704, 320, 3001, 180).Thing(832, 256, 3004, 180)
+            .Player(96, 256, 180);
     }
 
     private static TestMap Weapons()

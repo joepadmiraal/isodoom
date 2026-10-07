@@ -39,7 +39,10 @@ namespace IsoDoom.Tests.Sim;
 /// a rocket, <c>P_SpawnPlayerMissile</c>) run at the start of the next tic, before
 /// the players think (<see cref="RouteEvent"/>): stand-ins for the player's
 /// shots from before its weapons were ported (T6.6; <c>BT_ATTACK</c> fires
-/// them since, and <c>BT_CHANGE</c> changes them).
+/// them since, and <c>BT_CHANGE</c> changes them). A route may go through the
+/// player's death and reborn (T6.12: use when dead reloads the map,
+/// <see cref="Reborn"/>): the events still count by the route's tic, and the
+/// <c>start</c> header places the player again on the reloaded map.
 /// </para>
 /// <para>
 /// The reference dump (<c>NAME.vanilla</c>; dump.c) has one line per tic,
@@ -176,9 +179,12 @@ public sealed class VanillaRoute
     }
 
     /// <summary>A new game on the route's map with every tweak off (<see cref="Tweaks.Vanilla"/>), as the demo starts it.</summary>
-    public World NewWorld()
+    public World NewWorld() => NewWorld(out _);
+
+    /// <summary><see cref="NewWorld()"/>, with the route's WAD (<see cref="Reborn"/> reloads the map from it).</summary>
+    public World NewWorld(out WadArchive wad)
     {
-        WadArchive wad = Iwad switch
+        wad = Iwad switch
         {
             "synthetic" => new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }),
             "testmap" => new WadArchive(new[] { WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad") }),
@@ -189,10 +195,31 @@ public sealed class VanillaRoute
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
         world.P_InitPicAnims(world.textures, PicAnims.FlatNames(wad)); // P_Init's (T5.7)
-        world.G_DoLoadLevel(Level.Load(wad, Iwad == "testmap" ? "E1M1" : Map));
+        world.G_DoLoadLevel(Level.Load(wad, MapLump));
         if (Start is { } s)
             RouteStart.Place(world, s.X, s.Y, s.Angle);
         return world;
+    }
+
+    /// <summary>The route's map lump (a test map's is <c>E1M1</c>).</summary>
+    public string MapLump => Iwad == "testmap" ? "E1M1" : Map;
+
+    /// <summary>
+    /// T6.12: the game action of a reborn (<see cref="gameaction_t.ga_loadlevel"/>,
+    /// <see cref="World.G_DoReborn"/>), as vanilla's <c>G_Ticker</c> runs it
+    /// before the next tic: the map afresh from <paramref name="wad"/>
+    /// (<see cref="World.G_DoLoadLevel"/>), and the <c>start</c> header
+    /// again (dump.c's <c>dump_pretic</c> places the player whenever
+    /// <c>leveltime</c> is 0). Returns whether there was one.
+    /// </summary>
+    public bool Reborn(World world, WadArchive wad)
+    {
+        if (world.gameaction != gameaction_t.ga_loadlevel)
+            return false;
+        world.G_DoLoadLevel(Level.Load(wad, MapLump));
+        if (Start is { } s)
+            RouteStart.Place(world, s.X, s.Y, s.Angle);
+        return true;
     }
 
     /// <summary>
@@ -436,7 +463,7 @@ public sealed class VanillaRoute
     public void Check()
     {
         string[] expected = Reference();
-        World world = NewWorld();
+        World world = NewWorld(out WadArchive wad);
         (int, int)[] mapHeights = MapHeights(world);
         string[] mapTextures = MapTextures(world);
         short[] mapLights = MapLights(world);
@@ -451,6 +478,12 @@ public sealed class VanillaRoute
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
+            if (Reborn(world, wad))
+            {
+                // T6.12: vanilla's P_SpawnPlayer starts them again for the reborn console player.
+                st.ST_Start(world.players[world.consoleplayer]);
+                hu.HU_Start();
+            }
             File.RunEvents(world, tic);
             world.G_Ticker(Cmds[tic]);
             st.ST_Ticker();

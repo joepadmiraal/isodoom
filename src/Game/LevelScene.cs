@@ -1139,6 +1139,11 @@ public partial class LevelScene : Node3D
     {
         World world = World!;
         string map = world.level.Name;
+        if (world.gameaction == gameaction_t.ga_loadlevel)
+        {
+            Reborn(world);
+            return;
+        }
         if (world.gameaction != gameaction_t.ga_completed)
             return;
         world.G_DoCompleted();
@@ -1177,6 +1182,47 @@ public partial class LevelScene : Node3D
             GD.PrintErr($"Level: {next}: {e.Message}");
             _status = $"{next}: {e.Message}";
         }
+    }
+
+    /// <summary>The reborns since the scene started (T6.12).</summary>
+    public int Reborns { get; private set; }
+
+    /// <summary>
+    /// T6.12: a <c>route</c>'s <c>start</c> header while its tics are queued
+    /// (the level script's), placed again after a reborn reloads the level,
+    /// as the route tests and dump.c do; null otherwise.
+    /// </summary>
+    public (int X, int Y, int Angle)? RouteStartPoint { get; set; }
+
+    /// <summary>
+    /// T6.12: g_game.c's <see cref="gameaction_t.ga_loadlevel"/> (a dead
+    /// player pressed use: <see cref="World.G_DoReborn"/>): the same map
+    /// afresh in the same world (<see cref="LoadMap(string, World?)"/>, whose
+    /// <see cref="World.G_DoLoadLevel"/> gives the player a fresh start), the
+    /// status bar and message line restarted (<see cref="StartHud"/>), the
+    /// queued script tics kept (a route goes on through a reborn, its
+    /// <see cref="RouteStartPoint"/> placed again).
+    /// </summary>
+    private void Reborn(World world)
+    {
+        string map = world.level.Name;
+        var queued = _scriptTics.ToArray();
+        try
+        {
+            LoadMap(map, world);
+        }
+        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
+        {
+            GD.PrintErr($"Level: {map}: {e.Message}");
+            _status = $"{map}: {e.Message}";
+            return;
+        }
+        foreach (var tic in queued)
+            _scriptTics.Enqueue(tic);
+        Reborns++;
+        if (queued.Length > 0 && RouteStartPoint is { } s && !PlaceRouteStart(s.X, s.Y, s.Angle))
+            GD.PrintErr($"Level: reborn: the route's start {s.X} {s.Y}: something stands there");
+        GD.Print($"Level: {map} reloaded for a reborn player (G_DoReborn) at tic {TicsRun}");
     }
 
     // How many of the world's World.unported calls are printed (or were there at its start).
@@ -1843,7 +1889,10 @@ public partial class LevelScene : Node3D
             if (carry is not null)
             {
                 world = carry;
-                world.G_DoWorldDone(level); // T5.8: the next level of the same game
+                if (world.gameaction == gameaction_t.ga_loadlevel)
+                    world.G_DoLoadLevel(level); // T6.12: a reborn, the same level afresh
+                else
+                    world.G_DoWorldDone(level); // T5.8: the next level of the same game
             }
             else
             {

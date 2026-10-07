@@ -1,0 +1,21 @@
+# The death test map (T6.12, RouteTestMaps) on Ultra-Violence with
+# monsters: the player backs east over the shotgun, the blue armor and the
+# blue keycard, facing west, and stands there while two imps and a
+# zombieman (east) kill it (tic 686). Dead (P_DeathThink), its weapon goes
+# on lowering, its view falls to 6 units and it turns 5 degrees a tic
+# towards its killer, the damage flash fading only once it faces it. Then
+# use (held 3 tics: the reborn player's usedown keeps it from using
+# anything) reborns it: the level reloads (G_DoReborn, ga_loadlevel) and
+# the player starts afresh (G_PlayerReborn: pistol, 50 bullets, no armor,
+# no keys; the level's counts cleared), backs east over the pickups again
+# and waits.
+iwad testmap
+map death
+skill 4
+monsters
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+-25 0 0 0 x14
+0 0 0 0 x746
+0 0 0 2 x3
+-25 0 0 0 x14
+0 0 0 0 x40

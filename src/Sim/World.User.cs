@@ -1,3 +1,4 @@
+using System;
 using IsoDoom.Map;
 using IsoDoom.Wad;
 
@@ -39,6 +40,7 @@ public sealed partial class World
         }
         P_Ticker();
         HU_TakeMessages(); // HU_Ticker's message part (T6.10)
+        G_CheckReborns();
         gametic++;
     }
 
@@ -49,7 +51,105 @@ public sealed partial class World
         G_CheckTurbo(consoleplayer);
         P_Ticker();
         HU_TakeMessages(); // HU_Ticker's message part (T6.10)
+        G_CheckReborns();
         gametic++;
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_Ticker</c>'s "do player reborns if needed" (T6.12):
+    /// <see cref="G_DoReborn"/> for each player in the game that
+    /// <see cref="P_DeathThink"/> made <see cref="playerstate_t.PST_REBORN"/>.
+    /// Vanilla runs it at the start of the next <c>G_Ticker</c>, before the
+    /// game actions; here it ends the tic, so the game loop sees the
+    /// <see cref="gameaction_t.ga_loadlevel"/> it sets between the tics,
+    /// where it runs the game actions (nothing runs in between: the same
+    /// order; SPEC §12 T6.12).
+    /// </summary>
+    private void G_CheckReborns()
+    {
+        for (int i = 0; i < MAXPLAYERS; i++)
+        {
+            if (playeringame[i] && players[i].playerstate == playerstate_t.PST_REBORN)
+                G_DoReborn(i);
+        }
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_DoReborn</c>: in a single player game, reload the level
+    /// from scratch (<see cref="gameaction_t.ga_loadlevel"/>: the game loop
+    /// loads the same map afresh and calls <see cref="G_DoLoadLevel"/>,
+    /// whose <see cref="P_SpawnPlayer"/> gives the player a fresh start,
+    /// <see cref="G_PlayerReborn"/>). A net game's reborn at a start spot
+    /// (<c>G_CheckSpot</c>, the body queue, <c>G_DeathMatchSpawnPlayer</c>)
+    /// is not ported (co-op, a later goal: SPEC §1).
+    /// </summary>
+    public void G_DoReborn(int playernum)
+    {
+        if (!netgame)
+        {
+            // reload the level from scratch
+            gameaction = gameaction_t.ga_loadlevel;
+            return;
+        }
+        throw new NotSupportedException("A net game's reborn (G_CheckSpot, the body queue) is not ported.");
+    }
+
+    /// <summary>p_user.c <c>ANG5</c>: the death camera's turn per tic.</summary>
+    public const uint ANG5 = Tables.ANG90 / 18;
+
+    /// <summary>
+    /// p_user.c <c>P_DeathThink</c>: a dead player's tic (T6.12). The weapon
+    /// goes on lowering (<see cref="P_MovePsprites"/>), the view falls to 6
+    /// units above the floor, and the mobj turns 5° a tic towards its
+    /// <see cref="player_t.attacker"/> (if any, and not itself); only once
+    /// it faces the killer (or without one) does the damage flash fade
+    /// (<see cref="player_t.damagecount"/>). The use button makes it
+    /// <see cref="playerstate_t.PST_REBORN"/> (<see cref="G_CheckReborns"/>).
+    /// The mobj's angle turns as vanilla's, whatever the tweaks: under the
+    /// fixed iso camera nothing else turns (SPEC §12 T6.12).
+    /// </summary>
+    public void P_DeathThink(player_t player)
+    {
+        mobj_t mo = player.mo!;
+
+        P_MovePsprites(player);
+
+        // fall to the ground
+        if (player.viewheight > 6 * Fixed.FRACUNIT)
+            player.viewheight -= Fixed.FRACUNIT;
+
+        if (player.viewheight < 6 * Fixed.FRACUNIT)
+            player.viewheight = 6 * Fixed.FRACUNIT;
+
+        player.deltaviewheight = 0;
+        onground = mo.z <= mo.floorz;
+        P_CalcHeight(player);
+
+        if (player.attacker is { } attacker && attacker != mo)
+        {
+            uint angle = Tables.R_PointToAngle2(mo.x, mo.y, attacker.x, attacker.y);
+
+            uint delta = unchecked(angle - mo.angle);
+
+            if (delta < ANG5 || delta > unchecked((uint)-ANG5))
+            {
+                // Looking at killer,
+                //  so fade damage flash down.
+                mo.angle = angle;
+
+                if (player.damagecount != 0)
+                    player.damagecount--;
+            }
+            else if (delta < Tables.ANG180)
+                mo.angle = unchecked(mo.angle + ANG5);
+            else
+                mo.angle = unchecked(mo.angle - ANG5);
+        }
+        else if (player.damagecount != 0)
+            player.damagecount--;
+
+        if ((player.cmd.buttons & buttoncode_t.BT_USE) != 0)
+            player.playerstate = playerstate_t.PST_REBORN;
     }
 
     /// <summary>
@@ -226,7 +326,7 @@ public sealed partial class World
     /// (<see cref="P_UseLines"/> once per press, <see cref="player_t.usedown"/>).
     /// The player's special sectors (<see cref="P_PlayerInSpecialSector"/>, T5.8),
     /// the weapon change from <c>BT_CHANGE</c> and <see cref="P_MovePsprites"/> (T6.6).
-    /// Still to come: <c>P_DeathThink</c> (T6.12).
+    /// A dead player only runs <see cref="P_DeathThink"/> (T6.12).
     /// </summary>
     public void P_PlayerThink(player_t player)
     {
@@ -258,7 +358,7 @@ public sealed partial class World
 
         if (player.playerstate == playerstate_t.PST_DEAD)
         {
-            // P_DeathThink (player); (T6.12)
+            P_DeathThink(player);
             return;
         }
 

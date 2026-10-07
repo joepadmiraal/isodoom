@@ -66,9 +66,12 @@
 // With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
 // of at its map start: before the first tic it is moved with P_TeleportMove
-// onto the floor, facing ANGLE (no fog, nothing else changed). With
+// onto the floor, facing ANGLE (no fog, nothing else changed); again at the
+// start of each reload of the level after a reborn (T6.12: whenever
+// leveltime is 0). With
 // $DUMP_EVENTS ("TIC damage X Y AMOUNT;TIC alert;...", TIC 0-based, in
-// order; T6.4), at the start of tic TIC (leveltime TIC), before the players
+// order; T6.4), at the start of the route's tic TIC (counted from the first
+// tic: leveltime TIC until a reborn reloads the level), before the players
 // think: P_DamageMobj(thing, mo, mo, AMOUNT) on the first mobj in thinker
 // order spawned at map point X, Y (spawnpoint) that is shootable and alive
 // (none: exit 1), or P_NoiseAlert(mo, mo), or (T6.5, "TIC rocket")
@@ -143,6 +146,7 @@ extern char **textures;
 #define MAX_EVENTS 4096
 static struct { int tic, kind, x, y, amount; } events[MAX_EVENTS];
 static int nevents, nextevent;
+static int routetic; // the route's tics so far (T6.12: leveltime starts again after a reborn)
 
 static void parse_events(void)
 {
@@ -212,9 +216,9 @@ void dump_pretic(void)
         mo->angle = (angle_t)((long long)angle * 0x100000000LL / 360);
     }
     // The route's events of this tic (T6.4): stand-ins for the player's shots.
-    for (; nextevent < nevents && events[nextevent].tic <= leveltime; nextevent++)
+    for (; nextevent < nevents && events[nextevent].tic <= routetic; nextevent++)
     {
-        if (events[nextevent].tic < leveltime)
+        if (events[nextevent].tic < routetic)
             continue;
         if (events[nextevent].kind == 1)
         {
@@ -239,11 +243,12 @@ void dump_pretic(void)
         if (!target)
         {
             fprintf(stderr, "DUMP_EVENTS: tic %d: nothing shootable spawned at (%d, %d) to damage\n",
-                    leveltime + 1, events[nextevent].x, events[nextevent].y);
+                    routetic + 1, events[nextevent].x, events[nextevent].y);
             exit(1);
         }
         P_DamageMobj(target, mo, mo, events[nextevent].amount);
     }
+    routetic++;
 }
 
 // Called by the patched p_tick.c at the end of every P_Ticker.

@@ -198,6 +198,7 @@ public partial class LevelCheck : Godot.Node
             CheckHudState(map);
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
+            CheckReborn(map); // it reloads the map (T6.12)
             CheckExit(map); // last: it may load the next map (T5.8)
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
@@ -226,6 +227,10 @@ public partial class LevelCheck : Godot.Node
             + $"(health kept, keys taken), {_exitsEnded} stopped (the game's end or no next map); messages, health and sounds shown in the overlay");
         if (_exitMaps == 0)
             Fail("no map has a use exit (special 11) the player could use");
+        GD.Print($"Level check: death and reborn (T6.12): {_rebornMaps} maps killed the player (it lay still in a death frame) and reborn it with use: "
+            + $"the same map reloaded in the same world, a fresh player at the start, the status bar restarted; {_rebornSkipped} skipped (the player in a special 11 sector)");
+        if (_rebornMaps + _rebornSkipped != _scene.MapNames.Count)
+            Fail($"{_scene.MapNames.Count - _rebornMaps - _rebornSkipped} map(s) did not reborn the player");
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");

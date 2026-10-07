@@ -86,6 +86,11 @@ namespace IsoDoom.Game;
 /// do; its <c>damage</c>, <c>alert</c> and <c>rocket</c> events (T6.4, T6.5) run before their tics. Routes are vanilla demos: the scene needs <c>--level-tweaks=vanilla</c>,
 /// <c>--level-monsters=off</c> (<c>on</c> for a route with the <c>monsters</c> header), the route's skill and map, or the script
 /// fails. <c>map NAME</c> after it checks that the route left by its exit.
+/// A route goes on through a reborn (T6.12: a dead player's use reloads the
+/// level; the <c>start</c> header places the player again), and
+/// <c>reborns N</c> waits for the queued tics and fails unless the scene
+/// reloaded the level for a reborn N times since it started (e.g.
+/// <c>route tests/IsoDoom.Tests/Sim/Routes/e1m8-death.route; reborns 1</c>).
 /// <c>route FILE TICS</c> (T6.11) queues only the route's first TICS tics, so
 /// <c>tics TICS; shot FILE.png</c> captures the scene (and its HUD) after
 /// exactly that tic, as <c>tools/VanillaRef/routes.sh</c>'s <c>DUMP_HUD_TICS</c> does vanilla's.
@@ -353,6 +358,20 @@ public partial class LevelScript : Node
                             }
                             break;
                         }
+                    case "reborns":
+                        {
+                            // T6.12: waits for the queued tics; fails unless the scene reloaded the level for a reborn N times
+                            await Drain();
+                            string status = _scene.World is { } world && world.players[world.consoleplayer] is { mo: not null } p
+                                ? LevelScene.StatusText(world, p) : "no player";
+                            GD.Print($"Level script: reborns {_scene.Reborns} on {_scene.Mesh?.Level.Name ?? "no map"}: {status}");
+                            if (_scene.Reborns != Int(w[1]))
+                            {
+                                GD.PrintErr($"Level script: reborns: expected {Int(w[1])}, there were {_scene.Reborns}");
+                                exit = 1;
+                            }
+                            break;
+                        }
                     case "joy":
                         Input.ParseInputEvent(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
                         break;
@@ -517,6 +536,7 @@ public partial class LevelScript : Node
             return false;
         }
         _scene.ScriptedTics = true;
+        _scene.RouteStartPoint = route.Start; // T6.12: placed again after a reborn
         int count = Math.Min(tics ?? route.Cmds.Count, route.Cmds.Count);
         for (int tic = 0; tic < count; tic++)
         {

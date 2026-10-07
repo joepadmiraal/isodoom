@@ -31,9 +31,67 @@ namespace IsoDoom.Game;
 // scene goes on to the next map in the same world, the player keeping its
 // health and losing its keys, or stops with the reason when the game ends or
 // the WAD lacks the next map; a message the sim leaves shows in the overlay.
+// T6.12: on every map (but where the player starts in a special 11 sector,
+// where it cannot die) the player is killed: dead, it lies in a death frame
+// and its commands move nothing; use reborns it: the scene reloads the same
+// map in the same world with a fresh player (health 100, the pistol and 50
+// bullets, no keys) and restarts the status bar.
 public partial class LevelCheck
 {
     private int _exitMaps, _exitsToNext, _exitsEnded;
+    private int _rebornMaps, _rebornSkipped;
+
+    /// <summary>
+    /// T6.12: kills the player (a hit without a source, as a damage floor's),
+    /// runs a few tics with movement (a dead player stays put, in a death
+    /// frame; <c>P_DeathThink</c>), then a tic with use: the scene must reload
+    /// the map (<see cref="LevelScene.Reborns"/>, <see cref="World.G_DoReborn"/>)
+    /// in the same world, with a new player mobj at the start, a fresh player
+    /// and the status bar restarted. Leaves the scene on the reloaded map.
+    /// </summary>
+    private void CheckReborn(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me)
+            return;
+        if (me.subsector.sector.special == 11)
+        {
+            _rebornSkipped++; // vanilla's E1M8 exit sector: P_DamageMobj leaves the player 1 health there, and it exits
+            return;
+        }
+        player_t p = world.players[world.consoleplayer];
+        p.cards[(int)card_t.it_bluecard] = true;
+        p.weaponowned[(int)weapontype_t.wp_shotgun] = true;
+        p.armorpoints = 50;
+        world.P_DamageMobj(me, null, null, 10000);
+        int x = me.x, y = me.y;
+        var cmd = new ticcmd_t { forwardmove = 50 };
+        for (int i = 0; i < 4; i++)
+            _scene.Tic(cmd);
+        bool deathFrame = me.state is >= statenum_t.S_PLAY_DIE1 and <= statenum_t.S_PLAY_XDIE9;
+        if (p.playerstate != playerstate_t.PST_DEAD || p.health > 0 || !deathFrame || (me.x, me.y) != (x, y) || _scene.PlayerMobj != me
+            || world.gameaction != gameaction_t.ga_nothing)
+        {
+            Fail($"{map}: the killed player: state {p.playerstate}, health {p.health}, frame {me.state}, moved {(me.x, me.y) != (x, y)}, gameaction {world.gameaction}");
+            return;
+        }
+        int reborns = _scene.Reborns;
+        cmd = new ticcmd_t { buttons = buttoncode_t.BT_USE };
+        _scene.Tic(cmd);
+        MapThing? start = _scene.Mesh?.Level.PlayerStart(0);
+        if (_scene.Reborns != reborns + 1 || _scene.Mesh?.Level.Name != map || _scene.World != world || world.level != _scene.Mesh.Level
+            || world.gameaction != gameaction_t.ga_nothing || world.leveltime != 0 || _scene.PlayerMobj is not { } mo2 || mo2 == me
+            || start is null || (mo2.x, mo2.y) != (start.Value.X << 16, start.Value.Y << 16)
+            || p.playerstate != playerstate_t.PST_LIVE || p.health != 100 || mo2.health != 100 || p.armorpoints != 0 || p.cards.Any(c => c)
+            || p.weaponowned[(int)weapontype_t.wp_shotgun] || p.readyweapon != weapontype_t.wp_pistol || p.ammo[(int)ammotype_t.am_clip] != 50
+            || _scene.StatusBar is { } st && (st.plyr != p || !st.st_firsttime || st.keyboxes.Any(k => k != -1)))
+        {
+            Fail($"{map}: use after death: reborns {_scene.Reborns - reborns}, the scene shows {_scene.Mesh?.Level.Name}, same world {_scene.World == world}, "
+                + $"gameaction {world.gameaction}, leveltime {world.leveltime}, state {p.playerstate}, health {p.health}, armor {p.armorpoints}, "
+                + $"keys {string.Join(",", p.cards)}, weapon {p.readyweapon}");
+            return;
+        }
+        _rebornMaps++;
+    }
 
     /// <summary>
     /// T5.8: the player uses the map's first use exit (special 11) from 24

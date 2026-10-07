@@ -1,0 +1,46 @@
+# DOOM1.WAD E1M8 on Nightmare with monsters (T6.12): as e1m8-nightmare
+# up to crossing line 176 (the cages open), then the player stands still
+# without shooting and the spectres kill it (tic 264). Dead, it turns
+# towards its killer (P_DeathThink); use reborns it: E1M8 reloads, the
+# player starts afresh at the start header's point again (as dump.c
+# places it whenever leveltime is 0) and stands there.
+iwad doom1
+map E1M8
+skill 5
+monsters
+start 416 2390 90
+0 0 0 0
+0 0 0 2
+0 0 0 0 x25
+25 0 0 0 x9
+11 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x107
+25 0 0 0 x17
+0 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x19
+0 0 0 0 x126
+0 0 0 2
+0 0 0 0 x60

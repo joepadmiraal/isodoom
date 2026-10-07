@@ -339,7 +339,7 @@ public class KeysDamageExitTests
         Assert.Equal(1, p.frags[0]); // an environment kill counts against the player
         Assert.Equal(statenum_t.S_PISTOLDOWN, p.psprites[World.ps_weapon].state); // P_DropWeapon (T6.6)
 
-        // Dead: no more damage, no movement (P_DeathThink is T6.12).
+        // Dead: no more damage, no movement (P_DeathThink, T6.12: commands but use do nothing).
         int x = me.x;
         world.leveltime = 32;
         Tic(world, 1, new ticcmd_t { forwardmove = 50 });
