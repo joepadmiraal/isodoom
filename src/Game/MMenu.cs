@@ -22,7 +22,7 @@ public interface IMenuHost
     /// <summary>The menus' message for the console player (<c>players[consoleplayer].message</c>; with <paramref name="dontfuckwithme"/> shown even with the messages off, hu_stuff.c <c>message_dontfuckwithme</c>).</summary>
     void PlayerMessage(string text, bool dontfuckwithme);
 
-    /// <summary>A menu sound (<c>S_StartSound(NULL, …)</c>; played from T7.7).</summary>
+    /// <summary>A menu sound (<c>S_StartSound(NULL, …)</c>; T7.7: the level scene plays it on its channels).</summary>
     void StartSound(sfxenum_t sfx);
 
     /// <summary>The description of save slot <paramref name="slot"/> (0–5), or null when it is empty (m_menu.c <c>M_ReadSaveStrings</c>; T7.6: <see cref="GameFlow.SaveDescription"/>).</summary>
@@ -352,7 +352,7 @@ public sealed partial class MMenu
     /// <summary>m_menu.c <c>mouseSensitivity</c> (0–9; applied with the options, T7.3).</summary>
     public int mouseSensitivity = 5;
 
-    /// <summary>s_sound.c <c>sfxVolume</c> and <c>musicVolume</c> (0–15; applied with the sound, T7.7, and the music, T7.8).</summary>
+    /// <summary>s_sound.c <c>sfxVolume</c> and <c>musicVolume</c> (0–15; the sound's <c>snd_SfxVolume</c> is <c>sfxVolume * 8</c>, T7.7; the music's is T7.8's).</summary>
     public int sfxVolume = 8, musicVolume = 8;
 
     /// <summary>m_menu.c <c>quickSaveSlot</c>: the quicksave's slot; -1 none yet, -2 picking one in the save menu (T7.6).</summary>
@@ -373,7 +373,7 @@ public sealed partial class MMenu
     /// <summary>Counts every change the menus' drawing shows (the host redraws when it changes).</summary>
     public int Changes { get; private set; }
 
-    /// <summary>The menu sound started last (<c>S_StartSound(NULL, …)</c>), for the tests until T7.7 plays them.</summary>
+    /// <summary>The menu sound started last (<c>S_StartSound(NULL, …)</c>), for the tests.</summary>
     public sfxenum_t? LastSound { get; private set; }
 
     /// <summary>Whether something of the menus shows (a menu or a message).</summary>
@@ -692,7 +692,7 @@ public sealed partial class MMenu
                     sfxVolume++;
                 break;
         }
-        // S_SetSfxVolume: T7.7
+        // S_SetSfxVolume(sfxVolume * 8): the level scene takes it every frame (T7.7)
     }
 
     private void M_MusicVol(int choice)
@@ -825,7 +825,7 @@ public sealed partial class MMenu
         if (flow.World?.netgame != true)
         {
             S_StartSound((flow.gamemode == GameMode.commercial ? quitsounds2 : quitsounds)[(flow.gametic >> 2) & 7]);
-            // I_WaitVBL(105): the sound's time to play, T7.7
+            // I_WaitVBL(105): the host waits for the sound before quitting (T7.7)
         }
         Host?.I_Quit();
     }

@@ -538,6 +538,7 @@ public partial class LevelScene : Node3D, IGameHost
             if (IsCheckRun)
             {
                 InitSettings(); // T7.3: the defaults (no file), for the check's settings round trip
+                InitSound(); // T7.7
                 AddChild(new LevelCheck(this)); // loads every map itself; no free-fly camera, no keys
                 return;
             }
@@ -596,6 +597,7 @@ public partial class LevelScene : Node3D, IGameHost
             AddChild(FreeFly);
             CreateGameCamera();
             InitSettings(); // T7.3: the saved settings, but those the arguments above give
+            InitSound(); // T7.7
             if (WadLocator.HasUserArg("--level"))
             {
                 // A map from the command line (vanilla's -warp): a new game on it, no title loop.
@@ -1045,6 +1047,7 @@ public partial class LevelScene : Node3D, IGameHost
             PollMenuPad(delta); // T7.2: the pad's directions in the menus
             flow.G_DoGameActions(); // T7.1: the game actions set between the tics (a new game from the title)
             RunTics(delta);
+            UpdateSound(delta); // T7.7: d_main.c's S_UpdateSounds after the tics
             CaptureWipeStart(); // T7.1a: a game state changed this frame: the frame shown last melts at the next tic
             _displayed = null;
             if (Mesh is not null)
@@ -1106,7 +1109,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     private void RunTics(double delta)
     {
-        if (_flow is not { } flow || Paused || FocusPaused || !flow.CanTic && !flow.Wipe.go)
+        if (_flow is not { } flow || Paused || FocusPaused || Quitting || !flow.CanTic && !flow.Wipe.go)
             return;
         _ticTime += delta;
         int ran = 0;
@@ -1440,9 +1443,9 @@ public partial class LevelScene : Node3D, IGameHost
     public const int SoundLogLength = 6;
 
     /// <summary>
-    /// The last <see cref="SoundLogLength"/> sounds the sim started (T6.10:
-    /// silent until M7, so the overlay lists them), oldest first, with the
-    /// tic they started in.
+    /// The last <see cref="SoundLogLength"/> sounds the sim started (T6.10;
+    /// the overlay lists them; T7.7 plays them, <see cref="Sound"/>), oldest
+    /// first, with the tic they started in.
     /// </summary>
     public IReadOnlyList<(int Tic, sound_event_t Sound)> SoundLog => _soundLog;
 
@@ -1474,6 +1477,10 @@ public partial class LevelScene : Node3D, IGameHost
                     if (_soundLog.Count == SoundLogLength)
                         _soundLog.RemoveAt(0);
                     _soundLog.Add((e.tic, e.sound));
+                    StartSoundEvent(e); // T7.7
+                    break;
+                case simevent_t.se_stopsound when e.sound.origin is { } removed:
+                    Sound?.S_StopSound(removed); // T7.7: p_mobj.c P_RemoveMobj's S_StopSound
                     break;
             }
         }
@@ -1976,6 +1983,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append($"message: {HudMessage}\n");
         if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
             text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
+        if (Sound is { } snd && snd.channels.Any(c => c.sfxinfo is not null))
+            text.Append("channels: " + ChannelsText().Replace("\n", ", ", StringComparison.Ordinal) + "\n"); // T7.7
         if (_flow is { } flow)
             text.Append($"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}   menu: {flow.Menu.StateText()}\n");
         if (LevelEnded is not null)
@@ -2189,6 +2198,7 @@ public partial class LevelScene : Node3D, IGameHost
             throw new WadFormatException($"the WAD has no map {map}");
 
         UnloadLevel();
+        Sound?.S_Start(); // T7.7: p_setup.c P_SetupLevel's S_Start: no sound outlives its level
         SnapPending = false;
         TeleportSnaps = 0;
         TiccmdBuilder.Reset(); // the player keeps its angle until something aims (T4.6)

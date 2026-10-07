@@ -204,9 +204,12 @@ public static class LumpDirectory
     // DMX digitized sound header: format 3, sample rate, sample count (8 bytes).
     private static string DigitizedSoundDetail(ReadOnlySpan<byte> data)
     {
-        if (data.Length >= 8 && BinaryPrimitives.ReadUInt16LittleEndian(data) == 3)
-            return $"digitized, {BinaryPrimitives.ReadUInt16LittleEndian(data[2..])} Hz";
-        return "digitized (unknown header)";
+        if (!DmxSound.HasHeader(data))
+            return "digitized (unknown header)";
+        // T7.7: what plays (DMX's pads left out), or why DMX would not play it
+        if (DmxSound.TryDecode(data, out string? error) is DmxSound sound)
+            return $"digitized, {sound.SampleRate} Hz, {sound.Samples.Length} samples, {sound.Seconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} s";
+        return $"digitized, {BinaryPrimitives.ReadUInt16LittleEndian(data[2..])} Hz, not playable: {error}";
     }
 
     /// <summary>Every lump of the archive, in load order, classified.</summary>

@@ -39,6 +39,7 @@
     <Compile Include="../../src/Game/Settings.cs" Link="Game/Settings.cs" />
     <Compile Include="../../src/Game/SaveGame.cs" Link="Game/SaveGame.cs" />
     <Compile Include="../../src/Render/Fuzz.cs" Link="Render/Fuzz.cs" />
+    <Compile Include="../../src/Audio/SSound.cs" Link="Audio/SSound.cs" />
     <Compile Include="../../src/Render/DoorLids.cs" Link="Render/DoorLids.cs" />
   </ItemGroup>
   <ItemGroup>

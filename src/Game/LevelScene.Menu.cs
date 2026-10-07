@@ -45,9 +45,13 @@ public partial class LevelScene : IMenuHost
 
     void IMenuHost.PlayerMessage(string text, bool dontfuckwithme) => _menuMessage = (text, dontfuckwithme);
 
+    // T7.7: S_StartSound(NULL, sfx): the menus', the intermission's and the finale's sounds, heard everywhere.
+    // Not while quitting: vanilla's M_QuitResponse never returns (I_WaitVBL, I_Quit), so the menu's
+    // sfx_swtchx after a message's routine never cuts the quit sound.
     void IMenuHost.StartSound(sfxenum_t sfx)
     {
-        // S_StartSound(NULL, sfx): played from T7.7
+        if (!Quitting)
+            Sound?.S_StartSound(null, 0, 0, sfx, SoundListener());
     }
 
     string? IMenuHost.SaveDescription(int slot) => Flow.SaveDescription(slot); // T7.6
@@ -55,7 +59,7 @@ public partial class LevelScene : IMenuHost
     void IMenuHost.I_Quit()
     {
         GD.Print("Level: quit from the menu");
-        GetTree().Quit();
+        QuitAfterSound(); // T7.7: I_WaitVBL(105), the quit sound's time
     }
 
     /// <summary>Sets the menus up for this scene (once the flow exists).</summary>
