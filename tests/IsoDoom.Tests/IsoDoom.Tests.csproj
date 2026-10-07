@@ -31,6 +31,7 @@
     <Compile Include="../../src/Game/GameFlow.cs" Link="Game/GameFlow.cs" />
     <Compile Include="../../src/Game/WiStuff.cs" Link="Game/WiStuff.cs" />
     <Compile Include="../../src/Game/FFinale.cs" Link="Game/FFinale.cs" />
+    <Compile Include="../../src/Game/FFinale.Texts.cs" Link="Game/FFinale.Texts.cs" />
     <Compile Include="../../src/Game/ScreenGraphics.cs" Link="Game/ScreenGraphics.cs" />
     <Compile Include="../../src/Game/MMenu.cs" Link="Game/MMenu.cs" />
     <Compile Include="../../src/Game/MMenu.Setup.cs" Link="Game/MMenu.Setup.cs" />

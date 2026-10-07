@@ -5,17 +5,21 @@ using IsoDoom.Wad;
 namespace IsoDoom.Game;
 
 /// <summary>
-/// f_finale.c's finale, a placeholder (T7.1) until T7.5 ports it: vanilla's
-/// stages and timing (<see cref="F_Ticker"/>: the text screen for
-/// <c>strlen(finaletext) * TEXTSPEED + TEXTWAIT</c> tics, then the end
-/// picture; Doom II's text screens between maps skipped after 50 tics by any
-/// button) with the episode's flat but a stand-in text, and the end
-/// pictures (E1: <c>HELP2</c>, the retail game <c>CREDIT</c>; E2
-/// <c>VICTORY2</c>; E3 <c>PFUB2</c> without the scroll; E4 <c>ENDPIC</c>).
-/// The end picture stays, as vanilla's, until the menu (T7.2) starts another
-/// game or ends this one. Doom II's cast call (M10) ends at the title loop. No Godot types: the tests link it.
+/// f_finale.c's finale (T7.5; Chocolate Doom's, the vanilla reference's):
+/// <see cref="F_StartFinale"/> picks the text and flat of
+/// <see cref="textscreens"/> by game mission, episode and map;
+/// <see cref="F_Ticker"/> shows the text for
+/// <c>strlen(finaletext) * TEXTSPEED + TEXTWAIT</c> tics (Doom II's text
+/// screens between maps until any button after 50 tics), then the end
+/// picture (<see cref="F_Drawer"/>: E1 <c>HELP2</c>, the retail game's
+/// <c>CREDIT</c>; E2 <c>VICTORY2</c>; E4 <c>ENDPIC</c>), which stays, as
+/// vanilla's, until the menu (T7.2) starts another game or ends this one.
+/// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) and Doom II's cast
+/// call (M10, the title loop until then) are later tasks'; the music
+/// (<c>mus_victor</c>, <c>mus_read_m</c>, <c>mus_bunny</c>) is T7.8's, the
+/// wipe to the end picture T7.1a's. No Godot types: the tests link it.
 /// </summary>
-public sealed class FFinale
+public sealed partial class FFinale
 {
     private readonly GameFlow flow;
 
@@ -27,13 +31,16 @@ public sealed class FFinale
     /// <summary>f_finale.c <c>TEXTWAIT</c>: tics the whole text stays.</summary>
     public const int TEXTWAIT = 250;
 
-    /// <summary>f_finale.c <c>finalestage</c>: 0 the text, 1 the end picture (2, the cast call, is M10's).</summary>
+    /// <summary>f_finale.c <c>finalestage_t</c>: the text, the end picture (<c>F_STAGE_ARTSCREEN</c>), the cast call (M10's).</summary>
+    public const int F_STAGE_TEXT = 0, F_STAGE_ARTSCREEN = 1, F_STAGE_CAST = 2;
+
+    /// <summary>f_finale.c <c>finalestage</c> (<see cref="F_STAGE_TEXT"/>, …).</summary>
     public int finalestage;
 
     /// <summary>f_finale.c <c>finalecount</c>: the stage's tics.</summary>
     public int finalecount;
 
-    /// <summary>f_finale.c <c>finaletext</c> (a stand-in until T7.5's texts).</summary>
+    /// <summary>f_finale.c <c>finaletext</c> (from <see cref="textscreens"/>).</summary>
     public string finaletext = "";
 
     /// <summary>f_finale.c <c>finaleflat</c>: the flat behind the text.</summary>
@@ -42,42 +49,31 @@ public sealed class FFinale
     private int gameepisode, gamemap;
 
     /// <summary>
-    /// f_finale.c <c>F_StartFinale</c>: the text screen of episode
-    /// <paramref name="episode"/>'s end, or Doom II's after map
-    /// <paramref name="map"/> (vanilla's flats; the texts are T7.5's, the
-    /// music, <c>mus_victor</c>/<c>mus_read_m</c>, T7.8's).
+    /// f_finale.c <c>F_StartFinale</c>: the text screen after map
+    /// <paramref name="map"/> of episode <paramref name="episode"/> (Doom II:
+    /// maps 6, 11, 20, 30 and the secret exits of 15 and 31), its text and
+    /// flat from <see cref="textscreens"/> for the flow's
+    /// <see cref="GameFlow.gamemission"/> (Chocolate Doom's
+    /// <c>logical_gamemission</c>). Vanilla has no text for any other map
+    /// (a null <c>finaletext</c>): a stand-in here. The music
+    /// (<c>mus_victor</c>, Doom II <c>mus_read_m</c>) is T7.8's.
     /// </summary>
     public void F_StartFinale(int episode, int map)
     {
         gameepisode = episode;
         gamemap = map;
-        if (flow.gamemode == GameMode.commercial)
+        GameMission mission = flow.gamemission;
+        finaletext = flow.gamemode == GameMode.commercial ? $"MAP{map:00} COMPLETE." : $"EPISODE {episode} COMPLETE.";
+        finaleflat = "F_SKY1";
+        foreach (textscreen_t screen in textscreens)
         {
-            finaleflat = map switch
+            if (mission == screen.mission && (mission != GameMission.doom || episode == screen.episode) && map == screen.level)
             {
-                6 => "SLIME16",
-                11 => "RROCK14",
-                20 => "RROCK07",
-                30 => "RROCK17",
-                15 => "RROCK13",
-                31 => "RROCK19",
-                _ => "F_SKY1",
-            };
-            finaletext = $"MAP{map:00} COMPLETE.";
+                finaletext = screen.text;
+                finaleflat = screen.background;
+            }
         }
-        else
-        {
-            finaleflat = episode switch
-            {
-                1 => "FLOOR4_8",
-                2 => "SFLR6_1",
-                3 => "MFLR8_4",
-                4 => "MFLR8_3",
-                _ => "F_SKY1",
-            };
-            finaletext = $"EPISODE {episode} COMPLETE.";
-        }
-        finalestage = 0;
+        finalestage = F_STAGE_TEXT;
         finalecount = 0;
     }
 
@@ -117,10 +113,10 @@ public sealed class FFinale
         if (flow.gamemode == GameMode.commercial)
             return;
 
-        if (finalestage == 0 && finalecount > finaletext.Length * TEXTSPEED + TEXTWAIT)
+        if (finalestage == F_STAGE_TEXT && finalecount > finaletext.Length * TEXTSPEED + TEXTWAIT)
         {
             finalecount = 0;
-            finalestage = 1;
+            finalestage = F_STAGE_ARTSCREEN;
             // wipegamestate = -1 (a wipe: T7.1a); E3's mus_bunny: T7.8
         }
         // finalestage 1 (the end picture) stays until the menu starts a new game or ends this one (T7.2), as vanilla's
@@ -130,29 +126,42 @@ public sealed class FFinale
     private void F_StartCast() => flow.D_StartTitle($"MAP{gamemap:00} completed: the end of the game (the cast call is M10's)");
 
     /// <summary>
-    /// f_finale.c <c>F_Drawer</c>: the text screen (<c>F_TextWrite</c>: the
-    /// flat tiled, the text typed out at <see cref="TEXTSPEED"/> from
-    /// 10, 10 in the message font) or the episode's end picture.
+    /// f_finale.c <c>F_Drawer</c>: the text screen (<see cref="F_TextWrite"/>)
+    /// or the episode's end picture (<c>F_ArtScreenDrawer</c>).
     /// </summary>
     public void F_Drawer(ScreenGraphics g, HudScreen screen)
     {
         screen.Clear();
-        if (finalestage == 0)
-        {
+        if (finalestage == F_STAGE_TEXT)
             F_TextWrite(g, screen);
-            return;
-        }
-        string page = gameepisode switch
-        {
-            1 => flow.gamemode == GameMode.retail ? "CREDIT" : "HELP2",
-            2 => "VICTORY2",
-            3 => "PFUB2", // F_BunnyScroll: T9.x
-            _ => "ENDPIC",
-        };
-        g.DrawPage(screen, page);
+        else
+            F_ArtScreenDrawer(g, screen);
     }
 
-    /// <summary>f_finale.c <c>F_TextWrite</c>.</summary>
+    /// <summary>The end picture of the episode (<c>F_ArtScreenDrawer</c>), or null (vanilla draws nothing).</summary>
+    public string? ArtScreen() => gameepisode switch
+    {
+        1 => flow.gamemode == GameMode.retail ? "CREDIT" : "HELP2",
+        2 => "VICTORY2",
+        3 => "PFUB2", // F_BunnyScroll: T9.4
+        4 => "ENDPIC",
+        _ => null,
+    };
+
+    /// <summary>f_finale.c <c>F_ArtScreenDrawer</c>: the end picture at 0, 0 (E3's bunny scroll shown still until T9.4).</summary>
+    private void F_ArtScreenDrawer(ScreenGraphics g, HudScreen screen)
+    {
+        if (ArtScreen() is { } page)
+            g.DrawPage(screen, page);
+    }
+
+    /// <summary>
+    /// f_finale.c <c>F_TextWrite</c>: the flat tiled over the screen, then
+    /// <c>(finalecount - 10) / TEXTSPEED</c> characters of the text (a line
+    /// break counts as one) in the message font from 10, 10, 11 rows a line;
+    /// a character the font lacks (a space) moves on 4, and a line stops at
+    /// the screen's right edge.
+    /// </summary>
     private void F_TextWrite(ScreenGraphics g, HudScreen screen)
     {
         // erase the entire screen to a tiled background
@@ -171,6 +180,11 @@ public sealed class FFinale
             {
                 cx = 10;
                 cy += 11;
+                continue;
+            }
+            if (!g.HasGlyph(ch))
+            {
+                cx += 4;
                 continue;
             }
             int w = g.CharWidth(ch);

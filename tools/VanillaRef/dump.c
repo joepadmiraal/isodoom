@@ -515,6 +515,96 @@ void dump_witic(void)
     }
 }
 
+// The finale (T7.5): with $DUMP_FI set (and $DUMP_TICS), called by the
+// patched g_game.c after F_Ticker in every G_Ticker of the finale; appends a
+// line per tic to the file $DUMP_FI (its first lines, at the finale's first
+// tic: "presses $DUMP_FI_PRESSES" (the route tool's schedule, echoed), then
+// "finale EPISODE MAP FLAT LENGTH TEXTHASH" as F_StartFinale left them,
+// TEXTHASH the 32-bit FNV-1a of finaletext's bytes): STAGE COUNT HASH
+// RNDINDEX, STAGE f_finale.c's finalestage, COUNT finalecount, HASH the
+// 32-bit FNV-1a of F_Drawer's 320x200 screen drawn now (twice, over two
+// clear colours: 256 where nothing is drawn; 8 hex digits), RNDINDEX
+// M_Random's index. With $DUMP_FI_DIR and $DUMP_FI_TICS ("N,M,..." or
+// "all", finale tics from 1), the screen of those tics as DIR/fiN.ppm (320x200,
+// palette 0, as D_Display sets it off the level). It exits once the end
+// picture has shown $DUMP_FI_ART tics (default 35; vanilla's stays until
+// the menu ends the game) or the finale ends (Doom II's skip: a game action).
+void dump_fitic(void)
+{
+    static FILE *fifile;
+    static int tic;
+    char *path = getenv("DUMP_FI");
+    if (!path || !*path)
+        return;
+    extern int rndindex;
+    extern gameaction_t gameaction;
+    extern int finalestage; // an enum (finalestage_t) in f_finale.c
+    extern unsigned int finalecount;
+    extern char *finaletext, *finaleflat;
+    extern void F_Drawer(void);
+    if (!fifile)
+    {
+        if (!(fifile = fopen(path, "w")))
+        {
+            perror(path);
+            exit(1);
+        }
+        char *presses = getenv("DUMP_FI_PRESSES");
+        uint32_t texthash = 2166136261u;
+        for (const char *c = finaletext; *c; c++)
+            texthash = (texthash ^ (byte)*c) * 16777619u;
+        fprintf(fifile, "presses %s\nfinale %d %d %s %d %08x\n", presses && *presses ? presses : "-",
+                gameepisode, gamemap, finaleflat, (int)strlen(finaletext), texthash);
+    }
+    tic++;
+    static byte fi[2][SCREENWIDTH * SCREENHEIGHT];
+    for (int k = 0; k < 2; k++)
+    {
+        memset(I_VideoBuffer, k ? 4 : 0, sizeof fi[k]);
+        F_Drawer();
+        memcpy(fi[k], I_VideoBuffer, sizeof fi[k]);
+    }
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
+        hash = (hash ^ (fi[0][i] == fi[1][i] ? fi[0][i] : 256u)) * 16777619u;
+    fprintf(fifile, "%d %u %08x %d\n", finalestage, finalecount, hash, rndindex);
+    soundslen = 0;
+    char *dir = getenv("DUMP_FI_DIR"), *tics = getenv("DUMP_FI_TICS");
+    if (dir && tics)
+    {
+        char want[16];
+        snprintf(want, sizeof want, "%d", tic);
+        int hit = !strcmp(tics, "all");
+        for (char *t = strtok(strdup(tics), ","); t && !hit; t = strtok(NULL, ","))
+            hit = !strcmp(t, want);
+        if (hit)
+        {
+            char out[1024];
+            snprintf(out, sizeof out, "%s/fi%s.ppm", dir, want);
+            FILE *f = fopen(out, "wb");
+            if (!f)
+            {
+                perror(out);
+                exit(1);
+            }
+            byte *pal = (byte *)W_CacheLumpName("PLAYPAL", PU_CACHE);
+            static const byte none[3] = { 0, 255, 255 };
+            fprintf(f, "P6\n%d %d\n255\n", SCREENWIDTH, SCREENHEIGHT);
+            for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
+                fwrite(fi[0][i] == fi[1][i] ? pal + 3 * fi[0][i] : none, 1, 3, f);
+            fclose(f);
+        }
+    }
+    fflush(fifile);
+    char *art = getenv("DUMP_FI_ART");
+    if (gameaction != ga_nothing || gamestate != GS_FINALE
+        || (finalestage == 1 && (int)finalecount >= (art && *art ? atoi(art) : 35)))
+    {
+        fclose(fifile);
+        exit(0);
+    }
+}
+
 // A lump of the map (ML_SECTORS, ...).
 static byte *map_lump(int lump)
 {

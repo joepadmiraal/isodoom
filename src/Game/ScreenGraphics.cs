@@ -107,6 +107,9 @@ public sealed class ScreenGraphics
         return c > ' ' && c >= HuStuff.HU_FONTSTART && c <= HuStuff.HU_FONTEND ? font[c - HuStuff.HU_FONTSTART] : null;
     }
 
+    /// <summary>Whether the message font has <paramref name="ch"/> (upper case; not a space).</summary>
+    public bool HasGlyph(char ch) => Glyph(ch) is not null;
+
     /// <summary>A character's width in the message font (4 for a space or one the font lacks, as hu_lib.c and f_finale.c).</summary>
     public int CharWidth(char ch) => Glyph(ch)?.Width ?? 4;
 

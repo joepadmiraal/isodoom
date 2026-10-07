@@ -27,7 +27,7 @@ namespace IsoDoom.Game;
 /// scene as its <see cref="IGameHost"/>: the title loop's pages, a new game
 /// (fire, use, Enter, Escape or the pad's Start on the title until the menus,
 /// T7.2), each level, the intermission between levels (T7.4) and the
-/// (placeholder) finale, drawn over the level by <see cref="Screens"/>; the
+/// finale (T7.5), drawn over the level by <see cref="Screens"/>; the
 /// pause key (Pause, the pad's Back) pauses through the <c>ticcmd</c>
 /// (vanilla's <c>BTS_PAUSE</c>), and the window's focus loss pauses too.
 /// </para>
@@ -263,6 +263,9 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>T7.2: the IWAD's variant (Chocolate Doom's <c>gamevariant</c>: the BFG Edition's menu workarounds).</summary>
     public GameVariant GameVariant { get; private set; }
 
+    /// <summary>T7.5: the IWAD's mission (the finale's texts: Doom II, TNT or Plutonia).</summary>
+    public GameMission GameMission { get; private set; }
+
     /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
     public skill_t Skill { get; private set; } = skill_t.sk_medium;
 
@@ -459,7 +462,7 @@ public partial class LevelScene : Node3D, IGameHost
             if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
-            _flow = new GameFlow(this, GameMode, MRandom, GameVariant); // T7.1: g_game.c's flow, d_main.c's title loop
+            _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission); // T7.1: g_game.c's flow, d_main.c's title loop
             _graphics = new ScreenGraphics(Wad, MessageLine);
             InitMenus(); // T7.2
             if (IsCheckRun)
@@ -1923,6 +1926,7 @@ public partial class LevelScene : Node3D, IGameHost
         Textures = Textures.R_InitTextures(wad);
         GameMode = info.GameMode;
         GameVariant = info.GameVariant;
+        GameMission = info.GameMission;
         try
         {
             Sprites = Sprites.R_InitSprites(wad);

@@ -65,17 +65,20 @@ public interface IGameHost
 /// demos (SPEC §7.6). The sim's part of the flow is the world's
 /// (<c>World.Game.cs</c>, T5.8); the level itself is the host's
 /// (<see cref="IGameHost"/>). The intermission is <see cref="WiStuff"/>
-/// (T7.4); the finale (<see cref="FFinale"/>) is a placeholder until T7.5.
+/// (T7.4), the finale <see cref="FFinale"/> (T7.5).
 /// </summary>
 public sealed class GameFlow
 {
     private readonly IGameHost host;
     private gameaction_t _gameaction;
 
-    public GameFlow(IGameHost host, GameMode gamemode, DoomRandom mrandom, GameVariant gamevariant = GameVariant.vanilla)
+    public GameFlow(IGameHost host, GameMode gamemode, DoomRandom mrandom, GameVariant gamevariant = GameVariant.vanilla,
+        GameMission gamemission = GameMission.none)
     {
         this.host = host;
         this.gamemode = gamemode;
+        this.gamemission = gamemission != GameMission.none ? gamemission
+            : gamemode == GameMode.commercial ? GameMission.doom2 : GameMission.doom;
         this.gamevariant = gamevariant;
         MRandom = mrandom;
         Wi = new WiStuff(this);
@@ -85,6 +88,13 @@ public sealed class GameFlow
 
     /// <summary>doomstat.h <c>gamemode</c>.</summary>
     public readonly GameMode gamemode;
+
+    /// <summary>
+    /// Chocolate Doom's <c>logical_gamemission</c> (the finale's texts, T7.5):
+    /// the IWAD's mission, or without one (<see cref="GameMission.none"/>)
+    /// Doom II's for the commercial game mode, else Doom's.
+    /// </summary>
+    public readonly GameMission gamemission;
 
     /// <summary>Chocolate Doom's <c>gamevariant</c> (the BFG Edition's workarounds, T7.2).</summary>
     public readonly GameVariant gamevariant;
@@ -147,7 +157,7 @@ public sealed class GameFlow
     /// <summary>The intermission (wi_stuff.c, T7.4).</summary>
     public WiStuff Wi { get; }
 
-    /// <summary>The finale (f_finale.c; a placeholder until T7.5).</summary>
+    /// <summary>The finale (f_finale.c, T7.5).</summary>
     public FFinale Finale { get; }
 
     /// <summary>

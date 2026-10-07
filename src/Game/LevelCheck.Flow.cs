@@ -16,7 +16,10 @@ namespace IsoDoom.Game;
 // BTS_PAUSE) holds the world but not the status bar. With a real renderer
 // the screens node shows the title page and the pause graphic over the
 // level, every pixel compared with its palette colour. The exits' checks
-// (T5.8, CheckExit) go through the intermission.
+// (T5.8, CheckExit) go through the intermission. T7.5: the finale of the
+// game's first episode (or Doom II's first text screen) with vanilla's text,
+// flat and timing, ending on its end picture (Doom II: skipped to the next
+// map); with a real renderer its text and end picture are compared too.
 public partial class LevelCheck
 {
     private int _pagesShown;
@@ -91,6 +94,103 @@ public partial class LevelCheck
             Fail($"the pause: paused {flow.paused}, leveltime {leveltime} -> {world.leveltime} (expected held for two tics, then one tic)");
         else
             GD.Print($"Level check: new game (T7.1): the title's new game started {first} with M_Random cleared; the pause held the world for two tics, the status bar ran on");
+
+        CheckFinale();
+    }
+
+    /// <summary>
+    /// The level made the episode's last (map 8; Doom II: map 6) and left, as
+    /// <see cref="CheckGameFlow"/>'s new game has it: the finale (Doom II: after
+    /// the intermission) with f_finale.c's text and flat for the WAD's mission,
+    /// or null when the game did not get there.
+    /// </summary>
+    private FFinale? StartFinale()
+    {
+        GameFlow flow = _scene.Flow;
+        bool commercial = flow.gamemode == GameMode.commercial;
+        if (_scene.World is not { } world)
+        {
+            _scene.StartNewGame();
+            flow.G_DoGameActions();
+            if (_scene.World is not { } w)
+            {
+                Fail("the finale: no new game");
+                return null;
+            }
+            world = w;
+        }
+        world.gamemap = commercial ? 6 : 8;
+        world.G_ExitLevel();
+        _scene.Tic(new ticcmd_t());
+        if (commercial)
+        {
+            // the intermission first: fire for all the stats, fire again for its end
+            for (int t = 0; t < 20 && flow.gamestate == gamestate_t.GS_INTERMISSION; t++)
+                _scene.Tic(new ticcmd_t { buttons = t % 2 == 0 ? buttoncode_t.BT_ATTACK : (byte)0 });
+        }
+        if (flow.gamestate != gamestate_t.GS_FINALE)
+        {
+            Fail($"the finale: after map {world.gamemap}'s exit the game is at {flow.StateText()}");
+            return null;
+        }
+        return flow.Finale;
+    }
+
+    /// <summary>
+    /// T7.5 (headless): <see cref="StartFinale"/>'s text and flat are
+    /// vanilla's for the WAD's mission, the text shows for its length × 3 +
+    /// 250 tics whatever is pressed, then the end picture (HELP2, the retail
+    /// game's CREDIT) stays, drawn as its patch; Doom II's text is skipped by
+    /// a press after 50 tics, to MAP07.
+    /// </summary>
+    private void CheckFinale()
+    {
+        GameFlow flow = _scene.Flow;
+        if (StartFinale() is not { } fi)
+            return;
+        bool commercial = flow.gamemode == GameMode.commercial;
+        FFinale.textscreen_t vanilla = FFinale.textscreens.FirstOrDefault(t => t.mission == flow.gamemission && t.episode == 1 && t.level == (commercial ? 6 : 8));
+        if (vanilla.text is null || fi.finaletext != vanilla.text || fi.finaleflat != vanilla.background)
+        {
+            Fail($"the finale: text \"{fi.finaletext[..Math.Min(20, fi.finaletext.Length)]}…\" on {fi.finaleflat}, not {flow.gamemission}'s");
+            return;
+        }
+        int textTics = fi.finaletext.Length * FFinale.TEXTSPEED + FFinale.TEXTWAIT;
+        var use = new ticcmd_t { buttons = buttoncode_t.BT_USE };
+        if (commercial)
+        {
+            for (int t = fi.finalecount; t <= 50; t++)
+                _scene.Tic(use); // not seen before finalecount 51
+            bool held = flow.gamestate == gamestate_t.GS_FINALE;
+            _scene.Tic(new ticcmd_t());
+            _scene.Tic(use);
+            if (!held || flow.gamestate != gamestate_t.GS_LEVEL || _scene.Mesh?.Level.Name != "MAP07")
+                Fail($"the finale: Doom II's text {(held ? "was not skipped to MAP07" : "was skipped before 50 tics")}: {flow.StateText()} on {_scene.Mesh?.Level.Name}");
+            else
+                GD.Print($"Level check: finale (T7.5): MAP06's text on {fi.finaleflat} ({fi.finaletext.Length} characters), skipped after 50 tics to MAP07");
+            return;
+        }
+        while (fi.finalestage == FFinale.F_STAGE_TEXT && fi.finalecount < textTics)
+            _scene.Tic(fi.finalecount % 7 == 0 ? use : new ticcmd_t()); // presses skip nothing before Doom II
+        bool onTime = fi.finalestage == FFinale.F_STAGE_TEXT;
+        _scene.Tic(new ticcmd_t());
+        if (!onTime || fi.finalestage != FFinale.F_STAGE_ARTSCREEN || fi.finalecount != 0)
+        {
+            Fail($"the finale: the text did not give way to the end picture after {textTics} tics: {flow.StateText()}");
+            return;
+        }
+        for (int t = 0; t < 100; t++)
+            _scene.Tic(t % 2 == 0 ? use : new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
+        string page = flow.gamemode == GameMode.retail ? "CREDIT" : "HELP2";
+        var graphics = new ScreenGraphics(_scene.Wad, _scene.MessageLine);
+        var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        fi.F_Drawer(graphics, screen);
+        if (flow.gamestate != gamestate_t.GS_FINALE || fi.ArtScreen() != page)
+            Fail($"the finale: the end picture did not stay ({flow.StateText()}, {fi.ArtScreen()}, expected {page})");
+        else if (graphics.Patch(page) is { } patch && !PageDrawn(screen, patch))
+            Fail($"the finale: the end picture {page} is not drawn as its patch");
+        else
+            GD.Print($"Level check: finale (T7.5): E1M8's text on {fi.finaleflat} ({fi.finaletext.Length} characters) for {textTics} tics, then {page}, which stays");
     }
 
     /// <summary>Whether every opaque pixel of <paramref name="patch"/> at 0, 0 (less its offsets) is on <paramref name="screen"/>.</summary>
@@ -114,8 +214,9 @@ public partial class LevelCheck
     /// <summary>
     /// T7.1, with a real renderer: the screens node shows the title loop's
     /// first page centred over a black backdrop, the intermission (T7.4: its
-    /// stats counting, then its next location) and the pause graphic over
-    /// the level: each screen pixel's centre must be its index's colour in
+    /// stats counting, then its next location), the pause graphic over
+    /// the level (hidden again once unpaused) and the finale (T7.5: its text
+    /// half typed, then its end picture; Doom II: the text): each screen pixel's centre must be its index's colour in
     /// palette 0, the backdrop black around the page.
     /// </summary>
     private async Task CheckScreensDrawn()
@@ -123,7 +224,7 @@ public partial class LevelCheck
         GameFlow flow = _scene.Flow;
         bool overlay = _scene.Overlay.Visible;
         _scene.Overlay.Visible = false;
-        foreach (string kind in new[] { "title", "intermission", "pause" })
+        foreach (string kind in new[] { "title", "intermission", "pause", "finale" })
         {
             bool title = kind == "title";
             string what;
@@ -148,6 +249,29 @@ public partial class LevelCheck
                     _scene.Tic(new ticcmd_t());
                 what = $"the intermission ({flow.StateText()})";
             }
+            else if (kind == "finale")
+            {
+                _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE }); // unpause
+                _scene.UpdateScreens();
+                if (_scene.Screens.Visible)
+                    Fail("the screens node still shows over the unpaused level");
+                // T7.5: the finale's text half typed (Doom II's after its intermission), then (before Doom II) its end picture
+                if (StartFinale() is not { } fi)
+                    continue;
+                while (fi.finalecount < 400)
+                    _scene.Tic(new ticcmd_t());
+                _scene.UpdateScreens();
+                await CompareScreen($"the finale's text ({flow.StateText()})", false);
+                if (flow.gamemode != GameMode.commercial)
+                {
+                    fi.finalecount = fi.finaletext.Length * FFinale.TEXTSPEED + FFinale.TEXTWAIT; // the text's last tic
+                    _scene.Tic(new ticcmd_t());
+                    _scene.Tic(new ticcmd_t());
+                    if (fi.ArtScreen() is not { } page || _scene.Wad?.W_CheckNumForName(page) < 0)
+                        continue; // (the synthetic IWAD has no end picture: nothing drawn)
+                }
+                what = $"the finale ({flow.StateText()})";
+            }
             else
             {
                 if (flow.gamestate == gamestate_t.GS_INTERMISSION)
@@ -170,12 +294,8 @@ public partial class LevelCheck
             _scene.UpdateScreens();
             await CompareScreen(what, title);
         }
-        _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE }); // unpause
-        _scene.UpdateScreens();
-        if (_scene.Screens.Visible)
-            Fail("the screens node still shows over the unpaused level");
         _scene.Overlay.Visible = overlay;
-        GD.Print($"Level check: screens (T7.1, T7.4): the title page, the intermission (counting, the next location) and the pause graphic at scale {_scene.Screens.PixelScale}, {_screenPixels} pixels compared");
+        GD.Print($"Level check: screens (T7.1, T7.4, T7.5): the title page, the intermission (counting, the next location), the finale (text, end picture) and the pause graphic at scale {_scene.Screens.PixelScale}, {_screenPixels} pixels compared");
     }
 
     private int _screenPixels;

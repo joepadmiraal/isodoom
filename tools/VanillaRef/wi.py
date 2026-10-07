@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""IsoDoom's intermission vs vanilla's (T7.4; dev tool). Usage:
+"""IsoDoom's intermission (or finale) vs vanilla's (T7.4, T7.5; dev tool). Usage:
 
-    wi.py DIR TIC... [--images]
+    wi.py DIR TIC... [--images] [--prefix fi]
 
 Compares, for each TIC, vanilla's intermission screen (DIR/wiTIC.ppm, written
 by dump.c with $DUMP_WI_DIR/$DUMP_WI_TICS: 320x200 in palette 0, cyan where
 nothing is drawn) with the game scene's screenshot after the same
 intermission tic (DIR/oTIC.png, 1280x800: the screen at scale 4), every
-pixel. Prints the differing pixels per tic and exits 1 on any; with --images
+pixel. With --prefix fi, the finale's (DIR/fiTIC.ppm after finale tic TIC:
+fi.sh). Prints the differing pixels per tic and exits 1 on any; with --images
 writes DIR/cTIC.png: vanilla's screen over IsoDoom's (sampled back to
 320x200), differing pixels in magenta below. No PIL: the dev container's
 Python is minimal.
@@ -22,12 +23,18 @@ SCALE = 4
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != '--images']
-    images = '--images' in sys.argv
+    args = sys.argv[1:]
+    prefix = 'wi'
+    if '--prefix' in args:
+        i = args.index('--prefix')
+        prefix = args[i + 1]
+        del args[i:i + 2]
+    images = '--images' in args
+    args = [a for a in args if a != '--images']
     d, tics = args[0], args[1:]
     failed = 0
     for tic in tics:
-        vw, vh, v = read_ppm(f'{d}/wi{tic}.ppm')
+        vw, vh, v = read_ppm(f'{d}/{prefix}{tic}.ppm')
         ow, oh, o = read_png(f'{d}/o{tic}.png')
         left, top = (ow - vw * SCALE) // 2, (oh - vh * SCALE) // 2
         mine = bytearray(vw * vh * 3)

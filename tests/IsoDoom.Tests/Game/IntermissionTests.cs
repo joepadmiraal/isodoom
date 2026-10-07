@@ -29,7 +29,7 @@ public class IntermissionTests
 {
     // ---- against vanilla ----
 
-    private sealed class RouteHost : IGameHost
+    internal sealed class RouteHost : IGameHost
     {
         private readonly WadArchive wad;
         public readonly StStuff St;

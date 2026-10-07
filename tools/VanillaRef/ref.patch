@@ -13,10 +13,10 @@ index 9012e5f..42c574f 100644
  			       "version. Register!"));
  
 diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
-index 9954d78..bc014e3 100644
+index 9954d78..cba0443 100644
 --- a/doomgeneric/g_game.c
 +++ b/doomgeneric/g_game.c
-@@ -1009,10 +1009,12 @@ void G_Ticker (void)
+@@ -1009,14 +1009,17 @@ void G_Ticker (void)
  	ST_Ticker (); 
  	AM_Ticker (); 
  	HU_Ticker ();            
@@ -29,7 +29,12 @@ index 9954d78..bc014e3 100644
  	break; 
  			 
        case GS_FINALE: 
-@@ -1882,7 +1884,8 @@ G_InitNew
+ 	F_Ticker (); 
++	{ extern void dump_fitic(void); dump_fitic(); } // IsoDoom reference (T7.5): the finale after the tic
+ 	break; 
+  
+       case GS_DEMOSCREEN: 
+@@ -1882,7 +1885,8 @@ G_InitNew
  
      skytexturename = DEH_String(skytexturename);
  
@@ -39,7 +44,7 @@ index 9954d78..bc014e3 100644
  
  
      G_DoLoadLevel ();
-@@ -1899,6 +1902,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
+@@ -1899,6 +1903,7 @@ void G_ReadDemoTiccmd (ticcmd_t* cmd)
  { 
      if (*demo_p == DEMOMARKER) 
      {
