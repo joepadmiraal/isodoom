@@ -92,9 +92,9 @@ public class LumpDirectoryTests
         Assert.Equal("MYMAP", Entry(list, "iwad.wad", "REJECT", 2).MapName);
         Assert.Equal(LumpKind.TextureDefs, Kind("TEXTURE1"));
         Assert.Equal(LumpKind.TextureDefs, Kind("PNAMES"));
-        Assert.Equal(LumpKind.Instruments, Kind("GENMIDI"));
+        Assert.Equal((LumpKind.Instruments, "OPL instruments, not readable: 64 bytes, too short for 175 instruments (6308)"), (Kind("GENMIDI"), Detail("GENMIDI")));
         Assert.Equal(LumpKind.Instruments, Kind("DMXGUS"));
-        Assert.Equal((LumpKind.Music, "MUS"), (Kind("D_E1M1"), Detail("D_E1M1")));
+        Assert.Equal((LumpKind.Music, "MUS, not readable: cut off inside the event at byte 31"), (Kind("D_E1M1"), Detail("D_E1M1")));
         Assert.Equal((LumpKind.Music, "MIDI"), (Kind("D_RUNNIN"), Detail("D_RUNNIN")));
         Assert.Equal((LumpKind.Music, "unknown format"), (Kind("D_JUNK"), Detail("D_JUNK")));
         Assert.Equal((LumpKind.Music, "MIDI"), (Kind("SONG"), Detail("SONG"))); // by header alone

@@ -153,7 +153,7 @@ public partial class WadViewerCheck : Node
                 Fail($"lump list row {row}: wrong lump or cells for #{i} {lump.Name}");
         }
 
-        int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0, sounds = 0, unplayable = 0;
+        int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0, sounds = 0, unplayable = 0, songs = 0, banks = 0;
         var kinds = new int[Enum.GetValues<LumpKind>().Length];
         foreach (int i in _viewer.LumpRows)
         {
@@ -175,6 +175,17 @@ public partial class WadViewerCheck : Node
                 if (_viewer.MainViewShown || _viewer.CurrentView is not null)
                     Fail($"{what}: a non-graphic lump left a graphic shown");
                 others++;
+                // T7.8b: a MUS song's header and events, the OPL bank's instruments (or why not), as the readers give them
+                string music = WadViewer.MusicText(e);
+                if (music.Length > 0)
+                {
+                    if (!_viewer.InfoText.EndsWith(music, StringComparison.Ordinal))
+                        Fail($"{what}: the info line does not show the song or the instruments");
+                    if (e.Kind == LumpKind.Music && MusSong.TryRead(e.Lump.Data.Span, out _) is not null)
+                        songs++;
+                    else if (e.Kind == LumpKind.Instruments && Genmidi.TryRead(e.Lump.Data.Span, out _) is not null)
+                        banks++;
+                }
                 // T7.7: a digitized sound plays as decoded (DMX's pads left out, 8-bit signed at its own rate); nothing else plays
                 DmxSound? expected = e.Kind == LumpKind.Sound ? DmxSound.TryDecode(e.Lump.Data.Span, out _) : null;
                 if (expected is null)
@@ -234,7 +245,7 @@ public partial class WadViewerCheck : Node
         }
         GD.Print($"WAD viewer check: lump list: {_viewer.LumpRows.Count} lumps ({string.Join(", ", kindSummary)}); "
             + $"{viaBrowser + direct} graphic lumps shown ({viaBrowser} through the browser, {direct} directly), "
-            + $"{tables} palette tables shown, {others} other lumps ({sounds} sounds played, {unplayable} digitized sounds DMX would not play)"
+            + $"{tables} palette tables shown, {others} other lumps ({sounds} sounds played, {unplayable} digitized sounds DMX would not play, {songs} MUS songs and {banks} OPL banks read)"
             + (gpu ? $", {pixels} drawn pixels compared" : " (headless: upload only)"));
         _viewer.ShowTab(lumps: false);
         _viewer.MainView.SolidBackground = null;

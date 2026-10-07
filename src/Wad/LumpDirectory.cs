@@ -170,21 +170,21 @@ public static class LumpDirectory
             case "COLORMAP": return (LumpKind.Colormap, $"{lump.Size / Colormap.MapSize} maps");
             case "ENDOOM": return (LumpKind.Endoom, "80x25 text screen");
             case "PNAMES": case "TEXTURE1": case "TEXTURE2": return (LumpKind.TextureDefs, "");
-            case "GENMIDI": return (LumpKind.Instruments, "OPL instruments");
+            case "GENMIDI": return (LumpKind.Instruments, InstrumentsDetail(data));
         }
         if (name.StartsWith("DMXGUS", StringComparison.Ordinal))
             return (LumpKind.Instruments, "Gravis Ultrasound patch map");
         if (name.StartsWith("DEMO", StringComparison.Ordinal))
             return (LumpKind.Demo, "");
         if (name.StartsWith("D_", StringComparison.Ordinal))
-            return (LumpKind.Music, MusicFormat(data) ?? "unknown format");
+            return (LumpKind.Music, MusicDetail(data) ?? "unknown format");
         if (name.StartsWith("DS", StringComparison.Ordinal))
             return (LumpKind.Sound, DigitizedSoundDetail(data));
         if (name.StartsWith("DP", StringComparison.Ordinal))
             return (LumpKind.Sound, "PC speaker");
         if (lump.Size == 0 && (name.EndsWith("_START", StringComparison.Ordinal) || name.EndsWith("_END", StringComparison.Ordinal)))
             return (LumpKind.Marker, "outside its namespace");
-        if (MusicFormat(data) is string format)
+        if (MusicDetail(data) is string format)
             return (LumpKind.Music, format);
         if (lump.Size > 0 && !GraphicLumps.IsNonGraphicName(name) && Graphics.Patch.IsPatch(data))
             return (LumpKind.Graphic, "");
@@ -200,6 +200,18 @@ public static class LumpDirectory
             return "MIDI";
         return null;
     }
+
+    // T7.8b: a MUS song's events, length and channels (or why it cannot be read); a MIDI file's format only.
+    private static string? MusicDetail(ReadOnlySpan<byte> data)
+    {
+        if (!MusSong.HasHeader(data))
+            return MusicFormat(data);
+        return MusSong.TryRead(data, out string? error) is MusSong song ? song.Summary : $"MUS, not readable: {error}";
+    }
+
+    // T7.8b: the OPL bank's instruments (or why i_oplmusic.c could not read it).
+    private static string InstrumentsDetail(ReadOnlySpan<byte> data) =>
+        Genmidi.TryRead(data, out string? error) is Genmidi bank ? bank.Summary : $"OPL instruments, not readable: {error}";
 
     // DMX digitized sound header: format 3, sample rate, sample count (8 bytes).
     private static string DigitizedSoundDetail(ReadOnlySpan<byte> data)

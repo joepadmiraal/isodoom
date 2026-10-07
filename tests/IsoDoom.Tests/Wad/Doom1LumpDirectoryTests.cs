@@ -56,7 +56,8 @@ public class Doom1LumpDirectoryTests
         LumpEntry sw18 = Assert.Single(overridden);
         Assert.Equal("SW18_7", sw18.Lump.Name);
         Assert.Same(list.Last(e => e.Lump.Name == "SW18_7").Lump, sw18.OverriddenBy);
-        Assert.All(list.Where(e => e.Kind == LumpKind.Music), e => Assert.Equal("MUS", e.Detail));
+        Assert.All(list.Where(e => e.Kind == LumpKind.Music), e => Assert.Matches(@"^MUS, \d+ events, \d+ tics, [\d.]+ s at 140 Hz, channels [\d, -]+$", e.Detail)); // T7.8b
+        Assert.Matches(@"^OPL instruments, 128 melodic \+ 47 percussion, 33 two-voice, 46 fixed-note$", list.Single(e => e.Lump.Name == "GENMIDI").Detail);
         // Every DS* sound is 11025 Hz except the item respawn sound, the one 22050 Hz sample.
         Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DS")),
             e => Assert.StartsWith(e.Lump.Name == "DSITMBK" ? "digitized, 22050 Hz, " : "digitized, 11025 Hz, ", e.Detail));

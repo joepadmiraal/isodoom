@@ -655,6 +655,7 @@ public partial class WadViewer : Control
             else
                 line += $"\nNot playable: {error}";
         }
+        line += MusicText(e);
         if (e.IsGraphic)
         {
             string note = e.OverriddenBy is WadLump o ? $"overridden by {o.File.Name}, so no list shows it" : "not used by any sprite frame";
@@ -672,6 +673,20 @@ public partial class WadViewer : Control
         CurrentView = null;
         _main.Visible = false;
         _info.Text = line;
+    }
+
+    /// <summary>
+    /// T7.8b: what the info line adds for a music lump (a MUS song's header and events) or the OPL bank
+    /// (every instrument's name), or why it cannot be read; "" for other lumps.
+    /// </summary>
+    public static string MusicText(LumpEntry e)
+    {
+        ReadOnlySpan<byte> data = e.Lump.Data.Span;
+        if (e.Kind == LumpKind.Music && MusSong.HasHeader(data))
+            return MusSong.TryRead(data, out string? error) is MusSong song ? $"\n{song.Describe()}" : $"\nNot readable: {error}";
+        if (e.Kind == LumpKind.Instruments && e.Lump.Name == "GENMIDI")
+            return Genmidi.TryRead(data, out string? error) is Genmidi bank ? $"\n{bank.Describe()}" : $"\nNot readable: {error}";
+        return "";
     }
 
     // T7.7: a stream still playing (or a wrapper not freed) at exit is reported as leaked

@@ -152,6 +152,13 @@ public static class SyntheticIwad
         }
         if (!overridden)
             problems.Add("no overridden lump");
+        // T7.8b: the OPL bank and the MUS song read as i_oplmusic.c and mus2mid.c would.
+        if (Genmidi.TryRead(wad.W_CacheLumpName("GENMIDI").Span, out string? genmidiError) is not { HasNames: true })
+            problems.Add($"GENMIDI does not read: {genmidiError ?? "names missing"}");
+        if (MusSong.TryRead(wad.W_CacheLumpName("D_E1M1").Span, out string? musError) is not MusSong song)
+            problems.Add($"D_E1M1 does not read: {musError}");
+        else if (song.Events.Count != SongEvents || song.LengthTics != SongTics || song.Mus2MidError is not null)
+            problems.Add($"D_E1M1 has {song.Events.Count} events over {song.LengthTics} tics, expected {SongEvents} over {SongTics}{(song.Mus2MidError is null ? "" : $"; mus2mid.c refuses it: {song.Mus2MidError}")}");
         try
         {
             Level map = Level.Load(wad, "E1M1");
@@ -1245,31 +1252,143 @@ public static class SyntheticIwad
 
     private static byte[] BuildGenmidi()
     {
-        // "#OPL_II#", 175 instruments of 36 bytes, 175 names of 32 bytes (all instruments silent).
-        byte[] lump = new byte[8 + 175 * 36 + 175 * 32];
-        Encoding.ASCII.GetBytes("#OPL_II#", lump);
-        for (int i = 0; i < 175; i++)
-            Encoding.ASCII.GetBytes($"Synthetic {i}", lump.AsSpan(8 + 175 * 36 + i * 32));
+        // "#OPL_II#", 175 genmidi_instr_t of 36 bytes, 175 names of 32 bytes (T7.8b). Every value is generated
+        // here from the instrument's number (no id data): melodic instruments with varied operators, every
+        // eighth one two-voice (detuned, an octave up), the 47 percussion instruments fixed-note.
+        byte[] lump = new byte[Genmidi.FullSize];
+        Encoding.ASCII.GetBytes(Genmidi.GENMIDI_HEADER, lump);
+        for (int i = 0; i < Genmidi.NumInstruments; i++)
+        {
+            Span<byte> instr = lump.AsSpan(Genmidi.InstrumentsOffset + i * GenmidiInstrument.Size, GenmidiInstrument.Size);
+            bool percussion = i >= Genmidi.GENMIDI_NUM_INSTRS;
+            bool twoVoice = !percussion && i % 8 == 3;
+            ushort flags = (ushort)((percussion ? Genmidi.GENMIDI_FLAG_FIXED : 0) | (twoVoice ? Genmidi.GENMIDI_FLAG_2VOICE : 0));
+            BinaryPrimitives.WriteUInt16LittleEndian(instr, flags);
+            instr[2] = (byte)(twoVoice ? 128 + 2 + i % 5 : 128); // fine tuning of the second voice (128: none)
+            instr[3] = (byte)(percussion ? 24 + (i - Genmidi.GENMIDI_NUM_INSTRS) * 3 % 60 : 0); // fixed note
+            WriteSyntheticVoice(instr[4..], i, 0);
+            if (twoVoice)
+                WriteSyntheticVoice(instr[(4 + GenmidiVoice.Size)..], i, 1);
+            string name = percussion ? $"Synthetic drum {i - Genmidi.GENMIDI_NUM_INSTRS + Genmidi.PercussionFirstNote}" : $"Synthetic {i}";
+            Encoding.ASCII.GetBytes(name, lump.AsSpan(Genmidi.NamesOffset + i * Genmidi.NameSize));
+        }
         return lump;
     }
 
+    // genmidi_voice_t: modulator (6 bytes: the 0x20, 0x60, 0x80, 0xE0 register values, key scale bits, level),
+    // feedback/connection, carrier (6), unused, base note offset (signed 16-bit).
+    private static void WriteSyntheticVoice(Span<byte> v, int i, int voice)
+    {
+        bool percussion = i >= Genmidi.GENMIDI_NUM_INSTRS;
+        int k = i * 7 + voice * 3;
+        v[0] = (byte)((k % 3 == 0 ? 0x40 : 0) | 0x20 | (1 + k % 4));         // modulator: vibrato every third, sustain, multiplier
+        v[1] = (byte)(((percussion ? 15 : 8 + k % 8) << 4) | (2 + k % 6));    // attack, decay
+        v[2] = (byte)(((k % 10) << 4) | (percussion ? 6 : 3 + k % 4));        // sustain level, release
+        v[3] = (byte)(k % 4);                                                 // waveform
+        v[4] = (byte)(0x40 * (k % 4));                                        // key scale level
+        v[5] = (byte)(12 + k % 30);                                           // modulator level (its depth)
+        v[6] = (byte)(((k % 7) << 1) | (!percussion && k % 5 == 0 ? 1 : 0));  // feedback, connection (1: additive)
+        v[7] = (byte)(0x20 | (1 + k % 2));                                    // carrier
+        v[8] = (byte)(((percussion ? 15 : 10 + k % 6) << 4) | (1 + k % 5));
+        v[9] = (byte)(((k % 6) << 4) | (percussion ? 7 : 4 + k % 3));
+        v[10] = (byte)(k % 9 == 0 ? 1 : 0);
+        v[11] = 0;
+        v[12] = (byte)(k % 6);                                                // carrier level (its loudness)
+        v[13] = 0;
+        short offset = (short)(voice == 1 ? 12 : !percussion && i % 12 == 0 ? -12 : 0);
+        BinaryPrimitives.WriteInt16LittleEndian(v[14..], offset);
+    }
+
+    /// <summary>The synthetic song's (<c>D_E1M1</c>, T7.8b) length in tics: 16 steps of 35, a bend of 4 × 20, 200, 35.</summary>
+    public const int SongTics = 16 * 35 + 4 * 20 + 200 + 35;
+
+    /// <summary>The synthetic song's events, the score end included: 9 controllers, 80 in the steps, 7 at the end.</summary>
+    public const int SongEvents = 9 + 80 + 7;
+
     private static byte[] BuildMus()
     {
-        // MUS: header, then two notes on channel 0 and the score end (event byte: last-in-group flag, type, channel).
-        byte[] score =
+        // MUS (T7.8b): a short generated song with every event kind mus2mid.c converts (play note with and
+        // without a volume, release, pitch wheel, system event, controller changes: instrument, volume, pan,
+        // expression), three melodic channels and the percussion channel, a delay of two bytes, then the score end.
+        var score = new List<byte>();
+        int last = -1;
+        void Event(int type, int channel, params byte[] data)
         {
-            0x90, 0x80 | 60, 100, 16, // play note 60 at volume 100; delay 16 tics
-            0x80, 60, 16,             // release note 60; delay 16
-            0x90, 64, 16,             // play note 64 (same volume); delay 16
-            0x00, 64,                 // release note 64
-            0x60,                     // score end
-        };
-        byte[] lump = new byte[16 + score.Length];
+            last = score.Count;
+            score.Add((byte)((type << 4) | channel));
+            score.AddRange(data);
+        }
+        void Wait(int tics)
+        {
+            score[last] |= 0x80; // the group's last event: a delay follows
+            if (tics >= 128)
+                score.Add((byte)(0x80 | (tics >> 7)));
+            score.Add((byte)(tics & 0x7F));
+        }
+        const int Release = 0, Press = 1, Pitch = 2, SystemEvent = 3, Controller = 4, ScoreEnd = 6, Drums = MusSong.PercussionChannel;
+
+        Event(Controller, 0, 0, 33);  // bass: instrument 33
+        Event(Controller, 0, 3, 110); // volume
+        Event(Controller, 0, 4, 40);  // pan, left of the centre
+        Event(Controller, 1, 0, 80);  // lead: instrument 80
+        Event(Controller, 1, 3, 100);
+        Event(Controller, 1, 4, 88);
+        Event(Controller, 2, 0, 3);   // chords: instrument 3, a two-voice one
+        Event(Controller, 2, 5, 90);  // expression
+        Event(Controller, Drums, 3, 120);
+        int[] roots = { 36, 36, 41, 43 };
+        int[] arpeggio = { 0, 4, 7, 12 };
+        for (int step = 0; step < 16; step++)
+        {
+            int root = roots[step / 4];
+            int lead = root + 24 + arpeggio[step % 4];
+            int drum = step % 4 == 2 ? 38 : step % 2 == 0 ? 35 : 42;
+            if (step % 4 == 0)
+            {
+                Event(Press, 0, (byte)(0x80 | root), (byte)(90 + step)); // bass, with a volume
+                Event(Press, 2, (byte)(0x80 | (root + 16)), 70);         // chord's third
+            }
+            if (step % 2 == 0)
+                Event(Press, 1, (byte)(0x80 | lead), 110);
+            else
+                Event(Press, 1, (byte)lead); // no volume: the channel's last
+            Event(Press, Drums, (byte)(0x80 | drum), (byte)(step % 4 == 0 ? 127 : 80));
+            Wait(30);
+            Event(Release, 1, (byte)lead);
+            Event(Release, Drums, (byte)drum);
+            if (step % 4 == 3)
+            {
+                Event(Release, 0, (byte)root);
+                Event(Release, 2, (byte)(root + 16));
+            }
+            Wait(5);
+        }
+        // A long lead note bent up and back, released, all notes off, the score end.
+        Event(Press, 1, 0x80 | 72, 100);
+        Wait(20);
+        Event(Pitch, 1, 160);
+        Wait(20);
+        Event(Pitch, 1, 192);
+        Wait(20);
+        Event(Pitch, 1, 128);
+        Wait(20);
+        Event(Release, 1, 72);
+        Wait(200); // two delay bytes
+        Event(SystemEvent, 1, 11); // all notes off
+        Wait(35);
+        Event(ScoreEnd, 0);
+
+        ushort[] instruments = { 3, 33, 80, 135, 138, 142 }; // the programs, and the drums as percussion note + 100
+        int start = MusSong.HeaderSize + 2 * instruments.Length;
+        byte[] lump = new byte[start + score.Count];
         Encoding.ASCII.GetBytes("MUS\x1A", lump);
-        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(4), (ushort)score.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(6), 16);
-        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(8), 1); // primary channels
-        score.CopyTo(lump, 16);
+        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(4), (ushort)score.Count);
+        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(6), (ushort)start);
+        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(8), 3); // primary channels
+        BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(12), (ushort)instruments.Length);
+        for (int i = 0; i < instruments.Length; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(MusSong.HeaderSize + 2 * i), instruments[i]);
+        score.CopyTo(lump, start);
         return lump;
     }
 
