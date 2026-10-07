@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
@@ -26,8 +27,78 @@ namespace IsoDoom.Game;
 // and every scrolling wall (special 48) is scrolled as far as the sim moved
 // it. With a real renderer, a wall translated to another texture (as an
 // animation re-points a slot) and a wall scrolled are compared side-on.
+// T5.8: on every map with a use exit (special 11), the player uses it: the
+// scene goes on to the next map in the same world, the player keeping its
+// health and losing its keys, or stops with the reason when the game ends or
+// the WAD lacks the next map; a message the sim leaves shows in the overlay.
 public partial class LevelCheck
 {
+    private int _exitMaps, _exitsToNext, _exitsEnded;
+
+    /// <summary>
+    /// T5.8: the player uses the map's first use exit (special 11) from 24
+    /// (16, 8) units in front of it; the level scene must then show the next
+    /// map (<see cref="World.NextMapName"/>) in the same world, with the
+    /// player's health kept, its keys taken and the overlay's status line,
+    /// or stop with <see cref="LevelScene.LevelEnded"/>. Leaves the scene
+    /// on whatever map it got to (call it last for a map).
+    /// </summary>
+    private void CheckExit(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me)
+            return;
+        foreach (line_t line in world.lines)
+        {
+            if (line.special != 11 || line.frontsector is null)
+                continue;
+            double dx = line.dx / 65536.0, dy = line.dy / 65536.0, len = Math.Sqrt(dx * dx + dy * dy);
+            double nx = dy / len, ny = -dx / len;
+            int fx = 0, fy = 0;
+            bool found = false;
+            foreach (int d in new[] { 24, 16, 8 })
+            {
+                double sx = line.v1.X / 65536.0 + dx / 2 + nx * d, sy = line.v1.Y / 65536.0 + dy / 2 + ny * d;
+                (fx, fy) = ((int)Math.Round(sx * 65536), (int)Math.Round(sy * 65536));
+                if (found = world.R_PointInSubsector(fx, fy).sector == line.frontsector)
+                    break;
+            }
+            if (!found)
+                continue;
+            uint facing = (uint)(long)Math.Round(Math.Atan2(-ny, -nx) / (2 * Math.PI) * 4294967296.0);
+            player_t p = world.players[world.consoleplayer];
+            p.health = me.health = 77;
+            p.cards[(int)card_t.it_redskull] = true;
+            p.message = World.GOTREDSKULL;
+            world.PlaceMobj(me, fx, fy, facing);
+            var cmd = new ticcmd_t { angleturn = _scene.Tweaks.AbsoluteAiming ? Ticcmds.AbsoluteAngle(facing) : (short)0 };
+            int completed = _scene.LevelsCompleted;
+            _scene.Tic(cmd); // releases use (held since the spawn)
+            if (_scene.HudMessage != World.GOTREDSKULL || !_scene.OverlayText().Contains("message: " + World.GOTREDSKULL, StringComparison.Ordinal)
+                || !_scene.OverlayText().Contains("health 77", StringComparison.Ordinal))
+                Fail($"{map}: the player's message and health are not in the overlay:\n{_scene.OverlayText()}");
+            cmd.buttons = buttoncode_t.BT_USE;
+            _scene.Tic(cmd);
+            if (_scene.LevelsCompleted == completed)
+                continue; // the use hit something else: try another exit
+            _exitMaps++;
+            if (_scene.LevelEnded is not null)
+            {
+                _exitsEnded++;
+                if (_scene.Mesh?.Level.Name != map || _scene.World != world)
+                    Fail($"{map}: the game ended ({_scene.LevelEnded}) but the scene left the map");
+                return;
+            }
+            _exitsToNext++;
+            string next = world.NextMapName();
+            if (_scene.Mesh?.Level.Name != next || _scene.World != world || world.level != _scene.Mesh.Level
+                || world.gameaction != gameaction_t.ga_nothing || world.leveltime != 0 || _scene.PlayerMobj is not { } mo2
+                || p.health != 77 || mo2.health != 77 || p.cards.Any(c => c) || _scene.HudMessage is not null)
+                Fail($"{map}: line {line.Index}'s exit: the scene shows {_scene.Mesh?.Level.Name} (expected {next}), same world {_scene.World == world}, "
+                    + $"gameaction {world.gameaction}, leveltime {world.leveltime}, health {p.health}, keys {string.Join(",", p.cards)}");
+            return;
+        }
+    }
+
     private int _switchPairs, _textureChanges, _flatChanges, _interpolatedSectors;
     private int _animSequences, _animatedMaps, _translatedSlots, _scrollingWalls, _scrollChecks;
 

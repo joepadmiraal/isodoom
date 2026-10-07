@@ -769,12 +769,13 @@ public partial class LevelScene : Node3D
     /// one tic per <see cref="TicSeconds"/> banked (at most <see cref="MaxTicsPerFrame"/>),
     /// then sets <see cref="TicFraction"/> to what is left. With
     /// <see cref="ScriptedTics"/> an empty queue holds the world still (nothing
-    /// banked, the last tic shown). Nothing runs while <see cref="Paused"/>
-    /// or without a player mobj (vanilla needs one).
+    /// banked, the last tic shown). Nothing runs while <see cref="Paused"/>,
+    /// without a player mobj (vanilla needs one), or while a game action is
+    /// left pending (T5.8: the game ended, or the next map is missing).
     /// </summary>
     private void RunTics(double delta)
     {
-        if (World is null || PlayerMobj is null || Paused)
+        if (World is null || PlayerMobj is null || Paused || World.gameaction != gameaction_t.ga_nothing)
             return;
         _ticTime += delta;
         int ran = 0;
@@ -826,6 +827,89 @@ public partial class LevelScene : Node3D
         PrintUnported();
         LastTiccmd = cmd;
         TicsRun++;
+        TakeMessage();
+        if (World!.gameaction != gameaction_t.ga_nothing)
+            DoGameAction();
+    }
+
+    /// <summary>hu_stuff.c <c>HU_MSGTIMEOUT</c>: how long a message shows, in tics.</summary>
+    public const int HU_MSGTIMEOUT = 4 * SimInfo.TICRATE;
+
+    /// <summary>The player's last message (<see cref="player_t.message"/>: pickups, locked doors) while it shows, else null (T5.8; the overlay shows it until the HUD, M6).</summary>
+    public string? HudMessage { get; private set; }
+
+    private int _hudMessageTics;
+
+    /// <summary>
+    /// hu_stuff.c <c>HU_Ticker</c>'s message part (T5.8): a message the
+    /// tic left in <see cref="player_t.message"/> shows for
+    /// <see cref="HU_MSGTIMEOUT"/> tics and is taken (set back to null, as
+    /// vanilla does), so the same message again shows again.
+    /// </summary>
+    private void TakeMessage()
+    {
+        if (_hudMessageTics > 0 && --_hudMessageTics == 0)
+            HudMessage = null;
+        player_t p = World!.players[World.consoleplayer];
+        if (p.message is not string message)
+            return;
+        p.message = null;
+        HudMessage = message;
+        _hudMessageTics = HU_MSGTIMEOUT;
+        GD.Print($"Level: tic {World.leveltime}: \"{message}\"");
+    }
+
+    /// <summary>Why the world stopped (T5.8: the game ended, or the next map is not in the WAD), or null while it runs.</summary>
+    public string? LevelEnded { get; private set; }
+
+    /// <summary>The maps completed through an exit since the scene started (T5.8).</summary>
+    public int LevelsCompleted { get; private set; }
+
+    /// <summary>
+    /// The level flow (T5.8, g_game.c <c>G_Ticker</c>'s game actions, before
+    /// the next tic): a completed level (<see cref="World.G_DoCompleted"/>)
+    /// goes straight on to the next one, without the intermission (M7):
+    /// <see cref="World.G_WorldDone"/>, then <see cref="LoadMap(string, World?)"/>
+    /// with the same world (<see cref="World.G_DoWorldDone"/>: the players
+    /// keep their health, armor and weapons). The end of the game (an
+    /// episode's map 8, Doom II's MAP30: the finale, M7) or a next map the
+    /// WAD lacks stops the world there (<see cref="LevelEnded"/>; PgDn/PgUp
+    /// still load maps).
+    /// </summary>
+    private void DoGameAction()
+    {
+        World world = World!;
+        string map = world.level.Name;
+        if (world.gameaction != gameaction_t.ga_completed)
+            return;
+        world.G_DoCompleted();
+        LevelsCompleted++;
+        if (world.G_GameEnds())
+        {
+            LevelEnded = $"{map} completed: the end of the game (the finale is M7's); PgDn/PgUp load a map";
+            GD.Print($"Level: {LevelEnded}");
+            return;
+        }
+        world.G_WorldDone();
+        string next = world.NextMapName();
+        GD.Print($"Level: {map} completed{(world.secretexit ? " (secret exit)" : "")} at tic {world.wminfo.plyr[world.consoleplayer].stime}: "
+            + $"kills {world.wminfo.plyr[world.consoleplayer].skills}/{world.wminfo.maxkills}, items {world.wminfo.plyr[world.consoleplayer].sitems}/{world.wminfo.maxitems}, "
+            + $"secrets {world.wminfo.plyr[world.consoleplayer].ssecret}/{world.wminfo.maxsecret}; next {next}");
+        if (Wad is null || Wad.W_CheckNumForName(next) < 0)
+        {
+            LevelEnded = $"{map} completed: the next map, {next}, is not in the WAD; PgDn/PgUp load a map";
+            GD.Print($"Level: {LevelEnded}");
+            return;
+        }
+        try
+        {
+            LoadMap(next, world);
+        }
+        catch (Exception e) when (e is WadFormatException or KeyNotFoundException)
+        {
+            GD.PrintErr($"Level: {next}: {e.Message}");
+            _status = $"{next}: {e.Message}";
+        }
     }
 
     // How many of the world's World.unported calls are printed (or were there at its start).
@@ -1095,8 +1179,14 @@ public partial class LevelScene : Node3D
             text.Append($"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}");
             Sector ps = mo.subsector.sector.map;
             text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel}"
-                + $"{(SpriteOptions.PlayerLight > ps.LightLevel ? $", sprite lit at {SpriteOptions.PlayerLight}" : "")})\n");
+                + $"{(SpriteOptions.PlayerLight > ps.LightLevel ? $", sprite lit at {SpriteOptions.PlayerLight}" : "")}{(ps.Special != 0 ? $", special {ps.Special}" : "")})\n");
         }
+        if (World is { } w && w.players[w.consoleplayer] is { mo: not null } pl)
+            text.Append(StatusText(w, pl) + "\n");
+        if (HudMessage is not null)
+            text.Append($"message: {HudMessage}\n");
+        if (LevelEnded is not null)
+            text.Append(LevelEnded + "\n");
         if (World is { } world)
             text.Append($"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
                 + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}"
@@ -1126,6 +1216,30 @@ public partial class LevelScene : Node3D
         text.Append(_status);
         text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The player's status for the overlay until the HUD (M6, T5.8): health,
+    /// armor, keys, power-ups, and the level's kills, items and secrets.
+    /// </summary>
+    public static string StatusText(World world, player_t p)
+    {
+        string[] keyNames = { "blue card", "yellow card", "red card", "blue skull", "yellow skull", "red skull" };
+        var keys = new List<string>();
+        for (int i = 0; i < p.cards.Length; i++)
+        {
+            if (p.cards[i])
+                keys.Add(keyNames[i]);
+        }
+        var powers = new List<string>();
+        for (int i = 0; i < p.powers.Length; i++)
+        {
+            if (p.powers[i] != 0)
+                powers.Add(((powertype_t)i).ToString()[3..]);
+        }
+        return $"health {p.health}{(p.playerstate == playerstate_t.PST_DEAD ? " (dead)" : "")}   armor {p.armorpoints}{(p.armortype != 0 ? (p.armortype == 1 ? " green" : " blue") : "")}"
+            + $"   keys {(keys.Count == 0 ? "none" : string.Join(", ", keys))}{(powers.Count == 0 ? "" : "   powers " + string.Join(", ", powers))}"
+            + $"   kills {p.killcount}/{world.totalkills}  items {p.itemcount}/{world.totalitems}  secrets {p.secretcount}/{world.totalsecret}";
     }
 
     /// <summary>
@@ -1218,7 +1332,14 @@ public partial class LevelScene : Node3D
     /// <see cref="KeyNotFoundException"/> for an unknown flat) when the map
     /// can't be built.
     /// </summary>
-    public void LoadMap(string map)
+    public void LoadMap(string map) => LoadMap(map, null);
+
+    /// <summary>
+    /// <see cref="LoadMap(string)"/>; with <paramref name="carry"/> (T5.8, the
+    /// level flow) the game goes on in that world, its players as they left
+    /// the last level (<see cref="World.G_DoWorldDone"/>), instead of a new game.
+    /// </summary>
+    public void LoadMap(string map, World? carry)
     {
         WadArchive wad = Wad ?? throw new InvalidOperationException("No WAD open.");
         map = map.ToUpperInvariant();
@@ -1234,6 +1355,9 @@ public partial class LevelScene : Node3D
         Things = null;
         _drawn.Clear();
         World = null;
+        LevelEnded = null;
+        HudMessage = null;
+        _hudMessageTics = 0;
         _planeMoves.Clear();
         SnapPending = false;
         TeleportSnaps = 0;
@@ -1267,7 +1391,7 @@ public partial class LevelScene : Node3D
             _chunks.Add(node);
             Chunks[s] = node;
         }
-        StartWorld(level);
+        StartWorld(level, carry);
         BuildThings(level, mesh);
         clock.Stop();
         LastLoadMilliseconds = clock.Elapsed.TotalMilliseconds;
@@ -1337,16 +1461,30 @@ public partial class LevelScene : Node3D
     /// A new game on <see cref="Skill"/> with <see cref="Tweaks"/> and its
     /// first level, <paramref name="level"/> (the mesh's own: the world
     /// changes its sectors in place, SPEC §12 T4.2): <c>G_InitNew</c> and
-    /// <c>G_DoLoadLevel</c>. A thing type the game doesn't know (vanilla
+    /// <c>G_DoLoadLevel</c>; or, with <paramref name="carry"/>, that game's
+    /// next level (<see cref="World.G_DoWorldDone"/>, T5.8). A thing type the game doesn't know (vanilla
     /// <c>I_Error</c>s) leaves the map without a world, so without things.
     /// </summary>
-    private void StartWorld(Level level)
+    private void StartWorld(Level level, World? carry = null)
     {
         try
         {
-            var world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters), Tweaks) { textures = Textures };
-            world.P_InitPicAnims(Textures, FlatNames(Wad!)); // P_Init's (T5.7)
-            world.G_DoLoadLevel(level);
+            World world;
+            if (carry is not null)
+            {
+                world = carry;
+                world.G_DoWorldDone(level); // T5.8: the next level of the same game
+            }
+            else
+            {
+                world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters), Tweaks)
+                {
+                    textures = Textures,
+                    map31exists = Wad!.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check (T5.8)
+                };
+                world.P_InitPicAnims(Textures, FlatNames(Wad!)); // P_Init's (T5.7)
+                world.G_DoLoadLevel(level);
+            }
             World = world;
             _unportedPrinted = world.unported.Count; // the level's start (P_SpawnSpecials) is not news
         }

@@ -194,6 +194,7 @@ public partial class LevelCheck : Godot.Node
             CheckGameLoop(map); // it moves the player and spawns a mobj
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
+            CheckExit(map); // last: it may load the next map (T5.8)
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
                 GD.PrintErr($"Level check: {map}: {_failures - failures} failure(s)");
@@ -209,6 +210,10 @@ public partial class LevelCheck : Godot.Node
         GD.Print($"Level check: animations (T5.7): {_animSequences} animation sequences drawn with every frame in the atlas; {_animatedMaps} maps ran them: "
             + $"{_translatedSlots} slots drawn as the sim's translation says, {_scrollingWalls} scrolling walls (special 48) drawn scrolled as far as the sim moved them; "
             + $"{_scrollChecks} maps scrolled a wall's texture through side_textures and back");
+        GD.Print($"Level check: exits (T5.8): {_exitMaps} maps left through a use exit: {_exitsToNext} went on to the next map in the same world "
+            + $"(health kept, keys taken), {_exitsEnded} stopped (the game's end or no next map); messages and health shown in the overlay");
+        if (_exitMaps == 0)
+            Fail("no map has a use exit (special 11) the player could use");
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");

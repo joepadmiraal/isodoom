@@ -15,10 +15,11 @@
 // (GPL-2.0).
 //
 // The movement reference (T4.8): with $DUMP_TICS set (and no $VIEWS), it
-// plays a demo (-playdemo) without the specials the sim lacks yet
-// (dump_nospecials in ref.patch: the player's special sectors; line
-// triggers, doors, switches and P_UpdateSpecials run since T5.2-T5.4, the
-// sector specials and animations since T5.7) and
+// plays a demo (-playdemo) with every map special (dump_nospecials in
+// ref.patch only lets the synthetic IWAD load as -file: line triggers,
+// doors, switches and P_UpdateSpecials run since T5.2-T5.4, the sector
+// specials and animations since T5.7, the player's special sectors since
+// T5.8) and
 // appends one line per tic to the file $DUMP_TICS, after the
 // tic: leveltime, the ticcmd read (forwardmove, sidemove, angleturn,
 // buttons), player 1's mobj x, y, z, momx, momy, momz, angle (unsigned),
@@ -32,7 +33,9 @@
 // the teleport fogs (MT_TFOG mobjs) in thinker order as X:Y:Z:STATE
 // (fixed_t, statenum_t) joined by commas, or - for none; then (T5.7) the
 // sectors whose light level differs from the map's SECTORS lump, as
-// SECTOR:LIGHT joined by commas in sector order, or - for none. With $DUMP_START
+// SECTOR:LIGHT joined by commas in sector order, or - for none; then (T5.8)
+// the player's health, its mobj's health, armorpoints, armortype, cards (bit
+// i set for card_t i) and secretcount. With $DUMP_START
 // ("X Y ANGLE", map units and degrees; T5.6), player 1 starts there instead
 // of at its map start: before the first tic it is moved with P_TeleportMove
 // onto the floor, facing ANGLE (no fog, nothing else changed).
@@ -166,7 +169,12 @@ void dump_tic(void)
         if (sectors[i].lightlevel != light)
             fprintf(ticfile, "%s%d:%d", lit++ ? "," : "", i, sectors[i].lightlevel);
     }
-    fprintf(ticfile, "%s\n", lit ? "" : "-");
+    fprintf(ticfile, "%s ", lit ? "" : "-");
+    // The player's health, armor, keys and secrets (T5.8).
+    int cards = 0;
+    for (int i = 0; i < NUMCARDS; i++)
+        cards |= p->cards[i] ? 1 << i : 0;
+    fprintf(ticfile, "%d %d %d %d %d %d\n", p->health, mo->health, p->armorpoints, p->armortype, cards, p->secretcount);
     fflush(ticfile);
 }
 

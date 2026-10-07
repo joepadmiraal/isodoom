@@ -49,15 +49,7 @@ index 17446b5..8cdd087 100644
  	}
  
  	lastanim->istexture = animdefs[i].istexture;
-@@ -1020,6 +1024,7 @@ void P_PlayerInSpecialSector (player_t* player)
- {
-     sector_t*	sector;
- 	
-+    { extern int dump_nospecials; if (dump_nospecials) return; } // IsoDoom reference (T4.8): no specials, as the sim of M4
-     sector = player->mo->subsector->sector;
- 
-     // Falling, not all the way down yet?
-@@ -1092,6 +1097,7 @@ int		levelTimeCount;
+@@ -1092,6 +1096,7 @@ int		levelTimeCount;
  
  void P_UpdateSpecials (void)
  {

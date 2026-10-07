@@ -185,9 +185,8 @@ public sealed partial class World
     /// blocks <see cref="tmthing"/> at (<see cref="tmx"/>, <see cref="tmy"/>):
     /// their boxes overlap and it is solid. A charging lost soul slams into
     /// it, a missile hits it (or flies over or under it), a pickup is touched
-    /// (<c>MF_PICKUP</c>). The damage (<see cref="P_DamageMobj"/>) and the
-    /// pickup (<see cref="P_TouchSpecialThing"/>) are stubs until M6; their
-    /// <c>P_Random</c> calls are made already.
+    /// (<c>MF_PICKUP</c>): <see cref="P_DamageMobj"/> and
+    /// <see cref="P_TouchSpecialThing"/> (World.Inter.cs, T5.8).
     /// </summary>
     public bool PIT_CheckThing(mobj_t thing)
     {
@@ -277,19 +276,6 @@ public sealed partial class World
         }
 
         return (thing.flags & mobjflag_t.MF_SOLID) == 0;
-    }
-
-    /// <summary>
-    /// p_inter.c <c>P_DamageMobj</c>: a stub until T6.3, so collisions
-    /// that would hurt only make their <c>P_Random</c> call.
-    /// </summary>
-    public void P_DamageMobj(mobj_t target, mobj_t? inflictor, mobj_t? source, int damage)
-    {
-    }
-
-    /// <summary>p_inter.c <c>P_TouchSpecialThing</c>: a stub until T5.8 (keys) and T6.8 (the other pickups).</summary>
-    public void P_TouchSpecialThing(mobj_t special, mobj_t toucher)
-    {
     }
 
     /// <summary>
@@ -687,7 +673,7 @@ public sealed partial class World
     /// crunched to gibs when dead, removed when a dropped item, left alone
     /// unless shootable; a shootable one sets <see cref="nofit"/> and, while
     /// <see cref="crushchange"/> on every fourth tic, takes 10 damage
-    /// (<see cref="P_DamageMobj"/>: the hook stays a stub until M6, T6.3) and
+    /// (<see cref="P_DamageMobj"/>: players only until T6.3) and
     /// sprays blood. Always keeps checking.
     /// </summary>
     public bool PIT_ChangeSector(mobj_t thing)

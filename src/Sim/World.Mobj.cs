@@ -40,15 +40,58 @@ public sealed partial class World
 
     /// <summary>
     /// Vanilla's call through <c>st->action.acp1</c>. Every action is a stub
-    /// until its task (T6.1 dispatches them, T6.4–T6.6 fill them in).
+    /// until its task (T6.1 dispatches them, T6.4–T6.6 fill them in), but
+    /// the player's pain and death ones (T5.8: <see cref="A_Pain"/>,
+    /// <see cref="A_PlayerScream"/>, <see cref="A_Fall"/>).
     /// </summary>
     private void A_Call(actionf_t action, mobj_t mobj)
     {
         switch (action)
         {
+            case actionf_t.A_Pain:
+                A_Pain(mobj);
+                break;
+            case actionf_t.A_PlayerScream:
+                A_PlayerScream(mobj);
+                break;
+            case actionf_t.A_Fall:
+                A_Fall(mobj);
+                break;
             default:
                 break;
         }
+    }
+
+    /// <summary>p_enemy.c <c>A_Pain</c>: the pain sound (T5.8, for the player's pain state).</summary>
+    public void A_Pain(mobj_t actor)
+    {
+        if (actor.info.painsound != sfxenum_t.sfx_None)
+            S_StartSound(actor, actor.info.painsound);
+    }
+
+    /// <summary>p_enemy.c <c>A_Fall</c>: actor is on ground, it can be walked over (T5.8, for the player's death).</summary>
+    public static void A_Fall(mobj_t actor)
+    {
+        actor.flags &= ~mobjflag_t.MF_SOLID;
+
+        // So change this if corpse objects
+        // are meant to be obstacles.
+    }
+
+    /// <summary>p_enemy.c <c>A_PlayerScream</c>: the player's death sound (T5.8).</summary>
+    public void A_PlayerScream(mobj_t mo)
+    {
+        // Default death sound.
+        sfxenum_t sound = sfxenum_t.sfx_pldeth;
+
+        if (gamemode == IsoDoom.Wad.GameMode.commercial && mo.health < -50)
+        {
+            // IF THE PLAYER DIES
+            // LESS THAN -50% WITHOUT GIBBING
+            sound = sfxenum_t.sfx_pdiehi;
+        }
+
+        S_StartSound(mo, sound);
     }
 
     // ---- p_local.h / p_mobj.c ----

@@ -77,8 +77,12 @@ public class LineTriggerTests
         Assert.Equal(9, world.lines[2].tag);
         Assert.Equal(88, world.lines[3].special);
         Assert.Equal(38, world.lines[25].special);
+        Assert.Equal(11, world.lines[SyntheticIwad.ExitSwitchLine].special); // the exits (T5.8)
+        Assert.Equal(51, world.lines[SyntheticIwad.SecretExitSwitchLine].special);
+        Assert.Equal(52, world.lines[SyntheticIwad.ExitWalkLine].special);
+        Assert.Equal(124, world.lines[SyntheticIwad.SecretExitWalkLine].special);
         Assert.Empty(world.unported); // the sector specials are ported (T5.7)
-        Assert.Equal(0, world.totalsecret);
+        Assert.Equal(1, world.totalsecret); // alcove 15 (T5.8)
     }
 
     /// <summary>The thinkers of type <typeparamref name="T"/> moving the tag-5 alcoves (none or all three).</summary>
@@ -328,7 +332,7 @@ public class LineTriggerTests
         level.Sectors[8].Special = 14; // door raise in 5 minutes
         level.Lines[27].Special = 48;  // scrolling wall
         World world = Specials(level: level);
-        Assert.Equal(2, world.totalsecret);
+        Assert.Equal(2 + 1, world.totalsecret); // and the map's own, alcove 15 (T5.8)
         Assert.Empty(world.unported);
         // The light thinkers (T5.7), after the things, in sector order.
         var lights = new List<thinker_t>();

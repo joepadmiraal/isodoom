@@ -345,7 +345,8 @@ public class SwitchTests
         Use(world, 2940, -4768, 180);
         Assert.Equal("SW2STRTN", Front(world, exit).midtexture);
         Assert.Equal(0, world.lines[exit].special);
-        Assert.Contains("G_ExitLevel()", world.unported);
+        Assert.Equal(gameaction_t.ga_completed, world.gameaction); // G_ExitLevel (T5.8)
+        Assert.False(world.secretexit);
         Assert.Equal(sfxenum_t.sfx_swtchn, Assert.Single(SwitchSounds(world)).sfx);
         Run(world, 100);
         Assert.Equal("SW2STRTN", Front(world, exit).midtexture);

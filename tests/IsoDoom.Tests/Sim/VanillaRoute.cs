@@ -46,7 +46,9 @@ namespace IsoDoom.Tests.Sim;
 /// <c>X:Y:Z:STATE</c> joined by commas, or <c>-</c> for none, then (T5.7) the
 /// sectors whose light level differs from the map's <c>SECTORS</c> lump, as
 /// <c>SECTOR:LIGHT</c> joined by commas, or <c>-</c> for none (the light
-/// specials). For the synthetic
+/// specials), then (T5.8) the player's <c>health</c>, its mobj's health
+/// (<c>mohealth</c>), <c>armorpoints</c>, <c>armortype</c>, <c>cards</c>
+/// (bit <c>i</c> for <c>card_t</c> <c>i</c>) and <c>secretcount</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -59,7 +61,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights" };
+        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount" };
 
     public string Name { get; }
     public string Path { get; }
@@ -248,8 +250,14 @@ public sealed class VanillaRoute
             if (world.sectors[i].lightlevel != mapLights[i])
                 lights.Add(string.Create(CultureInfo.InvariantCulture, $"{i}:{world.sectors[i].lightlevel}"));
         }
+        int cards = 0;
+        for (int i = 0; i < p.cards.Length; i++)
+            cards |= p.cards[i] ? 1 << i : 0;
+        string status = string.Join(' ', new[] { p.health, mo.health, p.armorpoints, p.armortype, cards, p.secretcount }
+            .Select(v => v.ToString(CultureInfo.InvariantCulture)));
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
-            + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights));
+            + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
+            + " " + status;
     }
 
     /// <summary>The sectors' light levels of a world before its first tic: the map's (the light thinkers spawn without changing them).</summary>

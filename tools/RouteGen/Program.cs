@@ -259,6 +259,22 @@ map E1M8
             g.Wait(80);
             Log("fog gone: " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
         }, (448, 4980, 90)),
+        ["synthetic-keys"] = new(() => new WadArchive(new[] { WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName) }), "E1M2", """
+# The synthetic E1M2 (T5.8): from the start east along the corridor over
+# the blue keycard (560, -96) and the yellow skull key (624, -96), so the
+# dump's cards column checks both pickups (the items vanish, the sound and
+# the message are not dumped). Written by tools/RouteGen (synthetic-keys).
+iwad synthetic
+map E1M2
+
+""", (g, Log) =>
+        {
+            g.GoTo(480, -96);
+            Log("cards " + string.Join(",", g.w.players[0].cards));
+            g.GoTo(690, -96);
+            Log("cards " + string.Join(",", g.w.players[0].cards));
+            g.Settle();
+        }),
         ["testmap-lifts"] = new(() => TestMapWad("lifts"), "E1M1", """
 # The lifts test map (T5.5, RouteTestMaps): east into the perpetual lift P
 # across its W1 line (53: P_Random picks its first direction) and back;

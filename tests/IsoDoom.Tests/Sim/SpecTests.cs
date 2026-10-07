@@ -237,13 +237,16 @@ public class SpecTests
         world.leveltime = 4;
         Assert.True(world.P_ChangeSector(corridor, false));
         Assert.Equal(mobjs, world.Mobjs().Count());
-        // Crushing on every fourth tic: the damage hook (P_DamageMobj, M6) and blood with four P_Random calls
-        // after the spawn's own (lastlook).
+        // Crushing on every fourth tic: 10 damage (P_DamageMobj, the player's since T5.8: its pain chance's
+        // P_Random) and blood with four P_Random calls after the spawn's own (lastlook).
         Assert.True(world.P_ChangeSector(corridor, true));
         mobj_t blood = world.Mobjs().Last();
         Assert.Equal(mobjtype_t.MT_BLOOD, blood.type);
         Assert.Equal(me.x, blood.x);
-        Assert.Equal((prnd + 1 + 4) & 0xff, world.random.prndindex);
+        Assert.Equal((prnd + 1 + 1 + 4) & 0xff, world.random.prndindex);
+        Assert.Equal(90, me.health);
+        Assert.Equal(90, world.players[0].health);
+        Assert.Equal(statenum_t.S_PLAY_PAIN, me.state);
         Assert.True(world.crushchange);
         Assert.True(world.nofit);
     }

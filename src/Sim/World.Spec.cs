@@ -806,6 +806,78 @@ public sealed partial class World
     }
 
     /// <summary>
+    /// p_spec.c <c>P_PlayerInSpecialSector</c>: called every tic frame that
+    /// the player origin is in a special sector, once it stands on the floor:
+    /// the damage floors (5: 10, 7: 5, 16 and 4: 20, every 32 tics on
+    /// <see cref="leveltime"/>; the radiation suit protects, but from 16 and
+    /// 4 only when its <c>P_Random</c> roll is 5 or more), a secret (9:
+    /// counted once, then the special is cleared) and E1M8's exit floor (11:
+    /// god mode off, 20 damage that never kills, the level ends at 10 health
+    /// or less). Any other special is vanilla's <c>I_Error</c>.
+    /// </summary>
+    public void P_PlayerInSpecialSector(player_t player)
+    {
+        sector_t sector = player.mo!.subsector.sector;
+
+        // Falling, not all the way down yet?
+        if (player.mo.z != sector.floorheight)
+            return;
+
+        // Has hitten ground.
+        switch (sector.special)
+        {
+            case 5:
+                // HELLSLIME DAMAGE
+                if (player.powers[(int)powertype_t.pw_ironfeet] == 0)
+                {
+                    if ((leveltime & 0x1f) == 0)
+                        P_DamageMobj(player.mo, null, null, 10);
+                }
+                break;
+
+            case 7:
+                // NUKAGE DAMAGE
+                if (player.powers[(int)powertype_t.pw_ironfeet] == 0)
+                {
+                    if ((leveltime & 0x1f) == 0)
+                        P_DamageMobj(player.mo, null, null, 5);
+                }
+                break;
+
+            case 16:
+            // SUPER HELLSLIME DAMAGE
+            case 4:
+                // STROBE HURT
+                if (player.powers[(int)powertype_t.pw_ironfeet] == 0 || P_Random() < 5)
+                {
+                    if ((leveltime & 0x1f) == 0)
+                        P_DamageMobj(player.mo, null, null, 20);
+                }
+                break;
+
+            case 9:
+                // SECRET SECTOR
+                player.secretcount++;
+                sector.special = 0;
+                break;
+
+            case 11:
+                // EXIT SUPER DAMAGE! (for E1M8 finale)
+                player.cheats &= ~player_t.CF_GODMODE;
+
+                if ((leveltime & 0x1f) == 0)
+                    P_DamageMobj(player.mo, null, null, 20);
+
+                if (player.health <= 10)
+                    G_ExitLevel();
+                break;
+
+            default:
+                throw new System.InvalidOperationException($"P_PlayerInSpecialSector: unknown special {sector.special}");
+        }
+    }
+
+    /// <summary>
     /// p_spec.c <c>P_SpawnSpecials</c>: after the map has been loaded, scan
     /// for specials that spawn thinkers (the end of <see cref="P_SetupLevel"/>).
     /// Sector specials: the lights (T5.7, World.Lights.cs), the timed doors

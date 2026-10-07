@@ -73,6 +73,11 @@ namespace IsoDoom.Game;
 /// <c>tictime TICS</c> (T4.9) times <c>World.G_Ticker</c> over the next TICS
 /// tics (or until the scripted queue is empty) and prints the mean, median,
 /// 95th percentile and worst in ms (SPEC §9's budget is 2 ms).
+/// <c>map NAME</c> (T5.8) waits until the queue is empty, prints the map
+/// shown, the maps completed through exits and the player's status, and
+/// fails the script unless the map is NAME (e.g. after an exit:
+/// <c>place 2940 -4768 180; cmd 0 0 -32768 0 2; cmd 0 0 -32768 2; map E1M2</c>
+/// on DOOM1.WAD's E1M1).
 /// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
 /// name (<c>LeftX</c>, <c>LeftY</c>: the move stick, <c>RightX</c>,
 /// <c>RightY</c>: the aim stick, <c>TriggerRight</c>: fire; Y down is
@@ -231,6 +236,20 @@ public partial class LevelScript : Node
                         }, Int(w[3]), w.Length > 4 ? Int(w[4]) : 2);
                         break;
                     case "tictime": await TicTime(Int(w[1])); break;
+                    case "map":
+                        {
+                            await Drain();
+                            string now = _scene.Mesh?.Level.Name ?? "no map";
+                            string status = _scene.World is { } world && world.players[world.consoleplayer] is { mo: not null } p
+                                ? LevelScene.StatusText(world, p) : "no player";
+                            GD.Print($"Level script: map {now} ({_scene.LevelsCompleted} completed by exits): {status}");
+                            if (!string.Equals(now, w[1], StringComparison.OrdinalIgnoreCase))
+                            {
+                                GD.PrintErr($"Level script: map: expected {w[1].ToUpperInvariant()}, the scene shows {now}");
+                                exit = 1;
+                            }
+                            break;
+                        }
                     case "joy":
                         Input.ParseInputEvent(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
                         break;

@@ -70,8 +70,9 @@ public class LightTests
         Assert.InRange(flash.count, 1, 65);
 
         var strobes = Thinkers<strobe_t>(world);
-        Assert.Equal(new[] { S(2), S(4), S(6), S(8) }, strobes.Select(s => s.sector));
-        Assert.Equal(new[] { LightFlash.FASTDARK, LightFlash.SLOWDARK, LightFlash.SLOWDARK, LightFlash.FASTDARK }, strobes.Select(s => s.darktime));
+        // Alcove 14's strobe hurt (4, T5.8) strobes fast too.
+        Assert.Equal(new[] { S(2), S(4), S(6), S(8), S(14) }, strobes.Select(s => s.sector));
+        Assert.Equal(new[] { LightFlash.FASTDARK, LightFlash.SLOWDARK, LightFlash.SLOWDARK, LightFlash.FASTDARK, LightFlash.FASTDARK }, strobes.Select(s => s.darktime));
         Assert.All(strobes, s => Assert.Equal(LightFlash.STROBEBRIGHT, s.brighttime));
         Assert.InRange(strobes[0].count, 1, 8); // not in sync: random
         Assert.Equal(1, strobes[2].count);      // in sync (12, 13)
@@ -87,9 +88,10 @@ public class LightTests
         Assert.Same(S(9), fire.sector);
         Assert.Equal((104, 96 + 16, 4), (fire.maxlight, fire.minlight, fire.count)); // 16 over the darkest neighbour, alcove 8
 
-        // Every light special is cleared (but 4, death slime, none here).
+        // Every light special is cleared but 4, death slime (alcove 14, T5.8).
         foreach (int i in new[] { 1, 2, 4, 5, 6, 8, 9 })
             Assert.Equal(0, S(i).special);
+        Assert.Equal(4, S(SyntheticIwad.StrobeHurtAlcove).special);
         // The lights stay as the map has them until the first tic.
         for (int i = 0; i < SyntheticIwad.SpecialsAlcoves; i++)
             Assert.Equal(SyntheticIwad.AlcoveLight(i), S(i).lightlevel);
@@ -121,8 +123,12 @@ public class LightTests
         for (int tic = 1; tic <= 12; tic++)
         {
             world.G_Ticker(new ticcmd_t());
-            // Its own light (104) less 0-48 is always under its minimum (112): from the 4th tic on, the minimum.
-            Assert.Equal(tic < 4 ? 104 : 112, s.lightlevel);
+            // Its own light (104) less 0-48 is always under its minimum (112): on the 4th tic, the minimum;
+            // then the minimum again, or the maximum (104) when the roll takes nothing off.
+            if (tic <= 4)
+                Assert.Equal(tic < 4 ? 104 : 112, s.lightlevel);
+            else
+                Assert.Contains((int)s.lightlevel, new[] { 104, 112 });
             Assert.Equal(tic % 4 == 0 ? 4 : 4 - tic % 4, fire.count);
         }
     }

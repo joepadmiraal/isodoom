@@ -175,8 +175,9 @@ public sealed partial class World
     /// counts down after a teleport), <see cref="P_CalcHeight"/>, the power-up
     /// and palette counters and the fixed colormaps, and the use button
     /// (<see cref="P_UseLines"/> once per press, <see cref="player_t.usedown"/>).
-    /// Still to come: <c>P_DeathThink</c> (T6.12), <c>P_PlayerInSpecialSector</c>
-    /// (T5.8), the weapon change and <c>P_MovePsprites</c> (T6.6).
+    /// The player's special sectors (<see cref="P_PlayerInSpecialSector"/>, T5.8).
+    /// Still to come: <c>P_DeathThink</c> (T6.12), the weapon change and
+    /// <c>P_MovePsprites</c> (T6.6).
     /// </summary>
     public void P_PlayerThink(player_t player)
     {
@@ -222,7 +223,8 @@ public sealed partial class World
 
         P_CalcHeight(player);
 
-        // if (player->mo->subsector->sector->special) P_PlayerInSpecialSector (player); (T5.8)
+        if (mo.subsector.sector.special != 0)
+            P_PlayerInSpecialSector(player);
 
         // Check for weapon change. (T6.6)
 

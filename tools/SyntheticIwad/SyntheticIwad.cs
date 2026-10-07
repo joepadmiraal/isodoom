@@ -90,6 +90,11 @@ public static class SyntheticIwad
         w.Lump("XXXXA0", EncodePatch(Barrel(2))); // in no sprite name list: listed, but no sprite frame
         w.Lump("COLUA0", EncodePatch(Lamp()));      // floor lamp (MT_MISC31): a full-bright spawn frame
         w.Lump("GOR2A0", EncodePatch(Hanging()));   // hanging body (MT_MISC56): spawns on the ceiling
+        // T5.8: E1M2's keys, a blue keycard and a yellow skull key, each blinking between A and a full-bright B.
+        w.Lump("BKEYA0", EncodePatch(Key(false, Index(1, 2, 3), Index(3, 4, 3))));
+        w.Lump("BKEYB0", EncodePatch(Key(false, Index(3, 4, 3), Index(5, 6, 3))));
+        w.Lump("YSKUA0", EncodePatch(Key(true, Index(5, 5, 0), Index(7, 7, 1))));
+        w.Lump("YSKUB0", EncodePatch(Key(true, Index(7, 7, 1), Index(7, 7, 3))));
         w.Markers("S_END");
 
         w.Markers("P_START", "P1_START");
@@ -470,6 +475,32 @@ public static class SyntheticIwad
         return img;
     }
 
+    /// <summary>A key (T5.8): a card (a rectangle with a stripe) or a skull key (a round head on a shaft).</summary>
+    private static Image Key(bool skull, int body, int detail)
+    {
+        var img = new Image(10, 14, 5, 12);
+        for (int y = 0; y < 14; y++)
+        {
+            for (int x = 0; x < 10; x++)
+            {
+                bool part, mark;
+                if (skull)
+                {
+                    part = (y < 7 && (x - 5) * (x - 5) + (y - 3) * (y - 3) <= 12) || (y >= 7 && Math.Abs(x - 5) <= 1) || (y >= 11 && x >= 5 && x <= 8);
+                    mark = y == 3 && (x == 3 || x == 7);
+                }
+                else
+                {
+                    part = x >= 1 && x <= 8 && y >= 2;
+                    mark = y >= 5 && y <= 6;
+                }
+                if (part)
+                    img.Set(x, y, mark ? detail : body);
+            }
+        }
+        return img;
+    }
+
     private static Image Barrel(int frame)
     {
         var img = new Image(23, 32, 11, 30);
@@ -624,7 +655,7 @@ public static class SyntheticIwad
     // v1, v2, flags, special, tag, right side, left side (-1: none)
     private static readonly short[,] MapLinedefs =
     {
-        { 0, 1, 1, 0, 0, 0, -1 }, // L0: west room north
+        { 0, 1, 1, 11, 0, 0, -1 }, // L0: west room north, an S1 exit (11, T5.8: player 1 faces it from its start)
         { 1, 2, 4, 0, 0, 1, 2 },  // L1: two-sided, west room in front, east room behind
         { 2, 3, 1, 0, 0, 3, -1 }, // L2: west room south
         { 3, 0, 1, 0, 0, 4, -1 }, // L3: west room west
@@ -807,6 +838,16 @@ public static class SyntheticIwad
     // wall) draws the animated texture SLADRIP1 (frames SLADRIP1-3), room S
     // (sector 27) the animated flat NUKAGE1 (NUKAGE1-3); the odd alcoves'
     // LAVA1 animates too (LAVA1-4).
+    //
+    // T5.8, keys, damage floors, secrets and exits: alcoves 10, 11, 13, 14,
+    // 15 and 16 have the sector specials 5 (hellslime, 10 damage), 7
+    // (nukage, 5), 16 (super hellslime, 20), 4 (strobe hurt, 20, with a
+    // fast strobe), 9 (a secret) and 11 (E1M8's exit floor). A blue keycard
+    // (thing 2) and a yellow skull key (thing 3) lie in the corridor's east
+    // half. Room S's east and north walls (lines 85 and 84) are an S1 exit
+    // (11) and an S1 secret exit (51), both SW1BRCOM; alcove 23's opening
+    // (line 26, a drop of 32 from the corridor) is a W1 exit (52) and the
+    // boundary between alcoves 22 and 23 (line 75) a secret exit (124).
 
     /// <summary>E1M2's sector count: the corridor, the alcoves, rooms R and S with the door between (T5.3), room T and its teleporter pad (T5.6).</summary>
     public const int SpecialsSectors = 1 + SpecialsAlcoves + 3 + 2;
@@ -845,9 +886,29 @@ public static class SyntheticIwad
     /// E1M2's alcove sector specials (T5.7): the light specials of
     /// <c>P_SpawnSpecials</c>, alcove 1 flickering (1), 2 strobe fast (2), 4
     /// strobe slow (3), 5 glowing (8), 6 sync strobe slow (12), 8 sync strobe
-    /// fast (13), 9 fire flicker (17); none elsewhere.
+    /// fast (13), 9 fire flicker (17); T5.8 the damage, secret and exit
+    /// specials of <c>P_PlayerInSpecialSector</c>: alcove 10 hellslime (5),
+    /// 11 nukage (7), 13 super hellslime (16), 14 strobe hurt (4, also a fast
+    /// strobe), 15 a secret (9) and 16 the E1M8-style exit floor (11); none elsewhere.
     /// </summary>
-    public static int AlcoveSpecial(int i) => i switch { 1 => 1, 2 => 2, 4 => 3, 5 => 8, 6 => 12, 8 => 13, 9 => 17, _ => 0 };
+    public static int AlcoveSpecial(int i) => i switch
+    {
+        1 => 1, 2 => 2, 4 => 3, 5 => 8, 6 => 12, 8 => 13, 9 => 17,
+        10 => 5, 11 => 7, 13 => 16, 14 => 4, 15 => 9, 16 => 11,
+        _ => 0,
+    };
+
+    /// <summary>The alcove of each of E1M2's <c>P_PlayerInSpecialSector</c> specials (T5.8): sector 1 + alcove.</summary>
+    public const int HellslimeAlcove = 10, NukageAlcove = 11, SuperHellslimeAlcove = 13, StrobeHurtAlcove = 14, SecretAlcove = 15, ExitFloorAlcove = 16;
+
+    /// <summary>E1M2's exits (T5.8): line 85 an S1 exit (11), 84 an S1 secret exit (51), 26 a W1 exit (52), 75 a secret exit (124).</summary>
+    public const int ExitSwitchLine = 85, SecretExitSwitchLine = 84, ExitWalkLine = 26, SecretExitWalkLine = 75;
+
+    /// <summary>E1M2's keys (T5.8): a blue keycard at (560, -96) and a yellow skull key at (624, -96).</summary>
+    public const int BlueCardX = 560, YellowSkullX = 624, KeysY = -96;
+
+    /// <summary>The synthetic E1M1's exit (T5.8): line 0, the west room's north wall, an S1 exit (11) 128 units in front of player 1's start.</summary>
+    public const int E1M1ExitLine = 0;
 
     /// <summary>E1M2's scrolling wall (T5.7): alcove 1's north wall, line 28 (special 48, <c>BRKPNL</c>).</summary>
     public const int ScrollLine = 28;
@@ -892,7 +953,8 @@ public static class SyntheticIwad
         {
             // L3 + i: alcove i's opening (westwards: the alcove in front); alcove 0's a WR lift
             // (monsters too), alcove 22's a W1 floor (players only).
-            (int special, int tag) = i switch { 0 => (88, 5), 22 => (38, 5), _ => (0, 0) };
+            // T5.8: alcove 23's a W1 exit.
+            (int special, int tag) = i switch { 0 => (88, 5), 22 => (38, 5), 23 => (52, 0), _ => (0, 0) };
             TwoSided(Mid(i + 1), Mid(i), 1 + i, 0, special, tag);
         }
         for (int i = 0; i < n; i++)
@@ -911,7 +973,7 @@ public static class SyntheticIwad
         OneSided(Mid(0), Top(0), 1, "BRICK1");       // L51: the row's west end
         OneSided(Top(n), Mid(n), n, "BRICK1");       // L52: its east end
         for (int j = 1; j < n; j++)
-            TwoSided(Mid(j), Top(j), 1 + j, j);      // L52 + j: alcoves j - 1 | j (northwards: alcove j in front)
+            TwoSided(Mid(j), Top(j), 1 + j, j, special: j == n - 1 ? 124 : 0); // L52 + j: alcoves j - 1 | j (northwards: alcove j in front); L75 a secret exit (T5.8)
 
         // T5.3: a manual door (sector DoorSector) between rooms R (west) and S (east), apart from the rest.
         int doorV = vertexes.Count / 2;
@@ -929,8 +991,8 @@ public static class SyntheticIwad
         OneSided(c, b, door, "BRICK1");        // L81, L82: the door's tracks (south, north)
         OneSided(b2, c2, door, "BRICK1");
         OneSided(e, c, room2, "BRICK1");       // L83-L85: S's south, north and east walls
-        OneSided(c2, e2, room2, "BRICK1");
-        OneSided(e2, e, room2, "BRICK1");
+        OneSided(c2, e2, room2, "SW1BRCOM", special: 51); // T5.8: an S1 secret exit
+        OneSided(e2, e, room2, "SW1BRCOM", special: 11);  // T5.8: an S1 exit
 
         // T5.6: room T (west) and the teleporter pad P (east), apart from the rest.
         int teleV = vertexes.Count / 2;
@@ -1066,7 +1128,8 @@ public static class SyntheticIwad
             flat.AddRange(l);
 
         w.Markers("E1M2");
-        w.Lump("THINGS", Shorts(64, -64, 90, 1, 7, TeleportDestX, TeleportDestY, 0, 14, 7)); // player 1 start in the corridor; the teleport destination (T5.6)
+        w.Lump("THINGS", Shorts(64, -64, 90, 1, 7, TeleportDestX, TeleportDestY, 0, 14, 7, // player 1 start in the corridor; the teleport destination (T5.6)
+            BlueCardX, KeysY, 0, 5, 7, YellowSkullX, KeysY, 0, 39, 7));                          // a blue keycard and a yellow skull key (T5.8)
         w.Lump("LINEDEFS", Shorts(flat.ToArray()));
         w.Lump("SIDEDEFS", Concat(sides.ToArray()));
         w.Lump("VERTEXES", Shorts(vertexes.ToArray()));
