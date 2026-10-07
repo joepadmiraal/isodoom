@@ -92,6 +92,9 @@ namespace IsoDoom.Game;
 /// <c>--level-player-light=LEVEL|off</c> (T4.7a, <see cref="SpriteSettings.PlayerLight"/>:
 /// the player's own sprite is lit as if its sector's light were at least
 /// LEVEL, 0–255, so it stays visible in dark sectors; default 128);
+/// <c>--level-fuzz=on|off</c> (T6.9, <see cref="SpriteSettings.Fuzz"/>: things
+/// with <c>MF_SHADOW</c>, spectres and the player with a blur sphere, drawn
+/// with the fuzz, or as any sprite; default on);
 /// <c>--level-light=player|none|camera</c> (<see cref="LightDiminishing"/>, T2.8;
 /// default player); <c>--level-light-near=UNITS</c> (the shortest distance the
 /// player mode uses, T3.7; default 80, 0 for the tables down to the player);
@@ -551,7 +554,7 @@ public partial class LevelScene : Node3D
         _ => throw new ArgumentException($"--level-masked-back: \"{value}\" (mirror or off)"),
     };
 
-    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), <c>--level-sprite-wall-pull</c> (T3.5a), <c>--level-sprite-hidden</c> (T3.6a) and <c>--level-player-light</c> (T4.7a).</summary>
+    /// <summary>The sprite options from <c>--level-sprite-tilt</c>, <c>--level-sprite-tilt-depth</c>, <c>--level-sprite-shadow</c> and <c>--level-sprite-outline</c> (T3.6), <c>--level-sprite-wall-pull</c> (T3.5a), <c>--level-sprite-hidden</c> (T3.6a), <c>--level-player-light</c> (T4.7a) and <c>--level-fuzz</c> (T6.9).</summary>
     private static SpriteSettings ParseSprites()
     {
         var settings = new SpriteSettings();
@@ -569,6 +572,8 @@ public partial class LevelScene : Node3D
             settings = settings with { Hidden = SpriteSettings.ParseHidden(hidden) };
         if (WadLocator.GetUserArg("--level-player-light") is string playerLight)
             settings = settings with { PlayerLight = SpriteSettings.ParsePlayerLight(playerLight) };
+        if (WadLocator.GetUserArg("--level-fuzz") is string fuzz)
+            settings = settings with { Fuzz = SpriteSettings.ParseFuzz(fuzz) };
         return settings;
     }
 
@@ -1149,7 +1154,13 @@ public partial class LevelScene : Node3D
         if (World is not { } world)
             return;
         if (Mesh is { } mesh)
+        {
             Translate(world, mesh);
+            // T6.9: the fuzz shimmers per tic.
+            int phase = Fuzz.Phase(world.leveltime);
+            if (mesh.FuzzPhase != phase)
+                mesh.SetFuzzPhase(phase);
+        }
         Mesh?.UpdateSectors(_interpolatedHeights ??= InterpolatedHeights);
         mobj_t? me = PlayerMobj;
         if (Player is not null && me is not null)
@@ -1736,7 +1747,7 @@ public partial class LevelScene : Node3D
     public static ThingSprites.Entry ThingEntry(SpawnedThing t) =>
         new(new Vector3((float)(t.x / 65536.0), (float)(t.y / 65536.0), (float)(t.z / 65536.0)), t.angle, t.Sector.Index, (int)t.sprite, t.frame, t.fullbright,
             ShadowRadius(Info.mobjinfo[(int)t.Spawn.Type]), IsActor(Info.mobjinfo[(int)t.Spawn.Type]), Info.mobjinfo[(int)t.Spawn.Type].radius / 65536f,
-            (float)(t.Sector.FloorHeight / 65536.0));
+            (float)(t.Sector.FloorHeight / 65536.0), Shadow: (Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHADOW) != 0);
 
     /// <summary>A mobj as a billboard entry where it is now (T4.7).</summary>
     public static ThingSprites.Entry ThingEntry(mobj_t mo) =>
@@ -1748,11 +1759,13 @@ public partial class LevelScene : Node3D
     /// the light), its state's sprite and frame (<c>FF_FULLBRIGHT</c>), the
     /// blob shadow on its <c>floorz</c> (so a falling or flying thing's shadow
     /// stays on the floor), actor flag and radius as <see cref="ThingEntry(SpawnedThing)"/>
-    /// (an exploding missile's: <see cref="PullRadius"/>).
+    /// (an exploding missile's: <see cref="PullRadius"/>), and its current
+    /// <c>MF_SHADOW</c> (T6.9: the fuzz; a spectre's, or the player's while
+    /// it has the blur sphere).
     /// </summary>
     public static ThingSprites.Entry ThingEntry(mobj_t mo, (Vector3 Position, uint Angle) at) =>
         new(at.Position, at.Angle, mo.subsector.sector.Index, (int)mo.sprite, mo.frame & Info.FF_FRAMEMASK, (mo.frame & Info.FF_FULLBRIGHT) != 0,
-            ShadowRadius(mo.info), IsActor(mo.info), PullRadius(mo), (float)(mo.floorz / 65536.0));
+            ShadowRadius(mo.info), IsActor(mo.info), PullRadius(mo), (float)(mo.floorz / 65536.0), Shadow: (mo.flags & mobjflag_t.MF_SHADOW) != 0);
 
     /// <summary>
     /// The radius a mobj's billboard is pulled by towards the camera, up to

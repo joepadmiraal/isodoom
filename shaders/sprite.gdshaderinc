@@ -1,5 +1,6 @@
 // Thing sprite shader body (SPEC §7.5, §12 T3.5), included by sprite.gdshader
-// and sprite_hidden.gdshader (UPRIGHT_HIDDEN defined, T3.6a).
+// and sprite_hidden.gdshader (UPRIGHT_HIDDEN defined, T3.6a), and by
+// sprite_fuzz.gdshader and sprite_fuzz_hidden.gdshader (FUZZ defined, T6.9).
 //
 // Thing sprites: Y-axis billboards drawn from the
 // WAD's sprite atlas (IsoDoom.Render.SpriteAtlas, RG8: R = palette index,
@@ -7,8 +8,9 @@
 // One MultiMesh instance per thing (IsoDoom.Render.ThingSprites):
 //   instance transform  the thing's position (Godot space; basis identity)
 //   INSTANCE_CUSTOM     atlas slot (-1: draw nothing), flags (1 flip, 2 full
-//                       bright, 4 actor, 8 the player's own sprite), sector
-//                       (light), radius (map units)
+//                       bright, 4 actor, 8 the player's own sprite, 16
+//                       MF_SHADOW: fuzz, T6.9), sector (light), radius (map
+//                       units)
 //   VERTEX              sprite space: x 0 left / 1 right; y 0 bottom row,
 //                       1 the patch origin's height, 2 top row; z 1 for the
 //                       lower quad (the rows below the origin)
@@ -75,6 +77,26 @@
 // texture puts the material in the transparent pass, with depth writes
 // (depth_draw_always), after a copy of the opaque depth.
 //
+// Fuzz (T6.9, SPEC §6.3 #6, §12 T6.9; `fuzz` 1, the default): things with
+// MF_SHADOW (flag 16: spectres, the player with a blur sphere) are not drawn
+// by the opaque material; its next pass, a FUZZ variant in the transparent
+// pass, draws only them. As r_draw.c R_DrawFuzzColumn, every opaque texel
+// shows what is drawn one texel below or above it on screen (fuzzoffset's
+// signs, FUZZ_TABLE, at fuzzpos (`fuzz_phase` + column * height + row) % 50,
+// so it shimmers per tic as vanilla's per frame), through colormap 6 (once
+// more per row of a run of rows above, as vanilla reads the row above after
+// fuzzing it, which makes its dark streaks): the
+// screen texture's colour is matched to its nearest index in the current
+// palette (`palette_index`, so the flashes apply; exact for palette colours,
+// which is all the level and sprites draw), mapped through COLORMAP row 6 and
+// drawn through the palette. A texel is a texel at any zoom: the offset is
+// one patch row on screen. An MF_SHADOW thing has no outline (vanilla's
+// silhouette) except the player's own sprite (flag 8), which keeps its solid
+// outline so the player can find themselves. With `fuzz` 0 such things draw
+// as any sprite. Opaque sprites (with the upright hiding, none: they are
+// drawn in the transparent pass too) are in the screen texture; other fuzzed
+// things are not.
+//
 // Light: one colormap per instance, as vanilla's per vissprite: the
 // `colormap_override` (vanilla fixedcolormap) if set, else colormap 0 for
 // full-bright frames, else scalelight[(sector light >> 4) + extralight]
@@ -132,8 +154,29 @@ uniform float cut_radius = 96.0;
 uniform float cut_height = 32.0;
 uniform float cut_anchor = 28.0;
 uniform int cut_things = 0;
+// Fuzz (T6.9): whether MF_SHADOW things draw fuzzed (1) or as any sprite (0),
+// and vanilla's fuzzpos at their first texel (0-49).
+uniform int fuzz = 1;
+uniform int fuzz_phase = 0;
 // IsoDoom.Render.Cutaway.PlaneMargin (map units).
 const float CUT_PLANE_MARGIN = 1.0;
+
+#ifdef FUZZ
+// T6.9: what the opaque pass drew, and r_draw.c fuzzoffset (1: +FUZZOFF, the
+// row below; 0: -FUZZOFF, the row above), its FUZZTABLE entries.
+uniform sampler2D screen_texture : hint_screen_texture, filter_nearest, repeat_disable;
+const int FUZZ_TABLE = 50;
+const int FUZZ_OFFSETS[50] = int[](
+	1, 0, 1, 0, 1, 1, 0,
+	1, 1, 0, 1, 1, 1, 0,
+	1, 1, 1, 0, 0, 0, 0,
+	1, 0, 0, 1, 1, 1, 1, 0,
+	1, 0, 1, 1, 0, 0, 1,
+	1, 0, 0, 0, 0, 1, 1,
+	1, 1, 0, 1, 1, 0, 1);
+// r_draw.c R_DrawFuzzColumn's colormap.
+const int FUZZ_COLORMAP = 6;
+#endif
 
 #ifdef UPRIGHT_HIDDEN
 // Upright hiding (T3.6a): the level's depth (opaque pass), the most texels
@@ -145,6 +188,8 @@ const float HIDDEN_MARGIN = 1.0;
 
 varying flat ivec4 v_rect;
 varying flat int v_flip;
+// The player's own sprite (flag 8; T6.9: its outline when fuzzed).
+varying flat int v_own;
 varying flat int v_colormap;
 varying vec2 v_texcoord;
 // Whether the cutaway may cut this thing (T3.4b), and its foot (map units).
@@ -239,7 +284,15 @@ void vertex() {
 	v_foot = vec3(foot.x, -foot.z, foot.y) * MAP_UNITS_PER_METRE;
 	v_pull = clamp(INSTANCE_CUSTOM.w, 0.0, max(wall_pull, 0.0));
 	v_cuttable = cut_mode != 0 && (cut_things == 2 || (cut_things == 1 && (flags & 4) == 0)) ? 1 : 0;
-	if (slot < 0) {
+	v_own = (flags & 8) != 0 ? 1 : 0;
+	// T6.9: MF_SHADOW things are drawn by the FUZZ variant only, the rest by the others.
+	bool fuzzed = fuzz != 0 && (flags & 16) != 0;
+#ifdef FUZZ
+	bool skip = !fuzzed;
+#else
+	bool skip = fuzzed;
+#endif
+	if (slot < 0 || skip) {
 		// Nothing to draw: a degenerate quad.
 		v_rect = ivec4(0);
 		v_flip = 0;
@@ -317,6 +370,31 @@ vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
 }
 
+#ifdef FUZZ
+vec3 linear_to_srgb(vec3 c) {
+	return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+
+// The index of the current palette's colour nearest to `c` (sRGB, 0-1); the
+// lowest of equals (IsoDoom.Render.ThingSprites.NearestIndex on the CPU).
+int nearest_index(vec3 c) {
+	int best = 0;
+	float best_d = 1e9;
+	for (int i = 0; i < 256; i++) {
+		vec3 d = texelFetch(playpal, ivec2(i, palette_index), 0).rgb - c;
+		float dd = dot(d, d);
+		if (dd < best_d) {
+			best_d = dd;
+			best = i;
+			if (dd < 1e-6) {
+				break;
+			}
+		}
+	}
+	return best;
+}
+#endif
+
 bool opaque_at(int col, int row) {
 	if (col < 0 || row < 0 || col >= v_rect.z || row >= v_rect.w) {
 		return false;
@@ -352,6 +430,14 @@ float bayer4(ivec2 q) {
 void fragment() {
 	int w = v_rect.z;
 	int h = v_rect.w;
+#ifdef FUZZ
+	// T6.9: one patch row down on screen, in pixels (taken before any discard).
+	vec2 row_gradient = vec2(dFdx(v_texcoord.y), dFdy(v_texcoord.y));
+	vec2 row_step = row_gradient / max(dot(row_gradient, row_gradient), 1e-8);
+	// SCREEN_UV per pixel along x and y (its y need not run as FRAGCOORD's).
+	vec2 uv_dx = dFdx(SCREEN_UV);
+	vec2 uv_dy = dFdy(SCREEN_UV);
+#endif
 	if (w <= 0 || h <= 0) {
 		discard;
 	}
@@ -382,10 +468,51 @@ void fragment() {
 	int col = int(floor(v_texcoord.x));
 	int row = int(floor(v_texcoord.y));
 	int index = 0;
+	// The colormap the index is drawn through (T6.9: the fuzz's own).
+	int light = v_colormap;
 	if (outline < 0) {
 		col = clamp(col, 0, w - 1);
 		row = clamp(row, 0, h - 1);
 	}
+#ifdef FUZZ
+	if (opaque_at(col, row)) {
+		// r_draw.c R_DrawFuzzColumn: dest = colormaps[6 * 256 + dest[fuzzoffset[fuzzpos]]],
+		// down the column. The row above was fuzzed already (when it is in the column's
+		// post), so a run of -FUZZOFF darkens again per row: walk up it to the row whose
+		// unfuzzed neighbour is read (IsoDoom.Render.Fuzz.Source on the CPU).
+		int j = row;
+		int darkenings = 1;
+		int source = row + 1;
+		for (int n = 0; n < FUZZ_TABLE; n++) {
+			if (FUZZ_OFFSETS[(fuzz_phase + col * h + j) % FUZZ_TABLE] != 0) {
+				source = j + 1;
+				break;
+			}
+			if (!opaque_at(col, j - 1)) {
+				source = j - 1;
+				break;
+			}
+			j--;
+			darkenings++;
+		}
+		vec2 d = round(float(source - row) * row_step);
+		if (d == vec2(0.0) && source != row) {
+			// (texels under a pixel: still the next pixel)
+			d = sign(float(source - row)) * sign(row_step) * vec2(0.0, 1.0);
+		}
+		vec2 uv = clamp(SCREEN_UV + uv_dx * d.x + uv_dy * d.y, vec2(0.0), vec2(1.0));
+		index = nearest_index(linear_to_srgb(textureLod(screen_texture, uv, 0.0).rgb));
+		for (int n = 1; n < darkenings; n++) {
+			index = int(texelFetch(colormap, ivec2(index, FUZZ_COLORMAP), 0).r * 255.0 + 0.5);
+		}
+		light = FUZZ_COLORMAP;
+	} else if (v_own != 0 && outline >= 0 && (opaque_at(col - 1, row) || opaque_at(col + 1, row) || opaque_at(col, row - 1) || opaque_at(col, row + 1))) {
+		// The player's own sprite keeps its solid outline.
+		index = outline;
+	} else {
+		discard;
+	}
+#else
 	if (opaque_at(col, row)) {
 		int c = v_flip != 0 ? w - 1 - col : col;
 		index = int(texelFetch(sprite_atlas, v_rect.xy + ivec2(c, row), 0).r * 255.0 + 0.5);
@@ -394,6 +521,7 @@ void fragment() {
 	} else {
 		discard;
 	}
-	int mapped = int(texelFetch(colormap, ivec2(index, v_colormap), 0).r * 255.0 + 0.5);
+#endif
+	int mapped = int(texelFetch(colormap, ivec2(index, light), 0).r * 255.0 + 0.5);
 	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb);
 }

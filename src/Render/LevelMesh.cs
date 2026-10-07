@@ -225,11 +225,19 @@ public sealed class LevelMesh
     /// </summary>
     public ShaderMaterial SpriteMaterial { get; private set; } = null!;
 
+    /// <summary>
+    /// The fuzz pass of the thing sprites (T6.9, <c>shaders/sprite_fuzz.gdshader</c>,
+    /// <see cref="Fuzz"/>): <see cref="SpriteMaterial"/>'s next pass, drawing
+    /// only the things with <c>MF_SHADOW</c>; it gets every parameter the
+    /// sprite material gets.
+    /// </summary>
+    public ShaderMaterial FuzzMaterial { get; private set; } = null!;
+
     /// <summary>The material of the things' blob shadows (T3.6, <c>shaders/sprite_shadow.gdshader</c>, <see cref="ThingSprites.Shadows"/>); set by <see cref="SetSprites"/>.</summary>
     public ShaderMaterial ShadowMaterial { get; private set; } = null!;
 
-    /// <summary>Every material (level, masked, sprites), for setting a shader parameter on each.</summary>
-    public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial, SpriteMaterial };
+    /// <summary>Every material (level, masked, sprites and their fuzz pass), for setting a shader parameter on each.</summary>
+    public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial, SpriteMaterial, FuzzMaterial };
 
     public ImageTexture AtlasTexture { get; private set; } = null!;
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
@@ -489,14 +497,22 @@ public sealed class LevelMesh
     {
         Sprites = settings;
         // The upright hiding (T3.6a) is a shader variant; the parameters stay on the material.
-        Shader shader = GD.Load<Shader>(settings.Hidden == SpriteHidden.Upright ? ThingSprites.HiddenShaderPath : ThingSprites.ShaderPath);
+        bool upright = settings.Hidden == SpriteHidden.Upright;
+        Shader shader = GD.Load<Shader>(upright ? ThingSprites.HiddenShaderPath : ThingSprites.ShaderPath);
         if (SpriteMaterial.Shader != shader)
             SpriteMaterial.Shader = shader;
-        SpriteMaterial.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
-        SpriteMaterial.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
-        SpriteMaterial.SetShaderParameter("outline", settings.Outline);
-        SpriteMaterial.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
-        SpriteMaterial.SetShaderParameter("own_light", Math.Clamp(settings.PlayerLight, 0, 255));
+        Shader fuzz = GD.Load<Shader>(upright ? ThingSprites.FuzzHiddenShaderPath : ThingSprites.FuzzShaderPath);
+        if (FuzzMaterial.Shader != fuzz)
+            FuzzMaterial.Shader = fuzz;
+        foreach (ShaderMaterial material in new[] { SpriteMaterial, FuzzMaterial })
+        {
+            material.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
+            material.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
+            material.SetShaderParameter("outline", settings.Outline);
+            material.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
+            material.SetShaderParameter("own_light", Math.Clamp(settings.PlayerLight, 0, 255));
+            material.SetShaderParameter("fuzz", settings.Fuzz ? 1 : 0);
+        }
         ShadowMaterial.SetShaderParameter("shadow_mode", (int)settings.Shadow);
         ShadowMaterial.SetShaderParameter("shadow_opacity", settings.ShadowOpacity);
     }
@@ -515,6 +531,16 @@ public sealed class LevelMesh
             (byte r, byte g, byte b) = playpal.GetColor(palette, 0);
             ShadowMaterial.SetShaderParameter("shadow_colour", Color.Color8(r, g, b).SrgbToLinear());
         }
+    }
+
+    /// <summary>The fuzz's phase (T6.9, <see cref="Fuzz.Phase"/>, 0–49) as last set (<see cref="SetFuzzPhase"/>).</summary>
+    public int FuzzPhase { get; private set; }
+
+    /// <summary>Sets the fuzz's phase (T6.9): vanilla's <c>fuzzpos</c> at a fuzzed thing's first texel, 0–49.</summary>
+    public void SetFuzzPhase(int phase)
+    {
+        FuzzPhase = ((phase % Fuzz.FUZZTABLE) + Fuzz.FUZZTABLE) % Fuzz.FUZZTABLE;
+        FuzzMaterial.SetShaderParameter("fuzz_phase", FuzzPhase);
     }
 
     /// <summary>The PLAYPAL palette as last set (<see cref="SetPalette"/>).</summary>
@@ -734,7 +760,8 @@ public sealed class LevelMesh
 
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
-        SpriteMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShaderPath) };
+        FuzzMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.FuzzShaderPath) };
+        SpriteMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShaderPath), NextPass = FuzzMaterial };
         ShadowMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShadowShaderPath) };
         SetParameter("atlas", AtlasTexture);
         SetParameter("texture_info", TextureInfoTexture);
@@ -758,6 +785,7 @@ public sealed class LevelMesh
         SetCutaway(Cutaway);
         SetSprites(Sprites);
         SetCutawayCentres(null, null);
+        SetFuzzPhase(0);
     }
 
     private sealed class Chunk

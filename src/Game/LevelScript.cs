@@ -113,6 +113,10 @@ namespace IsoDoom.Game;
 /// pickup does (<c>P_GivePower</c>), optionally with TICS left, and <c>flash damage|bonus COUNT</c>
 /// sets its <c>damagecount</c> or <c>bonuscount</c> (the red or gold palette flash), both
 /// before the next tic as <c>missile</c>; e.g. <c>power infrared; cmd 0 0 0 0 1; shot FILE.png</c>.
+/// <c>spawn TYPE X Y [ANGLE]</c> (T6.9, debugging) spawns a mobj of <c>mobjtype_t</c>
+/// <c>MT_TYPE</c> (e.g. <c>shadows</c>, the spectre, which DOOM1's maps lack) on the floor at
+/// map point X, Y facing ANGLE (degrees, default 0) through <c>P_SpawnMobj</c>, before the next
+/// tic as <c>missile</c>; e.g. <c>power invisibility; spawn shadows 1100 -3600 180; cmd 0 0 0 0 1; shot FILE.png</c>.
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -266,6 +270,19 @@ public partial class LevelScript : Node
                             {
                                 if (world.players[world.consoleplayer].mo is { } mo)
                                     world.P_SpawnPlayerMissile(mo, type);
+                            });
+                            break;
+                        }
+                    case "spawn":
+                        {
+                            // T6.9: a debug spawn (P_SpawnMobj on the floor), e.g. a spectre.
+                            var type = Enum.Parse<IsoDoom.Sim.mobjtype_t>("MT_" + w[1].ToUpperInvariant());
+                            int x = Int(w[2]), y = Int(w[3]);
+                            uint angle = w.Length > 4 ? ThingSprites.BamOfDegrees(double.Parse(w[4], CultureInfo.InvariantCulture)) : 0;
+                            _scene.BeforeNextTic(world =>
+                            {
+                                IsoDoom.Sim.mobj_t mo = world.P_SpawnMobj(x << 16, y << 16, IsoDoom.Sim.World.ONFLOORZ, type);
+                                mo.angle = angle;
                             });
                             break;
                         }

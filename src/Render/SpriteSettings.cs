@@ -60,7 +60,7 @@ public enum SpriteShadowStyle
 /// The thing sprites' readability options (T3.6, SPEC §7.5, §12, §13 Q3):
 /// billboard tilt towards the camera, blob shadows and outlines, the
 /// pull away from walls behind (T3.5a), the upright hiding (T3.6a) and the
-/// player's minimum light (T4.7a). Each is a presentation option; the
+/// player's minimum light (T4.7a), and the fuzz (T6.9). Each is a presentation option; the
 /// defaults are the ones chosen in T3.6, T3.5a and T4.7a.
 /// </summary>
 public sealed record SpriteSettings
@@ -115,6 +115,13 @@ public sealed record SpriteSettings
     /// <summary>The blended shadow's opacity at its centre.</summary>
     public float ShadowOpacity { get; init; } = 0.5f;
 
+    /// <summary>
+    /// Whether things with <c>MF_SHADOW</c> (spectres, the player with a blur
+    /// sphere) are drawn with the fuzz (T6.9, <see cref="Fuzz"/>; the
+    /// default), or as any sprite.
+    /// </summary>
+    public bool Fuzz { get; init; } = true;
+
     /// <summary>A one-texel outline around sprites in this palette index (lit as the sprite), or −1 for none.</summary>
     public int Outline { get; init; } = DefaultOutline;
 
@@ -161,6 +168,14 @@ public sealed record SpriteSettings
         "upright" => SpriteTiltDepth.Upright,
         "tilted" => SpriteTiltDepth.Tilted,
         _ => throw new ArgumentException($"--level-sprite-tilt-depth: \"{s}\" (upright or tilted)"),
+    };
+
+    /// <summary>Parses the fuzz option: <c>on</c> or <c>off</c>.</summary>
+    public static bool ParseFuzz(string s) => s switch
+    {
+        "on" => true,
+        "off" => false,
+        _ => throw new ArgumentException($"--level-fuzz: \"{s}\" (on or off)"),
     };
 
     /// <summary>Parses what hides a tilted billboard: <c>depth</c> or <c>upright</c>.</summary>

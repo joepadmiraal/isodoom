@@ -40,7 +40,8 @@ namespace IsoDoom.Render;
 /// Per-instance custom data: (atlas slot, or −1 to hide; flags: 1 flip, 2
 /// full bright, 4 actor (T3.4b: the cutaway keeps it whole unless
 /// <see cref="CutawayThings.All"/>), 8 the player's own sprite (T4.7a: its
-/// minimum light, <see cref="SpriteSettings.PlayerLight"/>); sector; radius in map units (T3.5a)). Positions and frames are set by the owner
+/// minimum light, <see cref="SpriteSettings.PlayerLight"/>), 16 <c>MF_SHADOW</c>
+/// (T6.9: the fuzz, <see cref="Fuzz"/>); sector; radius in map units (T3.5a)). Positions and frames are set by the owner
 /// (<see cref="SetEntries"/>, <see cref="SetEntry"/>).
 /// </summary>
 public partial class ThingSprites : MultiMeshInstance3D
@@ -50,11 +51,17 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// <summary>The sprite shader with the upright hiding (T3.6a, <see cref="SpriteHidden.Upright"/>).</summary>
     public const string HiddenShaderPath = "res://shaders/sprite_hidden.gdshader";
 
+    /// <summary>The fuzz variant (T6.9, <see cref="Fuzz"/>): the sprite material's next pass, drawing only <see cref="FlagShadow"/> instances.</summary>
+    public const string FuzzShaderPath = "res://shaders/sprite_fuzz.gdshader";
+
+    /// <summary>The fuzz variant with the upright hiding (T6.9, T3.6a).</summary>
+    public const string FuzzHiddenShaderPath = "res://shaders/sprite_fuzz_hidden.gdshader";
+
     /// <summary>How far above the floor plane (map units, along the view ray) the rows below a sprite's origin are drawn (the shader's <c>PULL_MARGIN</c>).</summary>
     public const float PullMargin = 1f;
 
     /// <summary>Custom data flags.</summary>
-    public const int FlagFlip = 1, FlagFullBright = 2, FlagActor = 4, FlagOwn = 8;
+    public const int FlagFlip = 1, FlagFullBright = 2, FlagActor = 4, FlagOwn = 8, FlagShadow = 16;
 
     /// <summary>
     /// One thing: map position (x, y, z in map units), facing (BAM), sector
@@ -69,9 +76,10 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// <see cref="MapPosition"/>'s z), and whether it is the console
     /// player's own sprite (T4.7a: lit at least at
     /// <see cref="SpriteSettings.PlayerLight"/>; <see cref="PlayerSprite"/>
-    /// sets it).
+    /// sets it), and whether it has <c>MF_SHADOW</c> (T6.9: drawn with the
+    /// fuzz, <see cref="Fuzz"/>, unless <see cref="SpriteSettings.Fuzz"/> is off).
     /// </summary>
-    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null, bool Own = false);
+    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null, bool Own = false, bool Shadow = false);
 
     public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
 
@@ -96,6 +104,7 @@ public partial class ThingSprites : MultiMeshInstance3D
     private Shown[] _shown = Array.Empty<Shown>();
     private Color[] _custom = Array.Empty<Color>();
     private int? _isolated;
+    private HashSet<int>? _isolatedSet;
     private (bool Ortho, Vector3 Forward, Vector3 Position)? _view;
 
     /// <summary>The entries as last set.</summary>
@@ -179,6 +188,12 @@ public partial class ThingSprites : MultiMeshInstance3D
         Shadows.MaterialOverride = shadowMaterial;
         material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
         material.SetShaderParameter("sprite_info", atlas.InfoTexture);
+        if (material.NextPass is ShaderMaterial fuzz)
+        {
+            // T6.9: the fuzz pass (LevelMesh.FuzzMaterial) draws from the same atlas.
+            fuzz.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
+            fuzz.SetShaderParameter("sprite_info", atlas.InfoTexture);
+        }
         MaterialOverride = material;
         Refresh();
     }
@@ -219,6 +234,15 @@ public partial class ThingSprites : MultiMeshInstance3D
     public void Isolate(int? index)
     {
         _isolated = index;
+        _isolatedSet = null;
+        Refresh();
+    }
+
+    /// <summary>Shows only the instances in <paramref name="indices"/> (none when empty), for checks (T6.9).</summary>
+    public void IsolateSet(IEnumerable<int> indices)
+    {
+        _isolated = null;
+        _isolatedSet = new HashSet<int>(indices);
         Refresh();
     }
 
@@ -323,8 +347,8 @@ public partial class ThingSprites : MultiMeshInstance3D
         if (!force && shown == _shown[i])
             return;
         _shown[i] = shown;
-        bool hidden = _isolated is int only && only != i;
-        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0) | (e.Own ? FlagOwn : 0);
+        bool hidden = (_isolated is int only && only != i) || (_isolatedSet is { } set && !set.Contains(i));
+        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0) | (e.Own ? FlagOwn : 0) | (e.Shadow ? FlagShadow : 0);
         _custom[i] = new Color(hidden ? -1 : shown.Slot, flags, e.Sector, e.Radius);
         Multimesh.SetInstanceCustomData(i, _custom[i]);
         Shadows.Multimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));

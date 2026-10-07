@@ -217,7 +217,8 @@ public partial class LevelCheck
                 int rot = frame.Rotate ? Sprites.R_ProjectSpriteRotation(ThingSprites.BamOfMap(d.X, -d.Z), t.angle) : 0;
                 int slot = atlas.SlotOf(frame.Lump[rot]);
                 var custom = new Color(slot, (frame.Flip[rot] ? ThingSprites.FlagFlip : 0) | (t.fullbright ? ThingSprites.FlagFullBright : 0)
-                    | ((Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHOOTABLE) != 0 ? ThingSprites.FlagActor : 0), t.Sector.Index,
+                    | ((Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHOOTABLE) != 0 ? ThingSprites.FlagActor : 0)
+                    | ((Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_SHADOW) != 0 ? ThingSprites.FlagShadow : 0), t.Sector.Index, // T6.9: spectres
                     Info.mobjinfo[(int)t.Spawn.Type].radius / 65536f); // the wall pull's radius (T3.5a)
                 if (things.CustomData(i) != custom || things.ShownFrames[i].Rot != rot || (CanCapture && things.Multimesh.GetInstanceCustomData(i) != custom))
                     Fail($"{what}, {(ortho ? "orthographic" : "perspective")}: custom data {things.CustomData(i)} ({things.Multimesh.GetInstanceCustomData(i)} on the GPU, "
@@ -385,6 +386,62 @@ public partial class LevelCheck
         (p.health, me.health, p.itemcount, p.message) = (health, mohealth, itemcount, message);
         (p.damagecount, p.bonuscount, p.fixedcolormap) = (damagecount, bonuscount, fixedcolormap);
         powers.CopyTo(p.powers, 0); // (the mesh stays at palette 0 for the checks after this one)
+    }
+
+    private int _fuzzMaps;
+
+    /// <summary>
+    /// T6.9: <c>MF_SHADOW</c> reaches the billboards. The player given the
+    /// blur sphere (<c>P_GivePower</c>) is drawn marked
+    /// <see cref="ThingSprites.FlagShadow"/> (its own sprite too), unmarked
+    /// again without the flag; a spectre (<c>MT_SHADOWS</c>) spawned beside it
+    /// is drawn marked, and dropped once removed. The fuzz's phase follows
+    /// <c>leveltime</c> (<see cref="Fuzz.Phase"/>). The player's state is restored.
+    /// </summary>
+    private void CheckFuzzState(string map)
+    {
+        if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || _scene.Mesh is not { } m || _scene.Things is not { } things)
+            return;
+        _fuzzMaps++;
+        player_t p = world.players[world.consoleplayer];
+        int invisibility = p.powers[(int)powertype_t.pw_invisibility];
+        mobjflag_t flags = me.flags;
+        // (the check run has no player billboard: one made for the check, as CheckThings does)
+        var player = new PlayerSprite();
+        if (_scene.SpriteAtlas is { } atlas)
+            player.Bind(atlas, m.SpriteMaterial);
+        World.P_GivePower(p, powertype_t.pw_invisibility);
+        player.Set(LevelScene.ThingEntry(me));
+        if ((me.flags & mobjflag_t.MF_SHADOW) == 0 || !player.Entry.Shadow
+            || ((int)Math.Round(player.Sprite.CustomData(0).G) & ThingSprites.FlagShadow) == 0)
+            Fail($"{map}: the player with the blur sphere: MF_SHADOW {(me.flags & mobjflag_t.MF_SHADOW) != 0}, entry {player.Entry}, custom data {player.Sprite.CustomData(0)}");
+        me.flags &= ~mobjflag_t.MF_SHADOW;
+        player.Set(LevelScene.ThingEntry(me));
+        if (player.Entry.Shadow || ((int)Math.Round(player.Sprite.CustomData(0).G) & ThingSprites.FlagShadow) != 0)
+            Fail($"{map}: the player without MF_SHADOW is drawn fuzzed: entry {player.Entry}");
+        player.Sprite.Free(); // not a child until _Ready
+        player.Free();
+        me.flags = flags;
+        p.powers[(int)powertype_t.pw_invisibility] = invisibility;
+        mobj_t spectre = world.P_SpawnMobj(me.x + 64 * Fixed.FRACUNIT, me.y, World.ONFLOORZ, mobjtype_t.MT_SHADOWS);
+        _scene.PresentWorld();
+        int k = -1;
+        for (int n = 0; n < _scene.DrawnMobjs.Count; n++)
+        {
+            if (_scene.DrawnMobjs[n] == spectre)
+                k = n;
+        }
+        if (k < 0 || !things.Entries[k].Shadow || ((int)Math.Round(things.CustomData(k).G) & ThingSprites.FlagShadow) == 0)
+            Fail($"{map}: a spectre spawned beside the player is not drawn fuzzed (instance {k}{(k >= 0 ? $", entry {things.Entries[k]}, custom data {things.CustomData(k)}" : "")})");
+        world.P_RemoveMobj(spectre);
+        _scene.PresentWorld();
+        foreach (mobj_t mo in _scene.DrawnMobjs)
+        {
+            if (mo == spectre)
+                Fail($"{map}: the removed spectre is still drawn");
+        }
+        if (m.FuzzPhase != Fuzz.Phase(world.leveltime))
+            Fail($"{map}: the fuzz phase is {m.FuzzPhase} at tic {world.leveltime}, expected {Fuzz.Phase(world.leveltime)}");
     }
 
     private int _teleportMaps;
@@ -590,6 +647,8 @@ public partial class LevelCheck
         m.SetPalette(StStuff.STARTREDPALS + 3);
         compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, palette {StStuff.STARTREDPALS + 3}");
         m.SetPalette(0);
+        // T6.9: the fuzz of MF_SHADOW things.
+        compared += await CheckFuzz(m, things, atlas, lit, picked, basis);
 
         // T3.6: vanilla's look (no outline) side-on, and the full tilt from the game camera's pitch, where the
         // billboard faces the camera: the patch again at 1 unit per pixel (an upright one would be squashed).
@@ -749,6 +808,141 @@ public partial class LevelCheck
         if (grow > 0 && outlined == 0)
             Fail($"{what} ({SpriteName(e)}): no outline pixels to compare");
         return compared;
+    }
+
+    /// <summary>
+    /// T6.9: the fuzz (<see cref="Fuzz"/>). Seen side-on at 1 unit per pixel as
+    /// <see cref="CompareSprite"/>, the widest other compared thing stands 64
+    /// units behind thing <paramref name="i"/> (so the fuzz has something to
+    /// shift; the level is hidden). Drawn alone, then with thing
+    /// <paramref name="i"/> marked <c>MF_SHADOW</c> in front: each of its
+    /// opaque texels must show the pixel <see cref="Fuzz.Source"/> names in
+    /// the first capture, matched to its nearest palette index and darkened
+    /// through colormap 6 as many times as it says (pixels whose source is the
+    /// void, a colour no palette has, are not compared), every other pixel the
+    /// first capture's. Cases: phase 17; phase 0 in a red palette as the
+    /// player's own sprite (its outline stays, in its light); and with the
+    /// fuzz off (<see cref="SpriteSettings.Fuzz"/>) the thing must draw as any
+    /// sprite (<see cref="CompareSprite"/>).
+    /// </summary>
+    private async Task<int> CheckFuzz(LevelMesh m, ThingSprites things, SpriteAtlas atlas, int i, List<int> picked, Basis basis)
+    {
+        string map = m.Level.Name;
+        if (m.SpriteMaterial.NextPass != m.FuzzMaterial)
+            Fail($"{map}: the sprite material's next pass is not the fuzz material");
+        int j = -1, widest = 0;
+        foreach (int k in picked)
+        {
+            int width = atlas.Images[things.ShownFrames[k].Slot].Width;
+            if (k != i && width > widest)
+                (j, widest) = (k, width);
+        }
+        if (j < 0)
+            return 0;
+        ThingSprites.Entry original = things.Entries[i], behind = things.Entries[j];
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        things.SetEntry(j, behind with { MapPosition = original.MapPosition - toCamera * 64, Sector = original.Sector });
+        int compared = 0;
+        SpriteSettings settings = m.Sprites;
+        int phase = m.FuzzPhase;
+        foreach ((int Phase, int Palette, bool Own) c in new[] { (17, 0, false), (0, StStuff.STARTREDPALS + 3, true) })
+        {
+            m.SetFuzzPhase(c.Phase);
+            m.SetPalette(c.Palette);
+            things.SetEntry(i, original with { Shadow = true, Own = c.Own });
+            compared += await CompareFuzz(m, things, atlas, i, j, basis,
+                $"{map}: thing {i} fuzzed in front of thing {j}, phase {c.Phase}, palette {c.Palette}{(c.Own ? ", the player's own sprite" : "")}");
+        }
+        m.SetPalette(0);
+        m.SetFuzzPhase(phase);
+        things.SetEntry(j, behind);
+        things.SetEntry(i, original with { Shadow = true });
+        if (((int)Math.Round(things.CustomData(i).G) & ThingSprites.FlagShadow) == 0)
+            Fail($"{map}: thing {i} marked MF_SHADOW: custom data flags {things.CustomData(i).G}, no {ThingSprites.FlagShadow}");
+        m.SetSprites(settings with { Fuzz = false });
+        compared += await CompareSprite(m, things, atlas, i, basis, $"{map}: thing {i} with MF_SHADOW, the fuzz off");
+        m.SetSprites(settings);
+        things.SetEntry(i, original);
+        return compared;
+    }
+
+    private async Task<int> CompareFuzz(LevelMesh m, ThingSprites things, SpriteAtlas atlas, int i, int j, Basis basis, string what)
+    {
+        const float back = 1024;
+        ThingSprites.Entry e = things.Entries[i];
+        ThingSprites.Shown shown = things.ShownFrames[i];
+        IndexedImage patch = atlas.Images[shown.Slot];
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        Ortho(basis, e.MapPosition + toCamera * back, 1, 2 * back);
+        things.IsolateSet(new[] { j });
+        byte[]? before = await Capture($"{what}: thing {j} alone");
+        things.IsolateSet(new[] { i, j });
+        byte[]? frame = await Capture(what);
+        things.Isolate(null);
+        if (before is null || frame is null)
+            return 0;
+        Vector2 foot = _scene.Camera.UnprojectPosition(LevelMesh.ToGodot((int)(e.MapPosition.X * 65536), (int)(e.MapPosition.Y * 65536), e.MapPosition.Z));
+        int fx = (int)MathF.Round(foot.X), fy = (int)MathF.Round(foot.Y);
+        Vector2I size = ViewSize();
+        int left = fx - patch.LeftOffset, top = fy - patch.TopOffset;
+        int outline = m.Sprites.Outline, grow = e.Own && outline >= 0 ? 1 : 0;
+        int ownMap = m.ColormapOverride >= 0 ? m.ColormapOverride
+            : e.FullBright ? 0
+            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, back, sprite: true);
+        byte[] fuzzMap = Colormap.GetMap(Fuzz.FuzzColormap).ToArray();
+        bool Opaque(int col, int row) => col >= 0 && col < patch.Width && row >= 0 && row < patch.Height && patch.IsOpaque(shown.Flip ? patch.Width - 1 - col : col, row);
+        (int R, int G, int B) At(byte[] img, int x, int y)
+        {
+            int p = (y * size.X + x) * 4;
+            return (img[p], img[p + 1], img[p + 2]);
+        }
+        int count = 0, bad = 0, fuzzed = 0, voids = 0, darker = 0, outlined = 0;
+        string first = "";
+        for (int py = 0; py < size.Y; py++)
+        {
+            for (int px = 0; px < size.X; px++)
+            {
+                (int R, int G, int B) got = At(frame, px, py);
+                int c = px - left, r = py - top;
+                (int R, int G, int B) expected;
+                if (Opaque(c, r))
+                {
+                    (int offset, int darkenings) = Fuzz.Source(m.FuzzPhase, c, r, patch.Height, row => Opaque(c, row));
+                    (int R, int G, int B) source = At(before, px, Math.Clamp(py + offset, 0, size.Y - 1));
+                    if (NearBackground(source))
+                    {
+                        voids++;
+                        continue;
+                    }
+                    int index = Fuzz.NearestIndex(Playpal, m.Palette, source.R, source.G, source.B);
+                    for (int n = 1; n < darkenings; n++)
+                        index = fuzzMap[index];
+                    expected = Shade((byte)index, Fuzz.FuzzColormap);
+                    fuzzed++;
+                    if (darkenings > 1)
+                        darker++;
+                }
+                else if (grow > 0 && (Opaque(c - 1, r) || Opaque(c + 1, r) || Opaque(c, r - 1) || Opaque(c, r + 1)))
+                {
+                    expected = Shade((byte)outline, ownMap);
+                    outlined++;
+                }
+                else
+                    expected = At(before, px, py);
+                count++;
+                if (got != expected && bad++ == 0)
+                    first = $"texel ({c}, {r}) at pixel ({px}, {py}): drew {got}, expected {expected}";
+            }
+        }
+        _pixels += count;
+        if (bad > 0)
+            Fail($"{what} ({SpriteName(e)}): {bad} of {count} pixels differ, first {first}");
+        string counts = $"{fuzzed} fuzzed pixels compared ({darker} darkened more than once; {voids} over the void not compared), {outlined} outline pixels";
+        if (fuzzed == 0 || darker == 0 || (grow > 0 && outlined == 0))
+            Fail($"{what} ({SpriteName(e)}): {counts}");
+        else
+            GD.Print($"Level check: {what} ({SpriteName(e)}): {counts}");
+        return count;
     }
 
     private string SpriteName(ThingSprites.Entry e) =>
