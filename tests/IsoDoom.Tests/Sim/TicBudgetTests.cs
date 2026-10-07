@@ -15,7 +15,9 @@ namespace IsoDoom.Tests.Sim;
 /// turning (twin-stick tweaks, as the game). The things only count down their
 /// state tics until M6 (T6.1), so measure again then. T6.4: also with every
 /// monster awake (none deaf, a noise from the player at the start; the player
-/// in god mode so they keep chasing and attacking).
+/// in god mode so they keep chasing and attacking). T6.13: also with every
+/// monster hunting the player from the start (target and see state, as the
+/// level script's <c>wake</c>).
 /// </summary>
 public class TicBudgetTests
 {
@@ -27,20 +29,33 @@ public class TicBudgetTests
     public const double BudgetMs = 2.0;
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Doom1E1M9TicsStayInTheBudget(bool awake)
+    [InlineData("asleep")]
+    [InlineData("noise")]
+    [InlineData("all")]
+    public void Doom1E1M9TicsStayInTheBudget(string awake)
     {
         WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_hard), Tweaks.TopDown);
         world.G_DoLoadLevel(Level.Load(wad, "E1M9"));
         int mobjs = world.Mobjs().Count();
-        if (awake)
+        if (awake != "asleep")
         {
             foreach (mobj_t m in world.Mobjs())
                 m.flags &= ~mobjflag_t.MF_AMBUSH;
             world.players[world.consoleplayer].cheats |= player_t.CF_GODMODE;
             world.P_NoiseAlert(world.players[world.consoleplayer].mo!, world.players[world.consoleplayer].mo!);
+        }
+        if (awake == "all")
+        {
+            // T6.13: every monster hunts the player, as A_Look on seeing it (the level script's wake).
+            foreach (mobj_t m in world.Mobjs().ToList())
+            {
+                if ((m.flags & mobjflag_t.MF_COUNTKILL) == 0)
+                    continue;
+                m.target = world.players[world.consoleplayer].mo;
+                if (m.state == m.info.spawnstate)
+                    world.P_SetMobjState(m, m.info.seestate);
+            }
         }
 
         const int warmup = 105, measured = 1050;

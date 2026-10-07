@@ -130,6 +130,62 @@ public sealed class RouteFile
         return new RouteFile { Iwad = iwad, Map = map, Skill = skill, Start = start, Exit = exit, Cmds = cmds, Monsters = monsters, Events = events };
     }
 
+    /// <summary>The demo version <see cref="FromDemo"/> reads: v1.9's (g_game.c <c>VERSION</c>).</summary>
+    public const int DemoVersion = 109;
+
+    /// <summary>g_game.c <c>DEMOMARKER</c>: the byte that ends a demo's ticcmds.</summary>
+    public const byte DEMOMARKER = 0x80;
+
+    /// <summary>
+    /// T6.13, the vanilla-input adapter: a v1.9 demo lump (e.g. DOOM1.WAD's
+    /// <c>DEMO1</c>) as a route, as g_game.c's <c>G_DoPlayDemo</c> reads its
+    /// header (version 109, skill, episode, map, deathmatch, respawn, fast,
+    /// nomonsters, consoleplayer, playeringame[4]) and <c>G_ReadDemoTiccmd</c>
+    /// each tic's <c>ticcmd</c> (<c>forwardmove</c>, <c>sidemove</c>, the
+    /// angleturn byte, <c>buttons</c>) up to <see cref="DEMOMARKER"/>. The
+    /// map is <c>ExMy</c>, or <c>MAPxx</c> with <paramref name="commercial"/>.
+    /// The sim plays single player only: a demo with another player, deathmatch,
+    /// <c>-respawn</c> or <c>-fast</c> is refused (<see cref="NotSupportedException"/>);
+    /// a demo of another version or without its marker is a <see cref="FormatException"/>.
+    /// </summary>
+    public static RouteFile FromDemo(ReadOnlySpan<byte> lump, string name, bool commercial = false)
+    {
+        if (lump.Length < 13)
+            throw new FormatException($"{name}: a demo of {lump.Length} bytes (the header has 13)");
+        if (lump[0] != DemoVersion)
+            throw new FormatException($"{name}: demo version {lump[0]} (only v1.9's {DemoVersion})");
+        int skill = lump[1] + 1, episode = lump[2], map = lump[3];
+        if (skill < 1 || skill > 5)
+            throw new FormatException($"{name}: skill {lump[1]} (0-4)");
+        if (lump[4] != 0 || lump[5] != 0 || lump[6] != 0)
+            throw new NotSupportedException($"{name}: deathmatch {lump[4]}, respawn {lump[5]}, fast {lump[6]}: only plain single player demos");
+        if (lump[8] != 0 || lump[9] == 0 || lump[10] != 0 || lump[11] != 0 || lump[12] != 0)
+            throw new NotSupportedException($"{name}: consoleplayer {lump[8]}, players {lump[9]}{lump[10]}{lump[11]}{lump[12]}: only player 1 alone");
+        var cmds = new List<ticcmd_t>();
+        int p = 13;
+        for (; p < lump.Length && lump[p] != DEMOMARKER; p += 4)
+        {
+            if (p + 4 > lump.Length)
+                throw new FormatException($"{name}: a ticcmd cut short at byte {p}");
+            cmds.Add(new ticcmd_t
+            {
+                forwardmove = unchecked((sbyte)lump[p]),
+                sidemove = unchecked((sbyte)lump[p + 1]),
+                angleturn = (short)(unchecked((sbyte)lump[p + 2]) << 8), // G_ReadDemoTiccmd: ((unsigned char)*demo_p++)<<8
+                buttons = lump[p + 3],
+            });
+        }
+        if (p >= lump.Length)
+            throw new FormatException($"{name}: no DEMOMARKER at the end");
+        return new RouteFile
+        {
+            Map = commercial ? string.Create(CultureInfo.InvariantCulture, $"MAP{map:00}") : string.Create(CultureInfo.InvariantCulture, $"E{episode}M{map}"),
+            Skill = skill,
+            Monsters = lump[7] == 0,
+            Cmds = cmds,
+        };
+    }
+
     /// <summary>
     /// Runs the events of tic <paramref name="tic"/> (0-based) in
     /// <paramref name="world"/>, as the vanilla reference does before the

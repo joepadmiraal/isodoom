@@ -135,6 +135,20 @@ public sealed class VanillaRoute
 
     public static VanillaRoute Load(string name) => Parse(System.IO.Path.Combine(Dir, name + ".route"));
 
+    /// <summary>
+    /// T6.13: DOOM1.WAD's demo lump <paramref name="lump"/> (<c>DEMO1</c>-<c>DEMO3</c>) as a
+    /// route (<see cref="RouteFile.FromDemo"/>, the vanilla-input adapter),
+    /// named after the lump in lower case: its dump is <c>demo1.vanilla</c> in
+    /// <see cref="DumpDirEnvVar"/>, written by <c>tools/VanillaRef/demos.sh</c>.
+    /// Skips without DOOM1.WAD.
+    /// </summary>
+    public static VanillaRoute Demo(string lump)
+    {
+        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        RouteFile route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump);
+        return new VanillaRoute(lump.ToLowerInvariant(), "doom1", route.Map!, (skill_t)(route.Skill - 1), null, 0, route.Cmds, route);
+    }
+
     /// <summary>Parses a route file with the game's <see cref="RouteFile"/> (T5.10: the level script plays routes too) and checks its header.</summary>
     public static VanillaRoute Parse(string path)
     {

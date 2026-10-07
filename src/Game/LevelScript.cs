@@ -70,7 +70,8 @@ namespace IsoDoom.Game;
 /// input every 1/35 s, as the game). <c>tics N</c> waits until N more tics
 /// ran (or the queue is empty). <c>checksum</c> waits until the queue is empty and
 /// prints <c>leveltime</c>, <c>World.Checksum()</c> and the player mobj.
-/// <c>tictime TICS</c> (T4.9) times <c>World.G_Ticker</c> over the next TICS
+/// <c>tictime TICS</c> (T4.9) times <c>World.G_Ticker</c> (T6.13: naming the worst tic and the
+/// garbage collections of the whole process meanwhile) over the next TICS
 /// tics (or until the scripted queue is empty) and prints the mean, median,
 /// 95th percentile and worst in ms (SPEC §9's budget is 2 ms).
 /// <c>map NAME [EXITS]</c> (T5.8) waits until the queue is empty, prints the map
@@ -121,6 +122,12 @@ namespace IsoDoom.Game;
 /// pickup does (<c>P_GivePower</c>), optionally with TICS left, and <c>flash damage|bonus COUNT</c>
 /// sets its <c>damagecount</c> or <c>bonuscount</c> (the red or gold palette flash), both
 /// before the next tic as <c>missile</c>; e.g. <c>power infrared; cmd 0 0 0 0 1; shot FILE.png</c>.
+/// <c>wake</c> (T6.13, debugging) makes every live monster hunt the player
+/// before the next tic (target and see state, ambush or not), e.g.
+/// <c>power invulnerability; wake; sim live; wait 120; tictime 700</c> for the tic budget.
+/// <c>demo LUMP [TICS]</c> (T6.13) queues the WAD's demo lump (e.g. <c>DEMO1</c>) as a route
+/// (<see cref="RouteFile.FromDemo"/>: the vanilla-input adapter); like <c>route</c> it needs
+/// <c>--level-tweaks=vanilla</c>, the demo's map and skill and monsters on.
 /// <c>spawn TYPE X Y [ANGLE]</c> (T6.9, debugging) spawns a mobj of <c>mobjtype_t</c>
 /// <c>MT_TYPE</c> (e.g. <c>shadows</c>, the spectre, which DOOM1's maps lack) on the floor at
 /// map point X, Y facing ANGLE (degrees, default 0) through <c>P_SpawnMobj</c>, before the next
@@ -144,7 +151,8 @@ public partial class LevelScript : Node
         foreach (string command in _commands)
         {
             if (command.StartsWith("cmd ", StringComparison.Ordinal) || command.StartsWith("step ", StringComparison.Ordinal)
-                || command.StartsWith("route ", StringComparison.Ordinal) || command == "sim scripted")
+                || command.StartsWith("route ", StringComparison.Ordinal) || command.StartsWith("demo ", StringComparison.Ordinal)
+                || command == "sim scripted")
             {
                 _scene.ScriptedTics = true;
                 break;
@@ -294,6 +302,28 @@ public partial class LevelScript : Node
                             });
                             break;
                         }
+                    case "wake":
+                        // T6.13 (debugging): every live monster wakes and hunts the player, as A_Look
+                        // would on seeing it (target, see state), ambush or not: the tic budget's worst case.
+                        _scene.BeforeNextTic(world =>
+                        {
+                            IsoDoom.Sim.mobj_t? player = world.players[world.consoleplayer].mo;
+                            if (player is null)
+                                return;
+                            int woken = 0;
+                            foreach (IsoDoom.Sim.mobj_t m in System.Linq.Enumerable.ToList(world.Mobjs()))
+                            {
+                                if ((m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) == 0 || m.health <= 0)
+                                    continue;
+                                m.flags &= ~IsoDoom.Sim.mobjflag_t.MF_AMBUSH;
+                                m.target = player;
+                                if (m.state == m.info.spawnstate)
+                                    world.P_SetMobjState(m, m.info.seestate);
+                                woken++;
+                            }
+                            GD.Print($"Level script: wake: {woken} monsters hunt the player");
+                        });
+                        break;
                     case "power":
                         {
                             // T6.8: a debug power-up, as its pickup gives it (P_GivePower), optionally with TICS left.
@@ -335,6 +365,16 @@ public partial class LevelScript : Node
                                 ? QueueRoute(string.Join(' ', w[1..^1]), routeTics)
                                 : QueueRoute(string.Join(' ', w[1..]))))
                         {
+                            GetTree().Quit(1);
+                            return;
+                        }
+                        break;
+                    case "demo":
+                        if (w.Length is < 2 or > 3 || !(w.Length == 2 ? QueueDemo(w[1].ToUpperInvariant())
+                                : int.TryParse(w[2], out int demoTics) && demoTics >= 0 && QueueDemo(w[1].ToUpperInvariant(), demoTics)))
+                        {
+                            if (w.Length is < 2 or > 3)
+                                GD.PrintErr("Level script: expected demo LUMP [TICS]");
                             GetTree().Quit(1);
                             return;
                         }
@@ -477,10 +517,13 @@ public partial class LevelScript : Node
         if (_scene.World is not { } world)
             throw new ArgumentException("no world");
         var times = new List<double>(n);
+        int gcs = GC.CollectionCount(0), start = world.leveltime;
         _scene.TicTimes = times;
         while (times.Count < n && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.PlayerMobj is not null)
             await Frames(1);
         _scene.TicTimes = null;
+        gcs = GC.CollectionCount(0) - gcs;
+        int worstTic = times.Count == 0 ? 0 : start + 1 + times.IndexOf(System.Linq.Enumerable.Max(times));
         if (times.Count == 0)
         {
             GD.PrintErr("Level script: tictime: no tic ran");
@@ -492,7 +535,7 @@ public partial class LevelScript : Node
         mean /= times.Count;
         times.Sort();
         string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
-        GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: mean {F(mean)} ms, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])}");
+        GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: mean {F(mean)} ms, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])} (tic {worstTic}); {gcs} garbage collections meanwhile");
     }
 
     /// <summary>
@@ -512,6 +555,37 @@ public partial class LevelScript : Node
             GD.PrintErr($"Level script: route: {e.Message}");
             return false;
         }
+        return QueueRoute(route, $"route {path}", tics);
+    }
+
+    /// <summary>
+    /// T6.13: queues the tics of the WAD's demo lump <paramref name="lump"/>
+    /// (e.g. <c>DEMO1</c>) read by the vanilla-input adapter
+    /// (<see cref="RouteFile.FromDemo"/>) as a route; false, with an error,
+    /// when the WAD lacks it, the sim cannot play it or the scene does not
+    /// match its map, skill and monsters.
+    /// </summary>
+    private bool QueueDemo(string lump, int? tics = null)
+    {
+        RouteFile route;
+        try
+        {
+            IsoDoom.Wad.WadArchive wad = _scene.Wad ?? throw new FormatException("no WAD open");
+            if (wad.W_CheckNumForName(lump) < 0)
+                throw new FormatException($"the WAD has no lump {lump}");
+            route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump, _scene.Mesh?.Level.Name.StartsWith("MAP", StringComparison.OrdinalIgnoreCase) == true);
+        }
+        catch (Exception e) when (e is FormatException or NotSupportedException)
+        {
+            GD.PrintErr($"Level script: demo: {e.Message}");
+            return false;
+        }
+        return QueueRoute(route, $"demo {lump}", tics);
+    }
+
+    /// <summary>Queues a parsed route's (or demo's) tics; <paramref name="what"/> names it in messages.</summary>
+    private bool QueueRoute(RouteFile route, string what, int? tics)
+    {
         string map = (route.Map ?? "E1M1").ToUpperInvariant();
         string? shown = _scene.Mesh?.Level.Name;
         var wrong = new List<string>();
@@ -527,12 +601,12 @@ public partial class LevelScript : Node
             wrong.Add("no player");
         if (wrong.Count > 0)
         {
-            GD.PrintErr($"Level script: route {path}: {string.Join("; ", wrong)}");
+            GD.PrintErr($"Level script: {what}: {string.Join("; ", wrong)}");
             return false;
         }
         if (route.Start is { } s && !_scene.PlaceRouteStart(s.X, s.Y, s.Angle))
         {
-            GD.PrintErr($"Level script: route {path}: start {s.X} {s.Y}: something stands there");
+            GD.PrintErr($"Level script: {what}: start {s.X} {s.Y}: something stands there");
             return false;
         }
         _scene.ScriptedTics = true;
@@ -543,7 +617,7 @@ public partial class LevelScript : Node
             int t = tic;
             _scene.QueueTic(route.Cmds[tic], System.Linq.Enumerable.Any(route.Events, e => e.Tic == t) ? world => route.RunEvents(world, t) : null);
         }
-        GD.Print($"Level script: route {path}: {count} tics queued on {map}{(count < route.Cmds.Count ? $" (of {route.Cmds.Count})" : route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
+        GD.Print($"Level script: {what}: {count} tics queued on {map}{(count < route.Cmds.Count ? $" (of {route.Cmds.Count})" : route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
         return true;
     }
 
