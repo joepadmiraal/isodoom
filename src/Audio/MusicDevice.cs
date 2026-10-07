@@ -5,8 +5,8 @@ namespace IsoDoom.Audio;
 
 /// <summary>
 /// The music driver under <see cref="SSound"/>'s music half (i_sound.h's
-/// music module, T7.8c): T7.8e's OPL player in the game, a
-/// <see cref="RecordingMusicDevice"/> until then and in the tests. Calls come
+/// music module, T7.8c): T7.8e's OPL player (<c>MusicPlayer</c>) in the
+/// game, a <see cref="RecordingMusicDevice"/> in the tests. Calls come
 /// from the game's thread, in vanilla's order: <see cref="I_RegisterSong"/>
 /// then <see cref="I_PlaySong"/>; <see cref="I_StopSong"/> then
 /// <see cref="I_UnRegisterSong"/>; a song paused is resumed before it is
@@ -45,8 +45,8 @@ public interface IMusicDevice
 
 /// <summary>
 /// A <see cref="IMusicDevice"/> that plays nothing and records what it is
-/// asked (T7.8c): the game's stand-in until T7.8e's OPL player, and the
-/// tests'. Its state (<see cref="Song"/>, <see cref="Playing"/>,
+/// asked (T7.8c): the tests' device, and the record T7.8e's OPL player
+/// (<c>MusicPlayer.Record</c>) keeps of its calls. Its state (<see cref="Song"/>, <see cref="Playing"/>,
 /// <see cref="Paused"/>, <see cref="Looping"/>, <see cref="Volume"/>) is what
 /// a real device would be doing; <see cref="Calls"/> keeps the last
 /// <see cref="LogLength"/> calls, oldest first.

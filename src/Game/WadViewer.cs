@@ -84,6 +84,19 @@ public partial class WadViewer : Control
     /// <summary>T7.7: how many times the preview started playing (the check).</summary>
     public int PreviewStarts { get; private set; }
 
+    // T7.8e: the songs' preview: the game's OPL player (on the master bus) of the WAD loaded, the song selected's handle
+    private IsoDoom.Audio.MusicPlayer? _music;
+    private object? _song;
+
+    /// <summary>T7.8e: the songs' player (null until a WAD is loaded).</summary>
+    public IsoDoom.Audio.MusicPlayer? Music => _music;
+
+    /// <summary>T7.8e: the song lump playing (the lump selected last, when the OPL player plays it), or null.</summary>
+    public string? PreviewSong { get; private set; }
+
+    /// <summary>T7.8e: the music volume of the preview (i_oplmusic.c's 0–127; the sounds' preview plays at full volume too).</summary>
+    public const int PreviewMusicVolume = 127;
+
     /// <summary>The catalog, or null when no IWAD could be loaded.</summary>
     public GraphicsCatalog? Catalog => _catalog;
 
@@ -184,6 +197,7 @@ public partial class WadViewer : Control
 
         _catalog = catalog;
         _lumps = LumpDirectory.Build(catalog.Wad);
+        InitMusic(catalog.Wad);
         CurrentLump = null;
         _lumpFilter.Editable = true;
         _lumpKind.Disabled = false;
@@ -370,6 +384,8 @@ public partial class WadViewer : Control
                 ShowTab(lumps: false);
             else if (PreviewSound is not null)
                 PlayPreview(); // T7.7: double-click or Enter plays the sound again
+            else if (PreviewSong is not null && CurrentLump is { } song)
+                PlaySong(song); // T7.8e: and a song from its start
         };
         lumps.AddChild(_lumpTree);
         _preview = new AudioStreamPlayer { Name = "SoundPreview" };
@@ -640,6 +656,9 @@ public partial class WadViewer : Control
         _spriteBar.Visible = false;
         _preview.Stop();
         PreviewSound = null;
+        StopSong();
+        if (e.Kind == LumpKind.Music)
+            line += PlaySong(e) ? "\nPlaying it on the OPL3 (looping; double-click or Enter plays it from the start)." : $"\nNot playable{(_music is { CanPlay: false } ? ": the WAD has no GENMIDI" : "")}.";
         if (e.Kind == LumpKind.Sound && DmxSound.HasHeader(e.Lump.Data.Span))
         {
             // T7.7 (T1.6c): a digitized sound plays when selected, as the game plays it (DMX's pads left out)
@@ -690,8 +709,49 @@ public partial class WadViewer : Control
     }
 
     // T7.7: a stream still playing (or a wrapper not freed) at exit is reported as leaked
+    /// <summary>T7.8e: a new OPL player for <paramref name="wad"/>'s <c>GENMIDI</c> (none: every song refused).</summary>
+    private void InitMusic(WadArchive wad)
+    {
+        StopSong();
+        if (_music is { } old)
+        {
+            old.StopThread();
+            RemoveChild(old);
+            old.QueueFree();
+        }
+        ReadOnlyMemory<byte>? genmidi = wad.W_CheckNumForName("GENMIDI") is int bank and >= 0 ? wad.W_CacheLumpNum(bank) : (ReadOnlyMemory<byte>?)null;
+        _music = new IsoDoom.Audio.MusicPlayer(genmidi, "Master");
+        AddChild(_music);
+        _music.I_SetMusicVolume(PreviewMusicVolume);
+    }
+
+    /// <summary>T7.8e: the song lump <paramref name="e"/> from its start, looping; false when the player refuses it.</summary>
+    private bool PlaySong(LumpEntry e)
+    {
+        StopSong();
+        if (_music is null || _music.I_RegisterSong(e.Lump.Name, e.Lump.Data) is not { } handle)
+            return false;
+        _song = handle;
+        _music.I_PlaySong(handle, looping: true);
+        PreviewSong = e.Lump.Name;
+        return true;
+    }
+
+    private void StopSong()
+    {
+        if (_music is not null && _song is not null)
+        {
+            _music.I_StopSong();
+            _music.I_UnRegisterSong(_song);
+        }
+        _song = null;
+        PreviewSong = null;
+    }
+
     public override void _ExitTree()
     {
+        StopSong();
+        _music?.StopThread();
         _preview?.Stop();
         if (_preview?.Stream is { } stream)
         {

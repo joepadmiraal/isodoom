@@ -466,21 +466,32 @@ public partial class LevelScene : ISetupHost
     /// <summary>The volume (0–15, vanilla's) as a bus's: silent at 0, else its share of full linear amplitude.</summary>
     public static float VolumeDb(int volume) => volume <= 0 ? -80f : Mathf.LinearToDb(volume / 15f);
 
-    /// <summary>The volumes (vanilla's <c>sfxVolume</c>, <c>musicVolume</c>) on their buses (<see cref="SfxBus"/>, <see cref="MusicBus"/>).</summary>
+    /// <summary>
+    /// T7.8e: the music volume (0–15) as the <see cref="MusicBus"/>'s: unity,
+    /// muted at 0; the volume itself is i_oplmusic.c's
+    /// (<c>I_OPL_SetMusicVolume</c>, the notes' levels, vanilla's), which at 0
+    /// leaves the notes at the chip's −47 dB (SPEC §12 T7.8e).
+    /// </summary>
+    public static float MusicBusDb(int volume) => volume <= 0 ? -80f : 0f;
+
+    /// <summary>
+    /// The volumes (vanilla's <c>sfxVolume</c>, <c>musicVolume</c>) on their
+    /// buses (<see cref="SfxBus"/>; <see cref="MusicBus"/> only mutes at 0,
+    /// <see cref="MusicBusDb"/>).
+    /// </summary>
     private void UpdateAudioBuses()
     {
         if (_flow is null)
             return;
-        SetBusVolume(SfxBus, Menu.sfxVolume);
-        SetBusVolume(MusicBus, Menu.musicVolume);
+        SetBusVolume(SfxBus, Menu.sfxVolume, VolumeDb(Menu.sfxVolume));
+        SetBusVolume(MusicBus, Menu.musicVolume, MusicBusDb(Menu.musicVolume));
     }
 
-    private static void SetBusVolume(string bus, int volume)
+    private static void SetBusVolume(string bus, int volume, float db)
     {
         int i = AudioServer.GetBusIndex(bus);
         if (i < 0)
             return;
-        float db = VolumeDb(volume);
         if (AudioServer.GetBusVolumeDb(i) != db)
             AudioServer.SetBusVolumeDb(i, db);
         AudioServer.SetBusMute(i, volume <= 0);

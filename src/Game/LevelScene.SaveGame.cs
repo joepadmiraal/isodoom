@@ -46,7 +46,11 @@ public partial class LevelScene
         GD.Print($"Saves: {Flow.SaveDir}{(_tempSaveDir is not null ? " (this run's own)" : "")}");
     }
 
-    public override void _ExitTree() => RemoveTempSaves();
+    public override void _ExitTree()
+    {
+        RemoveTempSaves();
+        GetTree().AutoAcceptQuit = true; // T7.8e: CloseRequested's, while the scene is up
+    }
 
     /// <summary>Removes this run's temporary save directory.</summary>
     private void RemoveTempSaves()

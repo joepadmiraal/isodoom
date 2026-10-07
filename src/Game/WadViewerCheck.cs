@@ -64,6 +64,11 @@ public partial class WadViewerCheck : Node
             Fail($"exception: {e}");
         }
         GD.Print(_failures == 0 ? "WAD viewer check: OK" : $"WAD viewer check: FAILED ({_failures} failure(s))");
+        // T7.8e: the song preview's thread stopped and its playback freed before the quit (else reported as leaked)
+        _viewer.Music?.StopThread();
+        ulong until = Time.GetTicksMsec() + 150;
+        while (Time.GetTicksMsec() < until)
+            await NextFrame();
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 
@@ -154,6 +159,8 @@ public partial class WadViewerCheck : Node
         }
 
         int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0, sounds = 0, unplayable = 0, songs = 0, banks = 0;
+        int songsPlayed = 0;
+        int? firstSong = null;
         var kinds = new int[Enum.GetValues<LumpKind>().Length];
         foreach (int i in _viewer.LumpRows)
         {
@@ -186,6 +193,26 @@ public partial class WadViewerCheck : Node
                     else if (e.Kind == LumpKind.Instruments && Genmidi.TryRead(e.Lump.Data.Span, out _) is not null)
                         banks++;
                 }
+                // T7.8e: a song plays on the OPL player when selected (every MUS song mus2mid.c converts, and MIDI files), nothing else
+                if (e.Kind == LumpKind.Music)
+                {
+                    bool convertible = MusSong.TryRead(e.Lump.Data.Span, out _) is { Mus2MidError: null } || LumpDirectory.MusicFormat(e.Lump.Data.Span) == "MIDI";
+                    IsoDoom.Audio.RecordingMusicDevice? rec = _viewer.Music?.Record;
+                    if (_viewer.PreviewSong is string playing)
+                    {
+                        if (playing != e.Lump.Name || rec is not { Playing: true, Looping: true } || rec.Song != e.Lump.Name)
+                            Fail($"{what}: the song preview plays {playing} ({_viewer.Music})");
+                        else
+                        {
+                            songsPlayed++;
+                            firstSong ??= i;
+                        }
+                    }
+                    else if (convertible && _viewer.Music is { CanPlay: true })
+                        Fail($"{what}: no song preview started");
+                }
+                else if (_viewer.PreviewSong is not null)
+                    Fail($"{what}: a song preview for a lump that is no song");
                 // T7.7: a digitized sound plays as decoded (DMX's pads left out, 8-bit signed at its own rate); nothing else plays
                 DmxSound? expected = e.Kind == LumpKind.Sound ? DmxSound.TryDecode(e.Lump.Data.Span, out _) : null;
                 if (expected is null)
@@ -237,6 +264,7 @@ public partial class WadViewerCheck : Node
             }
             pixels += await CheckCurrent(gpu, background);
         }
+        string heard = await CheckSongHeard(firstSong);
         var kindSummary = new List<string>();
         foreach (LumpKind k in Enum.GetValues<LumpKind>())
         {
@@ -245,7 +273,7 @@ public partial class WadViewerCheck : Node
         }
         GD.Print($"WAD viewer check: lump list: {_viewer.LumpRows.Count} lumps ({string.Join(", ", kindSummary)}); "
             + $"{viaBrowser + direct} graphic lumps shown ({viaBrowser} through the browser, {direct} directly), "
-            + $"{tables} palette tables shown, {others} other lumps ({sounds} sounds played, {unplayable} digitized sounds DMX would not play, {songs} MUS songs and {banks} OPL banks read)"
+            + $"{tables} palette tables shown, {others} other lumps ({sounds} sounds played, {unplayable} digitized sounds DMX would not play, {songs} MUS songs and {banks} OPL banks read, {songsPlayed} songs played{heard})"
             + (gpu ? $", {pixels} drawn pixels compared" : " (headless: upload only)"));
         _viewer.ShowTab(lumps: false);
         _viewer.MainView.SolidBackground = null;
@@ -253,6 +281,31 @@ public partial class WadViewerCheck : Node
     }
 
     /// <summary>Checks the current view's upload and, when possible, its drawn pixels. Returns pixels compared.</summary>
+    /// <summary>
+    /// T7.8e: the first song played again for a second of wall time: the OPL
+    /// player's thread renders it at the mix rate (the dummy driver mixes at
+    /// real time headless), notes sound, and its ring buffer never runs dry.
+    /// </summary>
+    private async Task<string> CheckSongHeard(int? row)
+    {
+        if (row is not int i || _viewer.Music is not { } player)
+            return "";
+        _viewer.SelectLump(i);
+        long pushed = player.FramesPushed;
+        player.TakePeak();
+        ulong t0 = Time.GetTicksUsec();
+        while (Time.GetTicksUsec() - t0 < 1_000_000)
+            await NextFrame();
+        double elapsed = (Time.GetTicksUsec() - t0) / 1e6;
+        double rendered = (player.FramesPushed - pushed) / (double)player.MixRate;
+        int peak = player.TakePeak();
+        string name = _viewer.PreviewSong ?? "?";
+        if (rendered < elapsed - 0.25 || rendered > elapsed + 0.25 || peak < 256 || player.Underruns != 0)
+            Fail($"song preview {name}: {rendered:0.00} s rendered in {elapsed:0.00} s, peak {peak} ({player})");
+        _viewer.SelectLump(i == 0 ? 1 : 0); // stops it
+        return $"; {name} heard for {elapsed:0.0} s: {rendered:0.00} s rendered, peak {peak}, {player.Underruns} underruns";
+    }
+
     private async Task<int> CheckCurrent(bool gpu, Color background)
     {
         GraphicView view = _viewer.CurrentView ?? throw new InvalidOperationException("Nothing shown.");

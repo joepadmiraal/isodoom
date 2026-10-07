@@ -1431,7 +1431,9 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public override void _Notification(int what)
     {
-        if (what == NotificationApplicationFocusOut && !IsCheckRun && !WadLocator.HasUserArg("--level-script"))
+        if (what == NotificationWMCloseRequest && !GetTree().AutoAcceptQuit)
+            CloseRequested(); // T7.8e: the music faded out first
+        else if (what == NotificationApplicationFocusOut && !IsCheckRun && !WadLocator.HasUserArg("--level-script"))
             FocusPaused = true;
         else if (what == NotificationApplicationFocusIn)
             FocusPaused = false;

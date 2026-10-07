@@ -608,6 +608,22 @@ public partial class LevelScript : Node
                     case "music":
                         exit |= await CheckMusic(w);
                         break;
+                    case "sleep":
+                        {
+                            // T7.8e: waits SECONDS of wall-clock time (frames go on; --fixed-fps makes them fast)
+                            ulong until = Time.GetTicksMsec() + (ulong)(double.Parse(w[1], System.Globalization.CultureInfo.InvariantCulture) * 1000);
+                            while (Time.GetTicksMsec() < until)
+                                await Frames(1);
+                            break;
+                        }
+                    case "close":
+                        // T7.8e: the window's close request, as the window manager sends it (the scene fades the music out and quits)
+                        GetTree().Root.PropagateNotification((int)NotificationWMCloseRequest);
+                        await Frames(1000000); // the quit ends the script
+                        break;
+                    case "underruns":
+                        exit |= CheckUnderruns(w);
+                        break;
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -657,6 +673,27 @@ public partial class LevelScript : Node
         if (found)
             return 0;
         GD.PrintErr($"Level script: playing: no channel plays {w[1]}{(origin is null ? "" : $" from {origin}")}");
+        return 1;
+    }
+
+    /// <summary>
+    /// T7.8e: <c>underruns [MAX]</c> prints the music player's state (the
+    /// driver, the ring buffer's level, the underruns, the frames rendered and
+    /// their cost) and fails unless its thread runs and the underruns since
+    /// the buffer was first full are at most MAX (default 0).
+    /// </summary>
+    private int CheckUnderruns(string[] w)
+    {
+        long max = w.Length > 1 ? long.Parse(w[1], System.Globalization.CultureInfo.InvariantCulture) : 0;
+        if (_scene.MusicDevice is not { } player)
+        {
+            GD.PrintErr("Level script: underruns: no music player");
+            return 1;
+        }
+        GD.Print($"Level script: underruns: {player}");
+        if (player.Running && player.Underruns <= max)
+            return 0;
+        GD.PrintErr($"Level script: underruns: {player.Underruns} (at most {max}){(player.Running ? "" : ", the thread does not run")}");
         return 1;
     }
 

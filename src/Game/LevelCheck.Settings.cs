@@ -197,7 +197,12 @@ public partial class LevelCheck
         foreach ((string key, string bus) in new[] { ("sound/sfx_volume", LevelScene.SfxBus), ("sound/music_volume", LevelScene.MusicBus) })
         {
             int i = AudioServer.GetBusIndex(bus);
-            Expect(key, i >= 0 && Mathf.IsEqualApprox(AudioServer.GetBusVolumeDb(i), LevelScene.VolumeDb(int.Parse(changed[key]))), $"bus {bus} at {(i >= 0 ? AudioServer.GetBusVolumeDb(i) : float.NaN)} dB");
+            if (!changed.TryGetValue(key, out string? value))
+                continue;
+            int volume = int.Parse(value);
+            // T7.8e: the music bus only mutes; the volume is the OPL driver's (the notes' levels)
+            float db = bus == LevelScene.MusicBus ? LevelScene.MusicBusDb(volume) : LevelScene.VolumeDb(volume);
+            Expect(key, i >= 0 && Mathf.IsEqualApprox(AudioServer.GetBusVolumeDb(i), db), $"bus {bus} at {(i >= 0 ? AudioServer.GetBusVolumeDb(i) : float.NaN)} dB");
         }
         Expect("controls/mouse_sensitivity", s.TiccmdBuilder.MouseSensitivity == int.Parse(changed["controls/mouse_sensitivity"]), $"the builder's {s.TiccmdBuilder.MouseSensitivity}");
         if (s.World is { } world)

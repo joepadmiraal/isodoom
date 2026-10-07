@@ -30,8 +30,8 @@ public partial class LevelCheck
             return;
         }
         string lump = MusicInfo.LumpName(expected);
-        bool hasLump = wad.W_CheckNumForName(lump) >= 0;
-        var device = _scene.MusicDevice as RecordingMusicDevice;
+        bool hasLump = wad.W_CheckNumForName(lump) >= 0 && _scene.MusicDevice is { CanPlay: true };
+        RecordingMusicDevice? device = _scene.MusicRecord;
         if (sound.mus_playing != expected || sound.MusicAudible != hasLump || !sound.mus_looping
             || device is not null && (hasLump ? device.Song != lump || !device.Playing || !device.Looping : device.Song is not null))
             Fail($"music: {map}: {_scene.MusicText()}, expected {SSound.MusicName(expected)} ({lump}{(hasLump ? "" : ", not in the WAD: silent")}, looping)");
@@ -40,9 +40,9 @@ public partial class LevelCheck
 
     private void CheckMusic()
     {
-        if (_scene.Sound is not { } sound || _scene.MusicDevice is not RecordingMusicDevice device || _scene.Wad is not { } wad)
+        if (_scene.Sound is not { } sound || _scene.MusicRecord is not { } device || _scene.Wad is not { } wad)
         {
-            Fail("music: the scene has no music (or not the stand-in device)");
+            Fail("music: the scene has no music device");
             return;
         }
         GameFlow flow = _scene.Flow;
@@ -52,7 +52,7 @@ public partial class LevelCheck
         flow.D_StartTitle(null);
         musicenum_t title = commercial ? musicenum_t.mus_dm2ttl
             : wad.W_CheckNumForName("D_INTROA") >= 0 ? musicenum_t.mus_introa : musicenum_t.mus_intro;
-        bool titleLump = wad.W_CheckNumForName(MusicInfo.LumpName(title)) >= 0;
+        bool titleLump = wad.W_CheckNumForName(MusicInfo.LumpName(title)) >= 0 && _scene.MusicDevice!.CanPlay;
         if (sound.mus_playing != title || sound.mus_looping || titleLump && device.Song != MusicInfo.LumpName(title))
             Fail($"music: the title loop: {_scene.MusicText()}, expected {SSound.MusicName(title)} once");
 
@@ -86,6 +86,9 @@ public partial class LevelCheck
         _scene.Menu.musicVolume = volume == 15 ? 14 : volume + 1;
         _scene.UpdateSound(0);
         bool followed = sound.snd_MusicVolume == _scene.Menu.musicVolume * 8 && device.Volume == sound.snd_MusicVolume;
+        if (_scene.MusicDevice?.Driver is { } opl)
+            lock (_scene.MusicDevice.Lock)
+                followed &= opl.MusicVolume == sound.snd_MusicVolume; // T7.8e: the OPL driver's volume (the notes' levels)
         _scene.Menu.musicVolume = volume;
         _scene.UpdateSound(0);
         if (!followed || device.Volume != volume * 8)
@@ -99,5 +102,73 @@ public partial class LevelCheck
 
         _scene.Tic(none);
         GD.Print($"Level check: music (T7.8c): {_songsChecked} levels' songs, the title's ({SSound.MusicName(title)}), the pause, the focus pause and the volume; device: {device.CallCount} calls, {device.Registered} song registered");
+    }
+
+    /// <summary>
+    /// T7.8e: the OPL player's thread plays a song for a few seconds of wall
+    /// time (headless too: the dummy driver mixes at real time): the frames
+    /// pushed keep pace with the mix rate, notes sound (and stop under the
+    /// pause), and the ring buffer never ran dry.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckMusicPlayback()
+    {
+        if (_scene.MusicDevice is not { } player || _scene.Sound is not { } sound)
+        {
+            Fail("music playback: no music device");
+            return;
+        }
+        if (!player.Running)
+        {
+            Fail($"music playback: the thread does not run ({player})");
+            return;
+        }
+        if (!player.CanPlay)
+        {
+            GD.Print($"Level check: music playback (T7.8e): no GENMIDI, silent ({player})");
+            return;
+        }
+        // the title's song (D_INTROA or D_INTRO, Doom II's D_DM2TTL), from its start
+        _scene.Flow.D_StartTitle(null);
+        if (!sound.MusicAudible)
+        {
+            GD.Print($"Level check: music playback (T7.8e): the title has no song to play ({_scene.MusicText()})");
+            return;
+        }
+        int volume = _scene.Menu.musicVolume;
+        if (volume == 0)
+            _scene.Menu.musicVolume = 8;
+        _scene.UpdateSound(0);
+
+        const double seconds = 3;
+        long pushed0 = player.FramesPushed;
+        player.TakePeak();
+        ulong t0 = Time.GetTicksUsec();
+        while (Time.GetTicksUsec() - t0 < (ulong)(seconds * 1e6))
+            await NextFrame();
+        double elapsed = (Time.GetTicksUsec() - t0) / 1e6;
+        double rendered = (player.FramesPushed - pushed0) / (double)player.MixRate;
+        int peak = player.TakePeak();
+        if (rendered < elapsed - 0.25 || rendered > elapsed + 0.25)
+            Fail($"music playback: {rendered:0.00} s rendered in {elapsed:0.00} s of wall time ({player})");
+        if (peak < 256)
+            Fail($"music playback: the song is silent (peak {peak}; {player})");
+
+        // the pause keys the melodic voices off: the sequencer holds; then it goes on
+        sound.S_PauseSound();
+        bool held;
+        lock (player.Lock)
+            held = player.Driver!.Paused;
+        sound.S_ResumeSound();
+        bool resumed;
+        lock (player.Lock)
+            resumed = !player.Driver!.Paused;
+        if (!held || !resumed)
+            Fail($"music playback: the pause: held {held}, resumed {resumed} ({player})");
+
+        if (player.Underruns != 0)
+            Fail($"music playback: {player.Underruns} buffer underrun(s) ({player})");
+        _scene.Menu.musicVolume = volume;
+        _scene.UpdateSound(0);
+        GD.Print($"Level check: music playback (T7.8e): {SSound.MusicName(sound.mus_playing)} for {elapsed:0.0} s, {rendered:0.00} s rendered, peak {peak}; {player}");
     }
 }

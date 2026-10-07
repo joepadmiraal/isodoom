@@ -124,6 +124,7 @@ public partial class LevelCheck : Godot.Node
             CheckSaves(); // T7.6: quicksave, quickload, the loaded game going on as the saved one, a damaged save refused
             CheckSound(); // T7.7: the sound effects through the scene
             CheckMusic(); // T7.8c: the music changes through the scene
+            await CheckMusicPlayback(); // T7.8e: a song played for a few seconds on the OPL player's thread
             // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
             await _scene.AudioSettled();
 
@@ -152,6 +153,7 @@ public partial class LevelCheck : Godot.Node
             Fail($"exception: {e}");
         }
         GD.Print(_failures == 0 ? "Level check: OK" : $"Level check: FAILED ({_failures} failure(s))");
+        await _scene.MusicStopped(); // T7.8e: the music faded out, its thread stopped, its playback freed
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 

@@ -32,11 +32,14 @@ public partial class LevelScene
     public SfxPlayer? SfxDevice { get; private set; }
 
     /// <summary>
-    /// T7.8c: the music device: a stand-in that records what it is asked
-    /// (<see cref="RecordingMusicDevice"/>) until T7.8e's OPL player takes
-    /// its place here (<see cref="InitSound"/>).
+    /// T7.8e: the music device: the OPL player (<see cref="MusicPlayer"/>,
+    /// T7.8d's driver on its own thread, on <see cref="MusicBus"/>), made
+    /// once with the sound (<see cref="InitSound"/>) for the game's life.
     /// </summary>
-    public IMusicDevice? MusicDevice { get; private set; }
+    public MusicPlayer? MusicDevice { get; private set; }
+
+    /// <summary>T7.8e: what the music device was asked (its <see cref="MusicPlayer.Record"/>), for the checks.</summary>
+    public RecordingMusicDevice? MusicRecord => MusicDevice?.Record;
 
     /// <summary>T7.7: <c>--level-sound-stereo=screen|facing|off</c>.</summary>
     public SoundStereo Stereo { get; set; } = SoundStereo.Screen;
@@ -63,8 +66,16 @@ public partial class LevelScene
             Stereo = ParseStereo(stereo);
         SfxDevice = new SfxPlayer(Wad!, SSound.DefaultChannels, SfxBus);
         AddChild(SfxDevice);
-        MusicDevice = new RecordingMusicDevice(); // T7.8c: T7.8e's OPL player goes here
         WadArchive wad = Wad!;
+        // T7.8e: the OPL player; no GENMIDI: every song refused (silence)
+        ReadOnlyMemory<byte>? genmidi = wad.W_CheckNumForName("GENMIDI") is int bank and >= 0 ? wad.W_CacheLumpNum(bank) : (ReadOnlyMemory<byte>?)null;
+        double buffer = MusicPlayer.DefaultBufferSeconds;
+        if (WadLocator.GetUserArg("--level-music-buffer") is string ms)
+            buffer = int.TryParse(ms, out int b) && b >= 10 && b <= 1000 ? b / 1000.0
+                : throw new ArgumentException($"--level-music-buffer: \"{ms}\" (10-1000 ms)");
+        MusicDevice = new MusicPlayer(genmidi, MusicBus, buffer);
+        AddChild(MusicDevice);
+        GetTree().AutoAcceptQuit = false; // the window's close fades the music out first (CloseRequested)
         Sound = new SSound(SfxDevice, SSound.DefaultChannels, MusicDevice,
             name => wad.W_CheckNumForName(name) is int lump and >= 0 ? wad.W_CacheLumpNum(lump) : (ReadOnlyMemory<byte>?)null)
         {
@@ -175,9 +186,49 @@ public partial class LevelScene
             s.StopChannels();
             await AudioSettled();
         }
-        Sound?.S_StopMusic(); // i_sound.c I_ShutdownMusic (T7.8c)
+        await MusicStopped();
         GetTree().Quit(code);
     }
+
+    /// <summary>
+    /// T7.8e: before a quit: the song stopped (i_sound.c
+    /// <c>I_ShutdownMusic</c>; its notes keyed off), then the music player's
+    /// output faded out and heard out (<see cref="MusicPlayer.FadeOut"/>, wall
+    /// time while frames go on), so the stream's end does not click; then
+    /// the thread stopped (<see cref="MusicPlayer.StopThread"/>; also at the
+    /// scene's end, whatever quits) and its playback let go.
+    /// </summary>
+    public async System.Threading.Tasks.Task MusicStopped()
+    {
+        Sound?.S_StopMusic(); // i_sound.c I_ShutdownMusic (T7.8c)
+        if (MusicDevice is not { Running: true } player)
+            return;
+        player.FadeOut();
+        ulong until = Time.GetTicksMsec() + (ulong)(player.FadeOutSeconds * 1000);
+        while (Time.GetTicksMsec() < until)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        player.StopThread();
+        await AudioSettled(); // the audio server frees the stream's playback (else reported as leaked at exit)
+    }
+
+    /// <summary>
+    /// T7.8e: the window's close (<see cref="Node.NotificationWMCloseRequest"/>,
+    /// the scene turns <see cref="SceneTree.AutoAcceptQuit"/> off): quits as
+    /// the level script does (<see cref="QuitQuietly"/>: the sounds stopped,
+    /// the music faded out); a second close quits at once.
+    /// </summary>
+    private void CloseRequested()
+    {
+        if (_closing)
+        {
+            GetTree().Quit();
+            return;
+        }
+        _closing = true;
+        _ = QuitQuietly(0);
+    }
+
+    private bool _closing;
 
     /// <summary>
     /// T7.7: waits 150 ms of wall-clock time (frames go on: <c>--fixed-fps</c>
@@ -201,6 +252,7 @@ public partial class LevelScene
             return;
         Quitting = true;
         await ToSignal(GetTree().CreateTimer(QuitWaitSeconds, processAlways: true, processInPhysics: false, ignoreTimeScale: true), SceneTreeTimer.SignalName.Timeout);
+        await MusicStopped(); // T7.8e
         GetTree().Quit();
     }
 }
