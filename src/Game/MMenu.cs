@@ -352,7 +352,7 @@ public sealed partial class MMenu
     /// <summary>m_menu.c <c>mouseSensitivity</c> (0–9; applied with the options, T7.3).</summary>
     public int mouseSensitivity = 5;
 
-    /// <summary>s_sound.c <c>sfxVolume</c> and <c>musicVolume</c> (0–15; the sound's <c>snd_SfxVolume</c> is <c>sfxVolume * 8</c>, T7.7; the music's is T7.8's).</summary>
+    /// <summary>s_sound.c <c>sfxVolume</c> and <c>musicVolume</c> (0–15; the sound's <c>snd_SfxVolume</c> is <c>sfxVolume * 8</c>, T7.7; the music's <c>S_SetMusicVolume(musicVolume * 8)</c>, T7.8c).</summary>
     public int sfxVolume = 8, musicVolume = 8;
 
     /// <summary>m_menu.c <c>quickSaveSlot</c>: the quicksave's slot; -1 none yet, -2 picking one in the save menu (T7.6).</summary>
@@ -708,7 +708,7 @@ public sealed partial class MMenu
                     musicVolume++;
                 break;
         }
-        // S_SetMusicVolume: T7.8
+        // S_SetMusicVolume(musicVolume * 8): the game scene's, each frame the volume changed (LevelScene.SyncSoundVolume, T7.8c)
     }
 
     // ---- the main menu, new game, episodes, skills ----

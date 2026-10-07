@@ -16,7 +16,8 @@ namespace IsoDoom.Game;
 /// vanilla's, until the menu (T7.2) starts another game or ends this one.
 /// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) and Doom II's cast
 /// call (M10, the title loop until then) are later tasks'; the music
-/// (<c>mus_victor</c>, <c>mus_read_m</c>, <c>mus_bunny</c>) is T7.8's. The
+/// (<c>mus_victor</c>, <c>mus_read_m</c>, E3's <c>mus_bunny</c>) changes as
+/// vanilla's (T7.8c; the cast call's <c>mus_evil</c> is M10's). The
 /// end picture forces a wipe (T7.1a). No Godot types: the tests link it.
 /// </summary>
 public sealed partial class FFinale
@@ -55,11 +56,16 @@ public sealed partial class FFinale
     /// flat from <see cref="textscreens"/> for the flow's
     /// <see cref="GameFlow.gamemission"/> (Chocolate Doom's
     /// <c>logical_gamemission</c>). Vanilla has no text for any other map
-    /// (a null <c>finaletext</c>): a stand-in here. The music
-    /// (<c>mus_victor</c>, Doom II <c>mus_read_m</c>) is T7.8's.
+    /// (a null <c>finaletext</c>): a stand-in here. The music (T7.8c):
+    /// <c>mus_victor</c>, or <c>mus_read_m</c> for any other mission.
     /// </summary>
     public void F_StartFinale(int episode, int map)
     {
+        if (flow.gamemission == GameMission.doom)
+            flow.S_ChangeMusic(musicenum_t.mus_victor, true);
+        else
+            flow.S_ChangeMusic(musicenum_t.mus_read_m, true);
+
         gameepisode = episode;
         gamemap = map;
         GameMission mission = flow.gamemission;
@@ -118,7 +124,8 @@ public sealed partial class FFinale
             finalecount = 0;
             finalestage = F_STAGE_ARTSCREEN;
             flow.wipegamestate = GameFlow.GS_FORCEWIPE; // force a wipe (T7.1a)
-            // E3's mus_bunny: T7.8
+            if (gameepisode == 3)
+                flow.S_StartMusic(musicenum_t.mus_bunny);
         }
         // finalestage 1 (the end picture) stays until the menu starts a new game or ends this one (T7.2), as vanilla's
     }

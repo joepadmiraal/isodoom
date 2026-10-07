@@ -12,11 +12,13 @@ the end) and then the next level, TAIL tics in all; for one that ends an
 episode (ExM8), the finale up to its end picture; for any other none.
 Writes dump.c's $DUMP_WIPE dump to OUTDIR/NAME.wipe, its first line
 "tail PRESSES LENGTH" (the tail's ticcmds: BT_USE at the 1-based tail tics
-PRESSES, "-" for none, LENGTH tics). WAD-derived: never commit them.
+PRESSES, "-" for none, LENGTH tics), and (T7.8c) its $DUMP_MUSIC dump, every
+S_ChangeMusic call of the same run, to OUTDIR/NAME.music, with the same
+first line. WAD-derived: never commit them.
 With --images, the start and end screens of every wipe and the screens
 after melt steps STEPS ("N,M,..." or "all") go to DIR (dump.c's
 $DUMP_WIPE_DIR/$DUMP_WIPE_STEPS). WipeTests compares the game's wipes with
-the dumps.
+the dumps, MusicTests the game's music changes.
 """
 import os, subprocess, sys, tempfile
 
@@ -58,7 +60,8 @@ def main():
         tmp = tempfile.mkdtemp()
         try:
             open(os.path.join(tmp, 'route.lmp'), 'wb').write(routes.demo(head, cmds + extra))
-            env = dict(os.environ, DUMP_WIPE=out + '.tmp')
+            music = os.path.join(outdir, f'{name}.music')
+            env = dict(os.environ, DUMP_WIPE=out + '.tmp', DUMP_MUSIC=music + '.tmp')
             for k in ('VIEWS', 'DUMP_TICS', 'DUMP_START', 'DUMP_EVENTS', 'DUMP_WI', 'DUMP_FI', 'DUMP_WIPE_DIR', 'DUMP_WIPE_STEPS'):
                 env.pop(k, None)
             if head['start']:
@@ -76,16 +79,21 @@ def main():
                 for f in files:
                     os.remove(os.path.join(root, f))
                 os.rmdir(root)
-        if r.returncode != 0 or not os.path.exists(out + '.tmp'):
+        if r.returncode != 0 or not os.path.exists(out + '.tmp') or not os.path.exists(music + '.tmp'):
             sys.exit(f'{route}: vanilla exited with {r.returncode}\n{r.stderr.strip()}')
         lines = open(out + '.tmp').read().splitlines()
         os.remove(out + '.tmp')
         with open(out, 'w') as f:
             f.write(f'tail {",".join(map(str, presses)) or "-"} {length}\n')
             f.write('\n'.join(lines) + '\n')
+        songs = open(music + '.tmp').read().splitlines()
+        os.remove(music + '.tmp')
+        with open(music, 'w') as f:
+            f.write(f'tail {",".join(map(str, presses)) or "-"} {length}\n')
+            f.write(''.join(l + '\n' for l in songs))
         wipes = sum(1 for l in lines if l.startswith('wipe '))
         tics = sum(1 for l in lines if l.startswith('tic '))
-        print(f'{route}: {tics} tics, {wipes} wipes -> {out}')
+        print(f'{route}: {tics} tics, {wipes} wipes, {len(songs)} music changes -> {out}, {music}')
 
 
 if __name__ == '__main__':

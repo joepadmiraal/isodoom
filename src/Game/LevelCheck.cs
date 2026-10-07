@@ -123,6 +123,7 @@ public partial class LevelCheck : Godot.Node
             CheckWipes(); // T7.1a: the screen wipes' timing and M_Random
             CheckSaves(); // T7.6: quicksave, quickload, the loaded game going on as the saved one, a damaged save refused
             CheckSound(); // T7.7: the sound effects through the scene
+            CheckMusic(); // T7.8c: the music changes through the scene
             // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
             await _scene.AudioSettled();
 
@@ -193,6 +194,7 @@ public partial class LevelCheck : Godot.Node
             }
             LevelMesh m = _scene.Mesh!;
             int failures = _failures;
+            CheckMapMusic(map); // T7.8c: S_Start's song
             CheckSectorData(m, map);
             CheckLidData(m, map);
             slots += CheckSlots(m, map);

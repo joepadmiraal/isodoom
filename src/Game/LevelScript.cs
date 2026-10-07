@@ -605,6 +605,9 @@ public partial class LevelScript : Node
                     case "heard":
                         exit |= await CheckSound(w[0] == "playing", w);
                         break;
+                    case "music":
+                        exit |= await CheckMusic(w);
+                        break;
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -654,6 +657,35 @@ public partial class LevelScript : Node
         if (found)
             return 0;
         GD.PrintErr($"Level script: playing: no channel plays {w[1]}{(origin is null ? "" : $" from {origin}")}");
+        return 1;
+    }
+
+    /// <summary>
+    /// T7.8c: <c>music [NAME]</c> waits for the queued tics and prints the
+    /// song playing (and the music device's state); with NAME it fails unless
+    /// the song is NAME (<c>e1m1</c>, <c>D_E1M1</c>, <c>intro</c> for the
+    /// <c>introa</c> it plays, or <c>none</c>).
+    /// </summary>
+    private async Task<int> CheckMusic(string[] w)
+    {
+        await Drain();
+        if (_scene.Sound is not { } snd)
+        {
+            GD.PrintErr("Level script: no sound");
+            return 1;
+        }
+        GD.Print($"Level script: music: {_scene.MusicText()}");
+        if (w.Length < 2)
+            return 0;
+        string want = w[1].ToLowerInvariant();
+        if (want.StartsWith("d_", StringComparison.Ordinal))
+            want = want[2..];
+        if (want.StartsWith("mus_", StringComparison.Ordinal))
+            want = want[4..];
+        IsoDoom.Sim.musicenum_t playing = snd.mus_playing;
+        if (want == IsoDoom.Audio.SSound.MusicName(playing) || playing != IsoDoom.Sim.musicenum_t.mus_None && want == IsoDoom.Audio.SSound.MusicName(snd.mus_requested))
+            return 0;
+        GD.PrintErr($"Level script: music: {IsoDoom.Audio.SSound.MusicName(playing)} plays, expected {w[1]}");
         return 1;
     }
 

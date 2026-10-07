@@ -261,3 +261,170 @@ public static class SoundInfo
         return "DS" + info.name.ToUpperInvariant();
     }
 }
+
+/// <summary>
+/// sounds.h <c>musicenum_t</c> (T7.8c): the songs, in vanilla's order (the
+/// first episode's maps start at <see cref="mus_e1m1"/>, Doom II's at
+/// <see cref="mus_runnin"/>: s_sound.c <c>S_Start</c> counts from them).
+/// </summary>
+public enum musicenum_t
+{
+    mus_None,
+    mus_e1m1,
+    mus_e1m2,
+    mus_e1m3,
+    mus_e1m4,
+    mus_e1m5,
+    mus_e1m6,
+    mus_e1m7,
+    mus_e1m8,
+    mus_e1m9,
+    mus_e2m1,
+    mus_e2m2,
+    mus_e2m3,
+    mus_e2m4,
+    mus_e2m5,
+    mus_e2m6,
+    mus_e2m7,
+    mus_e2m8,
+    mus_e2m9,
+    mus_e3m1,
+    mus_e3m2,
+    mus_e3m3,
+    mus_e3m4,
+    mus_e3m5,
+    mus_e3m6,
+    mus_e3m7,
+    mus_e3m8,
+    mus_e3m9,
+    mus_inter,
+    mus_intro,
+    mus_bunny,
+    mus_victor,
+    mus_introa,
+    mus_runnin,
+    mus_stalks,
+    mus_countd,
+    mus_betwee,
+    mus_doom,
+    mus_the_da,
+    mus_shawn,
+    mus_ddtblu,
+    mus_in_cit,
+    mus_dead,
+    mus_stlks2,
+    mus_theda2,
+    mus_doom2,
+    mus_ddtbl2,
+    mus_runni2,
+    mus_dead2,
+    mus_stlks3,
+    mus_romero,
+    mus_shawn2,
+    mus_messag,
+    mus_count2,
+    mus_ddtbl3,
+    mus_ampie,
+    mus_theda3,
+    mus_adrian,
+    mus_messg2,
+    mus_romer2,
+    mus_tense,
+    mus_shawn3,
+    mus_openin,
+    mus_evil,
+    mus_ultima,
+    mus_read_m,
+    mus_dm2ttl,
+    mus_dm2int,
+    NUMMUSIC,
+}
+
+/// <summary>
+/// sounds.h <c>musicinfo_t</c> (T7.8c): the part the music code reads, the
+/// name (the lump's without its <c>D_</c> prefix). Vanilla's <c>lumpnum</c>,
+/// <c>data</c> and <c>handle</c> are the music code's (<c>SSound</c>).
+/// </summary>
+public sealed record musicinfo_t(string name);
+
+/// <summary>sounds.c's music table (T7.8c).</summary>
+public static class MusicInfo
+{
+    private static musicinfo_t MUSIC(string name) => new(name);
+
+    /// <summary>sounds.c <c>S_music</c>, indexed by <see cref="musicenum_t"/>.</summary>
+    public static readonly musicinfo_t[] S_music =
+    {
+        MUSIC(""), // mus_None
+        MUSIC("e1m1"),
+        MUSIC("e1m2"),
+        MUSIC("e1m3"),
+        MUSIC("e1m4"),
+        MUSIC("e1m5"),
+        MUSIC("e1m6"),
+        MUSIC("e1m7"),
+        MUSIC("e1m8"),
+        MUSIC("e1m9"),
+        MUSIC("e2m1"),
+        MUSIC("e2m2"),
+        MUSIC("e2m3"),
+        MUSIC("e2m4"),
+        MUSIC("e2m5"),
+        MUSIC("e2m6"),
+        MUSIC("e2m7"),
+        MUSIC("e2m8"),
+        MUSIC("e2m9"),
+        MUSIC("e3m1"),
+        MUSIC("e3m2"),
+        MUSIC("e3m3"),
+        MUSIC("e3m4"),
+        MUSIC("e3m5"),
+        MUSIC("e3m6"),
+        MUSIC("e3m7"),
+        MUSIC("e3m8"),
+        MUSIC("e3m9"),
+        MUSIC("inter"),
+        MUSIC("intro"),
+        MUSIC("bunny"),
+        MUSIC("victor"),
+        MUSIC("introa"),
+        MUSIC("runnin"),
+        MUSIC("stalks"),
+        MUSIC("countd"),
+        MUSIC("betwee"),
+        MUSIC("doom"),
+        MUSIC("the_da"),
+        MUSIC("shawn"),
+        MUSIC("ddtblu"),
+        MUSIC("in_cit"),
+        MUSIC("dead"),
+        MUSIC("stlks2"),
+        MUSIC("theda2"),
+        MUSIC("doom2"),
+        MUSIC("ddtbl2"),
+        MUSIC("runni2"),
+        MUSIC("dead2"),
+        MUSIC("stlks3"),
+        MUSIC("romero"),
+        MUSIC("shawn2"),
+        MUSIC("messag"),
+        MUSIC("count2"),
+        MUSIC("ddtbl3"),
+        MUSIC("ampie"),
+        MUSIC("theda3"),
+        MUSIC("adrian"),
+        MUSIC("messg2"),
+        MUSIC("romer2"),
+        MUSIC("tense"),
+        MUSIC("shawn3"),
+        MUSIC("openin"),
+        MUSIC("evil"),
+        MUSIC("ultima"),
+        MUSIC("read_m"),
+        MUSIC("dm2ttl"),
+        MUSIC("dm2int"),
+    };
+
+    /// <summary>The song's lump name: <c>D_</c> + its name, upper case (s_sound.c <c>S_ChangeMusic</c>'s <c>"d_%s"</c>).</summary>
+    public static string LumpName(musicenum_t music) => "D_" + S_music[(int)music].name.ToUpperInvariant();
+}

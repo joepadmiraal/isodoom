@@ -1,4 +1,5 @@
 using System;
+using IsoDoom.Audio;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 
@@ -185,6 +186,28 @@ public sealed class GameFlow
     /// <summary>The intermission (wi_stuff.c, T7.4).</summary>
     public WiStuff Wi { get; }
 
+    /// <summary>
+    /// s_sound.c (T7.7, its music half T7.8c): the flow changes the music
+    /// where vanilla's code does (<see cref="S_ChangeMusic"/>: the title
+    /// loop, the levels' <c>S_Start</c>, the intermission, the finale) and
+    /// pauses it with the game. Null: no sound (the tests' flows but the music's).
+    /// </summary>
+    public SSound? Sound;
+
+    /// <summary>s_sound.c <c>S_ChangeMusic</c> (<see cref="Sound"/>'s; nothing without).</summary>
+    public void S_ChangeMusic(musicenum_t musicnum, bool looping) => Sound?.S_ChangeMusic(musicnum, looping);
+
+    /// <summary>s_sound.c <c>S_StartMusic</c>: <paramref name="m_id"/> once.</summary>
+    public void S_StartMusic(musicenum_t m_id) => Sound?.S_StartMusic(m_id);
+
+    /// <summary>
+    /// p_setup.c <c>P_SetupLevel</c>'s <c>S_Start</c> after the host loaded
+    /// <paramref name="map"/> (T7.7, T7.8c): the sounds stop and the level's
+    /// song starts (the same song goes on). Vanilla calls it during the load;
+    /// nothing in between makes a sound or changes the music.
+    /// </summary>
+    private void S_Start(string map) => Sound?.S_Start(World.EpisodeNumber(map), World.MapNumber(map));
+
     /// <summary>The finale (f_finale.c, T7.5).</summary>
     public FFinale Finale { get; }
 
@@ -266,7 +289,11 @@ public sealed class GameFlow
             switch (cmd.buttons & buttoncode_t.BT_SPECIALMASK)
             {
                 case buttoncode_t.BTS_PAUSE:
-                    paused = !paused; // S_PauseSound / S_ResumeSound: T7.7
+                    paused = !paused;
+                    if (paused)
+                        Sound?.S_PauseSound();
+                    else
+                        Sound?.S_ResumeSound();
                     break;
                 case buttoncode_t.BTS_SAVEGAME:
                     if (savedescription.Length == 0)
@@ -493,7 +520,11 @@ public sealed class GameFlow
         }
 
         // g_game.c G_InitNew's
-        paused = false; // S_ResumeSound: T7.7
+        if (paused)
+        {
+            paused = false;
+            Sound?.S_ResumeSound();
+        }
         advancedemo = false; // not vanilla: as G_InitNewMap
         MRandom.M_ClearRandom();
         usergame = true;
@@ -506,6 +537,7 @@ public sealed class GameFlow
         }
         LoadRefused = null;
         gamestate = gamestate_t.GS_LEVEL;
+        S_Start(save.Map); // G_DoLoadLevel's P_SetupLevel
         _gameaction = gameaction_t.ga_nothing;
         Log?.Invoke($"Load: slot {savegameslot}, \"{save.Description}\": {save.Map} at tic {save.LevelTime}");
         return true;
@@ -567,8 +599,11 @@ public sealed class GameFlow
     {
         G_DoLoadLevelWipe();
         gamestate = gamestate_t.GS_LEVEL;
+        string? map = host.World?.level.Name;
         if (!host.G_DoLoadLevel())
             D_StartTitle(null);
+        else if (map is not null)
+            S_Start(map);
     }
 
     /// <summary>
@@ -647,7 +682,11 @@ public sealed class GameFlow
     /// </summary>
     public void G_InitNewMap(skill_t skill, string map)
     {
-        paused = false; // S_ResumeSound: T7.7
+        if (paused)
+        {
+            paused = false;
+            Sound?.S_ResumeSound();
+        }
         advancedemo = false; // not vanilla: a title loop step due (the game started before the title's first tic) is dropped
         MRandom.M_ClearRandom();
         usergame = true; // will be set false if a demo
@@ -661,6 +700,7 @@ public sealed class GameFlow
         }
         gamestate = gamestate_t.GS_LEVEL;
         _gameaction = gameaction_t.ga_nothing;
+        S_Start(map); // G_DoLoadLevel's P_SetupLevel
     }
 
     /// <summary>
@@ -738,6 +778,7 @@ public sealed class GameFlow
             return;
         }
         gameaction = gameaction_t.ga_nothing;
+        S_Start(next); // G_DoLoadLevel's P_SetupLevel
     }
 
     /// <summary>f_finale.c <c>F_StartFinale</c>'s game part: the game action is done and the finale shows (<see cref="FFinale.F_StartFinale"/>).</summary>
@@ -785,7 +826,10 @@ public sealed class GameFlow
     /// game's <c>DEMO4</c>). There is no demo playback (SPEC §7.6): the demo
     /// steps are passed, so the pages follow each other; a page the WAD
     /// lacks is passed too (vanilla's <c>I_Error</c>), unless none is there.
-    /// The title music (<c>mus_intro</c>, <c>mus_dm2ttl</c>) is T7.8's.
+    /// The title music (T7.8c): <c>mus_intro</c> once at the first step (Doom
+    /// II <c>mus_dm2ttl</c>, at its fifth too); without the demos the song
+    /// asked for is often the one playing, which goes on (vanilla's demos
+    /// play their levels' songs in between).
     /// </summary>
     public void D_DoAdvanceDemo()
     {
@@ -800,6 +844,11 @@ public sealed class GameFlow
         for (int tries = 0; ; tries++)
         {
             demosequence = (demosequence + 1) % steps;
+            if (demosequence == 0 || demosequence == 4 && gamemode == GameMode.commercial)
+            {
+                gamestate = gamestate_t.GS_DEMOSCREEN; // vanilla's order: the page's state, then its song
+                S_StartMusic(gamemode == GameMode.commercial ? musicenum_t.mus_dm2ttl : musicenum_t.mus_intro);
+            }
             (string? page, int tics) = DemoStep(demosequence);
             if (page is null)
             {
