@@ -25,6 +25,12 @@ public partial class LevelScene : IMenuHost
     private int _padDirection;
     private double _padRepeat;
 
+    // The last menu direction stepped (a doomkeys.h arrow) and when, and the pad's last direction let go and when, on a clock of
+    // the frames' time (s): one press seen twice (the Steam Deck's D-pad as a pad and as Steam Input's arrow keys) or a D-pad that flickers steps once.
+    private int _menuStepKey, _padReleasedKey;
+    private bool _menuStepFromPad;
+    private double _menuClock, _menuStepAt, _padReleasedAt;
+
     // The menus were up: fire and use held since then don't reach the game until let go.
     private bool _menuButtonsHeld;
 
@@ -33,6 +39,9 @@ public partial class LevelScene : IMenuHost
 
     /// <summary>The pad's direction repeats after this long held, then every <see cref="PadRepeatSeconds"/>.</summary>
     public const double PadDelaySeconds = 0.4, PadRepeatSeconds = 0.12;
+
+    /// <summary>A menu direction from the keyboard and the pad this close together is one press, and so is a pad direction let go and pressed again this soon.</summary>
+    public const double MenuStepMergeSeconds = 0.05;
 
     /// <summary>The menus (m_menu.c, T7.2): the game's flow's.</summary>
     public MMenu Menu => Flow.Menu;
@@ -199,6 +208,8 @@ public partial class LevelScene : IMenuHost
                     int code = menu.saveStringEnter ? MenuKeyOf(key) : MenuActionKey(key, menu), ch = CharOf(key);
                     if (code == 0)
                         code = LetterKeyOf(key);
+                    if (menu.Active && !menu.saveStringEnter && IsMenuArrow(menu, code) && !MenuStep(code, false, key.Echo))
+                        return true; // the pad took this press (or holds it, and repeats it itself)
                     if ((code != 0 || ch != 0) && menu.M_Responder(code, ch))
                         return true;
                     if (title && !key.Echo && !IsFunctionKey(key))
@@ -259,6 +270,7 @@ public partial class LevelScene : IMenuHost
     /// </summary>
     private void PollMenuPad(double delta)
     {
+        _menuClock += delta;
         if (_flow is { } f)
             TickBindingWait(f.Menu, delta); // T7.3
         if (_flow is not { } flow || !flow.Menu.Active || flow.Menu.WaitingBinding is not null)
@@ -269,6 +281,8 @@ public partial class LevelScene : IMenuHost
         int direction = PadDirection(flow.Menu);
         if (direction == 0)
         {
+            if (_padDirection != 0)
+                (_padReleasedKey, _padReleasedAt) = (_padDirection, _menuClock);
             _padDirection = 0;
             return;
         }
@@ -276,7 +290,9 @@ public partial class LevelScene : IMenuHost
         {
             _padDirection = direction;
             _padRepeat = PadDelaySeconds;
-            flow.Menu.M_Responder(direction);
+            bool flicker = direction == _padReleasedKey && _menuClock - _padReleasedAt < MenuStepMergeSeconds;
+            if (!flicker && MenuStep(direction, true))
+                flow.Menu.M_Responder(direction);
             return;
         }
         _padRepeat -= delta;
@@ -285,6 +301,25 @@ public partial class LevelScene : IMenuHost
             _padRepeat += PadRepeatSeconds;
             flow.Menu.M_Responder(direction);
         }
+    }
+
+    private static bool IsMenuArrow(MMenu menu, int key) =>
+        key != 0 && (key == menu.key_menu_up || key == menu.key_menu_down || key == menu.key_menu_left || key == menu.key_menu_right);
+
+    /// <summary>
+    /// Whether a menu direction steps: not a key's press or repeat while the
+    /// pad holds it (the pad repeats it), nor a press just after the same
+    /// step from the other (one press seen as both, as the Steam Deck's D-pad
+    /// with Steam Input's arrow keys).
+    /// </summary>
+    private bool MenuStep(int key, bool fromPad, bool echo = false)
+    {
+        if (!fromPad && _padDirection == key)
+            return false;
+        if (!echo && _menuStepKey == key && _menuStepFromPad != fromPad && _menuClock - _menuStepAt < MenuStepMergeSeconds)
+            return false;
+        (_menuStepKey, _menuStepFromPad, _menuStepAt) = (key, fromPad, _menuClock);
+        return true;
     }
 
     /// <summary>The menu direction a pad holds: the pad inputs bound to <c>menu_up</c>, <c>menu_down</c>, <c>menu_left</c>, <c>menu_right</c> (T7.3; the D-pad and the left stick by default).</summary>
