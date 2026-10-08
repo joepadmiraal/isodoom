@@ -29,7 +29,7 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
 
   *Done when:* `dotnet build IsoDoom.sln` and the Linux export build with zero warnings, a deliberately added warning (an unused variable) fails the build, and all tests and the level check pass.
 
-- [ ] **Q2 Purity test: no Godot reference in the libraries.** SPEC §4 says Wad, Map and Sim never reference Godot. Today that holds only because their `.csproj` files lack the reference. Nothing would catch someone adding it.
+- [x] **Q2 Purity test: no Godot reference in the libraries.** SPEC §4 says Wad, Map and Sim never reference Godot. Today that holds only because their `.csproj` files lack the reference. Nothing would catch someone adding it.
   1. In `tests/IsoDoom.Tests/Purity/`, add a test that loads the compiled `IsoDoom.Wad`, `IsoDoom.Map` and `IsoDoom.Sim` assemblies with Mono.Cecil (as `SimPurityTests` does) and fails if any of them references `GodotSharp`, `GodotSharpEditor`, `Godot.SourceGenerators` or any assembly or namespace starting with `Godot`.
   2. Also fail if Sim references any assembly besides the BCL and `IsoDoom.Map`/`IsoDoom.Wad`. Use an allow-list, so a new dependency is a conscious decision.
 
