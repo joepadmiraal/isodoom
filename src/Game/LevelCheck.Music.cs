@@ -148,7 +148,9 @@ public partial class LevelCheck
         double elapsed = (Time.GetTicksUsec() - t0) / 1e6;
         double rendered = (player.FramesPushed - pushed0) / (double)player.MixRate;
         int peak = player.TakePeak();
-        if (rendered < elapsed - 0.25 || rendered > elapsed + 0.25)
+        // short of the wall clock with the buffer full: the driver drains slowly (T8.4a)
+        string slowDriver = rendered < elapsed - 0.25 && player.KeepsUp ? " (the audio driver drained slower than real time, the buffer full)" : "";
+        if ((rendered < elapsed - 0.25 && slowDriver.Length == 0) || rendered > elapsed + 0.25)
             Fail($"music playback: {rendered:0.00} s rendered in {elapsed:0.00} s of wall time ({player})");
         if (peak < 256)
             Fail($"music playback: the song is silent (peak {peak}; {player})");
@@ -181,7 +183,7 @@ public partial class LevelCheck
             Fail($"music playback: {player.Underruns} buffer underrun(s) ({player})");
         _scene.Menu.musicVolume = volume;
         _scene.UpdateSound(0);
-        GD.Print($"Level check: music playback (T7.8e): {title} for {elapsed:0.0} s, {rendered:0.00} s rendered, peak {peak}; switched (T7.8g): {sw}; {player}");
+        GD.Print($"Level check: music playback (T7.8e): {title} for {elapsed:0.0} s, {rendered:0.00} s rendered{slowDriver}, peak {peak}; switched (T7.8g): {sw}; {player}");
     }
 
     /// <summary>

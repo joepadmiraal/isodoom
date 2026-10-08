@@ -285,7 +285,8 @@ public partial class WadViewerCheck : Node
     /// <summary>
     /// T7.8e: the first song played again for a second of wall time: the OPL
     /// player's thread renders it at the mix rate (the dummy driver mixes at
-    /// real time headless), notes sound, and its ring buffer never runs dry.
+    /// real time headless; where it drains slower, as on macOS's CI runners,
+    /// the buffer stays full), notes sound, and its ring buffer never runs dry.
     /// </summary>
     private async Task<string> CheckSongHeard(int? row)
     {
@@ -301,10 +302,12 @@ public partial class WadViewerCheck : Node
         double rendered = (player.FramesPushed - pushed) / (double)player.MixRate;
         int peak = player.TakePeak();
         string name = _viewer.PreviewSong ?? "?";
-        if (rendered < elapsed - 0.25 || rendered > elapsed + 0.25 || peak < 256 || player.Underruns != 0)
+        // short of the wall clock with the buffer full: the driver drains slowly (T8.4a)
+        string slowDriver = rendered < elapsed - 0.25 && player.KeepsUp ? " (the audio driver drained slower than real time, the buffer full)" : "";
+        if ((rendered < elapsed - 0.25 && slowDriver.Length == 0) || rendered > elapsed + 0.25 || peak < 256 || player.Underruns != 0)
             Fail($"song preview {name}: {rendered:0.00} s rendered in {elapsed:0.00} s, peak {peak} ({player})");
         _viewer.SelectLump(i == 0 ? 1 : 0); // stops it
-        return $"; {name} heard for {elapsed:0.0} s: {rendered:0.00} s rendered, peak {peak}, {player.Underruns} underruns";
+        return $"; {name} heard for {elapsed:0.0} s: {rendered:0.00} s rendered{slowDriver}, peak {peak}, {player.Underruns} underruns";
     }
 
     private async Task<int> CheckCurrent(bool gpu, Color background)

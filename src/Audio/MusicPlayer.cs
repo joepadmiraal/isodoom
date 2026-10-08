@@ -99,6 +99,14 @@ public partial class MusicPlayer : Node, IMusicDevice
     /// <summary>The frames waiting in the ring buffer now.</summary>
     public int BufferedFrames => _playback is { } p && BufferFrames > 0 ? Math.Max(0, BufferFrames - p.GetFramesAvailable()) : 0;
 
+    /// <summary>
+    /// Whether the ring buffer is at least half full now: the thread keeps up
+    /// with the driver. When it does, rendering short of the wall clock is the
+    /// driver draining slower than real time (Godot's dummy driver on macOS's
+    /// CI runners, T8.4a), not the player falling behind.
+    /// </summary>
+    public bool KeepsUp => BufferFrames > 0 && BufferedFrames >= BufferFrames / 2;
+
     /// <summary>The frames the thread rendered and pushed so far.</summary>
     public long FramesPushed => Interlocked.Read(ref _framesPushed);
 
