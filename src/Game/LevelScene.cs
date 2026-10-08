@@ -515,6 +515,7 @@ public partial class LevelScene : Node3D, IGameHost
         }
         _background = Environment.BackgroundColor;
         AddChild(new WorldEnvironment { Environment = Environment });
+        AddChild(_shotTracers); // in the tree from the start, so a failed load or the check still frees it at exit
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
         // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
@@ -751,7 +752,6 @@ public partial class LevelScene : Node3D, IGameHost
         };
         _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_cursorMarker);
-        AddChild(_shotTracers);
     }
 
     /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c>, <c>--level-cutaway-cursor</c>, <c>--level-cutaway-cap</c>, <c>--level-cutaway-things</c> and <c>--level-cutaway-doors</c>.</summary>
