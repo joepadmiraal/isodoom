@@ -5,7 +5,8 @@
 # and in the exported build, and upload the build. Toolchain versions are
 # pinned in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
 # IsoDoom.csproj; the .NET SDK comes from global.json). The actions' versions
-# are bumped by Dependabot (.github/dependabot.yml).
+# are bumped by Dependabot (.github/dependabot.yml). CONTRIBUTING.md lists
+# the local command for each check: keep it in sync with the steps here.
 name: CI
 
 on:

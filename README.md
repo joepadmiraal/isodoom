@@ -2,6 +2,10 @@
 
 An isometric top-down remake of Doom in Godot 4 + C#, heavily inspired by [Isowulf mod for Wolfenstein 3D](https://www.moddb.com/mods/isowulf).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the toolchain, the checks a pull request must pass and how to run them locally, the code style and the rules for the simulation and game data.
+
 ## Running outside the dev container
 
 To run on the host, export a Linux build in the container and run it on the host (any x86_64 Linux). The export bundles the .NET runtime, so the host needs only a Vulkan GPU driver.

@@ -102,9 +102,11 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
 
   *Done when:* items 1–3 have been checked on GitHub.
 
-- [ ] **Q7 Contributor docs.** Once Q1–Q6 are done, make the checks discoverable for outside contributors.
+- [x] **Q7 Contributor docs.** Once Q1–Q6 are done, make the checks discoverable for outside contributors.
   1. Add `CONTRIBUTING.md` covering the toolchain (dev container or `global.json`'s SDK plus Godot 4.7.2 .NET), the checks a PR must pass and the commands to run them locally (`dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`, `actionlint`, the level check), the style (Godot C# guide, with the vanilla-names exception and why), the Sim invariants (pointing to `CLAUDE.md` and SPEC §6.1), and that WAD data never goes in the repo.
   2. Link it from `README.md`.
   3. Optionally add `.github/pull_request_template.md` with a short checklist.
 
   *Done when:* a contributor following `CONTRIBUTING.md` on a fresh clone can run every CI check locally, and the docs match `ci.yml`.
+
+  *Done:* `CONTRIBUTING.md` (toolchain, game data, the CI checks with their local commands in `ci.yml`'s order, style and the vanilla-names exception, the Sim invariants, pull requests and the licence), linked from `README.md`, and `.github/pull_request_template.md`. Every command was run on a fresh clone of the branch; the export steps were not (no export templates locally), and the exported-build checks are offered as the same checks in the editor under Xvfb + lavapipe. `ci.yml`'s header and `AGENTS.md` say to keep it in sync. Decisions in SPEC §12 (Q7).
