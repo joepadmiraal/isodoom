@@ -15,7 +15,8 @@ namespace IsoDoom.Game;
 /// the wall and the row behind it, lit as a floor of its sector at its
 /// ceiling; pixels outside every cap must not change), and from the game
 /// camera's angle a cap of a wall facing away (whose own quad is culled: its
-/// cap must not be drawn) and one of a wall facing the camera (drawn); last
+/// cap must not be drawn) and one of a wall facing the camera (drawn), which
+/// a cut centre in front of its wall leaves whole and one behind it cuts; last
 /// the island wall drawn furthest above its ceiling, side-on (every pixel
 /// between its ceiling and the island's top against the CPU's wall texel and
 /// light, and nothing there with the caps off).
@@ -279,6 +280,8 @@ public partial class LevelCheck
         }
         if (shown is null)
             Fail($"{map}: no wall cap facing the game camera drew 50 pixels (of the ten largest)");
+        else
+            await CompareCapCutaway(m, shown, basis, toCamera);
         GD.Print($"Level check: {map}: wall caps from the game camera: line {away.Line}'s (facing away) checked on {awayPixels} pixels it alone covers; "
             + $"line {shown?.Line}'s (facing the camera) changed {changed}");
     }
@@ -288,11 +291,113 @@ public partial class LevelCheck
     // are); with true, returns how many changed.
     private async Task<int> CompareCapFromGameCamera(LevelMesh m, WallCap cap, Basis basis, Vector3 toCamera, bool drawnExpected)
     {
+        double cx = cap.Pieces.Average(p => p.Average(v => v.X)), cy = cap.Pieces.Average(p => p.Average(v => v.Y));
+        CutView(new Vector3((float)cx, (float)cy, CapTop(m, cap) - Cutaway.Anchor), basis, toCamera);
+        List<Vector2I> alone = CapAlonePixels(m, cap);
+        m.SetWallCaps(WallCapMode.Off);
+        byte[]? off = await Capture($"{m.Level.Name}: line {cap.Line}'s wall cap from the game camera, caps off");
+        m.SetWallCaps(WallCapMode.On);
+        byte[]? on = await Capture($"{m.Level.Name}: line {cap.Line}'s wall cap from the game camera, caps on");
+        if (off is null || on is null)
+            return 0;
+        (int changed, string first) = ChangedPixels(alone, on, off, "the caps off");
+        _pixels += alone.Count;
+        if (!drawnExpected && changed > 0)
+            Fail($"{m.Level.Name}: line {cap.Line}'s wall cap faces away from the game camera, but {changed} of its {alone.Count} pixel(s) changed with the caps on, first at {first}");
+        return drawnExpected ? changed : alone.Count;
+    }
+
+    /// <summary>
+    /// The cutaway on a wall cap (T6.13e), from the game camera's angle: a cut
+    /// centre in front of its wall (which keeps its face) leaves the cap whole,
+    /// though the cap lies on the camera's side of it as a floor the cutaway
+    /// would cut; one behind its wall (the wall cut) cuts it where it lies
+    /// ahead of the centre. The pixels within the cut disc where the cap shows
+    /// (only it covers them, and they change with the caps on) must change
+    /// with the cutaway on (no cutaway cap) where the CPU's rule cuts their
+    /// point on the cap (<see cref="Cutaway.Hides"/> and
+    /// <see cref="Cutaway.WallCut"/>), and only there.
+    /// </summary>
+    private async Task CompareCapCutaway(LevelMesh m, WallCap cap, Basis basis, Vector3 toCamera)
+    {
+        string what = $"{m.Level.Name}: line {cap.Line}'s wall cap under the cutaway";
+        var settings = new CutawaySettings { Cap = CutawayCap.Off };
+        float top = CapTop(m, cap);
+        // The middle of the cap's wall, and its normal into the room.
+        double cx = cap.Pieces.Average(p => p.Average(v => v.X)), cy = cap.Pieces.Average(p => p.Average(v => v.Y));
+        double behind = cap.Behind(cx, cy);
+        (double wx, double wy) = (cx - cap.Normal.X * behind, cy - cap.Normal.Y * behind);
+        var counts = new List<string>();
+        foreach ((string where, double offset, bool cutExpected) in new[] { ("in front of its wall", 24.0, false), ("behind its wall", -(WallCaps.Thickness + 24), true) })
+        {
+            // The cutoff 24 units below the cap; the anchor in line with the cap's middle.
+            var centre = new Vector3((float)(wx - cap.Normal.X * offset), (float)(wy - cap.Normal.Y * offset), top - settings.Height - 24);
+            CutView(centre, basis, toCamera);
+            Vector2 a = _scene.Camera.UnprojectPosition(LevelMesh.ToGodot((int)(centre.X * 65536), (int)(centre.Y * 65536), centre.Z + Cutaway.Anchor));
+            List<Vector2I> inDisc = [.. CapAlonePixels(m, cap).Where(q => (new Vector2(q.X + 0.5f, q.Y + 0.5f) - a).Length() < settings.Radius - 3)];
+            m.SetCutawayCentres(centre, null);
+            m.SetCutaway(settings with { Style = CutawayStyle.Off });
+            m.SetWallCaps(WallCapMode.Off);
+            byte[]? bare = await Capture($"{what}, centre {where}, caps and cutaway off");
+            m.SetWallCaps(WallCapMode.On);
+            byte[]? off = await Capture($"{what}, centre {where}, cutaway off");
+            m.SetCutaway(settings);
+            byte[]? on = await Capture($"{what}, centre {where}, cutaway on");
+            m.SetCutaway(settings with { Style = CutawayStyle.Off });
+            m.SetCutawayCentres(null, null);
+            if (bare is null || off is null || on is null)
+                return;
+            // Where the cap shows (nothing nearer covers it), so the cutaway can only cut it there.
+            List<Vector2I> pixels = [.. inDisc.Where(q => !Same(q, off, bare))];
+            _pixels += pixels.Count;
+            // The CPU's rule at a pixel's point on the cap (null: within a pixel of its edge).
+            var up = new Vector3(0, 0, 1);
+            var normal = new Vector2((float)-cap.Normal.X, (float)-cap.Normal.Y);
+            bool? Expected(Vector2I q)
+            {
+                bool? cut = null;
+                foreach ((float ox, float oy) in new[] { (0f, 0f), (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) })
+                {
+                    Vector3 p = PlanePoint(new Vector2(q.X + 0.5f + ox, q.Y + 0.5f + oy), top);
+                    bool c = Cutaway.Hides(p, up, centre, settings, toCamera)
+                        && Cutaway.WallCut(new Vector2(p.X, p.Y), (float)cap.Behind(p.X, p.Y), normal, centre);
+                    if (cut is bool other && other != c)
+                        return null;
+                    cut = c;
+                }
+                return cut;
+            }
+            int cut = 0, kept = 0, bad = 0;
+            string first = "";
+            foreach (Vector2I q in pixels)
+            {
+                if (Expected(q) is not bool expected)
+                    continue;
+                bool changed = !Same(q, on, off);
+                if (expected)
+                    cut++;
+                else
+                    kept++;
+                if (changed != expected && bad++ == 0)
+                    first = $"pixel ({q.X}, {q.Y}) {(expected ? "kept" : "cut")}";
+            }
+            if (pixels.Count < 50)
+                Fail($"{what}, centre {where}: only {pixels.Count} cap pixels shown in the cut disc (at least 50 expected)");
+            else if (bad > 0)
+                Fail($"{what}, centre {where}: {bad} of {cut + kept} cap pixel(s) differ from the CPU's cut, first at {first}");
+            else if (cutExpected ? cut < 50 : cut > 0)
+                Fail($"{what}, centre {where}: the CPU cuts {cut} of its {cut + kept} pixel(s) ({(cutExpected ? "at least 50" : "none")} expected)");
+            counts.Add($"{where} {cut} cut, {kept} kept");
+        }
+        GD.Print($"Level check: {what}: centre {string.Join(", ", counts)}");
+    }
+
+    // The pixels (of the current view) where only this cap would show, at least 2 pixels inside it.
+    private List<Vector2I> CapAlonePixels(LevelMesh m, WallCap cap)
+    {
         Vector2I size = ViewSize();
         int w = size.X, h = size.Y;
-        double cx = cap.Pieces.Average(p => p.Average(v => v.X)), cy = cap.Pieces.Average(p => p.Average(v => v.Y));
         float Top(WallCap c) => CapTop(m, c);
-        CutView(new Vector3((float)cx, (float)cy, Top(cap) - Cutaway.Anchor), basis, toCamera);
         Camera3D camera = _scene.Camera;
         List<Vector2> Project((double X, double Y)[] piece, float z) =>
             [.. piece.Select(v => camera.UnprojectPosition(new Vector3((float)v.X, z, (float)-v.Y) / LevelMesh.MapUnitsPerMetre))];
@@ -311,15 +416,8 @@ public partial class LevelCheck
                     others.Add(q);
             }
         }
-        m.SetWallCaps(WallCapMode.Off);
-        byte[]? off = await Capture($"{m.Level.Name}: line {cap.Line}'s wall cap from the game camera, caps off");
-        m.SetWallCaps(WallCapMode.On);
-        byte[]? on = await Capture($"{m.Level.Name}: line {cap.Line}'s wall cap from the game camera, caps on");
-        if (off is null || on is null)
-            return 0;
         static bool In(List<Vector2> p, float x, float y) => InConvex([.. p.Select(v => ((double)v.X, (double)v.Y))], x, y);
-        int pixels = 0, changed = 0;
-        string first = "";
+        var pixels = new List<Vector2I>();
         for (int py = Math.Max(0, (int)minY); py < Math.Min(h, (int)maxY + 1); py++)
         {
             for (int px = Math.Max(0, (int)minX); px < Math.Min(w, (int)maxX + 1); px++)
@@ -332,17 +430,40 @@ public partial class LevelCheck
                     if (!alone)
                         break;
                 }
-                if (!alone)
-                    continue;
-                pixels++;
-                int i = (py * w + px) * 4;
-                if ((on[i], on[i + 1], on[i + 2]) != (off[i], off[i + 1], off[i + 2]) && changed++ == 0)
-                    first = $"pixel ({px}, {py}): drew {(on[i], on[i + 1], on[i + 2])}, {(off[i], off[i + 1], off[i + 2])} with the caps off";
+                if (alone)
+                    pixels.Add(new Vector2I(px, py));
             }
         }
-        _pixels += pixels;
-        if (!drawnExpected && changed > 0)
-            Fail($"{m.Level.Name}: line {cap.Line}'s wall cap faces away from the game camera, but {changed} of its {pixels} pixel(s) changed with the caps on, first at {first}");
-        return drawnExpected ? changed : pixels;
+        return pixels;
+    }
+
+    // The map point (x, y, height) where the view ray through a pixel meets the plane at the height.
+    private Vector3 PlanePoint(Vector2 pixel, float height)
+    {
+        Camera3D camera = _scene.Camera;
+        Vector3 o = camera.ProjectRayOrigin(pixel), d = camera.ProjectRayNormal(pixel);
+        Vector3 g = o + d * ((height / LevelMesh.MapUnitsPerMetre - o.Y) / d.Y);
+        return Cutaway.ToMapAxes(g) * LevelMesh.MapUnitsPerMetre;
+    }
+
+    // Whether a pixel is the same in two captures.
+    private bool Same(Vector2I q, byte[] x, byte[] y)
+    {
+        int i = (q.Y * ViewSize().X + q.X) * 4;
+        return (x[i], x[i + 1], x[i + 2]) == (y[i], y[i + 1], y[i + 2]);
+    }
+
+    // How many of the pixels differ between two captures, and the first.
+    private (int Changed, string First) ChangedPixels(List<Vector2I> pixels, byte[] on, byte[] off, string offName)
+    {
+        int w = ViewSize().X, changed = 0;
+        string first = "";
+        foreach (Vector2I q in pixels)
+        {
+            int i = (q.Y * w + q.X) * 4;
+            if ((on[i], on[i + 1], on[i + 2]) != (off[i], off[i + 1], off[i + 2]) && changed++ == 0)
+                first = $"pixel ({q.X}, {q.Y}): drew {(on[i], on[i + 1], on[i + 2])}, {(off[i], off[i + 1], off[i + 2])} with {offName}";
+        }
+        return (changed, first);
     }
 }

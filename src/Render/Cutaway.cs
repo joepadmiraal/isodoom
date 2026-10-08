@@ -177,6 +177,20 @@ public static class Cutaway
     }
 
     /// <summary>
+    /// Whether a wall cap's wall (T6.13e) would be cut by centre
+    /// <paramref name="centre"/>: the centre lies behind the wall's plane by
+    /// more than <see cref="PlaneMargin"/>. A cap point is cut only when this
+    /// holds as well as <see cref="Hides"/> (as a floor), so a player standing
+    /// in front of a wall keeps its top whole, as its face (the shader's
+    /// <c>cap_wall_cut</c>). <paramref name="behind"/> is how far the cap
+    /// point <paramref name="p"/> lies behind the wall, <paramref name="wallNormal"/>
+    /// the wall's unit normal towards its sector (map x, y; the wall faces the
+    /// camera, or its cap is not drawn).
+    /// </summary>
+    public static bool WallCut(Vector2 p, float behind, Vector2 wallNormal, Vector3 centre) =>
+        (new Vector2(centre.X, centre.Y) - p).Dot(wallNormal) - behind <= -PlaneMargin;
+
+    /// <summary>
     /// How far floor point <paramref name="p"/> lies on the camera's side of
     /// anchor <paramref name="a"/>, horizontally (map units; negative behind
     /// it). A floor above the cutoff is cut only more than

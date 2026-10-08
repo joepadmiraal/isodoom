@@ -129,7 +129,9 @@
 // view direction; a wall facing away is culled, and its cap would float over
 // its room) and has a height. It shows the wall's texture, its rows going
 // back from the wall's face (v_kind 3: textured as a wall, lit as a floor of
-// the sector), and is cut as any floor. Kind 7 is the same piece per cut
+// the sector), and is cut as any floor, but only where its wall would be: the
+// centre behind the wall's plane by more than CUT_PLANE_MARGIN (a player in
+// front of a wall keeps its top whole, as its face). Kind 7 is the same piece per cut
 // centre (CUSTOM0.w), placed at its cutoff as the floors' caps where the wall
 // reaches above it: a cut wall reads as a block cut down to its stub.
 // An island (a void enclosed by one loop of walls: a pillar; `wall_islands`,
@@ -214,6 +216,8 @@ varying vec2 v_map;
 varying float v_height;
 // The surface's normal (map axes): towards the front sector for walls, up for floors.
 varying flat vec3 v_normal;
+// A wall cap's wall (v_kind 3): its normal towards its sector (map axes); v_texcoord.y is how far behind it.
+varying flat vec2 v_wall_normal;
 varying float v_depth;
 
 vec4 data_texel(sampler2D tex, int id) {
@@ -262,6 +266,7 @@ void vertex() {
 		}
 		// Towards the front sector, and the view direction towards the camera, both map axes.
 		vec2 n = vec2(sin(CUSTOM2.w), -cos(CUSTOM2.w));
+		v_wall_normal = n;
 		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
 		vec2 to_camera = vec2(view_back.x, -view_back.z);
 		bool cap_collapse = wall_caps == 0 || cap_slot < 0 || top <= cap_front.r || dot(n, to_camera) < -0.001 * length(to_camera);
@@ -367,6 +372,7 @@ void vertex() {
 		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
 		v_height = z;
 		v_normal = kind == 0 ? vec3(0.0, 0.0, 1.0) : vec3(sin(CUSTOM2.w), -cos(CUSTOM2.w), 0.0);
+		v_wall_normal = vec2(0.0);
 		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
 	}
 }
@@ -416,6 +422,18 @@ bool cut_hides(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
 	return length(d - axis * dot(d, axis)) < cut_radius;
 }
 
+// IsoDoom.Render.Cutaway.WallCut (T6.13e): whether a wall cap's wall would be
+// cut by centre c, the centre behind the wall's plane (it faces the camera).
+// Always true for any other surface.
+bool cap_wall_cut(vec3 p, vec4 c) {
+	if (v_kind != 3) {
+		return true;
+	}
+	vec2 a = c.xy;
+	// The cap point lies v_texcoord.y behind the wall: the centre's distance in front of it.
+	return dot(a - p.xy, v_wall_normal) - v_texcoord.y <= -CUT_PLANE_MARGIN;
+}
+
 // 4x4 ordered dither threshold (0-1) of a pixel.
 float bayer4(ivec2 q) {
 	const int m[16] = int[](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
@@ -439,7 +457,7 @@ void fragment() {
 		if (dot(n, ortho ? to_camera : cam - p) < 0.0) {
 			n = -n;
 		}
-		if (cut_hides(p, n, cut_player, ortho, to_camera, cam) || cut_hides(p, n, cut_cursor, ortho, to_camera, cam)) {
+		if ((cut_hides(p, n, cut_player, ortho, to_camera, cam) && cap_wall_cut(p, cut_player)) || (cut_hides(p, n, cut_cursor, ortho, to_camera, cam) && cap_wall_cut(p, cut_cursor))) {
 			if (cut_mode == 1 || bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
 				discard;
 			}
@@ -450,7 +468,8 @@ void fragment() {
 			vec3 a = vec3(c.xy, c.z + cut_anchor);
 			vec3 axis = ortho ? to_camera : normalize(cam - a);
 			vec3 d = p - a;
-			if (length(d - axis * dot(d, axis)) >= cut_radius) {
+			// A wall cap's cap only where its wall is cut (T6.13e).
+			if (length(d - axis * dot(d, axis)) >= cut_radius || !cap_wall_cut(p, c)) {
 				discard;
 			}
 		}
