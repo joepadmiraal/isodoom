@@ -609,6 +609,11 @@ public partial class LevelScene : ISetupHost
             WallCaps = ParseOnOff(s, "gameplay/wall_caps") ? WallCapMode.On : WallCapMode.Off;
             Mesh?.SetWallCaps(WallCaps);
         });
+        Add("gameplay/upper_walls", () => UpperWalls == UpperWallMode.All ? "all" : "doors", s =>
+        {
+            UpperWalls = ParseUpperWalls(s, "gameplay/upper_walls");
+            Mesh?.SetUpperWalls(UpperWalls);
+        });
         Add("gameplay/masked_back", () => MaskedBacks == MaskedBackFaces.Mirrored ? "mirror" : "off", s =>
         {
             MaskedBacks = ParseMaskedBacks(s);

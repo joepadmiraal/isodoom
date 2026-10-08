@@ -334,7 +334,8 @@ public partial class LevelCheck : Godot.Node
                 Fail($"{map}: sector {s.Index}: GPU data texel {gpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth)}, expected {expected}");
         }
 
-        // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere); T6.13d: the door flag.
+        // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere); T6.13d: the door flag;
+        // and whether its ceiling moves (a door at least: the upper walls over it are kept).
         Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null;
         bool[] doors = DoorLids.FindDoors(m.Level);
         foreach (Sector s in m.Level.Sectors)
@@ -349,14 +350,17 @@ public partial class LevelCheck : Godot.Node
                         lowest = Math.Min(lowest, (float)((front == s ? back : front).CeilingHeight / 65536.0));
                 }
             }
-            (float Height, int Slot, bool Door) expected = (lowest, m.Lids.Has(s.Index) ? m.FlatSlot(s.CeilingPic) : -1, doors[s.Index]);
+            bool moves = m.Lids.MovesCeiling(s.Index);
+            if (doors[s.Index] && !moves)
+                Fail($"{map}: sector {s.Index} is a door, but its ceiling does not move");
+            (float Height, int Slot, bool Door, bool MovesCeiling) expected = (lowest, m.Lids.Has(s.Index) ? m.FlatSlot(s.CeilingPic) : -1, doors[s.Index], moves);
             if (m.LidData(s.Index) != expected)
                 Fail($"{map}: sector {s.Index}: lid texel {m.LidData(s.Index)}, expected {expected}");
             if (lidGpu is not null)
             {
                 Color g = lidGpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth);
-                if (g.R != expected.Height || (int)MathF.Round(g.G) != expected.Slot || g.B > 0.5f != expected.Door)
-                    Fail($"{map}: sector {s.Index}: GPU lid texel ({g.R}, {g.G}, {g.B}), expected {expected}");
+                if (g.R != expected.Height || (int)MathF.Round(g.G) != expected.Slot || g.B > 0.5f != expected.Door || g.A > 0.5f != expected.MovesCeiling)
+                    Fail($"{map}: sector {s.Index}: GPU lid texel ({g.R}, {g.G}, {g.B}, {g.A}), expected {expected}");
             }
         }
     }
@@ -1054,6 +1058,9 @@ public partial class LevelCheck : Godot.Node
         m.SetDoorLids(DoorLidMode.Off);
         WallCapMode capMode = m.CapMode;
         m.SetWallCaps(WallCapMode.Off);
+        // Every upper wall, as the CPU's comparisons expect (UpperWallCheck shows which are dropped).
+        UpperWallMode upperMode = m.UpperMode;
+        m.SetUpperWalls(UpperWallMode.All);
 
         // Light (T2.8): the player-distance mapping (default) from player 1's
         // start; then top-down again with no diminishing (and extralight 1),
@@ -1147,6 +1154,8 @@ public partial class LevelCheck : Godot.Node
 
         await WallCapCheck(m);
 
+        await UpperWallCheck(m);
+
         if (move is { } mv)
             await MoveCheck(m, mv.Lower, mv.Sector);
 
@@ -1170,6 +1179,7 @@ public partial class LevelCheck : Godot.Node
         _scene.Overlay.Visible = true;
         m.SetDoorLids(lidMode);
         m.SetWallCaps(capMode);
+        m.SetUpperWalls(upperMode);
         if (_scene.Things is { } shown)
             shown.Visible = true;
         _scene.Environment.BackgroundColor = oldBackground;

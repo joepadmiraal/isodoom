@@ -14,6 +14,16 @@ public enum DoorLidMode
     On = 1,
 }
 
+/// <summary>Which upper walls are drawn (SPEC §12; a presentation option). The shader's <c>upper_walls</c>.</summary>
+public enum UpperWallMode
+{
+    /// <summary>Every upper wall, as vanilla: a step down to a lower ceiling hangs in the air as a band, with no ceiling drawn above it.</summary>
+    All = 0,
+
+    /// <summary>Only the upper walls over a sector that keeps them (<see cref="DoorLids.KeepsUppers"/>: doors, lintels, windows, crushers; the default).</summary>
+    Doors = 1,
+}
+
 /// <summary>
 /// The lids (T6.13b, SPEC §7.2, §12): which sectors get a lid on the solid
 /// volume above them, and at what height. Pure C#, no Godot types (the tests
@@ -67,14 +77,19 @@ public sealed class DoorLids
     /// <summary>The sector specials that are doors (p_spec.c <c>P_SpawnSpecials</c>: 10 <c>P_SpawnDoorCloseIn30</c>, 14 <c>P_SpawnDoorRaiseIn5Mins</c>).</summary>
     private static readonly int[] _doorSectorSpecials = [10, 14];
 
+    /// <summary>The line specials that move the ceilings of their tagged sectors (p_spec.c, p_switch.c: <c>EV_DoCeiling</c>: crushers, ceilings lowered to the floor or raised).</summary>
+    private static readonly int[] _ceilingSpecials = [6, 25, 40, 41, 43, 44, 49, 72, 73, 77, 141];
+
     private readonly int[]?[] _neighbours;
     private readonly bool[] _doors;
+    private readonly bool[] _ceilings;
 
-    private DoorLids(int[]?[] neighbours, List<int> sectors, bool[] doors)
+    private DoorLids(int[]?[] neighbours, List<int> sectors, bool[] doors, bool[] ceilings)
     {
         _neighbours = neighbours;
         Sectors = sectors;
         _doors = doors;
+        _ceilings = ceilings;
     }
 
     /// <summary>The lid sectors, in sector order.</summary>
@@ -91,24 +106,63 @@ public sealed class DoorLids
     /// </summary>
     public bool IsDoor(int sector) => _doors[sector];
 
+    /// <summary>
+    /// Whether <paramref name="sector"/>'s ceiling moves: a door
+    /// (<see cref="IsDoor"/>), or a sector whose ceiling a line special moves
+    /// (crushers, ceilings lowered to the floor). The upper walls over it are
+    /// kept (<see cref="KeepsUppers"/>): they are the moving block's sides.
+    /// </summary>
+    public bool MovesCeiling(int sector) => _doors[sector] || _ceilings[sector];
+
+    /// <summary>
+    /// Whether the upper walls over <paramref name="sector"/> (those of the
+    /// lines around it, on the side whose ceiling is higher) are drawn with
+    /// <see cref="UpperWallMode.Doors"/>, its ceiling and its neighbours' at
+    /// <paramref name="ceiling"/> (a sector's ceiling height as drawn, map
+    /// units): its ceiling moves (<see cref="MovesCeiling"/>), or its lid
+    /// shows (<see cref="Shows"/>, the lids on or not: a lintel, a window, a
+    /// closed door; its ceiling below all its neighbours', so the upper walls
+    /// around it make a closed block). Over any other sector (a room with a
+    /// lower ceiling, a step down from a higher one to a lower one) an upper
+    /// wall is a band hanging in the air, since no ceiling is drawn: the
+    /// shader's test.
+    /// </summary>
+    public bool KeepsUppers(int sector, Func<int, float> ceiling) =>
+        MovesCeiling(sector) || Shows(LidHeight(sector, ceiling), ceiling(sector));
+
     /// <summary>The door sectors (<see cref="IsDoor"/>) of <paramref name="level"/>.</summary>
     public static bool[] FindDoors(Level level)
     {
-        bool[] doors = new bool[level.Sectors.Length];
-        var tags = new HashSet<int>();
+        bool[] doors = Tagged(level, _taggedDoorSpecials);
         foreach (Line line in level.Lines)
         {
             if (Array.IndexOf(_manualDoorSpecials, (int)line.Special) >= 0 && line.BackSector is Sector back)
                 doors[back.Index] = true;
-            if (Array.IndexOf(_taggedDoorSpecials, (int)line.Special) >= 0 && line.Tag != 0)
+        }
+        foreach (Sector s in level.Sectors)
+        {
+            if (Array.IndexOf(_doorSectorSpecials, (int)s.Special) >= 0)
+                doors[s.Index] = true;
+        }
+        return doors;
+    }
+
+    // The sectors tagged (tag 0 not counted) by a line with one of the specials.
+    private static bool[] Tagged(Level level, int[] specials)
+    {
+        bool[] tagged = new bool[level.Sectors.Length];
+        var tags = new HashSet<int>();
+        foreach (Line line in level.Lines)
+        {
+            if (Array.IndexOf(specials, (int)line.Special) >= 0 && line.Tag != 0)
                 tags.Add(line.Tag);
         }
         foreach (Sector s in level.Sectors)
         {
-            if (tags.Contains(s.Tag) || Array.IndexOf(_doorSectorSpecials, (int)s.Special) >= 0)
-                doors[s.Index] = true;
+            if (tags.Contains(s.Tag))
+                tagged[s.Index] = true;
         }
-        return doors;
+        return tagged;
     }
 
     /// <summary>The other sectors across a lid sector's two-sided lines, in sector order (empty for a sector without a lid).</summary>
@@ -161,7 +215,7 @@ public sealed class DoorLids
             if (lids[i] is not null)
                 sectors.Add(i);
         }
-        return new DoorLids(lids, sectors, FindDoors(level));
+        return new DoorLids(lids, sectors, FindDoors(level), Tagged(level, _ceilingSpecials));
     }
 
     /// <summary>

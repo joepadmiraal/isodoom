@@ -103,12 +103,20 @@
 //
 // Lids (T6.13b; IsoDoom.Render.DoorLids, `lids` 0 off, 1 on): kind 5 is a
 // copy of a lid sector's floor (a door, a lintel), placed at its lid height
-// from `sector_lids` (RGB float, one texel per sector: R the lid height, the
+// from `sector_lids` (RGBA float, one texel per sector: R the lid height, the
 // lowest neighbouring ceiling as drawn, very low for none; G the ceiling
-// flat's texture slot; B 1 for a door, T6.13d) and drawn while the sector's
+// flat's texture slot; B 1 for a door, T6.13d; A 1 when its ceiling moves: a
+// door or a crusher, below) and drawn while the sector's
 // ceiling is below it: the top of the solid between the upper walls around
 // it. It shows the ceiling flat, lit as a floor of the sector, and is cut as
 // any floor.
+//
+// Upper walls (IsoDoom.Render.DoorLids.KeepsUppers, `upper_walls` 0 all, 1
+// doors): with 1, an upper wall (part 0 of a side, kind 1) collapses unless
+// the sector across its line keeps it: its ceiling moves (`sector_lids` A: a
+// door, a crusher) or its lid shows (R above its ceiling, the lids on or not:
+// a lintel, a window, a closed door). Over a room with a lower ceiling, which
+// is not drawn, it would hang in the air as a band.
 //
 // Doors (T6.13d; IsoDoom.Render.DoorLids.IsDoor, `cut_doors` 0 keep, 1 cut):
 // with 0, nothing of a door sector is cut: its floor, its lid, and every wall
@@ -190,6 +198,8 @@ uniform int lids = 1;
 uniform int cut_doors = 0;
 // The wall caps (T6.13e): 0 off, 1 on.
 uniform int wall_caps = 1;
+// The upper walls: 0 all, 1 only over the sectors that keep them.
+uniform int upper_walls = 1;
 
 varying flat ivec4 v_rect;
 // 0 floor, 1 solid wall, 2 masked middle, 3 wall cap (a wall's texture, a floor's light).
@@ -340,8 +350,14 @@ void vertex() {
 				top = wall_caps == 1 ? data_texel(wall_islands, island).r : bottom;
 			}
 			top = max(top, bottom);
-			if ((back_face && masked_backs == 0) || slot < 0) {
-				// Collapsed: a back face turned off, or a texture changed to none.
+			// An upper wall over a sector that does not keep it (a room's lower ceiling).
+			bool dropped = false;
+			if (upper_walls == 1 && kind == 1 && !extension && back_id >= 0 && int(CUSTOM0.y + 0.5) % 3 == 0) {
+				vec4 back_lid = data_texel(sector_lids, back_id);
+				dropped = back_lid.a < 0.5 && back_lid.r <= back.g;
+			}
+			if ((back_face && masked_backs == 0) || slot < 0 || dropped) {
+				// Collapsed: a back face turned off, a texture changed to none, or a dropped upper wall.
 				top = bottom;
 			}
 			z = UV.y > 0.5 ? top : bottom;

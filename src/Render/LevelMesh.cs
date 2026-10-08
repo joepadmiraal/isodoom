@@ -182,7 +182,7 @@ public sealed class LevelMesh
         _sectorImage = sectorImage;
         _sectorTexels = new Color[level.Sectors.Length];
         _sectorFlats = new string?[level.Sectors.Length];
-        _lidImage = Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbf);
+        _lidImage = Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf);
         _islandImage = Image.CreateEmpty(DataWidth, Rows(caps.Islands.Count), false, Image.Format.Rf);
         _islandTops = new float[caps.Islands.Count];
         _lidTexels = new Color[level.Sectors.Length];
@@ -289,7 +289,7 @@ public sealed class LevelMesh
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
-    /// <summary>The lids' data texture (T6.13b, <c>sector_lids</c>, RGB float, one texel per sector): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot, 1 for a door (T6.13d, <see cref="DoorLids.IsDoor"/>).</summary>
+    /// <summary>The lids' data texture (T6.13b, <c>sector_lids</c>, RGBA float, one texel per sector): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot, 1 for a door (T6.13d, <see cref="DoorLids.IsDoor"/>), 1 when its ceiling moves (<see cref="DoorLids.MovesCeiling"/>: the upper walls over it are kept).</summary>
     public ImageTexture LidDataTexture { get; private set; } = null!;
 
     /// <summary>Number of lid triangles (T6.13b).</summary>
@@ -584,6 +584,16 @@ public sealed class LevelMesh
         SetParameter("wall_caps", (int)mode);
     }
 
+    /// <summary>Which upper walls are drawn, as last set (<see cref="SetUpperWalls"/>; <see cref="UpperWallMode.Doors"/> until set).</summary>
+    public UpperWallMode UpperMode { get; private set; } = UpperWallMode.Doors;
+
+    /// <summary>Draws every upper wall, or only those over the sectors that keep them (<see cref="DoorLids.KeepsUppers"/>).</summary>
+    public void SetUpperWalls(UpperWallMode mode)
+    {
+        UpperMode = mode;
+        SetParameter("upper_walls", (int)mode);
+    }
+
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
     public SpriteSettings Sprites { get; private set; } = new();
 
@@ -716,11 +726,11 @@ public sealed class LevelMesh
         _infoDirty = true;
     }
 
-    /// <summary>The <c>sector_lids</c> texel of <paramref name="sector"/> as uploaded (T6.13b): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot, and whether it is a door (T6.13d).</summary>
-    public (float Height, int Slot, bool Door) LidData(int sector)
+    /// <summary>The <c>sector_lids</c> texel of <paramref name="sector"/> as uploaded (T6.13b): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot, whether it is a door (T6.13d), and whether its ceiling moves (<see cref="DoorLids.MovesCeiling"/>: the upper walls over it are kept).</summary>
+    public (float Height, int Slot, bool Door, bool MovesCeiling) LidData(int sector)
     {
         Color c = _lidImage.GetPixel(sector % DataWidth, sector / DataWidth);
-        return (c.R, (int)MathF.Round(c.G), c.B > 0.5f);
+        return (c.R, (int)MathF.Round(c.G), c.B > 0.5f, c.A > 0.5f);
     }
 
     /// <summary>The sector data texel of <paramref name="sector"/> as uploaded: floor, ceiling (map units), light, floor flat slot.</summary>
@@ -806,7 +816,7 @@ public sealed class LevelMesh
                     Miss($"ceiling flat {s.CeilingPic} (sector {i}'s lid)");
                 _lidFlats[i] = s.CeilingPic;
             }
-            var texel = new Color(Lids.LidHeight(i, _drawnCeiling ??= n => _sectorTexels[n].G), slot, Lids.IsDoor(i) ? 1 : 0);
+            var texel = new Color(Lids.LidHeight(i, _drawnCeiling ??= n => _sectorTexels[n].G), slot, Lids.IsDoor(i) ? 1 : 0, _lidTexels[i].A);
             if (texel == _lidTexels[i])
                 continue;
             _lidTexels[i] = texel;
@@ -908,15 +918,10 @@ public sealed class LevelMesh
         foreach (Sector s in Level.Sectors)
             WriteSector(s, null);
         SectorDataTexture = ImageTexture.CreateFromImage(_sectorImage);
-        _lidImage.Fill(new Color(DoorLids.None, -1, 0));
-        Array.Fill(_lidTexels, new Color(DoorLids.None, -1, 0));
         for (int i = 0; i < Level.Sectors.Length; i++)
         {
-            if (Lids.IsDoor(i))
-            {
-                _lidTexels[i] = new Color(DoorLids.None, -1, 1);
-                _lidImage.SetPixel(i % DataWidth, i / DataWidth, _lidTexels[i]);
-            }
+            _lidTexels[i] = new Color(DoorLids.None, -1, Lids.IsDoor(i) ? 1 : 0, Lids.MovesCeiling(i) ? 1 : 0);
+            _lidImage.SetPixel(i % DataWidth, i / DataWidth, _lidTexels[i]);
         }
         WriteLids();
         LidDataTexture = ImageTexture.CreateFromImage(_lidImage);
@@ -955,6 +960,7 @@ public sealed class LevelMesh
         SetCutaway(Cutaway);
         SetDoorLids(LidMode);
         SetWallCaps(CapMode);
+        SetUpperWalls(UpperMode);
         SetSprites(Sprites);
         SetCutawayCentres(null, null);
         SetFuzzPhase(0);

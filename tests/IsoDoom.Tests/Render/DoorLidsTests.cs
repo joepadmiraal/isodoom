@@ -92,6 +92,46 @@ public class DoorLidsTests
     }
 
     [Fact]
+    public void Doom1E1M1UpperWallsKeptOverDoorsAndLintelsOnly()
+    {
+        (Level level, _, DoorLids lids) = Build(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
+        float Ceiling(int s) => DoorLidsTests.Ceiling(level, s);
+        // The start room (ceiling 72) and the 32-wide step around the pad (120, between 72 and
+        // 200: a lid sector whose lid never shows) drop the upper walls over them.
+        int start = level.R_PointInSubsector(1056 << 16, -3616 << 16).Sector.Index;
+        Assert.False(lids.KeepsUppers(start, Ceiling));
+        Assert.True(lids.Has(37));
+        Assert.False(lids.KeepsUppers(37, Ceiling));
+        // The door east of the start (sector 4) and the start room's east window (sector 14, a lintel) keep theirs.
+        Assert.True(lids.KeepsUppers(4, Ceiling));
+        Assert.False(lids.MovesCeiling(14));
+        Assert.True(lids.KeepsUppers(14, Ceiling));
+    }
+
+    [Fact]
+    public void CeilingMoversKeepTheirUpperWalls()
+    {
+        (Level level, FloorTriangles floors, _) = Build(Synthetic(), "E1M1");
+        foreach (Line l in level.Lines)
+        {
+            l.Special = 0;
+            l.Tag = 0;
+        }
+        foreach (Sector s in level.Sectors)
+        {
+            s.Special = 0;
+            s.Tag = 0;
+        }
+        Assert.DoesNotContain(Enumerable.Range(0, level.Sectors.Length), DoorLids.Build(level, floors).MovesCeiling);
+        level.Lines[0].Special = 25; // W1 crusher
+        level.Lines[0].Tag = 7;
+        level.Sectors[2].Tag = 7;
+        DoorLids lids = DoorLids.Build(level, floors);
+        Assert.Equal([2], Enumerable.Range(0, level.Sectors.Length).Where(lids.MovesCeiling));
+        Assert.True(lids.KeepsUppers(2, s => Ceiling(level, s)));
+    }
+
+    [Fact]
     public void DoorsAreTheSectorsDoorSpecialsMove()
     {
         // T6.13d: a manual door line's back sector, a tagged door line's sectors (not tag 0), and the door sector specials.

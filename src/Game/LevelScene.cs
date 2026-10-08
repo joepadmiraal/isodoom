@@ -80,6 +80,10 @@ namespace IsoDoom.Game;
 /// <c>--level-wall-caps=on|off</c> (T6.13e, <see cref="WallCapMode"/>: a top
 /// on each one-sided wall, the void behind it to a depth of 16 units, so walls
 /// read as blocks; default on);
+/// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
+/// upper walls over doors, lintels, windows and crushers, or every one, as
+/// vanilla, whose bands over a room's lower ceiling hang in the air; default
+/// doors);
 /// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
 /// player's weapon flash, <c>player_t.extralight</c>, lights the level as
 /// vanilla's lights the view; default on);
@@ -173,6 +177,9 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Whether the one-sided walls get a top (T6.13e, <c>--level-wall-caps</c>, key U); applied to every level.</summary>
     public WallCapMode WallCaps { get; private set; } = WallCapMode.On;
+
+    /// <summary>Which upper walls are drawn (<c>--level-upper-walls</c>, key I); applied to every level.</summary>
+    public UpperWallMode UpperWalls { get; private set; } = UpperWallMode.Doors;
 
     /// <summary>
     /// T6.6: whether the console player's weapon flash (<see cref="player_t.extralight"/>,
@@ -446,7 +453,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   I upper walls   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -581,6 +588,8 @@ public partial class LevelScene : Node3D, IGameHost
                     "off" or "vanilla" => WallCapMode.Off,
                     _ => throw new ArgumentException($"--level-wall-caps: \"{caps}\" (on or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
+                UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
                 WeaponLight = weaponLight switch
                 {
@@ -761,6 +770,14 @@ public partial class LevelScene : Node3D, IGameHost
         CutawayThings.Decorations => "decor",
         CutawayThings.All => "all",
         _ => "off",
+    };
+
+    /// <summary>Parses an upper wall mode: <c>doors</c>, or <c>all</c> (also <c>vanilla</c>).</summary>
+    public static UpperWallMode ParseUpperWalls(string value, string what) => value switch
+    {
+        "doors" => UpperWallMode.Doors,
+        "all" or "vanilla" => UpperWallMode.All,
+        _ => throw new ArgumentException($"{what}: \"{value}\" (doors or all)"),
     };
 
     /// <summary>The <c>--level-masked-back</c> option (T3.1a).</summary>
@@ -1036,6 +1053,10 @@ public partial class LevelScene : Node3D, IGameHost
             case Key.U:
                 WallCaps = WallCaps == WallCapMode.On ? WallCapMode.Off : WallCapMode.On;
                 Mesh?.SetWallCaps(WallCaps);
+                break;
+            case Key.I:
+                UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
+                Mesh?.SetUpperWalls(UpperWalls);
                 break;
             case Key.Equal:
                 // T6.11: vanilla's screen size keys: = shows more of the view (bar, fullscreen HUD, none), - less.
@@ -2053,6 +2074,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("door lids: off (J)\n");
         if (Mesh is { CapMode: WallCapMode.Off })
             text.Append("wall caps: off (U)\n");
+        if (Mesh is { UpperMode: UpperWallMode.All })
+            text.Append("upper walls: all, as vanilla (I)\n");
         text.Append(_status);
         text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
         return text.ToString();
@@ -2253,6 +2276,7 @@ public partial class LevelScene : Node3D, IGameHost
         mesh.SetMaskedBackFaces(MaskedBacks);
         mesh.SetDoorLids(DoorLids);
         mesh.SetWallCaps(WallCaps);
+        mesh.SetUpperWalls(UpperWalls);
         if (WadLocator.GetUserArg("--level-light-near") is string near)
             mesh.SetLightNear(Math.Max(0, ParseFloat(near, "--level-light-near")));
         if (WadLocator.GetUserArg("--level-light-reference") is string reference)
