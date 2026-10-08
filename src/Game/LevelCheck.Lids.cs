@@ -70,7 +70,7 @@ public partial class LevelCheck
     private async Task LidCheck(LevelMesh m)
     {
         string map = m.Level.Name;
-        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off };
+        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Doors = CutawayDoors.Cut };
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
         Vector2 toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
@@ -114,6 +114,24 @@ public partial class LevelCheck
                 string what = $"{map}: lid of sector {door.Index} (lid at {lids[i]:F0}, ceiling {door.CeilingHeight >> Fixed.FRACBITS}), centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0}) behind line {line.Index}";
                 await CompareLidTopDown(m, door, lids, $"{map}: lid of sector {door.Index}");
                 await CompareLidView(m, centre, c, settings, basis, toCamera, what);
+                if (m.Lids.IsDoor(door.Index))
+                {
+                    // T6.13d: with doors kept (the default), the same view keeps the door whole.
+                    CutawaySettings keep = settings with { Doors = CutawayDoors.Keep };
+                    CutClasses k = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, keep, toCamera, size.X, size.Y, lids);
+                    int kept = 0; // pixels the view with doors cut clears or caps and this one keeps
+                    for (int p = 0; p < k.Classes.Length; p++)
+                    {
+                        if (k.Classes[p] == CutPixel.Keep && (c.Classes[p] is CutPixel.Cleared or CutPixel.Capped || c.CapClasses[p] == CutPixel.Capped))
+                            kept++;
+                    }
+                    if (k.Capped > 0 || kept < 50)
+                        Fail($"{what}, doors kept: {k.Capped} pixels capped (none expected), {kept} pixels kept that the cut view clears or caps (at least 50 expected)");
+                    else
+                        await CompareLidView(m, centre, k, keep, basis, toCamera, $"{what}, doors kept ({kept} pixels kept that doors cut would clear or cap)");
+                }
+                else
+                    GD.Print($"Level check: {what}: not a door, no view with doors kept");
 
                 // The door half open, as the sim moves it: its ceiling above the cutoff, so the lid stays and caps nothing.
                 int old = door.CeilingHeight;
@@ -255,17 +273,7 @@ public partial class LevelCheck
             CutView(centre, basis, toCamera);
             CutClasses c = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings, toCamera, size.X, size.Y, lids);
             // Lid pixels above the cutoff inside the disc, which the cutaway keeps only because the lid is behind the centre.
-            var anchor = new Vector3(centre.X, centre.Y, centre.Z + Cutaway.Anchor);
-            int behind = 0;
-            for (int i = 0; i < c.LidStates.Length; i++)
-            {
-                if (c.LidStates[i] != 1)
-                    continue;
-                CapPoint p = c.LidPoints[i];
-                var q = new Vector3((float)p.X, (float)p.Y, lids[p.Sector]);
-                if (q.Z > centre.Z + settings.Height && Cutaway.Distance(q, anchor, toCamera) < settings.Radius - CutMargin)
-                    behind++;
-            }
+            int behind = LidPixelsInDisc(c, lids, centre, settings, toCamera);
             string what = $"{map}: lid of sector {door.Index} (lid at {lids[door.Index]:F0}), centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0}) in front of line {line.Index}";
             if (behind < 50)
             {
@@ -277,6 +285,23 @@ public partial class LevelCheck
             return;
         }
         GD.Print($"Level check: {map}: lid of sector {door.Index}: no view from in front of it");
+    }
+
+    /// <summary>The pixels whose first surface is definitely a lid above the cutoff inside the disc (not cut, or the lid would not be first).</summary>
+    private static int LidPixelsInDisc(CutClasses c, float[] lids, Vector3 centre, CutawaySettings settings, Vector3 toCamera)
+    {
+        var anchor = new Vector3(centre.X, centre.Y, centre.Z + Cutaway.Anchor);
+        int count = 0;
+        for (int i = 0; i < c.LidStates.Length; i++)
+        {
+            if (c.LidStates[i] != 1)
+                continue;
+            CapPoint p = c.LidPoints[i];
+            var q = new Vector3((float)p.X, (float)p.Y, lids[p.Sector]);
+            if (q.Z > centre.Z + settings.Height && Cutaway.Distance(q, anchor, toCamera) < settings.Radius - CutMargin)
+                count++;
+        }
+        return count;
     }
 
     /// <summary>

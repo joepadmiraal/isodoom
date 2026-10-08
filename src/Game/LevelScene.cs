@@ -69,6 +69,8 @@ namespace IsoDoom.Game;
 /// <c>--level-cutaway-things=decor|all|off</c> (T3.4b, <see cref="CutawayThings"/>:
 /// which thing billboards in front of the player the cutaway cuts as walls;
 /// default decor, all but actors);
+/// <c>--level-cutaway-doors=keep|cut</c> (T6.13d, <see cref="CutawayDoors"/>:
+/// whether the cutaway cuts doors; default keep);
 /// <c>--level-masked-back=mirror|off</c> (T3.1a, <see cref="MaskedBackFaces"/>:
 /// a masked middle on one side of a line only is drawn from behind too,
 /// mirrored, or as vanilla only from its own side; default mirror);
@@ -711,7 +713,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(_cursorMarker);
     }
 
-    /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c>, <c>--level-cutaway-cursor</c>, <c>--level-cutaway-cap</c> and <c>--level-cutaway-things</c>.</summary>
+    /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c>, <c>--level-cutaway-cursor</c>, <c>--level-cutaway-cap</c>, <c>--level-cutaway-things</c> and <c>--level-cutaway-doors</c>.</summary>
     private static CutawaySettings ParseCutaway()
     {
         var settings = new CutawaySettings();
@@ -735,6 +737,8 @@ public partial class LevelScene : Node3D, IGameHost
             settings = settings with { Cap = Render.Cutaway.ParseCap(cap) };
         if (WadLocator.GetUserArg("--level-cutaway-things") is string things)
             settings = settings with { Things = Render.Cutaway.ParseThings(things) };
+        if (WadLocator.GetUserArg("--level-cutaway-doors") is string doors)
+            settings = settings with { Doors = Render.Cutaway.ParseDoors(doors) };
         return settings;
     }
 
@@ -2015,7 +2019,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (Iso is { Current: true })
             text.Append(Cutaway.Style == CutawayStyle.Off
                 ? "cutaway: off\n"
-                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}, cap {Cutaway.Cap.ToString().ToLowerInvariant()}, things {ThingsName(Cutaway.Things)}\n");
+                : $"cutaway: {Cutaway.Style.ToString().ToLowerInvariant()}, radius {Cutaway.Radius:F0}, above {Cutaway.Height:F0}{(Cutaway.Cursor ? ", and around the cursor" : "")}, cap {Cutaway.Cap.ToString().ToLowerInvariant()}, things {ThingsName(Cutaway.Things)}, doors {Cutaway.Doors.ToString().ToLowerInvariant()}\n");
         if (Mesh is not null)
         {
             Vector2 o = Mesh.LightOrigin;

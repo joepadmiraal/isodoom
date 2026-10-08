@@ -333,8 +333,9 @@ public partial class LevelCheck : Godot.Node
                 Fail($"{map}: sector {s.Index}: GPU data texel {gpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth)}, expected {expected}");
         }
 
-        // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere).
+        // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere); T6.13d: the door flag.
         Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null;
+        bool[] doors = DoorLids.FindDoors(m.Level);
         foreach (Sector s in m.Level.Sectors)
         {
             float lowest = DoorLids.None;
@@ -347,14 +348,14 @@ public partial class LevelCheck : Godot.Node
                         lowest = Math.Min(lowest, (float)((front == s ? back : front).CeilingHeight / 65536.0));
                 }
             }
-            (float Height, int Slot) expected = (lowest, m.Lids.Has(s.Index) ? m.FlatSlot(s.CeilingPic) : -1);
+            (float Height, int Slot, bool Door) expected = (lowest, m.Lids.Has(s.Index) ? m.FlatSlot(s.CeilingPic) : -1, doors[s.Index]);
             if (m.LidData(s.Index) != expected)
                 Fail($"{map}: sector {s.Index}: lid texel {m.LidData(s.Index)}, expected {expected}");
             if (lidGpu is not null)
             {
                 Color g = lidGpu.GetPixel(s.Index % LevelMesh.DataWidth, s.Index / LevelMesh.DataWidth);
-                if (g.R != expected.Height || (int)MathF.Round(g.G) != expected.Slot)
-                    Fail($"{map}: sector {s.Index}: GPU lid texel ({g.R}, {g.G}), expected {expected}");
+                if (g.R != expected.Height || (int)MathF.Round(g.G) != expected.Slot || g.B > 0.5f != expected.Door)
+                    Fail($"{map}: sector {s.Index}: GPU lid texel ({g.R}, {g.G}, {g.B}), expected {expected}");
             }
         }
     }

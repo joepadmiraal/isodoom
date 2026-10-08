@@ -160,7 +160,7 @@ public sealed class LevelMesh
         _sectorImage = sectorImage;
         _sectorTexels = new Color[level.Sectors.Length];
         _sectorFlats = new string?[level.Sectors.Length];
-        _lidImage = Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgf);
+        _lidImage = Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbf);
         _lidTexels = new Color[level.Sectors.Length];
         _lidFlats = new string?[level.Sectors.Length];
         _sideImage = Image.CreateEmpty(DataWidth, Rows(3 * level.Sides.Length), false, Image.Format.Rgf);
@@ -262,7 +262,7 @@ public sealed class LevelMesh
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
     public ImageTexture SectorDataTexture { get; private set; } = null!;
 
-    /// <summary>The lids' data texture (T6.13b, <c>sector_lids</c>, RG float, one texel per sector): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot.</summary>
+    /// <summary>The lids' data texture (T6.13b, <c>sector_lids</c>, RGB float, one texel per sector): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot, 1 for a door (T6.13d, <see cref="DoorLids.IsDoor"/>).</summary>
     public ImageTexture LidDataTexture { get; private set; } = null!;
 
     /// <summary>Number of lid triangles (T6.13b).</summary>
@@ -509,6 +509,7 @@ public sealed class LevelMesh
         SetParameter("cut_anchor", Render.Cutaway.Anchor);
         SetParameter("cut_cap", (int)settings.Cap);
         SetParameter("cut_things", (int)settings.Things);
+        SetParameter("cut_doors", (int)settings.Doors);
     }
 
     /// <summary>
@@ -665,11 +666,11 @@ public sealed class LevelMesh
         _infoDirty = true;
     }
 
-    /// <summary>The <c>sector_lids</c> texel of <paramref name="sector"/> as uploaded (T6.13b): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot.</summary>
-    public (float Height, int Slot) LidData(int sector)
+    /// <summary>The <c>sector_lids</c> texel of <paramref name="sector"/> as uploaded (T6.13b): lid height (map units; <see cref="DoorLids.None"/> without a lid), ceiling flat slot, and whether it is a door (T6.13d).</summary>
+    public (float Height, int Slot, bool Door) LidData(int sector)
     {
         Color c = _lidImage.GetPixel(sector % DataWidth, sector / DataWidth);
-        return (c.R, (int)MathF.Round(c.G));
+        return (c.R, (int)MathF.Round(c.G), c.B > 0.5f);
     }
 
     /// <summary>The sector data texel of <paramref name="sector"/> as uploaded: floor, ceiling (map units), light, floor flat slot.</summary>
@@ -755,7 +756,7 @@ public sealed class LevelMesh
                     Miss($"ceiling flat {s.CeilingPic} (sector {i}'s lid)");
                 _lidFlats[i] = s.CeilingPic;
             }
-            var texel = new Color(Lids.LidHeight(i, _drawnCeiling ??= n => _sectorTexels[n].G), slot, 0);
+            var texel = new Color(Lids.LidHeight(i, _drawnCeiling ??= n => _sectorTexels[n].G), slot, Lids.IsDoor(i) ? 1 : 0);
             if (texel == _lidTexels[i])
                 continue;
             _lidTexels[i] = texel;
@@ -840,6 +841,14 @@ public sealed class LevelMesh
         SectorDataTexture = ImageTexture.CreateFromImage(_sectorImage);
         _lidImage.Fill(new Color(DoorLids.None, -1, 0));
         Array.Fill(_lidTexels, new Color(DoorLids.None, -1, 0));
+        for (int i = 0; i < Level.Sectors.Length; i++)
+        {
+            if (Lids.IsDoor(i))
+            {
+                _lidTexels[i] = new Color(DoorLids.None, -1, 1);
+                _lidImage.SetPixel(i % DataWidth, i / DataWidth, _lidTexels[i]);
+            }
+        }
         WriteLids();
         LidDataTexture = ImageTexture.CreateFromImage(_lidImage);
         WriteSides();

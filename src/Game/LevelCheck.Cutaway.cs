@@ -71,7 +71,7 @@ public partial class LevelCheck
     private async Task CutawayCheck(LevelMesh m)
     {
         string map = m.Level.Name;
-        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off };
+        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Doors = CutawayDoors.Cut };
         var basis = Basis.FromEuler(new Vector3(-Mathf.DegToRad(IsoCamera.DefaultPitch), Mathf.DegToRad(IsoCamera.Yaw), 0));
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
         Vector2 toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
@@ -409,6 +409,11 @@ public partial class LevelCheck
         bool LidAt(int s, float z) => lids is not null && m.Lids.Has(s) && lids[s] == z && DoorLids.Shows(z, m.Level.Sectors[s].CeilingHeight / 65536f);
         bool LidSolid(int s, float z) => lids is not null && m.Lids.Has(s) && m.Level.Sectors[s].CeilingHeight / 65536f <= z && z < lids[s];
         float capZ = centre.Z + settings.Height;
+        // T6.13d: with doors kept, nothing of a door sector is cut and its caps collapse.
+        bool keepDoors = settings.Doors == CutawayDoors.Keep;
+        bool KeptDoor(int s) => keepDoors && m.Lids.IsDoor(s);
+        bool WallDoor(WallSection s) => keepDoors && (m.Lids.IsDoor(s.Line.FrontSector!.Index) || s.Line.BackSector is Sector b && m.Lids.IsDoor(b.Index));
+        int KeepDoor(int cut, int door) => !keepDoors || door == 0 || cut == 0 ? cut : door == 1 ? 0 : 2;
         Vector3 camera = Cutaway.ToMapAxes(cam.GlobalPosition) * LevelMesh.MapUnitsPerMetre;
         var hits = new List<(float T, bool Definite, int Cut, bool Wall, float Z, int Lid)>();
         for (int py = top; py < bottom; py++)
@@ -435,7 +440,7 @@ public partial class LevelCheck
                     float margin = Math.Min(Math.Min(along, q.Length - along), Math.Min(p.Z - q.Bottom, q.Top - p.Z));
                     if (margin < -CutMargin)
                         continue;
-                    hits.Add((t, margin > CutMargin && !q.Masked, CutState(p, q.Normal, centre, settings, toCamera), true, p.Z, -1));
+                    hits.Add((t, margin > CutMargin && !q.Masked, KeepDoor(CutState(p, q.Normal, centre, settings, toCamera), WallDoor(q.Section) ? 1 : 0), true, p.Z, -1));
                 }
                 if (d.Z < 0)
                 {
@@ -446,15 +451,19 @@ public partial class LevelCheck
                         if (t <= 0)
                             continue;
                         Vector3 p = o + d * t;
-                        int matches = 0;
+                        int matches = 0, doors = 0;
                         foreach ((float ox, float oy) in new[] { (0f, 0f), (CutMargin, 0f), (-CutMargin, 0f), (0f, CutMargin), (0f, -CutMargin) })
                         {
                             int s = CursorGround.DrawnSectorAt(m, (int)Math.Round((p.X + ox) * 65536.0), (int)Math.Round((p.Y + oy) * 65536.0));
                             if (s >= 0 && m.Level.Sectors[s].FloorHeight == fh)
+                            {
                                 matches++;
+                                if (m.Lids.IsDoor(s))
+                                    doors++;
+                            }
                         }
                         if (matches > 0)
-                            hits.Add((t, matches == 5, CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), false, p.Z, -1));
+                            hits.Add((t, matches == 5, KeepDoor(CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), doors == 0 ? 0 : doors == matches ? 1 : 2), false, p.Z, -1));
                     }
 
                     // T6.13b: the lid planes, inside a sector with its lid at that height.
@@ -464,7 +473,7 @@ public partial class LevelCheck
                         if (t <= 0)
                             continue;
                         Vector3 p = o + d * t;
-                        int matches = 0, sector = -2;
+                        int matches = 0, sector = -2, doors = 0;
                         foreach ((float ox, float oy) in new[] { (0f, 0f), (CutMargin, 0f), (-CutMargin, 0f), (0f, CutMargin), (0f, -CutMargin) })
                         {
                             int s = CursorGround.DrawnSectorAt(m, (int)Math.Round((p.X + ox) * 65536.0), (int)Math.Round((p.Y + oy) * 65536.0));
@@ -472,10 +481,12 @@ public partial class LevelCheck
                             {
                                 matches++;
                                 sector = sector == -2 || sector == s ? s : -1;
+                                if (m.Lids.IsDoor(s))
+                                    doors++;
                             }
                         }
                         if (matches > 0)
-                            hits.Add((t, matches == 5 && sector >= 0, CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), false, p.Z, Math.Max(sector, 0)));
+                            hits.Add((t, matches == 5 && sector >= 0, KeepDoor(CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), doors == 0 ? 0 : doors == matches ? 1 : 2), false, p.Z, Math.Max(sector, 0)));
                     }
 
                     // T3.4a: the cap plane, inside a floor above it (all five points in one such sector) and the disc.
@@ -487,7 +498,7 @@ public partial class LevelCheck
                         foreach ((float ox, float oy) in new[] { (0f, 0f), (CutMargin, 0f), (-CutMargin, 0f), (0f, CutMargin), (0f, -CutMargin) })
                         {
                             int s = CursorGround.DrawnSectorAt(m, (int)Math.Round((q.X + ox) * 65536.0), (int)Math.Round((q.Y + oy) * 65536.0));
-                            if (s >= 0 && (m.Level.Sectors[s].FloorHeight / 65536f > capZ || LidSolid(s, capZ)))
+                            if (s >= 0 && !KeptDoor(s) && (m.Level.Sectors[s].FloorHeight / 65536f > capZ || LidSolid(s, capZ)))
                             {
                                 raised++;
                                 sector = sector == -2 || sector == s ? s : -1;
@@ -665,7 +676,7 @@ public partial class LevelCheck
         m.SetSprites(sprites with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
         // Behind it a radius of 24, so the disc's edge crosses the billboard (an imp reaches about 35 units from the anchor
         // on screen); in front of it the default, so the disc covers the billboard and only the plane test keeps it.
-        var narrow = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Things = CutawayThings.Decorations, Radius = 24 };
+        var narrow = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Things = CutawayThings.Decorations, Radius = 24, Doors = CutawayDoors.Cut };
         string name = $"{map}: thing cutaway, thing {thing} ({SpriteName(original)}, {tallest} rows) at ({foot.X:F0}, {foot.Y:F0}, {foot.Z:F0})";
 
         var behind = new Vector3(foot.X - ground.X * 24, foot.Y - ground.Y * 24, foot.Z);

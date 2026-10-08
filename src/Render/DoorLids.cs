@@ -57,12 +57,24 @@ public sealed class DoorLids
     /// <summary>The sample grid's step when measuring a sector's thickness, map units.</summary>
     private const double SampleStep = 1;
 
-    private readonly int[]?[] _neighbours;
+    /// <summary>The line specials that open a door on the line's back sector by hand (p_switch.c <c>P_UseSpecialLine</c>'s <c>EV_VerticalDoor</c> cases).</summary>
+    private static readonly int[] _manualDoorSpecials = [1, 26, 27, 28, 31, 32, 33, 34, 117, 118];
 
-    private DoorLids(int[]?[] neighbours, List<int> sectors)
+    /// <summary>The line specials that move the doors of their tagged sectors (p_spec.c, p_switch.c: <c>EV_DoDoor</c>, <c>EV_DoLockedDoor</c>).</summary>
+    private static readonly int[] _taggedDoorSpecials =
+        [2, 3, 4, 16, 29, 42, 46, 50, 61, 63, 75, 76, 86, 90, 99, 103, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 133, 134, 135, 136, 137];
+
+    /// <summary>The sector specials that are doors (p_spec.c <c>P_SpawnSpecials</c>: 10 <c>P_SpawnDoorCloseIn30</c>, 14 <c>P_SpawnDoorRaiseIn5Mins</c>).</summary>
+    private static readonly int[] _doorSectorSpecials = [10, 14];
+
+    private readonly int[]?[] _neighbours;
+    private readonly bool[] _doors;
+
+    private DoorLids(int[]?[] neighbours, List<int> sectors, bool[] doors)
     {
         _neighbours = neighbours;
         Sectors = sectors;
+        _doors = doors;
     }
 
     /// <summary>The lid sectors, in sector order.</summary>
@@ -70,6 +82,34 @@ public sealed class DoorLids
 
     /// <summary>Whether <paramref name="sector"/> is a lid sector.</summary>
     public bool Has(int sector) => _neighbours[sector] is not null;
+
+    /// <summary>
+    /// Whether <paramref name="sector"/> is a door (T6.13d): a sector a door
+    /// special moves, the back sector of a manual door line, a sector tagged
+    /// by a door line (tag 0 not counted), or one with a door sector special.
+    /// The cutaway keeps doors whole by default (<c>CutawayDoors</c>).
+    /// </summary>
+    public bool IsDoor(int sector) => _doors[sector];
+
+    /// <summary>The door sectors (<see cref="IsDoor"/>) of <paramref name="level"/>.</summary>
+    public static bool[] FindDoors(Level level)
+    {
+        bool[] doors = new bool[level.Sectors.Length];
+        var tags = new HashSet<int>();
+        foreach (Line line in level.Lines)
+        {
+            if (Array.IndexOf(_manualDoorSpecials, (int)line.Special) >= 0 && line.BackSector is Sector back)
+                doors[back.Index] = true;
+            if (Array.IndexOf(_taggedDoorSpecials, (int)line.Special) >= 0 && line.Tag != 0)
+                tags.Add(line.Tag);
+        }
+        foreach (Sector s in level.Sectors)
+        {
+            if (tags.Contains(s.Tag) || Array.IndexOf(_doorSectorSpecials, (int)s.Special) >= 0)
+                doors[s.Index] = true;
+        }
+        return doors;
+    }
 
     /// <summary>The other sectors across a lid sector's two-sided lines, in sector order (empty for a sector without a lid).</summary>
     public IReadOnlyList<int> Neighbours(int sector) => _neighbours[sector] ?? [];
@@ -121,7 +161,7 @@ public sealed class DoorLids
             if (lids[i] is not null)
                 sectors.Add(i);
         }
-        return new DoorLids(lids, sectors);
+        return new DoorLids(lids, sectors, FindDoors(level));
     }
 
     /// <summary>

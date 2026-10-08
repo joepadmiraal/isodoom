@@ -104,6 +104,7 @@ public static class Settings
         new("gameplay/cutaway", "CUTAWAY", SettingPage.Gameplay, "cut", ["cut", "dither", "off"], "--level-cutaway"),
         new("gameplay/cutaway_things", "CUTAWAY THINGS", SettingPage.Gameplay, "decor", ["decor", "all", "off"], "--level-cutaway-things"),
         new("gameplay/cutaway_cap", "CUTAWAY CAP", SettingPage.Gameplay, "dark", ["dark", "flat", "off"], "--level-cutaway-cap"),
+        new("gameplay/cutaway_doors", "CUTAWAY DOORS", SettingPage.Gameplay, "keep", ["keep", "cut"], "--level-cutaway-doors"),
         new("gameplay/cutaway_radius", "CUTAWAY RADIUS", SettingPage.Gameplay, "80", Range(48, 160, 16), "--level-cutaway-radius"),
         new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", _onOff, "--level-cutaway-cursor"),
         new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", ["player", "none", "camera"], "--level-light"),

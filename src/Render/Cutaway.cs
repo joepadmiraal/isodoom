@@ -48,7 +48,20 @@ public enum CutawayThings
     All = 2,
 }
 
-/// <summary>The cutaway's presentation options (T3.4, SPEC §12): style, radius, cutoff height, whether the cursor ground point also cuts, the cap (T3.4a) and the things it cuts (T3.4b).</summary>
+/// <summary>
+/// Whether the cutaway cuts doors (T6.13d, SPEC §12; a presentation option).
+/// The shader's <c>cut_doors</c>.
+/// </summary>
+public enum CutawayDoors
+{
+    /// <summary>Doors stay whole: nothing of a door sector (<see cref="DoorLids.IsDoor"/>: its floor, lid and the walls on its lines) is cut (the default).</summary>
+    Keep = 0,
+
+    /// <summary>Doors are cut as any wall and floor (T3.4, T6.13b).</summary>
+    Cut = 1,
+}
+
+/// <summary>The cutaway's presentation options (T3.4, SPEC §12): style, radius, cutoff height, whether the cursor ground point also cuts, the cap (T3.4a), the things it cuts (T3.4b) and whether it cuts doors (T6.13d).</summary>
 public sealed record CutawaySettings
 {
     /// <summary>Defaults, tuned on E1M1, E1M8 and Doom II MAP15 with the game camera (SPEC §12 T3.4).</summary>
@@ -70,6 +83,9 @@ public sealed record CutawaySettings
 
     /// <summary>Which thing billboards are cut as walls are (T3.4b).</summary>
     public CutawayThings Things { get; init; } = CutawayThings.Decorations;
+
+    /// <summary>Whether doors are cut (T6.13d).</summary>
+    public CutawayDoors Doors { get; init; } = CutawayDoors.Keep;
 }
 
 /// <summary>
@@ -206,6 +222,14 @@ public static class Cutaway
         "all" => CutawayThings.All,
         "off" => CutawayThings.Off,
         _ => throw new ArgumentException($"--level-cutaway-things: unknown choice \"{s}\" (decor, all or off)"),
+    };
+
+    /// <summary>Parses whether the cutaway cuts doors (<c>keep</c>, <c>cut</c>).</summary>
+    public static CutawayDoors ParseDoors(string s) => s switch
+    {
+        "keep" => CutawayDoors.Keep,
+        "cut" => CutawayDoors.Cut,
+        _ => throw new ArgumentException($"--level-cutaway-doors: unknown choice \"{s}\" (keep or cut)"),
     };
 
     /// <summary>Distance of <paramref name="p"/> from the line through <paramref name="a"/> along the unit vector <paramref name="axis"/>.</summary>

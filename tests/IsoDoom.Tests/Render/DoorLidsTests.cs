@@ -74,6 +74,54 @@ public class DoorLidsTests
     }
 
     [Fact]
+    public void Doom1E1M1Doors()
+    {
+        (Level level, _, DoorLids lids) = Build(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
+        // T6.13d: the manual doors (sector 4; (2928, -3840); (3008, -4640)) are doors, as is every sector a door line tags.
+        foreach ((int x, int y) in new[] { (1544, -2496), (2928, -3840), (3008, -4640) })
+        {
+            int sector = level.R_PointInSubsector(x << 16, y << 16).Sector.Index;
+            Assert.True(lids.IsDoor(sector), $"sector {sector} at ({x}, {y})");
+        }
+        foreach (Line line in level.Lines.Where(l => l.Special == 1 && l.BackSector is not null))
+            Assert.True(lids.IsDoor(line.BackSector!.Index), $"line {line.Index}'s back sector");
+        // Rooms, and the lintels over doorways that are not doors, are not.
+        Assert.False(lids.IsDoor(74));
+        Assert.False(lids.IsDoor(level.R_PointInSubsector(1056 << 16, -3616 << 16).Sector.Index)); // the start room
+        Assert.Contains(lids.Sectors, s => !lids.IsDoor(s));
+    }
+
+    [Fact]
+    public void DoorsAreTheSectorsDoorSpecialsMove()
+    {
+        // T6.13d: a manual door line's back sector, a tagged door line's sectors (not tag 0), and the door sector specials.
+        (Level level, _, _) = Build(Synthetic(), "E1M1");
+        foreach (Line l in level.Lines)
+        {
+            l.Special = 0;
+            l.Tag = 0;
+        }
+        foreach (Sector s in level.Sectors)
+        {
+            s.Special = 0;
+            s.Tag = 0;
+        }
+        Line twoSided = level.Lines.First(l => l.BackSector is not null && l.FrontSector != l.BackSector);
+        Assert.DoesNotContain(true, DoorLids.FindDoors(level));
+        twoSided.Special = 1; // DR door
+        Assert.Equal([twoSided.BackSector!.Index], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
+        twoSided.Special = 0;
+        level.Lines[0].Special = 29; // S1 door, tag 0: nothing (P_FindSectorFromLineTag would take every tag-0 sector)
+        Assert.DoesNotContain(true, DoorLids.FindDoors(level));
+        level.Lines[0].Tag = 7;
+        level.Sectors[2].Tag = 7;
+        Assert.Equal([2], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
+        level.Lines[0].Special = 0;
+        level.Sectors[5].Special = 10; // door close in 30 s
+        Assert.Equal([5], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
+    }
+
+    [Fact]
     public void Doom2ThickDoorsButNotClosets()
     {
         string path = TestWads.RequireDoom2();

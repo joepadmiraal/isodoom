@@ -585,6 +585,7 @@ public partial class LevelScene : ISetupHost
         Add("gameplay/cutaway", () => Cutaway.Style.ToString().ToLowerInvariant(), s => Cutaway = Cutaway with { Style = Render.Cutaway.ParseStyle(s) });
         Add("gameplay/cutaway_things", () => ThingsName(Cutaway.Things), s => Cutaway = Cutaway with { Things = Render.Cutaway.ParseThings(s) });
         Add("gameplay/cutaway_cap", () => Cutaway.Cap.ToString().ToLowerInvariant(), s => Cutaway = Cutaway with { Cap = Render.Cutaway.ParseCap(s) });
+        Add("gameplay/cutaway_doors", () => Cutaway.Doors.ToString().ToLowerInvariant(), s => Cutaway = Cutaway with { Doors = Render.Cutaway.ParseDoors(s) });
         Add("gameplay/cutaway_radius", () => Int(Cutaway.Radius), s => Cutaway = Cutaway with { Radius = ParseInt(s, "gameplay/cutaway_radius", 0, 1024) });
         Add("gameplay/cutaway_cursor", () => OnOff(Cutaway.Cursor), s => Cutaway = Cutaway with { Cursor = ParseOnOff(s, "gameplay/cutaway_cursor") });
         Add("gameplay/light", () => _lightMode.ToString().ToLowerInvariant(), s =>

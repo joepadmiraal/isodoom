@@ -99,11 +99,16 @@
 //
 // Lids (T6.13b; IsoDoom.Render.DoorLids, `lids` 0 off, 1 on): kind 5 is a
 // copy of a lid sector's floor (a door, a lintel), placed at its lid height
-// from `sector_lids` (RG float, one texel per sector: R the lid height, the
+// from `sector_lids` (RGB float, one texel per sector: R the lid height, the
 // lowest neighbouring ceiling as drawn, very low for none; G the ceiling
-// flat's texture slot) and drawn while the sector's ceiling is below it: the
-// top of the solid between the upper walls around it. It shows the ceiling
-// flat, lit as a floor of the sector, and is cut as any floor.
+// flat's texture slot; B 1 for a door, T6.13d) and drawn while the sector's
+// ceiling is below it: the top of the solid between the upper walls around
+// it. It shows the ceiling flat, lit as a floor of the sector, and is cut as
+// any floor.
+//
+// Doors (T6.13d; IsoDoom.Render.DoorLids.IsDoor, `cut_doors` 0 keep, 1 cut):
+// with 0, nothing of a door sector is cut: its floor, its lid, and every wall
+// on a line with the door on either side; its caps collapse.
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -159,12 +164,16 @@ uniform float cut_anchor = 28.0;
 uniform int cut_cap = 0;
 // The lids (T6.13b): 0 off, 1 on.
 uniform int lids = 1;
+// Doors (T6.13d): 0 kept whole, 1 cut as the rest.
+uniform int cut_doors = 0;
 
 varying flat ivec4 v_rect;
 varying flat int v_kind;
 varying flat int v_lightnum;
 // The cut centre whose cap this is (kind 4, T3.4a): 0 player, 1 cursor; -1 not a cap.
 varying flat int v_cap;
+// 1 when the cutaway leaves this surface whole: a door's while doors are kept (T6.13d).
+varying flat int v_door;
 varying vec2 v_texcoord;
 varying vec2 v_map;
 varying float v_height;
@@ -208,6 +217,9 @@ void vertex() {
 	vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
 	// T6.13b: the sector's lid height and its flat's slot (kind 5, and a cap of a lid's solid).
 	vec2 lid_data = kind == 0 ? data_texel(sector_lids, front_id).rg : vec2(0.0);
+	// T6.13d: a door's floor, lid or caps, or a wall on a door's line.
+	bool door = data_texel(sector_lids, front_id).b > 0.5 || (kind != 0 && back_id >= 0 && data_texel(sector_lids, back_id).b > 0.5);
+	v_door = cut_doors == 0 && door ? 1 : 0;
 	int lid_slot = int(floor(lid_data.g + 0.5));
 	int slot = kind == 0 ? int(front.a + 0.5) : int(floor(side.r + 0.5));
 	bool collapse = false;
@@ -225,7 +237,7 @@ void vertex() {
 			slot = lid_slot;
 		}
 		// Nothing to cap: collapse the triangle.
-		collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || (front.r <= z && !solid_lid);
+		collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || v_door == 1 || (front.r <= z && !solid_lid);
 	}
 	ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
 	v_rect = rect;
@@ -324,7 +336,7 @@ vec3 srgb_to_linear(vec3 c) {
 
 void fragment() {
 	vec3 p = vec3(v_map, v_height);
-	if (cut_mode != 0) {
+	if (cut_mode != 0 && v_door == 0) {
 		// Godot space (x, height, -y, metres) to map units (x, y, height).
 		vec3 cam = vec3(CAMERA_POSITION_WORLD.x, -CAMERA_POSITION_WORLD.z, CAMERA_POSITION_WORLD.y) * MAP_UNITS_PER_METRE;
 		// The camera's +Z axis: from the scene towards the camera.
