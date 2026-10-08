@@ -1,10 +1,10 @@
 # CI: lint this workflow (actionlint + shellcheck), build + test the .NET
-# solution, then export the Godot project for Linux x86_64 and Windows x86_64
-# headlessly (both from Linux), run the WAD viewer check (T1.6b) and the level
+# solution, then export the Godot project for Linux x86_64, Windows x86_64
+# and macOS (universal) headlessly (all from Linux), run the WAD viewer check (T1.6b) and the level
 # check (T2.6) against a generated synthetic IWAD (tools/SyntheticIwad: no id
 # data, no download) in the editor and in the exported Linux build, upload
-# both builds, and smoke-test and check the Windows build on a Windows runner
-# (T8.4). Toolchain versions are
+# the builds, and smoke-test and check the Windows build on a Windows runner
+# (T8.4) and the macOS build on macOS runners, Apple Silicon and Intel (T8.4a). Toolchain versions are
 # pinned in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
 # IsoDoom.csproj; the .NET SDK comes from global.json). The actions' versions
 # are bumped by Dependabot (.github/dependabot.yml). CONTRIBUTING.md lists
@@ -102,7 +102,7 @@ jobs:
         run: dotnet test --no-build --configuration Debug
 
   export:
-    name: Export Linux and Windows x86_64
+    name: Export Linux, Windows and macOS
     needs: build-test
     runs-on: ubuntu-24.04
     steps:
@@ -119,8 +119,8 @@ jobs:
           key: nuget-export-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
           restore-keys: nuget-export-${{ runner.os }}-
 
-      # Editor + Linux and Windows x86_64 export templates for the pinned
-      # Godot .NET build.
+      # Editor + Linux and Windows x86_64 and macOS export templates for the
+      # pinned Godot .NET build.
       - name: Cache Godot
         id: cache-godot
         uses: actions/cache@v6
@@ -128,7 +128,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}.mono
-          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-windows-x86_64
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-windows-x86_64-macos
 
       - name: Download Godot and export templates
         if: steps.cache-godot.outputs.cache-hit != 'true'
@@ -151,13 +151,15 @@ jobs:
           mv "${name}" ~/godot
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}.mono
           mkdir -p "$dest"
-          # Keep only what the Linux and Windows x86_64 exports need (the full
-          # set is ~1.2 GB). The Windows preset always exports the console
-          # wrapper, through which the Windows job reads the game's output.
+          # Keep only what the Linux, Windows x86_64 and macOS exports need
+          # (the full set is ~1.2 GB). The Windows preset always exports the
+          # console wrapper, through which the Windows job reads the game's
+          # output. macos.zip holds the universal .app template.
           unzip -q "$tpz" -d templates
           for f in version.txt linux_release.x86_64 linux_debug.x86_64 \
               windows_release_x86_64.exe windows_release_x86_64_console.exe \
-              windows_debug_x86_64.exe windows_debug_x86_64_console.exe; do
+              windows_debug_x86_64.exe windows_debug_x86_64_console.exe \
+              macos.zip; do
             mv "templates/templates/$f" "$dest/"
           done
           cd /
@@ -287,6 +289,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # T8.4a: the macOS build, exported here too (universal: arm64 and
+      # x86_64 in one executable, with a .NET runtime folder per
+      # architecture; `dotnet publish` takes both osx runtimes from NuGet).
+      # Godot's built-in signing signs it ad hoc (no Apple identity, not
+      # notarized: Apple Silicon runs no unsigned arm64 code at all). The
+      # .app stays in Godot's zip, which keeps its executable bits.
+      - name: Export macOS
+        run: |
+          mkdir -p export/macos
+          godot --headless --export-release "macOS" export/macos/IsoDoom.zip
+          unzip -l export/macos/IsoDoom.zip | grep -q " IsoDoom.app/Contents/MacOS/IsoDoom$"
+          unzip -l export/macos/IsoDoom.zip | grep -q " IsoDoom.app/Contents/Resources/data_IsoDoom_macos_arm64/IsoDoom.dll$"
+          unzip -l export/macos/IsoDoom.zip | grep -q " IsoDoom.app/Contents/Resources/data_IsoDoom_macos_x86_64/IsoDoom.dll$"
+          ls -la export/macos
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: IsoDoom-macos-universal
+          path: export/macos/IsoDoom.zip
+          if-no-files-found: error
+          retention-days: 14
+
   # T8.4: the exported Windows build on Windows, headless (no GPU on the
   # runner): the smoke test, both checks and the route play, as the editor's
   # runs above. IsoDoom.console.exe runs IsoDoom.exe with its output on the
@@ -339,5 +363,75 @@ jobs:
         run: |
           r="$(cygpath -m "$PWD")/tests/IsoDoom.Tests/Sim/Routes"
           export/windows/IsoDoom.console.exe --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
+            --level-tweaks=vanilla --level-monsters=off \
+            --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
+
+  # T8.4a: the exported macOS build on macOS, headless, on both of its
+  # architectures (macos-15 is Apple Silicon, macos-15-intel x86_64): the
+  # smoke test, both checks and the route play, as test-windows. The
+  # executable inside the .app prints to the console itself.
+  test-macos:
+    name: Test macOS (${{ matrix.arch }})
+    needs: export
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      GAME: export/macos/IsoDoom.app/Contents/MacOS/IsoDoom
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: IsoDoom-macos-universal
+          path: export/macos
+
+      - name: Unpack the app
+        run: |
+          ditto -x -k export/macos/IsoDoom.zip export/macos
+          test -x "$GAME"
+          lipo -archs "$GAME"
+          codesign --verify --deep --verbose=2 export/macos/IsoDoom.app
+
+      - name: Generate the synthetic IWAD
+        run: |
+          iwad="$RUNNER_TEMP/isodoom-synthetic.wad"
+          dotnet run --project tools/SyntheticIwad --configuration Debug -- "$iwad"
+          echo "ISODOOM_CI_IWAD=$iwad" >> "$GITHUB_ENV"
+
+      - name: Smoke-test the exported build
+        timeout-minutes: 5
+        run: |
+          "$GAME" --headless --quit-after 60 2>&1 | tee smoke.log
+          grep -q "IsoDoom started" smoke.log
+
+      - name: Viewer check (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          "$GAME" --headless -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check.log
+          grep -q "WAD viewer check: OK" viewer-check.log
+
+      - name: Level check (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          "$GAME" --headless -- --level-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee level-check.log
+          grep -q "Level check: OK" level-check.log
+
+      # Absolute routes' path, as on Windows (T8.4b).
+      - name: Route play (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          r="$PWD/tests/IsoDoom.Tests/Sim/Routes"
+          "$GAME" --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
             --level-tweaks=vanilla --level-monsters=off \
             --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
