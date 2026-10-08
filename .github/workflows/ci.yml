@@ -129,6 +129,12 @@ jobs:
       - name: Import
         run: godot --headless --import
 
+      # The import doesn't compile the C# project: the editor runs below need
+      # its assembly in .godot/mono/temp/bin/Debug, or no script class loads
+      # (Main.cs "could not be found") and the run hangs until its timeout.
+      - name: Build the Godot project's assembly
+        run: dotnet build IsoDoom.csproj --configuration Debug
+
       # The viewer check needs an IWAD; DOOM1.WAD can't be in the repo, so
       # generate one (outside the checkout, never uploaded).
       - name: Generate the synthetic IWAD
