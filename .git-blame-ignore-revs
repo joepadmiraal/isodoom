@@ -1,0 +1,6 @@
+# Commits that only reformat the code: `git blame` skips them with
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file by itself).
+
+# Q3: Reformat the code to .editorconfig
+ef6490cb6c8601bb4f8775a251d337dc2fed2a0f

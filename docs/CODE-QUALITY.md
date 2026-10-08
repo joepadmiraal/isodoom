@@ -35,7 +35,7 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
 
   *Done when:* the test passes, and it fails when a `Godot` `PackageReference` is temporarily added to `IsoDoom.Sim.csproj` (revert that afterwards).
 
-- [ ] **Q3 `.editorconfig` and a one-time reformat.** Add a repo-root `.editorconfig` that encodes the Godot/.NET conventions. Reformat the whole codebase to it, and gate it in CI.
+- [x] **Q3 `.editorconfig` and a one-time reformat.** Add a repo-root `.editorconfig` that encodes the Godot/.NET conventions. Reformat the whole codebase to it, and gate it in CI.
   1. **Write `.editorconfig`.** Read the Godot C# style guide and the .NET conventions linked above, and confirm each rule against them rather than from memory. Cover at least:
      - Files and whitespace: `root = true`, UTF-8 without BOM, LF, a final newline, trimmed trailing whitespace, 4-space indent for `*.cs`, and the usual indents for `*.csproj`/`*.props`/`*.json`/`*.yml`/`*.gd`/`*.tscn`.
      - Braces and layout: Allman braces (`csharp_new_line_before_open_brace = all`) and `else`/`catch`/`finally` on new lines.
@@ -68,6 +68,7 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
      - `CA5394` (insecure randomness): the game uses vanilla's `P_Random`/`M_Random` tables by design.
      - Globalization rules (`CA1303`/`CA1304`/`CA1305`/`CA1307`/`CA1309`/`CA1310`) only where the fix adds noise. `CultureInfo.InvariantCulture` in text parsing and formatting (WAD names, settings, saves, scripts) is a real fix; keep those.
      - Performance rules that would change Sim's evaluation order must not be auto-fixed. Fix them by hand, and only with the route and demo-sync tests green.
+     - Q3 left some IDE rules at their default `suggestion` without applying them (SPEC §12, Q3): IDE0059 (dead stores), IDE0060 (unused parameters), IDE0066 (switch expressions), IDE0180 (tuple swaps), IDE0042 (deconstruction), IDE0220 (foreach casts), and IDE0031 (null propagation) in `src/Sim`. Before `EnforceCodeStyleInBuild` or a severity raise makes any of them count, decide each one: `none` for ported code (by path or with the Q4 classification) with a reason, or fix by hand where it is a real improvement.
   3. Raise `AnalysisMode` to `All` only if what remains is small. Otherwise record the level chosen and why in SPEC §12.
   4. If the warning count is too large for one session, enable the analyzers per project (tools and tests first, then Wad and Map, then Sim, then the Godot project). Do the first part and add the rest here as Q5a, Q5b and so on.
 

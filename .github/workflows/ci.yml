@@ -86,6 +86,11 @@ jobs:
       - name: Restore
         run: dotnet restore IsoDoom.sln
 
+      # .editorconfig's formatting and the style rules at warning (Q3);
+      # `dotnet format IsoDoom.sln` fixes what this reports.
+      - name: Check formatting
+        run: dotnet format IsoDoom.sln --verify-no-changes --no-restore --severity warn
+
       - name: Build
         run: dotnet build IsoDoom.sln --no-restore --configuration Debug
 
