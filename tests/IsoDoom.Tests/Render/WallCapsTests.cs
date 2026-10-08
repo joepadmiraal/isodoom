@@ -127,6 +127,36 @@ public class WallCapsTests
         Assert.All(jambs, j => Assert.Contains(caps.Caps, c => c.Line == j && c.Pieces.Count > 0));
     }
 
+    [Fact]
+    public void E1M1sWindowPillarsAreIslandsAsTallAsTheirHighestWall()
+    {
+        // The two 32 × 32 pillars of the start room's window (lines 9–12 and 13–16): their
+        // walls face the start room (ceiling 72), the step (120) and the courtyard (200).
+        (Level level, _, WallCaps caps) = Build(Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1"));
+        float Ceiling(int s) => level.Sectors[s].CeilingHeight / 65536f;
+        int west = caps.IslandOf(9), east = caps.IslandOf(13);
+        Assert.True(west >= 0 && east >= 0 && west != east);
+        Assert.Equal([9, 10, 11, 12], caps.Islands[west].Lines.Order());
+        Assert.Equal([13, 14, 15, 16], caps.Islands[east].Lines.Order());
+        Assert.Equal([37, 38], caps.Islands[west].Sectors);
+        Assert.Equal([37, 38, 39], caps.Islands[east].Sectors);
+        Assert.Equal(120, caps.IslandTop(west, Ceiling));
+        Assert.Equal(200, caps.IslandTop(east, Ceiling));
+        Assert.Equal(east, caps.Caps.Single(c => c.Line == 13).Island);
+        // A room's walls are no island, nor is a block larger than MaxIslandSize.
+        Assert.Equal(-1, caps.IslandOf(25));
+        Assert.All(caps.Islands, i => Assert.All(i.Lines, l => Assert.True(
+            Math.Abs((level.Lines[l].V1.X - level.Lines[i.Lines[0]].V1.X) / 65536.0) <= WallCaps.MaxIslandSize)));
+    }
+
+    [Fact]
+    public void ARoomHasNoIsland()
+    {
+        (_, _, WallCaps caps) = Build(Load(TestMap.Polygon(0, 128, (0, 0), (0, 256), (256, 256), (256, 0))));
+        Assert.Empty(caps.Islands);
+        Assert.All(caps.Caps, c => Assert.Equal(-1, c.Island));
+    }
+
     // Every capped one-sided wall's cap: in the void, behind its wall, no overlap with
     // another wall's cap facing another way (same-facing ones may overlap where their
     // walls are offset, e.g. a step in a wall).

@@ -38,12 +38,14 @@
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
-//              4 a floor's cutaway cap, 5 a lid, 6 a wall cap, 7 a wall cap's cutaway cap), side
+//              4 a floor's cutaway cap, 5 a lid, 6 a wall cap, 7 a wall cap's cutaway cap, 8 an
+//              island's wall above its ceiling), side
 //              part (walls and wall caps: the side_textures texel; floors 0, their slot is the
 //              sector's), front sector, back sector (-1: none; for a cap its cut centre, 0
-//              player, 1 cursor)
+//              player, 1 cursor; for kind 8 its island)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
-//   wall caps: UV = (texture column, distance behind the wall); CUSTOM2.w the wall's direction
+//   wall caps: UV = (texture column, distance behind the wall); CUSTOM1.x the wall's island
+//              (-1: none); CUSTOM2.w the wall's direction
 //   walls:     UV.x = texture column (textureoffset at the build + distance from V1; the
 //              side's scroll is added, T5.7), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
@@ -122,6 +124,12 @@
 // the sector), and is cut as any floor. Kind 7 is the same piece per cut
 // centre (CUSTOM0.w), placed at its cutoff as the floors' caps where the wall
 // reaches above it: a cut wall reads as a block cut down to its stub.
+// An island (a void enclosed by one loop of walls: a pillar; `wall_islands`,
+// R float, one texel per island: its top, its walls' highest ceiling as drawn)
+// makes one column: its walls' caps go up to its top, and kind 8, a quad of
+// each of its walls again (as kind 1, its sectors' plane references unused),
+// draws the wall on from its sector's ceiling up to that top, its texture
+// going on upwards (collapsed with the caps off, or where the ceiling is the top).
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -142,6 +150,7 @@ uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
 uniform sampler2D sector_data : filter_nearest, repeat_disable;
 uniform sampler2D sector_lids : filter_nearest, repeat_disable;
+uniform sampler2D wall_islands : filter_nearest, repeat_disable;
 uniform sampler2D side_textures : filter_nearest, repeat_disable;
 // PLAYPAL: RGB8, 256 x palettes. COLORMAP: R8, 256 x maps (as palette.gdshader).
 uniform sampler2D playpal : filter_nearest, repeat_disable;
@@ -227,7 +236,7 @@ void vertex() {
 		kind = 0;
 	}
 	int front_id = int(CUSTOM0.z);
-	if (kind >= 6) {
+	if (kind == 6 || kind == 7) {
 		// T6.13e: a wall cap (kind 6) or its cutaway cap (kind 7, CUSTOM0.w its centre).
 		vec4 cap_front = data_texel(sector_data, front_id);
 		vec4 cap_lid = data_texel(sector_lids, front_id);
@@ -236,6 +245,11 @@ void vertex() {
 		v_door = cut_doors == 0 && cap_lid.b > 0.5 ? 1 : 0;
 		// The wall's top: its sector's ceiling, or its lid above it (a closed door's jambs).
 		float top = lids == 1 && cap_lid.g >= 0.0 ? max(cap_front.g, cap_lid.r) : cap_front.g;
+		// An island's walls all reach its top.
+		int cap_island = int(CUSTOM1.x);
+		if (cap_island >= 0) {
+			top = max(top, data_texel(wall_islands, cap_island).r);
+		}
 		// Towards the front sector, and the view direction towards the camera, both map axes.
 		vec2 n = vec2(sin(CUSTOM2.w), -cos(CUSTOM2.w));
 		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
@@ -261,7 +275,13 @@ void vertex() {
 		v_height = cap_z;
 		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
 	} else {
-		int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
+		// T6.13e: an island's wall above its ceiling, drawn as a solid wall.
+		bool extension = kind == 8;
+		int island = extension ? int(CUSTOM0.w) : -1;
+		if (extension) {
+			kind = 1;
+		}
+		int back_id = v_cap >= 0 || extension ? -1 : int(CUSTOM0.w);
 		vec4 front = data_texel(sector_data, front_id);
 		vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
 		vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
@@ -313,6 +333,11 @@ void vertex() {
 				// Drawn once: only the texture's rows, texture_top down by its height.
 				top = min(top, texture_top);
 				bottom = max(bottom, texture_top - float(rect.w));
+			}
+			if (extension) {
+				// From the ceiling up to the island's top.
+				bottom = front.g;
+				top = wall_caps == 1 ? data_texel(wall_islands, island).r : bottom;
 			}
 			top = max(top, bottom);
 			if ((back_face && masked_backs == 0) || slot < 0) {

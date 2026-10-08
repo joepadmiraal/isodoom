@@ -74,8 +74,12 @@ namespace IsoDoom.Render;
 /// the vertex shader places at the wall's top (its sector's ceiling, or its lid
 /// where it has one) while the wall faces the camera, showing the wall's
 /// texture; and once more per cut centre (<see cref="KindWallCapCut"/>) as its
-/// cap at the cutoff, as the floors' (T3.4a). <see cref="SetWallCaps"/> turns
-/// them off.</item>
+/// cap at the cutoff, as the floors' (T3.4a). The walls of an island (a
+/// void enclosed by one loop of walls: a pillar) reach up to the island's top,
+/// its highest wall's (<see cref="WallCaps.IslandTop"/>, the <c>wall_islands</c>
+/// data texture): each gets its quads again above its ceiling
+/// (<see cref="KindWallExtension"/>), and their caps go there.
+/// <see cref="SetWallCaps"/> turns them off, extensions included.</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -103,9 +107,14 @@ public sealed class LevelMesh
     /// vertex shader places at its lid height (<see cref="DoorLids"/>).
     /// <see cref="KindWallCap"/> (T6.13e) is a piece of a one-sided wall's cap
     /// (<see cref="WallCaps"/>), placed at the wall's top; <see cref="KindWallCapCut"/>
-    /// the same piece placed at a cut centre's cutoff (<c>CUSTOM0.w</c>) as its cutaway cap.
+    /// the same piece placed at a cut centre's cutoff (<c>CUSTOM0.w</c>) as its cutaway cap;
+    /// both have their wall's island in <c>CUSTOM1.x</c> (-1 for none).
+    /// <see cref="KindWallExtension"/> (T6.13e) is a quad of an island's one-sided
+    /// wall again, from its sector's ceiling up to the island's top (<c>CUSTOM0.w</c>
+    /// the island), textured as the wall goes on.
     /// </summary>
-    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7;
+    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7,
+        KindWallExtension = 8;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -128,6 +137,8 @@ public sealed class LevelMesh
 
     private readonly Image _sectorImage;
     private readonly Image _lidImage;
+    private readonly Image _islandImage;
+    private readonly float[] _islandTops;
     private readonly Color[] _lidTexels;
     private readonly string?[] _lidFlats;
     private Func<int, float>? _drawnCeiling; // a sector's ceiling as written to the sector data (T6.13b)
@@ -172,6 +183,8 @@ public sealed class LevelMesh
         _sectorTexels = new Color[level.Sectors.Length];
         _sectorFlats = new string?[level.Sectors.Length];
         _lidImage = Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbf);
+        _islandImage = Image.CreateEmpty(DataWidth, Rows(caps.Islands.Count), false, Image.Format.Rf);
+        _islandTops = new float[caps.Islands.Count];
         _lidTexels = new Color[level.Sectors.Length];
         _lidFlats = new string?[level.Sectors.Length];
         _sideImage = Image.CreateEmpty(DataWidth, Rows(3 * level.Sides.Length), false, Image.Format.Rgf);
@@ -284,6 +297,12 @@ public sealed class LevelMesh
 
     /// <summary>Number of wall cap triangles (T6.13e; each also twice more as cutaway caps).</summary>
     public int WallCapTriangleCount { get; private set; }
+
+    /// <summary>Number of quads that draw the islands' walls on above their ceilings (T6.13e, <see cref="KindWallExtension"/>).</summary>
+    public int WallExtensionQuads { get; private set; }
+
+    /// <summary>The islands' data texture (T6.13e, <c>wall_islands</c>, R float, one texel per island): its top, map units.</summary>
+    public ImageTexture IslandDataTexture { get; private set; } = null!;
 
     /// <summary>The per-side texture slots (T5.1, <c>side_textures</c>).</summary>
     public ImageTexture SideTexturesTexture { get; private set; } = null!;
@@ -644,6 +663,8 @@ public sealed class LevelMesh
             SectorDataTexture.Update(_sectorImage);
         if (WriteLids())
             LidDataTexture.Update(_lidImage);
+        if (WriteIslands())
+            IslandDataTexture.Update(_islandImage);
         if (WriteSides())
             SideTexturesTexture.Update(_sideImage);
         if (_infoDirty)
@@ -795,6 +816,25 @@ public sealed class LevelMesh
         return dirty;
     }
 
+    // Every island's top from its walls' ceilings as just written (T6.13e); returns whether one changed.
+    private bool WriteIslands()
+    {
+        bool dirty = false;
+        for (int i = 0; i < _islandTops.Length; i++)
+        {
+            float top = Caps.IslandTop(i, n => _sectorTexels[n].G);
+            if (top == _islandTops[i])
+                continue;
+            _islandTops[i] = top;
+            _islandImage.SetPixel(i % DataWidth, i / DataWidth, new Color(top, 0, 0));
+            dirty = true;
+        }
+        return dirty;
+    }
+
+    /// <summary>The <c>wall_islands</c> texel of <paramref name="island"/> as uploaded (T6.13e): its top, map units.</summary>
+    public float IslandData(int island) => _islandImage.GetPixel(island % DataWidth, island / DataWidth).R;
+
     // Every side part's texture slot and every side's scroll (T5.7); returns whether one changed.
     private bool WriteSides()
     {
@@ -880,6 +920,9 @@ public sealed class LevelMesh
         }
         WriteLids();
         LidDataTexture = ImageTexture.CreateFromImage(_lidImage);
+        Array.Fill(_islandTops, float.NaN); // nothing written yet
+        WriteIslands();
+        IslandDataTexture = ImageTexture.CreateFromImage(_islandImage);
         WriteSides();
         SideTexturesTexture = ImageTexture.CreateFromImage(_sideImage);
 
@@ -892,6 +935,7 @@ public sealed class LevelMesh
         SetParameter("texture_info", TextureInfoTexture);
         SetParameter("sector_data", SectorDataTexture);
         SetParameter("sector_lids", LidDataTexture);
+        SetParameter("wall_islands", IslandDataTexture);
         SetParameter("side_textures", SideTexturesTexture);
         SetParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
         SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
@@ -1053,13 +1097,14 @@ public sealed class LevelMesh
             foreach (int centre in new[] { -1, CapPlayer, CapCursor })
             {
                 var c0 = new Vector4(centre < 0 ? KindWallCap : KindWallCapCut, part, cap.Sector, centre);
+                var c1 = new Vector4(cap.Island, 0, 0, 0);
                 foreach ((double X, double Y)[] piece in cap.Pieces)
                 {
                     int first = c.Vertices.Count;
                     foreach ((double x, double y) in piece)
                     {
                         var uv = new Vector2(column + (float)cap.Along(x, y), (float)cap.Behind(x, y));
-                        c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, Vector4.Zero, c2);
+                        c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, c1, c2);
                     }
                     // A fan; clockwise in map space is Godot's front face from above, as the floors.
                     for (int i = 1; i + 1 < piece.Length; i++)
@@ -1067,6 +1112,29 @@ public sealed class LevelMesh
                     if (centre < 0)
                         WallCapTriangleCount += piece.Length - 2;
                 }
+            }
+        }
+
+        // T6.13e: an island's walls once more, from their ceiling up to the island's top.
+        foreach (WallSection s in Walls.Sections)
+        {
+            if (!IsDrawn(s) || s.BackSector is not null || s.Kind != WallSectionKind.Middle || Caps.IslandOf(s.Line.Index) is not (>= 0 and int island))
+                continue;
+            Chunk c = ChunkOf(s.FrontSector.Index);
+            var c0 = new Vector4(KindWallExtension, SidePartId(s), s.FrontSector.Index, island);
+            var c1 = new Vector4((int)WallPlane.FrontCeiling, 0, (int)WallPlane.FrontCeiling, 0);
+            foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
+            {
+                var c2 = new Vector4(TexturePlane(s, s.TextureTop.Plane), TextureTopOffset(s), piece.Contrast, PieceAngle(piece));
+                (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
+                Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
+                int first = c.Vertices.Count;
+                c.Add(p1, new Vector2(u1, 0), c0, c1, c2);
+                c.Add(p1, new Vector2(u1, 1), c0, c1, c2);
+                c.Add(p2, new Vector2(u2, 1), c0, c1, c2);
+                c.Add(p2, new Vector2(u2, 0), c0, c1, c2);
+                c.Indices.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
+                WallExtensionQuads++;
             }
         }
 

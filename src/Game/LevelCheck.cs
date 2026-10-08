@@ -595,7 +595,8 @@ public partial class LevelCheck : Godot.Node
                 return n;
             }
             List<WallCap> sectorCaps = caps[sector] ?? [];
-            int solidVertices = floorVertices + 4 * QuadCount(sectorWalls) + 3 * sectorCaps.Sum(c => c.Pieces.Sum(p => p.Length));
+            int solidVertices = floorVertices + 4 * QuadCount(sectorWalls) + 3 * sectorCaps.Sum(c => c.Pieces.Sum(p => p.Length))
+                + 4 * QuadCount([.. sectorWalls.Where(w => IsIslandWall(m, w.Item1))]);
             int maskedVertices = 4 * QuadCount(sectorMasked);
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
             if (solidVertices + maskedVertices == 0)
@@ -644,7 +645,8 @@ public partial class LevelCheck : Godot.Node
     /// <see cref="LevelMesh.KindCap"/>), and for a lid sector once more as its
     /// lid (T6.13b, <see cref="LevelMesh.KindLid"/>). Last the sector's wall caps
     /// (T6.13e, <paramref name="caps"/>), each as a fan per piece, then again per
-    /// cut centre (<see cref="LevelMesh.KindWallCap"/>, <see cref="LevelMesh.KindWallCapCut"/>).
+    /// cut centre (<see cref="LevelMesh.KindWallCap"/>, <see cref="LevelMesh.KindWallCapCut"/>),
+    /// and the walls of islands once more (<see cref="LevelMesh.KindWallExtension"/>).
     /// Returns the wall quads checked.
     /// </summary>
     private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
@@ -656,7 +658,10 @@ public partial class LevelCheck : Godot.Node
         foreach ((WallSection s, _) in sectionsOfSurface)
             quadCount += m.Pieces.Of(s.Line, s.Side).Count;
         int floorCopies = floor is not null && m.Lids.Has(sector) ? 4 : 3; // the floor, two caps, the lid (T6.13b)
-        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)), capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2)));
+        List<WallSection> islandWalls = [.. sectionsOfSurface.Where(w => !w.Back && IsIslandWall(m, w.S)).Select(w => w.S)];
+        int extensionQuads = islandWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count);
+        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)) + 4 * extensionQuads;
+        int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + 6 * extensionQuads;
         int expectedVertices = floorCopies * floorVertices + 4 * quadCount + capVertices; // the floor, the walls, the caps and lid, the wall caps
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
         Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
@@ -838,7 +843,7 @@ public partial class LevelCheck : Godot.Node
                         var at = new Vector3((float)(x / LevelMesh.MapUnitsPerMetre), 0, (float)(-y / LevelMesh.MapUnitsPerMetre));
                         var tex = new Vector2(column + (float)cap.Along(x, y), (float)cap.Behind(x, y));
                         ok = Near(pos[cv + k], at) && Math.Abs(uv[cv + k].X - tex.X) < 1e-3 && Math.Abs(uv[cv + k].Y - tex.Y) < 1e-3
-                            && Custom(c0, cv + k, kind, 3 * cap.Side + LevelMesh.PartMiddle, cap.Sector, centre)
+                            && Custom(c0, cv + k, kind, 3 * cap.Side + LevelMesh.PartMiddle, cap.Sector, centre) && (int)c1[(cv + k) * 4] == cap.Island
                             && Math.Abs(c2[(cv + k) * 4 + 3] - (float)Math.Atan2(cap.Dy, cap.Dx)) < 1e-6;
                         if (!ok)
                             Fail($"{sw}: vertex {k} differs ({Custom4(c0, cv + k)})");
@@ -856,8 +861,38 @@ public partial class LevelCheck : Godot.Node
                 }
             }
         }
+
+        // T6.13e: the islands' walls again, as their quads, with the island in CUSTOM0.w.
+        foreach (WallSection s in islandWalls)
+        {
+            string sw = $"{level.Name}: line {s.Line.Index}'s wall above its ceiling (island {m.Caps.IslandOf(s.Line.Index)})";
+            foreach (WallPiece piece in m.Pieces.Of(s.Line, s.Side))
+            {
+                Vector3 p1 = LevelMesh.ToGodot(piece.A.X, piece.A.Y, 0), p2 = LevelMesh.ToGodot(piece.B.X, piece.B.Y, 0);
+                Vector3[] corners = [p1, p1, p2, p2];
+                float[] vs = [0, 1, 1, 0];
+                for (int k = 0; k < 4; k++)
+                {
+                    if (!Near(pos[cv + k], corners[k]) || uv[cv + k].Y != vs[k]
+                        || !Custom(c0, cv + k, LevelMesh.KindWallExtension, LevelMesh.SidePartId(s), sector, m.Caps.IslandOf(s.Line.Index))
+                        || c2[(cv + k) * 4 + 3] != LevelMesh.PieceAngle(piece) || c2[(cv + k) * 4 + 2] != piece.Contrast)
+                    {
+                        Fail($"{sw}: corner {k} differs ({Custom4(c0, cv + k)})");
+                        break;
+                    }
+                }
+                if (idx[ci] != cv || idx[ci + 1] != cv + 1 || idx[ci + 2] != cv + 2 || idx[ci + 3] != cv || idx[ci + 4] != cv + 2 || idx[ci + 5] != cv + 3)
+                    Fail($"{sw}: quad indices differ");
+                cv += 4;
+                ci += 6;
+            }
+        }
         return quad;
     }
+
+    /// <summary>Whether a drawn section is a one-sided wall of an island (T6.13e), drawn again above its ceiling.</summary>
+    private static bool IsIslandWall(LevelMesh m, WallSection s) =>
+        LevelMesh.IsDrawn(s) && s.BackSector is null && s.Kind == WallSectionKind.Middle && m.Caps.IslandOf(s.Line.Index) >= 0;
 
     /// <summary>
     /// fixed_t: how far a piece's corner may lie from its seg: the floor edge's

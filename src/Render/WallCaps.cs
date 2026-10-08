@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using IsoDoom.Map;
 
 namespace IsoDoom.Render;
@@ -26,7 +27,8 @@ public enum WallCapMode
 /// <param name="Dx">The unit direction from <c>V1</c> to <c>V2</c>.</param>
 /// <param name="Dy">The unit direction from <c>V1</c> to <c>V2</c>.</param>
 /// <param name="Pieces">Convex polygons, clockwise (interior on the right of each edge), in the void within <see cref="WallCaps.Thickness"/> behind the wall.</param>
-public sealed record WallCap(int Line, int Side, int Sector, double X, double Y, double Dx, double Dy, IReadOnlyList<(double X, double Y)[]> Pieces)
+/// <param name="Island">The island its wall bounds (<see cref="WallCaps.Islands"/>), -1 for none.</param>
+public sealed record WallCap(int Line, int Side, int Sector, double X, double Y, double Dx, double Dy, IReadOnlyList<(double X, double Y)[]> Pieces, int Island)
 {
     /// <summary>The unit normal into the void (the line's left), map axes.</summary>
     public (double X, double Y) Normal => (-Dy, Dx);
@@ -57,11 +59,26 @@ public sealed record WallCap(int Line, int Side, int Sector, double X, double Y,
 /// two walls that are not neighbours still overlap (back to back across a
 /// thin void), each keeps the part nearer its own wall.
 /// </para>
+/// <para>
+/// <b>Islands:</b> a small void wholly enclosed by one loop of capped walls
+/// (a pillar, a block in a room: at most <see cref="MaxIslandSize"/> across on
+/// both axes). Its walls may face sectors with different
+/// ceilings (vanilla never shows its top), which from above leaves a column
+/// with faces of different heights and gaps between them; so every wall of an
+/// island reaches up to the island's top, its highest wall's
+/// (<see cref="IslandTop"/>: the shader draws the walls on above their
+/// ceilings and puts their caps there). A larger block between rooms is not
+/// one: raising a low room's wall to the top of a tall hall beside it would
+/// hide the hall behind it.
+/// </para>
 /// </summary>
 public sealed class WallCaps
 {
     /// <summary>How deep a cap reaches into the void behind its wall, map units.</summary>
     public const double Thickness = 16;
+
+    /// <summary>The largest island, map units across on each axis (its loop's bounding box): the pillars, not the blocks between rooms.</summary>
+    public const double MaxIslandSize = 128;
 
     /// <summary>How far past a wall's end its cap may reach at a corner, in thicknesses (a sharp corner's mitre stops there).</summary>
     public const double MitreLimit = 4;
@@ -78,10 +95,35 @@ public sealed class WallCaps
     // The size of the void lookup grid's cells, map units.
     private const double GridSize = 256;
 
-    private WallCaps(List<WallCap> caps) => Caps = caps;
+    private readonly int[] _islandOfLine;
+
+    private WallCaps(List<WallCap> caps, List<Island> islands, int[] islandOfLine)
+    {
+        Caps = caps;
+        Islands = islands;
+        _islandOfLine = islandOfLine;
+    }
 
     /// <summary>The caps, in line order (only walls with a piece left).</summary>
     public IReadOnlyList<WallCap> Caps { get; }
+
+    /// <summary>An island: the lines of the loop of walls around it, in loop order, and their front sectors, in sector order.</summary>
+    public sealed record Island(IReadOnlyList<int> Lines, IReadOnlyList<int> Sectors);
+
+    /// <summary>The islands (voids wholly enclosed by one loop of capped walls), in the order of their first line.</summary>
+    public IReadOnlyList<Island> Islands { get; }
+
+    /// <summary>The island line <paramref name="line"/> bounds, -1 for none.</summary>
+    public int IslandOf(int line) => line >= 0 && line < _islandOfLine.Length ? _islandOfLine[line] : -1;
+
+    /// <summary>An island's top: the highest ceiling of its walls' sectors (<paramref name="ceiling"/>: a sector's ceiling as drawn, map units).</summary>
+    public float IslandTop(int island, Func<int, float> ceiling)
+    {
+        float top = float.MinValue;
+        foreach (int s in Islands[island].Sectors)
+            top = Math.Max(top, ceiling(s));
+        return top;
+    }
 
     /// <summary>Whether a cap is drawn for a wall seen with its front towards <paramref name="toCameraX"/>, <paramref name="toCameraY"/> (map axes, the direction towards the camera flattened): the shader's test. A wall facing away (whose own quad is culled) gets none, which would float over its room.</summary>
     public static bool Faces(WallCap cap, double toCameraX, double toCameraY) => -(toCameraX * cap.Normal.X + toCameraY * cap.Normal.Y) >= -Parallel;
@@ -111,6 +153,7 @@ public sealed class WallCaps
         var voids = new VoidGrid(polygons.Voids);
         var pieces = new List<(double X, double Y)[]>[walls.Count];
         var neighbours = new HashSet<(int, int)>();
+        int[] nextOf = new int[walls.Count];
         for (int i = 0; i < walls.Count; i++)
         {
             Wall a = walls[i];
@@ -121,7 +164,7 @@ public sealed class WallCaps
                 a.Point(-e, 0), a.Point(a.Length + e, 0), a.Point(a.Length + e, thickness), a.Point(-e, thickness),
             ];
             // The end at V2: the next wall around the void, the void on its left too.
-            int next = Next(walls, starts, a, (a.Line.V2.X, a.Line.V2.Y));
+            int next = nextOf[i] = Next(walls, starts, a, (a.Line.V2.X, a.Line.V2.Y));
             strip = Clip(strip, EndPlane(a, next < 0 ? null : walls[next], a.X2, a.Y2, -1));
             int prev = Previous(walls, ends, a, (a.Line.V1.X, a.Line.V1.Y));
             strip = Clip(strip, EndPlane(a, prev < 0 ? null : walls[prev], a.X1, a.Y1, 1));
@@ -170,6 +213,7 @@ public sealed class WallCaps
             }
         }
 
+        (List<Island> islands, int[] islandOf) = FindIslands(level, walls, nextOf);
         var caps = new List<WallCap>();
         for (int i = 0; i < walls.Count; i++)
         {
@@ -183,9 +227,52 @@ public sealed class WallCaps
                     Array.Reverse(p);
                 clockwise.Add(p);
             }
-            caps.Add(new WallCap(w.Line.Index, w.Side.Index, w.Line.FrontSector!.Index, w.X1, w.Y1, w.Dx, w.Dy, clockwise));
+            caps.Add(new WallCap(w.Line.Index, w.Side.Index, w.Line.FrontSector!.Index, w.X1, w.Y1, w.Dx, w.Dy, clockwise, islandOf[w.Line.Index]));
         }
-        return new WallCaps(caps);
+        return new WallCaps(caps, islands, islandOf);
+    }
+
+    // The loops of walls around the void that close counterclockwise (the void inside, on
+    // their left): the islands, and each line's island (-1 for none).
+    private static (List<Island> Islands, int[] IslandOf) FindIslands(Level level, List<Wall> walls, int[] nextOf)
+    {
+        int[] islandOf = new int[level.Lines.Length];
+        Array.Fill(islandOf, -1);
+        var islands = new List<Island>();
+        bool[] seen = new bool[walls.Count];
+        for (int start = 0; start < walls.Count; start++)
+        {
+            if (seen[start])
+                continue;
+            var loop = new List<int>();
+            int i = start;
+            while (i >= 0 && !seen[i])
+            {
+                seen[i] = true;
+                loop.Add(i);
+                i = nextOf[i];
+            }
+            if (i != start)
+                continue; // open, or running into another loop
+            double twiceArea = 0;
+            foreach (int k in loop)
+                twiceArea += walls[k].X1 * walls[k].Y2 - walls[k].X2 * walls[k].Y1;
+            if (twiceArea <= 0)
+                continue; // clockwise: the void outside (a room's walls)
+            if (loop.Max(k => Math.Max(walls[k].X1, walls[k].X2)) - loop.Min(k => Math.Min(walls[k].X1, walls[k].X2)) > MaxIslandSize
+                || loop.Max(k => Math.Max(walls[k].Y1, walls[k].Y2)) - loop.Min(k => Math.Min(walls[k].Y1, walls[k].Y2)) > MaxIslandSize)
+                continue; // a block between rooms
+            var sectors = new SortedSet<int>();
+            var lines = new List<int>();
+            foreach (int k in loop)
+            {
+                sectors.Add(walls[k].Line.FrontSector!.Index);
+                lines.Add(walls[k].Line.Index);
+                islandOf[walls[k].Line.Index] = islands.Count;
+            }
+            islands.Add(new Island(lines, [.. sectors]));
+        }
+        return (islands, islandOf);
     }
 
     private static void Add(Dictionary<(int X, int Y), List<int>> map, (int X, int Y) key, int wall)
