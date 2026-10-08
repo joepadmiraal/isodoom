@@ -331,10 +331,13 @@ jobs:
           export/windows/IsoDoom.console.exe --headless -- --level-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee level-check.log
           grep -q "Level check: OK" level-check.log
 
+      # An exported build runs in its own folder (Godot changes the working
+      # directory to the exe's when the .pck is beside it), so the routes'
+      # path is absolute (cygpath -m: D:/a/..., which .NET reads).
       - name: Route play (exported build, headless)
         timeout-minutes: 10
         run: |
-          r=tests/IsoDoom.Tests/Sim/Routes
+          r="$(cygpath -m "$PWD")/tests/IsoDoom.Tests/Sim/Routes"
           export/windows/IsoDoom.console.exe --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
             --level-tweaks=vanilla --level-monsters=off \
             --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
