@@ -41,7 +41,7 @@ public static class PolygonChecks
     }
 
     /// <summary>Area of each sector's polygons (square map units).</summary>
-    public static double[] SectorAreasFromPolygons(Level map, SubsectorPolygons polys) =>
+    public static double[] SectorAreasFromPolygons(SubsectorPolygons polys) =>
         [.. polys.BySector.Select(ss => ss.Sum(i => PolygonArea(polys.Polygons[i])))];
 
     public static double PolygonArea(PolygonVertex[] p) => (double)SubsectorPolygons.TwiceArea(p) / 2 / Unit / Unit;
@@ -205,7 +205,7 @@ public static class PolygonChecks
     public static List<AreaMismatch> AreaMismatches(Level map, SubsectorPolygons polys, Coverage coverage)
     {
         double[] fromLines = SectorAreasFromLines(map);
-        double[] fromPolys = SectorAreasFromPolygons(map, polys);
+        double[] fromPolys = SectorAreasFromPolygons(polys);
         double[] boundary = SectorBoundaryLengths(map);
         bool[] closed = SectorsClosed(map);
         var bad = new List<AreaMismatch>();

@@ -57,13 +57,17 @@ public sealed partial class MMenu
     /// <summary>The label of <see cref="WaitingBinding"/>.</summary>
     public string WaitingLabel { get; private set; } = "";
 
-    public menu_t SetupDef = null!, ControlsDef = null!;
+    /// <summary>T7.3: the More Options page.</summary>
+    public menu_t SetupDef { get; private set; } = null!;
+
+    /// <summary>T7.3: the controls page.</summary>
+    public menu_t ControlsDef { get; private set; } = null!;
 
     /// <summary>The settings pages, by page.</summary>
-    public readonly Dictionary<SettingPage, menu_t> SettingDefs = [];
+    public Dictionary<SettingPage, menu_t> SettingDefs { get; } = [];
 
     /// <summary>The binding pages (<see cref="Settings.ControlPages"/>' order) and the action of each item.</summary>
-    public readonly List<(menu_t Def, string[] Actions)> BindingDefs = [];
+    public List<(menu_t Def, string[] Actions)> BindingDefs { get; } = [];
 
     public const string RESETALL = "reset every option and control\nto its default?\n\n" + PRESSYN;
     public const string RESETCONTROLS = "reset every control to its default?\n\n" + PRESSYN;

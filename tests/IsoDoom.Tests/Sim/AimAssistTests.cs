@@ -51,11 +51,11 @@ public class AimAssistTests
     public void NothingOutsideTheCone()
     {
         World world = Room(Assist());
-        mobj_t z = Zombie(world, 664, 340); // 8° off at 600 units, its edge 6.1°
+        Zombie(world, 664, 340); // 8° off at 600 units, its edge 6.1°
         Assert.Equal(0u, Snap(world));
         // the strength option: a wider cone takes it
         world = Room(Assist(10 * Tables.ANG1));
-        z = Zombie(world, 664, 340);
+        mobj_t z = Zombie(world, 664, 340);
         Assert.Equal(AngleTo(world, z), Snap(world));
         // the cone is the same either side
         world = Room(Assist());

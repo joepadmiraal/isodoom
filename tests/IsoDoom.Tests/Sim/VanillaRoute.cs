@@ -487,7 +487,6 @@ public sealed class VanillaRoute
         var hu = new HuStuff(graphics);
         st.ST_Start(world.players[world.consoleplayer]);
         hu.HU_Start();
-        var messages = new List<sim_event_t>();
         Assert.True(expected.Length == Cmds.Count,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
@@ -525,17 +524,17 @@ public sealed class VanillaRoute
                     continue;
             }
             var msg = new StringBuilder();
-            if (e[1..5].SequenceEqual(a[1..5]) && e[0] == a[0])
-                msg.Append($"{Name}: tic {tic + 1} differs from vanilla");
+            if (e.AsSpan(1..5).SequenceEqual(a.AsSpan(1..5)) && e[0] == a[0])
+                msg.Append(CultureInfo.InvariantCulture, $"{Name}: tic {tic + 1} differs from vanilla");
             else
-                msg.Append($"{Name}: tic {tic + 1}'s ticcmd differs from the dump's (stale dump? rerun tools/VanillaRef/routes.sh)");
+                msg.Append(CultureInfo.InvariantCulture, $"{Name}: tic {tic + 1}'s ticcmd differs from the dump's (stale dump? rerun tools/VanillaRef/routes.sh)");
             for (int i = 0; i < Columns.Length; i++)
             {
                 if (i >= e.Length || e[i] != a[i])
-                    msg.Append($"\n  {Columns[i]}: vanilla {(i < e.Length ? e[i] : "-")}, sim {a[i]}");
+                    msg.Append(CultureInfo.InvariantCulture, $"\n  {Columns[i]}: vanilla {(i < e.Length ? e[i] : "-")}, sim {a[i]}");
             }
-            msg.Append($"\n  vanilla: {expected[tic]}\n  sim:     {actual}");
-            msg.Append($"\n  sim overruns so far (not emulated): intercepts {world.interceptoverruns}, spechit {world.spechitoverruns}");
+            msg.Append(CultureInfo.InvariantCulture, $"\n  vanilla: {expected[tic]}\n  sim:     {actual}");
+            msg.Append(CultureInfo.InvariantCulture, $"\n  sim overruns so far (not emulated): intercepts {world.interceptoverruns}, spechit {world.spechitoverruns}");
             Assert.Fail(msg.ToString());
         }
         // T5.9: the exit column is checked on every tic above; the header says the last tic leaves the level.

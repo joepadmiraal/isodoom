@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Godot;
@@ -74,7 +75,7 @@ public partial class LevelCheck
             s.MenuEvent(KeyEvent(Key.Down));
         s.MenuEvent(KeyEvent(Key.Right));
         string expected = Settings.Find("sprites/shadow")!.Step(shadow, 1);
-        if (menu.StateName != "sprites" || s.GetSetting("sprites/shadow") != expected || s.SpriteOptions.Shadow.ToString().ToLowerInvariant() != expected)
+        if (menu.StateName != "sprites" || s.GetSetting("sprites/shadow") != expected || !string.Equals(s.SpriteOptions.Shadow.ToString(), expected, StringComparison.OrdinalIgnoreCase))
             Fail($"settings (T7.3): the sprites page's Shadows from \"{shadow}\" by the right arrow: {menu.StateText()}, the setting \"{s.GetSetting("sprites/shadow")}\", expected \"{expected}\"");
         changed["sprites/shadow"] = expected;
 
@@ -190,29 +191,29 @@ public partial class LevelCheck
         LevelScene s = _scene;
         void Expect(string key, bool ok, string what)
         {
-            if (changed.ContainsKey(key) && !ok)
-                Fail($"settings (T7.3): {key} = \"{changed[key]}\" did not apply: {what}");
+            if (changed.TryGetValue(key, out string? value) && !ok)
+                Fail($"settings (T7.3): {key} = \"{value}\" did not apply: {what}");
         }
-        Expect("video/frame_cap", Engine.MaxFps == int.Parse(changed["video/frame_cap"]), $"Engine.MaxFps {Engine.MaxFps}");
+        Expect("video/frame_cap", Engine.MaxFps == int.Parse(changed["video/frame_cap"], CultureInfo.InvariantCulture), $"Engine.MaxFps {Engine.MaxFps}");
         foreach ((string key, string bus) in new[] { ("sound/sfx_volume", LevelScene.SfxBus), ("sound/music_volume", LevelScene.MusicBus) })
         {
             int i = AudioServer.GetBusIndex(bus);
             if (!changed.TryGetValue(key, out string? value))
                 continue;
-            int volume = int.Parse(value);
+            int volume = int.Parse(value, CultureInfo.InvariantCulture);
             // T7.8e: the music bus only mutes; the volume is the OPL driver's (the notes' levels)
             float db = bus == LevelScene.MusicBus ? LevelScene.MusicBusDb(volume) : LevelScene.VolumeDb(volume);
             Expect(key, i >= 0 && Mathf.IsEqualApprox(AudioServer.GetBusVolumeDb(i), db), $"bus {bus} at {(i >= 0 ? AudioServer.GetBusVolumeDb(i) : float.NaN)} dB");
         }
-        Expect("controls/mouse_sensitivity", s.TiccmdBuilder.MouseSensitivity == int.Parse(changed["controls/mouse_sensitivity"]), $"the builder's {s.TiccmdBuilder.MouseSensitivity}");
+        Expect("controls/mouse_sensitivity", s.TiccmdBuilder.MouseSensitivity == int.Parse(changed["controls/mouse_sensitivity"], CultureInfo.InvariantCulture), $"the builder's {s.TiccmdBuilder.MouseSensitivity}");
         if (s.World is { } world)
             Expect("gameplay/aim_assist", world.tweaks.AimAssistCone == s.Tweaks.AimAssistCone && world.tweaks.AimAssistCone != Tweaks.DefaultAimAssistCone, $"the world's cone {world.tweaks.AimAssistCone}");
         if (s.Mesh is { } mesh)
         {
-            Expect("gameplay/light", mesh.LightMode.ToString().ToLowerInvariant() == changed["gameplay/light"], $"the mesh's {mesh.LightMode}");
+            Expect("gameplay/light", string.Equals(mesh.LightMode.ToString(), changed["gameplay/light"], StringComparison.OrdinalIgnoreCase), $"the mesh's {mesh.LightMode}");
             Expect("gameplay/masked_back", (mesh.MaskedBacks == Render.MaskedBackFaces.Mirrored ? "mirror" : "off") == changed["gameplay/masked_back"], $"the mesh's {mesh.MaskedBacks}");
         }
-        Expect("hud/mode", s.Hud.Mode.ToString().ToLowerInvariant() == changed["hud/mode"], $"the HUD's {s.Hud.Mode}");
+        Expect("hud/mode", string.Equals(s.Hud.Mode.ToString(), changed["hud/mode"], StringComparison.OrdinalIgnoreCase), $"the HUD's {s.Hud.Mode}");
         if (s.MusicDevice is { } music && changed.TryGetValue("sound/opl", out string? opl))
         {
             // T7.8g: the player (and its driver, with a bank) switched at once

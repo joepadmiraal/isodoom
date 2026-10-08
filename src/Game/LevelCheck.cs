@@ -37,7 +37,7 @@ namespace IsoDoom.Game;
 /// with a game camera (<see cref="IsoCamera"/>, not current) in each
 /// projection, a point inside every sector's floor (its largest triangle's
 /// centroid) is projected to the screen and picked back with
-/// <see cref="CursorGround.Pick"/>: the pick must land on that floor at
+/// <see cref="CursorGround.Pick(LevelMesh, Vector3, Vector3, float)"/>: the pick must land on that floor at
 /// that point, or on a higher floor in front of it along the ray, and the
 /// floor it names must be the one <see cref="FloorTriangles.SectorAt"/>
 /// finds there.</item>
@@ -263,7 +263,7 @@ public partial class LevelCheck : Godot.Node
     /// <summary>
     /// T3.3: a point inside every sector's floor, seen through the game camera
     /// (orthographic and perspective, focused 96 units off the point so the ray
-    /// is oblique in perspective), must be picked back by <see cref="CursorGround.Pick"/>
+    /// is oblique in perspective), must be picked back by <see cref="CursorGround.Pick(LevelMesh, Vector3, Vector3, float)"/>
     /// on that floor, or on a higher floor in front of it along the ray.
     /// </summary>
     private void CheckCursorGround(LevelMesh m, string map)
@@ -729,7 +729,7 @@ public partial class LevelCheck : Godot.Node
             if (!backFace)
             {
                 sectionCount++;
-                CheckPieces(s, sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
+                CheckPieces(sideSegs[s.Line.Index * 2 + s.Side], pieces, sw);
             }
             foreach (WallPiece piece in pieces)
             {
@@ -829,7 +829,7 @@ public partial class LevelCheck : Godot.Node
     /// Consecutive segs' pieces join, or a connector pair (both directions)
     /// bridges them.
     /// </summary>
-    private void CheckPieces(WallSection s, List<Seg>? segs, IReadOnlyList<WallPiece> pieces, string what)
+    private void CheckPieces(List<Seg>? segs, IReadOnlyList<WallPiece> pieces, string what)
     {
         if (segs is null || pieces.Count == 0)
         {

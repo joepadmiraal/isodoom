@@ -18,11 +18,11 @@ namespace IsoDoom.Tests.Audio;
 /// </summary>
 public sealed class OplLog
 {
-    public string Name = "";
-    public uint Rate;
-    public int Length;
-    public bool Buffered;
-    public readonly List<(int sample, ushort reg, byte val)> Writes = [];
+    public string Name { get; set; } = "";
+    public uint Rate { get; set; }
+    public int Length { get; set; }
+    public bool Buffered { get; set; }
+    public List<(int sample, ushort reg, byte val)> Writes { get; } = [];
 
     public static string Dir => Path.Combine(TestWads.RepoRoot ?? throw new InvalidOperationException("no repo root"), "tools", "OplRef", "logs");
 

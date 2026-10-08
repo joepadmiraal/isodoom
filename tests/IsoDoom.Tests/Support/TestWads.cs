@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Security.Cryptography;
 using Xunit;
@@ -77,6 +78,7 @@ public static class TestWads
     /// <summary>MD5 (lower-case hex) of <see cref="Doom2Path"/>, or null when there is no DOOM II IWAD.</summary>
     public static string? Doom2Md5 => _doom2Md5Value.Value;
 
+    [SuppressMessage("Security", "CA5351", Justification = "Identifies a WAD by its well-known MD5; no security use")]
     private static string Md5Of(string path)
     {
         using FileStream stream = File.OpenRead(path);

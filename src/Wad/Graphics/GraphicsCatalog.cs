@@ -212,7 +212,7 @@ public sealed class GraphicsCatalog
     /// that no list shows (see <see cref="Locate"/>). Flat-namespace lumps
     /// decode as flats, everything else as patches.
     /// </summary>
-    public GraphicView ViewLump(WadLump lump, string note)
+    public static GraphicView ViewLump(WadLump lump, string note)
     {
         if (lump.Namespace == LumpNamespace.Flats)
             return new(GraphicCategory.Flats, lump.Name, Flat.Decode(lump.Data.Span, lump.Name), false,

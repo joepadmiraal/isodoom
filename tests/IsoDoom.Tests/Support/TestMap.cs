@@ -349,7 +349,7 @@ public sealed class TestMap
         return Shorts(offsets);
     }
 
-    private static byte[] Shorts(IReadOnlyList<short> values)
+    private static byte[] Shorts(List<short> values)
     {
         byte[] data = new byte[values.Count * 2];
         for (int i = 0; i < values.Count; i++)

@@ -1323,7 +1323,7 @@ public static class SyntheticIwad
         // without a volume, release, pitch wheel, system event, controller changes: instrument, volume, pan,
         // expression), three melodic channels and the percussion channel, a delay of two bytes, then the score end.
         var score = new List<byte>();
-        int last = -1;
+        int last;
         void Event(int type, int channel, params byte[] data)
         {
             last = score.Count;

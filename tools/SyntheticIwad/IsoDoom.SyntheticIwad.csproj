@@ -5,12 +5,6 @@
        Godot reference; never ships with the game. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Deterministic>true</Deterministic>
     <IsPackable>false</IsPackable>
     <RootNamespace>IsoDoom.Tools.SyntheticIwad</RootNamespace>
   </PropertyGroup>

@@ -39,7 +39,7 @@ namespace IsoDoom.Render;
 /// and walls (at heights interpolated between tics when given) and change its flat.</item>
 /// <item><b>Per-side textures</b> (T5.1): an RG float texture (<c>side_textures</c>,
 /// same layout) with the texture slot of each sidedef's upper, lower and middle
-/// texture (R of texel <c>3 × side + </c><see cref="SidePart"/>; -1 for <c>-</c>), which
+/// texture (R of texel <c>3 × side + </c><see cref="Part"/>; -1 for <c>-</c>), which
 /// wall vertices refer to, so a switch changes a wall's texture through
 /// <see cref="IsoDoom.Map.Side"/> and <see cref="UpdateSectors"/> without touching the meshes;
 /// and (G of all three, T5.7) how far the sidedef's <c>textureoffset</c> moved

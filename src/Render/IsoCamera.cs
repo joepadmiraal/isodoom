@@ -184,18 +184,18 @@ public partial class IsoCamera : Camera3D
 
     private bool Active => InputEnabled && Current && IsInsideTree();
 
-    public override void _Input(InputEvent e)
+    public override void _Input(InputEvent @event)
     {
         // Track the cursor before anything consumes the motion (a GUI over the view still moves the aim).
-        if (e is InputEventMouseMotion motion && InputEnabled)
+        if (@event is InputEventMouseMotion motion && InputEnabled)
             Cursor = motion.Position;
     }
 
-    public override void _UnhandledInput(InputEvent e)
+    public override void _UnhandledInput(InputEvent @event)
     {
         if (!Active)
             return;
-        switch (e)
+        switch (@event)
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } mb
                 when mb.CtrlPressed || Input.IsPhysicalKeyPressed(Key.Ctrl):

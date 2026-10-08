@@ -48,7 +48,7 @@ public class SpecTests
         var floors = FloorTriangles.Build(map, polys);
         FloorChecks.Check(map, polys, floors);
         double[] fromLines = PolygonChecks.SectorAreasFromLines(map);
-        double[] fromPolygons = PolygonChecks.SectorAreasFromPolygons(map, polys);
+        double[] fromPolygons = PolygonChecks.SectorAreasFromPolygons(polys);
         Assert.Equal(768.0 * 128, fromLines[0]);
         for (int s = 0; s < map.Sectors.Length; s++)
             Assert.Equal(fromLines[s], fromPolygons[s]);

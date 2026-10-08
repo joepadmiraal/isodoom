@@ -17,7 +17,7 @@ public enum DoorLidMode
 /// <summary>
 /// The lids (T6.13b, SPEC §7.2, §12): which sectors get a lid on the solid
 /// volume above them, and at what height. Pure C#, no Godot types (the tests
-/// link it); <see cref="LevelMesh"/> builds the lid triangles from it.
+/// link it); <c>LevelMesh</c> builds the lid triangles from it.
 /// <para>
 /// A <b>lid sector</b> is a sector whose ceiling is not the sky, that has a
 /// floor and at least one other sector across a two-sided line (its

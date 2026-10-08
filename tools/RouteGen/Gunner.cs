@@ -26,13 +26,13 @@ public sealed class Gunner
     private int _shots;
 
     /// <summary>Tics between shots.</summary>
-    public int Every = 10;
+    public int Every { get; set; } = 10;
 
     /// <summary>The damage of a shot at a monster (default: 5, 10 or 15 in turn, a pistol's).</summary>
-    public Func<mobj_t, int>? Amount;
+    public Func<mobj_t, int>? Amount { get; set; }
 
     /// <summary>Whether it shoots (it keeps noting attacks while off).</summary>
-    public bool Firing = true;
+    public bool Firing { get; set; } = true;
 
     /// <summary>
     /// T6.5: shoot rockets (<c>rocket</c> events, facing the target first)
@@ -40,34 +40,34 @@ public sealed class Gunner
     /// tic, at targets in sight at least <see cref="RocketMin"/> units away
     /// (nearer ones, or ones out of sight, get a <c>damage</c> event as before).
     /// </summary>
-    public bool Rockets;
+    public bool Rockets { get; set; }
 
     /// <summary>
     /// T6.6: shoot with the player's weapon (<c>BT_ATTACK</c>, turning
     /// towards the target every tic) from <see cref="Clear"/>, at the nearest
     /// monster in sight that attacked, instead of route events.
     /// </summary>
-    public bool Guns;
+    public bool Guns { get; set; }
 
     /// <summary>T6.5: the nearest a rocket's target may be (its blast reaches 128 units).</summary>
-    public double RocketMin = 200;
+    public double RocketMin { get; set; } = 200;
 
     /// <summary>Rockets fired, for the log.</summary>
-    public int RocketsFired;
+    public int RocketsFired { get; set; }
 
     /// <summary>Kills (dead monsters it shot at) by type, for the log.</summary>
-    public readonly SortedDictionary<string, int> Kills = new(StringComparer.Ordinal);
+    public SortedDictionary<string, int> Kills { get; } = new(StringComparer.Ordinal);
 
     /// <summary>Monster types that attacked, for the log.</summary>
-    public readonly SortedSet<string> Attackers = new(StringComparer.Ordinal);
+    public SortedSet<string> Attackers { get; } = new(StringComparer.Ordinal);
 
     private readonly HashSet<mobj_t> _shot = [];
 
     /// <summary>How far (units) from the player a barrel must be to be shot.</summary>
-    public double BarrelSafe = 200;
+    public double BarrelSafe { get; set; } = 200;
 
     /// <summary>Barrels shot, for the log.</summary>
-    public int Barrels;
+    public int Barrels { get; set; }
 
     public Gunner(Steer g)
     {
@@ -80,7 +80,7 @@ public sealed class Gunner
     private static bool Awake(mobj_t m) =>
         m.state != m.info.spawnstate && m.state != Info.states[(int)m.info.spawnstate].nextstate;
 
-    private double Dist(mobj_t a, mobj_t b) => Math.Sqrt(Math.Pow((a.x - b.x) / (double)FU, 2) + Math.Pow((a.y - b.y) / (double)FU, 2));
+    private static double Dist(mobj_t a, mobj_t b) => Math.Sqrt(Math.Pow((a.x - b.x) / (double)FU, 2) + Math.Pow((a.y - b.y) / (double)FU, 2));
 
     private void Tic()
     {

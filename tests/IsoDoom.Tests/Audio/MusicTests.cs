@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using IsoDoom.Audio;
@@ -103,7 +104,7 @@ public class MusicTests
         Assert.Equal("tail", tail[0]);
         HashSet<int> presses = tail[1] == "-" ? [] : [.. tail[1].Split(',').Select(int.Parse)];
         var cmds = new List<ticcmd_t>(route.Cmds);
-        for (int t = 1; t <= int.Parse(tail[2]); t++)
+        for (int t = 1; t <= int.Parse(tail[2], CultureInfo.InvariantCulture); t++)
             cmds.Add(new ticcmd_t { buttons = presses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
 
         World world = route.NewWorld(out WadArchive wad);
@@ -300,7 +301,7 @@ public class MusicTests
         return (flow, host, s, d);
     }
 
-    private static readonly ticcmd_t _none = default;
+    private static ticcmd_t None => default;
     private static readonly ticcmd_t _use = new() { buttons = buttoncode_t.BT_USE };
     private static readonly ticcmd_t _pause = new() { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE };
 
@@ -315,7 +316,7 @@ public class MusicTests
         s.MusicChanged = c => asked.Add($"{SSound.MusicName(c.musicnum)}{(c.looping ? " looping" : "")}");
         flow.D_StartTitle(null);
         for (int i = 0; i < 2000; i++)
-            flow.G_Ticker(_none);
+            flow.G_Ticker(None);
         // d_main.c D_DoAdvanceDemo: S_StartMusic at the first step (Doom II's fifth too), once: the song goes on around the loop
         string[] once = expected.Split(',');
         Assert.Equal(Enumerable.Repeat(once, 10).SelectMany(o => o).Take(asked.Count), asked);
@@ -331,14 +332,14 @@ public class MusicTests
         var asked = new List<string>();
         s.MusicChanged = c => asked.Add($"{flow.gametic} {flow.gamestate} {SSound.MusicName(c.musicnum)}");
         flow.D_StartTitle(null);
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         flow.G_DeferedInitNew(skill_t.sk_medium, 1, 1);
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         host.World!.G_ExitLevel();
         int tics = 0;
         while (flow.gamestate != gamestate_t.GS_LEVEL || host.World.level.Name != "E1M2")
         {
-            flow.G_Ticker(tics % 2 == 0 ? _none : _use);
+            flow.G_Ticker(tics % 2 == 0 ? None : _use);
             Assert.True(++tics < 100);
         }
         // the new game's at the start of the tic (G_InitNew), the intermission's at its first tic (WI_Ticker's bcnt 1)
@@ -359,8 +360,8 @@ public class MusicTests
         Assert.Equal(musicenum_t.mus_runnin, s.mus_playing);
         host.World!.gamemap = 5;
         host.World.G_ExitLevel();
-        flow.G_Ticker(_none);
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
+        flow.G_Ticker(None);
         Assert.Equal((gamestate_t.GS_INTERMISSION, musicenum_t.mus_dm2int, true), (flow.gamestate, s.mus_playing, s.mus_looping));
     }
 
@@ -383,12 +384,12 @@ public class MusicTests
         world.gameepisode = episode;
         world.gamemap = mode == GameMode.commercial ? 6 : 8;
         world.G_ExitLevel();
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         if (mode == GameMode.commercial)
         {
             // Doom II: the intermission, then its text screen
             for (int i = 0; i < 40 && flow.gamestate == gamestate_t.GS_INTERMISSION; i++)
-                flow.G_Ticker(i % 2 == 0 ? _none : _use);
+                flow.G_Ticker(i % 2 == 0 ? None : _use);
         }
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
         Assert.Equal((text, true), (s.mus_playing, s.mus_looping));
@@ -396,7 +397,7 @@ public class MusicTests
             return;
         int textTics = flow.Finale.finaletext.Length * FFinale.TEXTSPEED + FFinale.TEXTWAIT;
         for (int i = 0; i < textTics; i++)
-            flow.G_Ticker(_none);
+            flow.G_Ticker(None);
         Assert.Equal(1, flow.Finale.finalestage);
         Assert.Equal(end, s.mus_playing); // E3's bunny once (S_StartMusic), the others' song on
         Assert.Equal(end == text, s.mus_looping);

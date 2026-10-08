@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using IsoDoom.Map;
 
 namespace IsoDoom.Sim;
@@ -35,6 +36,7 @@ public sealed partial class World
     /// facing when none does. Leaves <see cref="linetarget"/> and the other
     /// aim globals as its last aim left them; the vanilla aim after it sets them again.
     /// </summary>
+    [SuppressMessage("Naming", "CA1707", Justification = "Named as the p_*.c functions whose angle it stands in for (SPEC §12 T6.7)")]
     public uint P_AimAssist(mobj_t mo, int distance)
     {
         uint cone = tweaks.AimAssistCone;

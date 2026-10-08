@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Godot;
@@ -541,7 +542,7 @@ public partial class WadViewer : Control
         if (f.Rotate)
         {
             for (int r = 1; r <= 8; r++)
-                _rotation.AddItem(r.ToString());
+                _rotation.AddItem(r.ToString(CultureInfo.InvariantCulture));
         }
         else
         {
@@ -604,9 +605,9 @@ public partial class WadViewer : Control
                 continue;
             TreeItem item = _lumpTree.CreateItem(root);
             item.SetMetadata(0, e.Index);
-            item.SetText(LumpColumnIndex, e.Index.ToString());
+            item.SetText(LumpColumnIndex, e.Index.ToString(CultureInfo.InvariantCulture));
             item.SetText(LumpColumnName, e.Lump.Name);
-            item.SetText(LumpColumnSize, e.Lump.Size.ToString());
+            item.SetText(LumpColumnSize, e.Lump.Size.ToString(CultureInfo.InvariantCulture));
             item.SetTextAlignment(LumpColumnSize, HorizontalAlignment.Right);
             item.SetText(LumpColumnFile, e.Lump.File.Name);
             item.SetText(LumpColumnNamespace, LumpDirectory.NamespaceName(e.Lump.Namespace));
@@ -680,7 +681,7 @@ public partial class WadViewer : Control
             string note = e.OverriddenBy is WadLump o ? $"overridden by {o.File.Name}, so no list shows it" : "not used by any sprite frame";
             try
             {
-                Show(_catalog.ViewLump(e.Lump, note));
+                Show(GraphicsCatalog.ViewLump(e.Lump, note));
                 _info.Text = $"{line}\n{_info.Text}";
                 return;
             }

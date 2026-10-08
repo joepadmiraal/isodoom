@@ -103,7 +103,7 @@ public class GameFlowTests
         return (new GameFlow(host, mode, new DoomRandom()), host);
     }
 
-    private static readonly ticcmd_t _none = default;
+    private static ticcmd_t None => default;
     private static readonly ticcmd_t _use = new() { buttons = buttoncode_t.BT_USE };
     private static readonly ticcmd_t _pause = new() { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE };
 
@@ -136,7 +136,7 @@ public class GameFlowTests
             Tics(flow, tics + 1);
             Assert.Equal(page, flow.pagename);
             Assert.True(flow.advancedemo);
-            flow.G_Ticker(_none);
+            flow.G_Ticker(None);
             Assert.False(flow.advancedemo);
             Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
             flow.pagetic++; // as D_DoAdvanceDemo set it (the tic's D_PageTicker took one)
@@ -169,7 +169,7 @@ public class GameFlowTests
         flow.D_StartTitle(null);
         Tics(flow, 5);
         flow.G_DeferedInitNew(skill_t.sk_hard, 1, 1);
-        flow.G_Ticker(_none); // G_DoNewGame at the tic's start, then the level's first tic
+        flow.G_Ticker(None); // G_DoNewGame at the tic's start, then the level's first tic
         Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
         Assert.Equal(new[] { "new E1M1" }, host.Loads);
         Assert.Equal(("E1M1", skill_t.sk_hard, 1), (host.World!.level.Name, host.World.gameskill, host.World.leveltime));
@@ -221,16 +221,16 @@ public class GameFlowTests
         Assert.Equal((WiStuff.stateenum_t.ShowNextLoc, WiStuff.SHOWNEXTLOCDELAY * SimInfo.TICRATE), (flow.Wi.state, flow.Wi.cnt));
         Tics(flow, WiStuff.SHOWNEXTLOCDELAY * SimInfo.TICRATE - 1);
         Assert.Equal(WiStuff.stateenum_t.ShowNextLoc, flow.Wi.state);
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         Assert.Equal((WiStuff.stateenum_t.NoState, 10), (flow.Wi.state, flow.Wi.cnt));
         Tics(flow, 9);
         Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
-        flow.G_Ticker(_none); // WI_End, G_WorldDone: the next map at the tic's end
+        flow.G_Ticker(None); // WI_End, G_WorldDone: the next map at the tic's end
         Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
         Assert.Equal(new[] { "new E1M1", "next E1M2" }, host.Loads);
         Assert.Same(world, host.World);
         Assert.Equal(("E1M2", 0, 77), (world.level.Name, world.leveltime, p.health));
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         Assert.Equal(1, world.leveltime);
     }
 
@@ -241,7 +241,7 @@ public class GameFlowTests
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         host.World!.G_ExitLevel();
         int tics = 0;
-        ticcmd_t[] cmds = [_none, new() { buttons = buttoncode_t.BT_ATTACK }];
+        ticcmd_t[] cmds = [None, new() { buttons = buttoncode_t.BT_ATTACK }];
         while (flow.gamestate != gamestate_t.GS_LEVEL || host.World.level.Name != "E1M2")
         {
             flow.G_Ticker(cmds[tics % 2]);
@@ -256,10 +256,10 @@ public class GameFlowTests
         (GameFlow flow, Host host) = New();
         flow.G_InitNewMap(skill_t.sk_medium, "E1M2");
         host.World!.G_SecretExitLevel();
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         Assert.Equal(8, host.World.wminfo.next); // E1M9
         for (int i = 0; i < 40 && flow.gamestate == gamestate_t.GS_INTERMISSION; i++)
-            flow.G_Ticker(i % 2 == 0 ? _none : _use);
+            flow.G_Ticker(i % 2 == 0 ? None : _use);
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
         Assert.Null(host.World);
         Assert.Contains("E1M9", host.Ended);
@@ -281,7 +281,7 @@ public class GameFlowTests
         int textTics = flow.Finale.finaletext.Length * FFinale.TEXTSPEED + FFinale.TEXTWAIT;
         Tics(flow, textTics - 1, _use); // no skipping before Doom II
         Assert.Equal(0, flow.Finale.finalestage);
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         Assert.Equal((1, 0), (flow.Finale.finalestage, flow.Finale.finalecount));
         Tics(flow, 200);
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // vanilla stays on the end picture
@@ -314,10 +314,10 @@ public class GameFlowTests
             world.G_SecretExitLevel();
         else
             world.G_ExitLevel();
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
         flow.G_Ticker(_use); // all the stats at once
-        flow.G_Ticker(_none);
+        flow.G_Ticker(None);
         flow.G_Ticker(_use); // Doom II: straight to NoState
         Assert.Equal(WiStuff.stateenum_t.NoState, flow.Wi.state);
         Tics(flow, 10);

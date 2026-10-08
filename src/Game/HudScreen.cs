@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Game;
@@ -29,6 +30,7 @@ public sealed class HudScreen
     /// <summary>The screen row of the strip's first row.</summary>
     public int Top { get; }
 
+    [SuppressMessage("Performance", "CA1822", Justification = "The strip's size, with Height; always the screen's width")]
     public int Width => SCREENWIDTH;
     public int Height { get; }
 
@@ -51,6 +53,7 @@ public sealed class HudScreen
     /// pixels outside the strip are dropped (vanilla's are errors). A null
     /// patch (a lump the WAD lacks, e.g. the synthetic IWAD's) draws nothing.
     /// </summary>
+    [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]
     public void V_DrawPatch(int x, int y, IndexedImage? patch)
     {
         if (patch is null)
@@ -79,6 +82,7 @@ public sealed class HudScreen
     /// <paramref name="x"/>, <paramref name="y"/> (screen rows),
     /// <paramref name="width"/> × <paramref name="height"/>.
     /// </summary>
+    [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]
     public void V_CopyRect(HudScreen source, int x, int y, int width, int height)
     {
         for (int sy = Math.Max(y - Top, 0); sy < Math.Min(y - Top + height, Height); sy++)

@@ -6,9 +6,9 @@ namespace IsoDoom.Tests.Sim;
 
 /// <summary>
 /// T4.8a: the <see cref="TestMap"/>s a route can name (<c>iwad testmap</c>,
-/// <c>map NAME</c>): T4.4's hand-worked <see cref="MovementTests"/> cases
+/// <c>map NAME</c>): T4.4's hand-worked <c>MovementTests</c> cases
 /// that no IWAD route covers. The tests write each as a PWAD
-/// (<see cref="VanillaRouteTests.WritesTheTestMapPwads"/>, run by
+/// (<c>VanillaRouteTests.WritesTheTestMapPwads</c>, run by
 /// <c>tools/VanillaRef/routes.sh</c>), which the reference plays as
 /// <c>-file</c> over DOOM1.WAD; the map lump is <c>E1M1</c>.
 /// </summary>

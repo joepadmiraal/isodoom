@@ -341,7 +341,7 @@ public partial class LevelScene : ISetupHost
     /// </summary>
     private bool BindingEvent(InputEvent e, MMenu menu, string action)
     {
-        Binding? input = null;
+        Binding? input;
         switch (e)
         {
             case InputEventKey { Pressed: true, Echo: false } key:

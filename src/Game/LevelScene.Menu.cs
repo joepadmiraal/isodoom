@@ -70,12 +70,12 @@ public partial class LevelScene : IMenuHost
         if (_graphics is not null)
             Menu.Graphics = _graphics;
         // T7.3: yes and no come from their actions (menu_yes, menu_no), so a rebound Y is only a letter
-        Menu.key_menu_confirm = KEY_MENU_YES;
-        Menu.key_menu_abort = KEY_MENU_NO;
+        Menu.key_menu_confirm = KeyMenuYes;
+        Menu.key_menu_abort = KeyMenuNo;
     }
 
     /// <summary>T7.3: the menus' yes and no (<see cref="MMenu.key_menu_confirm"/>, <see cref="MMenu.key_menu_abort"/>) from the <c>menu_yes</c> and <c>menu_no</c> actions, apart from the letters.</summary>
-    public const int KEY_MENU_YES = 0x102, KEY_MENU_NO = 0x103;
+    public const int KeyMenuYes = 0x102, KeyMenuNo = 0x103;
 
     /// <summary>
     /// T7.3: the menu key of a menu action's input event (<see cref="Settings.MenuActions"/>,

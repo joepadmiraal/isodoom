@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using IsoDoom.Game;
@@ -27,33 +28,33 @@ public sealed class Steer
     private const int FU = 1 << 16;
     private const int Grid = 8;
 
-    public readonly World World;
-    public readonly List<(int Forward, int Side, int Turn, int Buttons)> Cmds = [];
+    public World World { get; }
+    public List<(int Forward, int Side, int Turn, int Buttons)> Cmds { get; } = [];
 
     /// <summary>Sector floor heights (units) the planner assumes (a lift that will be down when the player gets there).</summary>
-    public readonly Dictionary<int, int> Assume = [];
+    public Dictionary<int, int> Assume { get; } = [];
 
     /// <summary>Sector ceiling heights (units) the planner assumes (doors <see cref="GoToDoors"/> opens).</summary>
-    public readonly Dictionary<int, int> AssumeCeil = [];
+    public Dictionary<int, int> AssumeCeil { get; } = [];
 
     /// <summary>
     /// T5.9: a diagonal grid step whose orthogonal neighbours are blocked is
     /// allowed when the player fits at its midpoint (corners tighter than the
     /// grid, e.g. E1M3's sector 157). Off for the routes written before.
     /// </summary>
-    public bool TightCorners;
+    public bool TightCorners { get; set; }
 
     /// <summary>Prints the steering every 10 tics.</summary>
-    public bool Verbose;
+    public bool Verbose { get; set; }
 
     /// <summary>
     /// T6.4: the route's events (<see cref="IsoDoom.Game.RouteEvent"/>), each
     /// run before the tic of its index (<see cref="Damage"/>, <see cref="Alert"/>).
     /// </summary>
-    public readonly List<IsoDoom.Game.RouteEvent> Events = [];
+    public List<IsoDoom.Game.RouteEvent> Events { get; } = [];
 
     /// <summary>T6.4: called after every tic (e.g. a <see cref="Gunner"/> adding the next tic's events).</summary>
-    public Action? OnTic;
+    public Action? OnTic { get; set; }
 
     public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
     {
@@ -248,9 +249,9 @@ public sealed class Steer
             while (k + n < Cmds.Count && Cmds[k + n] == Cmds[k] && !Events.Any(e => e.Tic == k + n))
                 n++;
             (int Forward, int Side, int Turn, int Buttons) c = Cmds[k];
-            sb.Append($"{c.Forward} {c.Side} {c.Turn} {c.Buttons}");
+            sb.Append(CultureInfo.InvariantCulture, $"{c.Forward} {c.Side} {c.Turn} {c.Buttons}");
             if (n > 1)
-                sb.Append($" x{n}");
+                sb.Append(CultureInfo.InvariantCulture, $" x{n}");
             sb.Append('\n');
             k += n;
         }
@@ -514,10 +515,10 @@ public sealed class Steer
     }
 
     /// <summary>T5.9: sectors the player's box must not touch (e.g. a teleporter on the way: E1M5's sector 56).</summary>
-    public readonly HashSet<int> Avoid = [];
+    public HashSet<int> Avoid { get; } = [];
 
     /// <summary>T5.6: door sectors <see cref="GoToDoors"/> must not plan through (e.g. a door that opens from the other side only).</summary>
-    public readonly HashSet<int> ShutDoors = [];
+    public HashSet<int> ShutDoors { get; } = [];
 
     private static readonly int[] _manualDoors = [1, 31, 117, 118];
 

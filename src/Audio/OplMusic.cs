@@ -403,8 +403,7 @@ public sealed class OplMusic : IMusicDevice
         opl_driver_ver_t driverVersion = opl_driver_ver_t.opl_doom_1_9, Action<long, ushort, byte>? registerWritten = null)
     {
         RegisterWritten = registerWritten;
-        if (sampleRate <= 0)
-            throw new ArgumentOutOfRangeException(nameof(sampleRate));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
         opl_drv_ver = driverVersion;
 
         // OPL_SDL_Init

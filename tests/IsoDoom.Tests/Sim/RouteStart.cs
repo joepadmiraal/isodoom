@@ -5,7 +5,7 @@ using IsoDoom.Sim;
 namespace IsoDoom.Tests.Sim;
 
 /// <summary>
-/// T5.6: a route's <c>start X Y ANGLE</c> header (<see cref="VanillaRoute"/>),
+/// T5.6: a route's <c>start X Y ANGLE</c> header (<c>VanillaRoute</c>),
 /// shared with <c>tools/RouteGen</c>.
 /// </summary>
 public static class RouteStart

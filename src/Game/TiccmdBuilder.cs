@@ -18,43 +18,46 @@ public struct TiccmdInput
     /// Move, each axis in [−1, 1]: keys give −1, 0 or 1 per axis (so W+D is
     /// (1, 1)), the left stick its deflection past the dead zone.
     /// </summary>
-    public float MoveX, MoveY;
+    public float MoveX { get; set; }
+    public float MoveY { get; set; }
 
     /// <summary>The right stick (aim), each axis in [−1, 1].</summary>
-    public float AimX, AimY;
+    public float AimX { get; set; }
+    public float AimY { get; set; }
 
     /// <summary>The run key is held (Shift).</summary>
-    public bool Run;
+    public bool Run { get; set; }
 
     /// <summary>The run toggle was pressed since the last tic (left-stick click): flips <see cref="TiccmdBuilder.RunToggled"/>.</summary>
-    public bool RunToggle;
+    public bool RunToggle { get; set; }
 
     /// <summary>Vanilla turning keys (used without <see cref="Tweaks.AbsoluteAiming"/>).</summary>
-    public bool TurnLeft, TurnRight;
+    public bool TurnLeft { get; set; }
+    public bool TurnRight { get; set; }
 
     /// <summary>The mouse moved since the last tic: the cursor takes over the aim from the stick.</summary>
-    public bool CursorMoved;
+    public bool CursorMoved { get; set; }
 
     /// <summary>T7.3: the mouse's horizontal motion since the last tic, in pixels (right positive): vanilla's mouse turning.</summary>
-    public float MouseX;
+    public float MouseX { get; set; }
 
     /// <summary>The cursor ground point (T3.3), map units, or null when the cursor is off the level.</summary>
-    public (float X, float Y)? Cursor;
+    public (float X, float Y)? Cursor { get; set; }
 
     /// <summary>Fire.</summary>
-    public bool Attack;
+    public bool Attack { get; set; }
 
     /// <summary>Use (open, switch).</summary>
-    public bool Use;
+    public bool Use { get; set; }
 
     /// <summary>The weapon slot key pressed since the last tic, 1–8 (vanilla's keys '1'–'8'), or 0.</summary>
-    public int Weapon;
+    public int Weapon { get; set; }
 
     /// <summary>T6.6: the next (+1) or previous (−1) weapon asked for since the last tic (the mouse wheel, LB/RB), or 0; it wins over <see cref="Weapon"/>.</summary>
-    public int WeaponStep;
+    public int WeaponStep { get; set; }
 
     /// <summary>T7.1: the pause key was pressed since the last tic (g_game.c <c>sendpause</c>).</summary>
-    public bool Pause;
+    public bool Pause { get; set; }
 }
 
 /// <summary>Where the aim of <see cref="TiccmdBuilder"/> comes from.</summary>
@@ -135,6 +138,7 @@ public sealed class TiccmdBuilder
     /// weapon <paramref name="player"/> can select (<see cref="G_NextWeapon"/>;
     /// without a player it is ignored).
     /// </para>
+    [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (g_game.c)")]
     public ticcmd_t G_BuildTiccmd(in TiccmdInput input, Tweaks tweaks, uint screenUp, int playerX, int playerY, uint playerAngle,
         player_t? player = null, GameMode gamemode = GameMode.shareware)
     {
@@ -276,6 +280,7 @@ public sealed class TiccmdBuilder
     /// previous (−1) selectable weapon after the pending one (else the ready one), in
     /// <see cref="weapon_order_table"/>'s order, wrapping round.
     /// </summary>
+    [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (g_game.c)")]
     public static weapontype_t G_NextWeapon(player_t player, GameMode gamemode, int direction)
     {
         // Find index in the table.

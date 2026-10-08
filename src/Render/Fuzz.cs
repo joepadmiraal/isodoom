@@ -6,7 +6,7 @@ namespace IsoDoom.Render;
 /// <summary>
 /// Partial invisibility's fuzz (T6.9, SPEC §6.3 #6, §12 T6.9): the CPU side
 /// of the sprite shader's <c>FUZZ</c> variant (<c>shaders/sprite_fuzz.gdshader</c>)
-/// for things with <c>MF_SHADOW</c> (<see cref="ThingSprites.FlagShadow"/>).
+/// for things with <c>MF_SHADOW</c> (<c>ThingSprites.FlagShadow</c>).
 /// As r_draw.c <c>R_DrawFuzzColumn</c>, every opaque texel shows what is drawn
 /// one patch row below or above it on screen (<see cref="fuzzoffset"/> at
 /// <c>fuzzpos</c> = (<see cref="Phase"/> + column × height + row) mod 50;

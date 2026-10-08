@@ -1,0 +1,25 @@
+<Project>
+  <!-- Shared settings for every project in IsoDoom.sln: the Godot project
+       (IsoDoom.csproj, here at the root), the libraries under src/ (whose
+       src/Directory.Build.props imports this one), the tests and the tools.
+       Analyzers (Q5, SPEC §12): the SDK's own code-quality (CAxxxx) and
+       code-style (IDExxxx) analyzers run in the build at `AnalysisMode`
+       Recommended; .editorconfig sets each disabled rule with its reason. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Needed for IDE0005 in the build (and checks the doc comments, see
+         .editorconfig); the XML files stay out of what is published, the
+         Godot export included. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+  </PropertyGroup>
+</Project>

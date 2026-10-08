@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -147,9 +148,9 @@ public class IntermissionTests
     private static string Line(WiStuff wi, HudScreen screen, DoomRandom mrandom)
     {
         var s = new StringBuilder();
-        s.Append($"{wi.bcnt} {(int)wi.state}:{wi.sp_state}:{wi.cnt_kills}:{wi.cnt_items}:{wi.cnt_secret}:{wi.cnt_time}:{wi.cnt_par}:{wi.cnt_pause}:{wi.cnt}:{wi.acceleratestage}:{(wi.snl_pointeron ? 1 : 0)}:");
+        s.Append(CultureInfo.InvariantCulture, $"{wi.bcnt} {(int)wi.state}:{wi.sp_state}:{wi.cnt_kills}:{wi.cnt_items}:{wi.cnt_secret}:{wi.cnt_time}:{wi.cnt_par}:{wi.cnt_pause}:{wi.cnt}:{wi.acceleratestage}:{(wi.snl_pointeron ? 1 : 0)}:");
         s.Append(wi.anims.Length == 0 ? "-" : string.Join('.', wi.anims.Select(a => a.ctr)));
-        s.Append($" {screen.Hash():x8} {mrandom.rndindex} ");
+        s.Append(CultureInfo.InvariantCulture, $" {screen.Hash():x8} {mrandom.rndindex} ");
         s.Append(wi.sounds.Count == 0 ? "-" : string.Join(',', wi.sounds.Select(x => x.ToString()["sfx_".Length..] + "@-")));
         return s.ToString();
     }

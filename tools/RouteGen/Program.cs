@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using IsoDoom.Sim;
@@ -997,7 +998,7 @@ monsters
             log("lift 28 up " + g.Monsters());
             g.GoToDoors(416, 2600, 8, 25);
             log("hall " + g.Monsters());
-            g.WaitUntil(() => g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER && m.health > 0) == 0, 1000);
+            g.WaitUntil(() => !g.World.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER && m.health > 0), 1000);
             log("barons dead " + g.Monsters() + " " + g.Heights(30));
             g.WaitUntil(() => g.World.sectors[30].specialdata != null, 50);
             g.WaitIdle(30);
@@ -1322,11 +1323,11 @@ map stairs
         {
             var probe = new Steer(Doom1(), args[1]);
             foreach (string pt in args[2].Split(';'))
-                Console.WriteLine(probe.ProbeText(double.Parse(pt.Split(',')[0]), double.Parse(pt.Split(',')[1])));
+                Console.WriteLine(probe.ProbeText(double.Parse(pt.Split(',')[0], CultureInfo.InvariantCulture), double.Parse(pt.Split(',')[1], CultureInfo.InvariantCulture)));
             return 0;
         }
         if (args.Length is 2 or 3 && args[0] == "--monsters")
-            return MapInfo.PrintMonsters(Doom1(), args[1], args.Length == 3 ? int.Parse(args[2]) : 3);
+            return MapInfo.PrintMonsters(Doom1(), args[1], args.Length == 3 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
             return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? [.. args[2].Split(',').Select(int.Parse)] : null);
         if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))

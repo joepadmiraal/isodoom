@@ -2,13 +2,13 @@
   <!-- Godot (presentation) project. Wad, Map and Sim are plain .NET class
        libraries with no Godot reference (SPEC §4, §12); this project
        references them and holds Assets, Render, Game and Audio. -->
+  <!-- Language, nullable, warnings as errors and the analyzers come from
+       Directory.Build.props (Q5). TargetFramework stays here as well, where
+       Godot's editor reads and updates it. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>IsoDoom</RootNamespace>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <!-- The SDK globs every .cs file below the project root; the plain

@@ -3,7 +3,7 @@ using System;
 namespace IsoDoom.Game;
 
 /// <summary>
-/// The presses <see cref="GameInput"/> holds between tics (T4.6), in plain C#
+/// The presses <c>GameInput</c> holds between tics (T4.6), in plain C#
 /// so the tests can link it. Held buttons (fire, use) latch on every poll;
 /// edges (the run toggle, a weapon key, the pause key) only on the first poll of a frame:
 /// Godot's "just pressed" stays true for the whole frame, and a frame that

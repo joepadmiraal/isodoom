@@ -50,8 +50,8 @@ public class DemoSyncTests
         Assert.Equal(new byte[] { 1, 6 }, r.Cmds.Select(c => c.buttons));
         Assert.Equal("MAP02", RouteFile.FromDemo(lump, "test", commercial: true).Map);
 
-        Assert.Throws<FormatException>(() => RouteFile.FromDemo(lump[..^1], "no marker"));
-        Assert.Throws<FormatException>(() => RouteFile.FromDemo(lump[..12], "short"));
+        Assert.Throws<FormatException>(() => RouteFile.FromDemo(lump.AsSpan(..^1), "no marker"));
+        Assert.Throws<FormatException>(() => RouteFile.FromDemo(lump.AsSpan(..12), "short"));
         byte[] old = (byte[])lump.Clone();
         old[0] = 110;
         Assert.Throws<FormatException>(() => RouteFile.FromDemo(old, "version"));

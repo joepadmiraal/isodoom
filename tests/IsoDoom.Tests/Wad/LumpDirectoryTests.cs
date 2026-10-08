@@ -183,8 +183,8 @@ public class LumpDirectoryTests
         Assert.Null(Locate("iwad.wad", "TITLEPIC"));
         Assert.Null(Locate("iwad.wad", "TROOA0"));
         Assert.Null(Locate("iwad.wad", "DEMO1"));
-        GraphicView old = catalog.ViewLump(Entry(list, "iwad.wad", "TITLEPIC").Lump, "overridden");
+        GraphicView old = GraphicsCatalog.ViewLump(Entry(list, "iwad.wad", "TITLEPIC").Lump, "overridden");
         Assert.Equal((2, 3), (old.Image.Width, old.Image.Height));
-        Assert.Equal(GraphicCategory.Flats, catalog.ViewLump(Entry(list, "iwad.wad", "FLAT1").Lump, "overridden").Category);
+        Assert.Equal(GraphicCategory.Flats, GraphicsCatalog.ViewLump(Entry(list, "iwad.wad", "FLAT1").Lump, "overridden").Category);
     }
 }

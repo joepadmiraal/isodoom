@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -456,7 +457,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>
     /// How long opening the WAD took (read, identify, texture table, palettes;
-    /// once per WAD), and how long the last <see cref="LoadMap"/> took (map
+    /// once per WAD), and how long the last <see cref="LoadMap(string, World?)"/> took (map
     /// lumps, wall sections, floors, atlas, meshes, uploads and scene nodes),
     /// in milliseconds. SPEC §9: under 1 s per map (T2.9; <c>--level-check</c>
     /// checks every map).
@@ -943,16 +944,16 @@ public partial class LevelScene : Node3D, IGameHost
         return -1;
     }
 
-    public override void _UnhandledInput(InputEvent e)
+    public override void _UnhandledInput(InputEvent @event)
     {
         // T6.6: the next/previous weapon (the wheel without Ctrl: the game camera zooms with it) for the game camera's next tic.
-        if (!IsCheckRun && IsoActive && !(e is InputEventWithModifiers { CtrlPressed: true } || Input.IsPhysicalKeyPressed(Key.Ctrl))
-            && GameInput.WeaponEvent(e))
+        if (!IsCheckRun && IsoActive && !(@event is InputEventWithModifiers { CtrlPressed: true } || Input.IsPhysicalKeyPressed(Key.Ctrl))
+            && GameInput.WeaponEvent(@event))
         {
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (IsCheckRun || e is not InputEventKey { Pressed: true, Echo: false } key)
+        if (IsCheckRun || @event is not InputEventKey { Pressed: true, Echo: false } key)
             return;
         if (IsGameInput(key))
             return; // T7.3: a key rebound to a game action is the game's, not a debug key
@@ -1894,13 +1895,13 @@ public partial class LevelScene : Node3D, IGameHost
             Mesh.SetCutawayCentres(player, cursor);
     }
 
-    public override void _Input(InputEvent e)
+    public override void _Input(InputEvent @event)
     {
-        if (e is InputEventMouseMotion motion && !IsCheckRun)
+        if (@event is InputEventMouseMotion motion && !IsCheckRun)
             GameInput.CursorMoved(motion.Relative.X);
         // T7.2: the menus before anything else (d_main.c D_ProcessEvents: M_Responder first; on the title loop
         // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
-        if (!IsCheckRun && MenuEvent(e))
+        if (!IsCheckRun && MenuEvent(@event))
             GetViewport().SetInputAsHandled();
     }
 
@@ -1948,67 +1949,67 @@ public partial class LevelScene : Node3D, IGameHost
     {
         var text = new System.Text.StringBuilder();
         string map = Mesh?.Level.Name ?? "no map";
-        text.Append($"{map} ({IndexOfMap(map) + 1}/{MapNames.Count})   FPS {Engine.GetFramesPerSecond():F0}   ");
+        text.Append(CultureInfo.InvariantCulture, $"{map} ({IndexOfMap(map) + 1}/{MapNames.Count})   FPS {Engine.GetFramesPerSecond():F0}   ");
         if (FreeFly is { } fly && fly.Current)
         {
             text.Append(fly.IsOrthographic
                 ? $"free-fly, orthographic {fly.Size * LevelMesh.MapUnitsPerMetre:F0} units"
                 : $"free-fly, perspective {fly.Fov:F0}°");
-            text.Append($"   speed {fly.Speed:F0}/s\n");
+            text.Append(CultureInfo.InvariantCulture, $"   speed {fly.Speed:F0}/s\n");
             (int x, int y, int z) = MapPosition(fly.Pivot);
-            text.Append($"x {x}  y {y}  z {z}   angle {fly.MapAngle:F0}°  pitch {fly.Pitch:F0}°\n");
+            text.Append(CultureInfo.InvariantCulture, $"x {x}  y {y}  z {z}   angle {fly.MapAngle:F0}°  pitch {fly.Pitch:F0}°\n");
             if (Mesh is not null)
             {
                 int fx = ToFixed(fly.Pivot.X * LevelMesh.MapUnitsPerMetre), fy = ToFixed(-fly.Pivot.Z * LevelMesh.MapUnitsPerMetre);
                 Subsector ss = Mesh.Level.R_PointInSubsector(fx, fy);
                 Sector s = ss.Sector;
                 int drawn = Mesh.Floors.SectorAt(fx, fy);
-                text.Append($"sector {s.Index} (floor {s.FloorHeight >> Fixed.FRACBITS} {s.FloorPic}, ceiling {s.CeilingHeight >> Fixed.FRACBITS}, light {s.LightLevel})   subsector {ss.Index}");
+                text.Append(CultureInfo.InvariantCulture, $"sector {s.Index} (floor {s.FloorHeight >> Fixed.FRACBITS} {s.FloorPic}, ceiling {s.CeilingHeight >> Fixed.FRACBITS}, light {s.LightLevel})   subsector {ss.Index}");
                 text.Append(drawn == s.Index ? "\n" : drawn < 0 ? "   (outside the map: no floor here)\n" : $"   (floor drawn here: sector {drawn})\n");
             }
         }
         else if (Iso is { } iso && iso.Current)
         {
             text.Append(iso.Mode == IsoProjection.Orthographic ? "game camera, orthographic" : $"game camera, perspective {IsoCamera.PerspectiveFov:F0}°");
-            text.Append($", view {iso.ViewUnits:F0} units, pitch {iso.Pitch:F0}°\n");
+            text.Append(CultureInfo.InvariantCulture, $", view {iso.ViewUnits:F0} units, pitch {iso.Pitch:F0}°\n");
             (int fx, int fy, int fz) = MapPosition(iso.Focus);
-            text.Append($"focus x {fx}  y {fy}  z {fz}\n");
+            text.Append(CultureInfo.InvariantCulture, $"focus x {fx}  y {fy}  z {fz}\n");
         }
         else
             text.Append(FreeFly is null ? "overview\n" : "overview (Tab: free-fly)\n");
         if (Player is { } p && PlayerMobj is { } mo && Mesh is not null && !FreeFlyActive)
         {
             Vector2 at = p.MapPosition;
-            text.Append($"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}");
+            text.Append(CultureInfo.InvariantCulture, $"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}");
             Sector ps = mo.subsector.sector.map;
-            text.Append($"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel}"
+            text.Append(CultureInfo.InvariantCulture, $"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel}"
                 + $"{(SpriteOptions.PlayerLight > ps.LightLevel ? $", sprite lit at {SpriteOptions.PlayerLight}" : "")}{(ps.Special != 0 ? $", special {ps.Special}" : "")})\n");
         }
         if (World is { } w && w.players[w.consoleplayer] is { mo: not null } pl)
             text.Append(StatusText(w, pl) + "\n");
         if (StatusBar is { plyr: not null } st)
-            text.Append($"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", scale {Hud.PixelScale}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
+            text.Append(CultureInfo.InvariantCulture, $"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", scale {Hud.PixelScale}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
                 + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
         if (HudMessage is not null)
-            text.Append($"message: {HudMessage}\n");
+            text.Append(CultureInfo.InvariantCulture, $"message: {HudMessage}\n");
         if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
             text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
         if (Sound is { } snd && snd.channels.Any(c => c.sfxinfo is not null))
             text.Append("channels: " + ChannelsText().Replace("\n", ", ", StringComparison.Ordinal) + "\n"); // T7.7
         if (Sound is not null)
-            text.Append($"music: {MusicText()}\n"); // T7.8c
+            text.Append(CultureInfo.InvariantCulture, $"music: {MusicText()}\n"); // T7.8c
         if (_flow is { } flow)
-            text.Append($"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}   menu: {flow.Menu.StateText()}\n");
+            text.Append(CultureInfo.InvariantCulture, $"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}   menu: {flow.Menu.StateText()}\n");
         if (LevelEnded is not null)
             text.Append(LevelEnded + "\n");
         if (World is { } world)
-            text.Append($"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
+            text.Append(CultureInfo.InvariantCulture, $"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
                 + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}{(Tweaks.AimAssist ? $"   aim assist ±{Tweaks.AimAssistCone * (360.0 / 4294967296.0):0.#}°" : "")}"
                 + $"{(TeleportSnaps > 0 ? $"   teleports {TeleportSnaps}" : "")}\n");
         if (Cursor is { } hit)
         {
             Vector3 c = hit.MapUnits;
-            text.Append($"cursor x {c.X:F0}  y {c.Y:F0}  z {c.Z:F0}   ");
+            text.Append(CultureInfo.InvariantCulture, $"cursor x {c.X:F0}  y {c.Y:F0}  z {c.Z:F0}   ");
             text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the player's height)\n");
         }
         if (Iso is { Current: true })

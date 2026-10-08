@@ -111,11 +111,11 @@ public partial class FreeFlyCamera : Camera3D
 
     private bool Active => InputEnabled && Current && IsInsideTree();
 
-    public override void _UnhandledInput(InputEvent e)
+    public override void _UnhandledInput(InputEvent @event)
     {
         if (!Active)
             return;
-        switch (e)
+        switch (@event)
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }:
                 Input.MouseMode = Input.MouseModeEnum.Captured;

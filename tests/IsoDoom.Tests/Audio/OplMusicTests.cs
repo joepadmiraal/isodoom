@@ -20,15 +20,15 @@ namespace IsoDoom.Tests.Audio;
 /// </summary>
 public sealed class MusicRefRun
 {
-    public int Rate = 44100;
-    public int Block = 512;
-    public int Length;
-    public bool Opl3 = true;
-    public bool Reverse;
-    public bool NoChip;
-    public int Volume = 64;
-    public opl_driver_ver_t Version = opl_driver_ver_t.opl_doom_1_9;
-    public readonly List<(int sample, string cmd)> Events = [];
+    public int Rate { get; set; } = 44100;
+    public int Block { get; set; } = 512;
+    public int Length { get; set; }
+    public bool Opl3 { get; set; } = true;
+    public bool Reverse { get; set; }
+    public bool NoChip { get; set; }
+    public int Volume { get; set; } = 64;
+    public opl_driver_ver_t Version { get; set; } = opl_driver_ver_t.opl_doom_1_9;
+    public List<(int sample, string cmd)> Events { get; } = [];
 
     public static MusicRefRun Parse(string headerLine)
     {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using IsoDoom.Game;
 using IsoDoom.Sim;
@@ -258,7 +259,7 @@ public sealed class SaveLoadTests : IDisposable
 
         Play(flow, host.World!, 31, 20);
         Keys(menu, menu.key_menu_qsave); // over it?
-        Assert.Equal(string.Format(MMenu.QSPROMPT, "Q"), menu.messageString);
+        Assert.Equal(string.Format(CultureInfo.InvariantCulture, MMenu.QSPROMPT, "Q"), menu.messageString);
         Keys(menu, 'n');
         Assert.False(flow.sendsave);
         Keys(menu, menu.key_menu_qsave, 'y');
@@ -268,7 +269,7 @@ public sealed class SaveLoadTests : IDisposable
         List<ulong> expected = Play(flow, host.World!, 52, 60);
 
         Keys(menu, menu.key_menu_qload);
-        Assert.Equal(string.Format(MMenu.QLPROMPT, "Q"), menu.messageString);
+        Assert.Equal(string.Format(CultureInfo.InvariantCulture, MMenu.QLPROMPT, "Q"), menu.messageString);
         Keys(menu, 'y');
         flow.G_DoGameActions();
         Assert.Equal("load E1M2", host.Loads[^1]);

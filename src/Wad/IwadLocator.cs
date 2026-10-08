@@ -499,7 +499,7 @@ public sealed class IwadLocator
     }
 
     /// <summary>The <c>-file</c> PWADs (w_main.c: <c>W_ParseCommandLine</c>), each through <see cref="D_TryFindWADByName"/>.</summary>
-    private IReadOnlyList<string> FindPwads()
+    private List<string> FindPwads()
     {
         var result = new List<string>();
         foreach (string name in _ctx.CommandLine.GetParmList("-file"))
@@ -509,7 +509,7 @@ public sealed class IwadLocator
 
     private string Resolve(string path) => Path.IsPathRooted(path) ? path : Path.Combine(_ctx.CurrentDirectory, path);
 
-    private IEnumerable<string> SplitPath(string? list) =>
+    private string[] SplitPath(string? list) =>
         string.IsNullOrEmpty(list)
             ? []
             : list.Split(_ctx.Platform == IwadPlatform.Windows ? ';' : ':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

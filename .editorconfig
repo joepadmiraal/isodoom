@@ -213,6 +213,39 @@ dotnet_naming_style.underscore_camel_case.required_prefix = _
 dotnet_naming_style.i_pascal_case.capitalization = pascal_case
 dotnet_naming_style.i_pascal_case.required_prefix = I
 
+#### Code analysis (Q5, SPEC §12) ####
+# Directory.Build.props runs the SDK's analyzers in the build:
+# `AnalysisLevel` latest, `AnalysisMode` Recommended (its rules at warning,
+# so errors with TreatWarningsAsErrors) and `EnforceCodeStyleInBuild` (the
+# IDE rules at warning above fail the build too, not only CI's format step).
+# Each rule turned down below says why; the ported files' sections at the end
+# turn down the rules that would rewrite or rename vanilla code.
+
+# Missing XML doc comments (CS1591): neither style guide asks for them on
+# every public member. GenerateDocumentationFile is on because the build's
+# IDE0005 needs it; the doc comments that exist are still checked (bad
+# `cref`s, CS0419/CS1574, and the other CS15xx/CS17xx stay warnings).
+dotnet_diagnostic.CS1591.severity = none
+
+# Cache a CompositeFormat (CA1863): every flagged format runs once per menu
+# message, check or test; a static field per format would add noise for no
+# measurable gain.
+dotnet_diagnostic.CA1863.severity = none
+
+# Dead stores (IDE0059) and unused parameters (IDE0060): fixed in our code
+# and enforced; ported code keeps vanilla's statements and parameter lists
+# (its sections below). An override or a handler whose signature is given
+# discards a parameter with `_`.
+dotnet_diagnostic.IDE0059.severity = warning
+dotnet_diagnostic.IDE0060.severity = warning
+
+# Left at the IDE default, suggestion (shown in editors, not enforced): switch
+# expressions (IDE0066), tuple swaps (IDE0180), deconstruction (IDE0042) and
+# foreach's explicit casts (IDE0220) are preferences whose fixes Q3 found
+# unsafe or unreadable here (60-case `or` chains, locals named `Left`, a broken
+# build over a Godot array); null propagation (IDE0031) too, but for ported
+# code (none there).
+
 # Namespaces match folders (IDE0130), but the Godot project's root is the
 # repository root while its namespaces (IsoDoom.Game, IsoDoom.Render, ...)
 # start at src/; the libraries' projects sit in their folders and match.
@@ -220,10 +253,13 @@ dotnet_naming_style.i_pascal_case.required_prefix = I
 dotnet_diagnostic.IDE0130.severity = none
 
 # The purity scanner's fixtures are its test input: each construct (a lambda,
-# `new()`, the namespace) is there on purpose, so no style rule rewrites them.
-# Whitespace formatting still applies.
+# `new()`, the namespace, a public float field, an instance member that could
+# be static) is there on purpose, so no style or code-analysis rule rewrites
+# or flags them (Q5). Whitespace formatting still applies.
 [tests/IsoDoom.Tests/Purity/ScannerFixtures.cs]
 dotnet_analyzer_diagnostic.category-Style.severity = none
+dotnet_diagnostic.CA1051.severity = none
+dotnet_diagnostic.CA1822.severity = none
 dotnet_diagnostic.IDE0130.severity = none
 
 # Ported code (Q4, SPEC §12): files that port vanilla or Chocolate Doom code
@@ -234,14 +270,72 @@ dotnet_diagnostic.IDE0130.severity = none
 # again. A file that ports logic under .NET names (Level, Blockmap, MusSong,
 # LevelScene, ...) is not listed; a non-ported file that keeps a few vanilla
 # names marks each with [SuppressMessage("Style", "IDE1006")] and its source.
+# The code-analysis rules that would rename or reshape vanilla code (Q5):
+# underscores in names (CA1707), the ported structs' public fields (CA1051:
+# mobj_t.momx), members that could be static (CA1822: vanilla's functions
+# are World members standing in for its globals), names differing only in
+# case (CA1708: player_t.viewheight and VIEWHEIGHT), and the IDE rules Q3
+# left unapplied (vanilla's dead stores, parameter lists, switch statements,
+# swaps and null checks).
 [src/Sim/**.cs]
 dotnet_diagnostic.IDE1006.severity = none
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1051.severity = none
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.CA1708.severity = none
+dotnet_diagnostic.IDE0059.severity = none
+dotnet_diagnostic.IDE0060.severity = none
+dotnet_diagnostic.IDE0066.severity = none
+dotnet_diagnostic.IDE0180.severity = none
+dotnet_diagnostic.IDE0031.severity = none
 
 [src/Sim/{Tweaks,SimInfo,World.AimAssist,World.Checksum,World.Unported}.cs]
 dotnet_diagnostic.IDE1006.severity = warning
+dotnet_diagnostic.CA1707.severity = warning
+dotnet_diagnostic.CA1051.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA1708.severity = warning
+dotnet_diagnostic.IDE0059.severity = warning
+dotnet_diagnostic.IDE0060.severity = warning
+dotnet_diagnostic.IDE0031.severity = suggestion
+dotnet_diagnostic.IDE0066.severity = suggestion
+dotnet_diagnostic.IDE0180.severity = suggestion
 
 [src/Audio/{MidiFile,Mus2Mid,Opl3,OplMusic,SSound}.cs]
 dotnet_diagnostic.IDE1006.severity = none
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1051.severity = none
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.CA1708.severity = none
+dotnet_diagnostic.IDE0059.severity = none
+dotnet_diagnostic.IDE0060.severity = none
+dotnet_diagnostic.IDE0066.severity = none
+dotnet_diagnostic.IDE0180.severity = none
+dotnet_diagnostic.IDE0031.severity = none
 
 [src/Game/{FFinale,FFinale.Texts,FWipe,GameFlow,HuStuff,MMenu,StStuff,WiStuff}.cs]
 dotnet_diagnostic.IDE1006.severity = none
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1051.severity = none
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.CA1708.severity = none
+dotnet_diagnostic.IDE0059.severity = none
+dotnet_diagnostic.IDE0060.severity = none
+dotnet_diagnostic.IDE0066.severity = none
+dotnet_diagnostic.IDE0180.severity = none
+dotnet_diagnostic.IDE0031.severity = none
+
+# Wad and Map keep vanilla's names for the lump, BSP and renderer functions and
+# flags they port under .NET types (W_CheckNumForName, R_PointInSubsector,
+# ML_BLOCKING, NF_SUBSECTOR, about 65): CA1707 would flag each, while IDE1006
+# still checks the rest of their names. Our own files elsewhere that keep a
+# vanilla name mark it with [SuppressMessage("Naming", "CA1707")].
+[src/{Wad,Map}/**.cs]
+dotnet_diagnostic.CA1707.severity = none
+
+# Tests: their names are sentences, some naming the vanilla function they
+# test (P_Random_wraps_after_256), and their constant arrays are expected
+# values passed once (CA1861 is about hot paths).
+[tests/**.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1861.severity = none

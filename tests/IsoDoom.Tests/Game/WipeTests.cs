@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using IsoDoom.Game;
@@ -103,7 +104,7 @@ public class WipeTests
         Assert.Equal("tail", tail[0]);
         HashSet<int> presses = tail[1] == "-" ? [] : [.. tail[1].Split(',').Select(int.Parse)];
         var cmds = new List<ticcmd_t>(route.Cmds);
-        for (int t = 1; t <= int.Parse(tail[2]); t++)
+        for (int t = 1; t <= int.Parse(tail[2], CultureInfo.InvariantCulture); t++)
             cmds.Add(new ticcmd_t { buttons = presses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
 
         World world = route.NewWorld(out WadArchive wad);
@@ -144,12 +145,12 @@ public class WipeTests
                 for (int step = 0; flow.Wipe.go; step++)
                 {
                     string[] melt = line + actual.Count < expected.Length ? expected[line + actual.Count].Split(' ') : ["melt", "1"];
-                    bool done = flow.Wipe.wipe_ScreenWipe(melt[0] == "melt" ? int.Parse(melt[1]) : 1);
+                    bool done = flow.Wipe.wipe_ScreenWipe(melt[0] == "melt" ? int.Parse(melt[1], CultureInfo.InvariantCulture) : 1);
                     string hash = "-";
                     if (full)
                     {
                         flow.Wipe.Draw(shown.Pixels, now.Pixels, frame);
-                        hash = Fnv(frame).ToString("x8");
+                        hash = Fnv(frame).ToString("x8", CultureInfo.InvariantCulture);
                         fullSteps++;
                     }
                     actual.Add(full ? $"melt {melt[1]} {(done ? 1 : 0)} {hash}" : $"melt {melt[1]} {(done ? 1 : 0)}");
@@ -175,7 +176,7 @@ public class WipeTests
         {
             string e = line + i < expected.Length ? expected[line + i] : "(the dump's end)";
             string a = actual[i];
-            if (a.StartsWith("melt ") && a.Split(' ').Length == 3)
+            if (a.StartsWith("melt ", StringComparison.Ordinal) && a.Split(' ').Length == 3)
                 e = string.Join(' ', e.Split(' ').Take(3));
             if (a != e)
                 Assert.Fail($"{name}: dump line {line + i + 1} differs from vanilla\n  vanilla: {Short(e)}\n  game:    {Short(a)}");

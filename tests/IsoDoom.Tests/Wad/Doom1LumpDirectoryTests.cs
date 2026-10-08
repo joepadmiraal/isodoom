@@ -59,10 +59,10 @@ public class Doom1LumpDirectoryTests
         Assert.All(list.Where(e => e.Kind == LumpKind.Music), e => Assert.Matches(@"^MUS, \d+ events, \d+ tics, [\d.]+ s at 140 Hz, channels [\d, -]+$", e.Detail)); // T7.8b
         Assert.Matches(@"^OPL instruments, 128 melodic \+ 47 percussion, 33 two-voice, 46 fixed-note$", list.Single(e => e.Lump.Name == "GENMIDI").Detail);
         // Every DS* sound is 11025 Hz except the item respawn sound, the one 22050 Hz sample.
-        Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DS")),
+        Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DS", StringComparison.Ordinal)),
             e => Assert.StartsWith(e.Lump.Name == "DSITMBK" ? "digitized, 22050 Hz, " : "digitized, 11025 Hz, ", e.Detail));
         Assert.DoesNotContain(list, e => e.Kind == LumpKind.Sound && e.Detail.Contains("not playable", StringComparison.Ordinal));
-        Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DP")), e => Assert.Equal("PC speaker", e.Detail));
+        Assert.All(list.Where(e => e.Kind == LumpKind.Sound && e.Lump.Name.StartsWith("DP", StringComparison.Ordinal)), e => Assert.Equal("PC speaker", e.Detail));
         Assert.Equal("of E1M9", list.Last(e => e.Kind == LumpKind.MapData).Detail);
     }
 
@@ -86,7 +86,7 @@ public class Doom1LumpDirectoryTests
             {
                 // Not in any list, but the viewer still shows it decoded directly.
                 Assert.Null(loc);
-                Assert.Equal(e.Lump.Name, catalog.ViewLump(e.Lump, "overridden").Name);
+                Assert.Equal(e.Lump.Name, GraphicsCatalog.ViewLump(e.Lump, "overridden").Name);
                 continue;
             }
             Assert.True(loc is not null, $"{e.Lump.Name} ({e.Kind}) is in no viewer list");

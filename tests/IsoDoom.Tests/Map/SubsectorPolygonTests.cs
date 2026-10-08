@@ -70,7 +70,7 @@ public class SubsectorPolygonTests
         // the strip east of x = 448: room C 128×256, door D 16×256, courtyard A 256×256, ledge B 128×256.
         double[] areas = [.. polys.Polygons.Select(PolygonChecks.PolygonArea)];
         Assert.Equal(new double[] { 256 * 256, 256 * 128, 256 * 128, 128 * 256, 16 * 256, 256 * 256, 128 * 256 }, areas);
-        Assert.Equal(PolygonChecks.SectorAreasFromLines(map), PolygonChecks.SectorAreasFromPolygons(map, polys));
+        Assert.Equal(PolygonChecks.SectorAreasFromLines(map), PolygonChecks.SectorAreasFromPolygons(polys));
         Assert.Equal(new[] { 256.0 * 256, 256.0 * 256, 128.0 * 256, 16.0 * 256, 256.0 * 256, 128.0 * 256 }, PolygonChecks.SectorAreasFromLines(map));
 
         // Each polygon's corners are exactly the room corners (clockwise, from some start).

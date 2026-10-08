@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace IsoDoom.Audio;
 
@@ -14,6 +15,7 @@ namespace IsoDoom.Audio;
 /// a song from its beginning, not paused, whatever the last song's state
 /// (SPEC §12 T7.8c).
 /// </summary>
+[SuppressMessage("Naming", "CA1707", Justification = "Vanilla names (i_sound.h)")]
 public interface IMusicDevice
 {
     /// <summary>
@@ -85,7 +87,7 @@ public sealed class RecordingMusicDevice : IMusicDevice
     public int Volume { get; private set; } = -1;
 
     /// <summary>Lumps this device refuses to register (as a real device would refuse what it cannot read); none by default.</summary>
-    public Func<string, ReadOnlyMemory<byte>, bool>? Refuse;
+    public Func<string, ReadOnlyMemory<byte>, bool>? Refuse { get; set; }
 
     private void Record(string call)
     {

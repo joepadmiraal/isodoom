@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using Godot;
@@ -43,7 +44,7 @@ public partial class WadViewerCheck : Node
 
     public override void _Ready() => _ = RunAsync();
 
-    private bool CanCapture => DisplayServer.GetName() != "headless";
+    private static bool CanCapture => DisplayServer.GetName() != "headless";
 
     private async Task RunAsync()
     {
@@ -151,7 +152,7 @@ public partial class WadViewerCheck : Node
             WadLump lump = wad.Lumps[i];
             if (i != row || !ReferenceEquals(lumps[i].Lump, lump)
                 || _viewer.LumpCellText(i, WadViewer.LumpColumnName) != lump.Name
-                || _viewer.LumpCellText(i, WadViewer.LumpColumnSize) != lump.Size.ToString()
+                || _viewer.LumpCellText(i, WadViewer.LumpColumnSize) != lump.Size.ToString(CultureInfo.InvariantCulture)
                 || _viewer.LumpCellText(i, WadViewer.LumpColumnFile) != lump.File.Name
                 || _viewer.LumpCellText(i, WadViewer.LumpColumnNamespace) != LumpDirectory.NamespaceName(lump.Namespace)
                 || !_viewer.LumpCellText(i, WadViewer.LumpColumnKind).StartsWith(LumpDirectory.KindName(lumps[i].Kind), StringComparison.Ordinal))
