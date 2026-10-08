@@ -69,6 +69,13 @@ namespace IsoDoom.Render;
 /// ceiling, as drawn) while the sector's ceiling is below it, showing its
 /// ceiling flat: the top of a closed door or a lintel. <see cref="SetDoorLids"/>
 /// turns them off. The caps also cap a lid's solid where it spans the cutoff.</item>
+/// <item><b>Wall caps</b> (T6.13e): a top on each one-sided wall, the strip of
+/// the void behind it (<see cref="WallCaps"/>; <see cref="KindWallCap"/>), which
+/// the vertex shader places at the wall's top (its sector's ceiling, or its lid
+/// where it has one) while the wall faces the camera, showing the wall's
+/// texture; and once more per cut centre (<see cref="KindWallCapCut"/>) as its
+/// cap at the cutoff, as the floors' (T3.4a). <see cref="SetWallCaps"/> turns
+/// them off.</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -94,8 +101,11 @@ public sealed class LevelMesh
     /// is the centre, <see cref="CapPlayer"/> or <see cref="CapCursor"/>).
     /// <see cref="KindLid"/> (T6.13b) is a copy of a lid sector's floor that the
     /// vertex shader places at its lid height (<see cref="DoorLids"/>).
+    /// <see cref="KindWallCap"/> (T6.13e) is a piece of a one-sided wall's cap
+    /// (<see cref="WallCaps"/>), placed at the wall's top; <see cref="KindWallCapCut"/>
+    /// the same piece placed at a cut centre's cutoff (<c>CUSTOM0.w</c>) as its cutaway cap.
     /// </summary>
-    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5;
+    public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -140,13 +150,14 @@ public sealed class LevelMesh
     private bool _infoDirty;
     private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
 
-    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, Textures textures, int[] textureSlot, List<string> slotNames,
-        TextureAtlas atlas, Image sectorImage)
+    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, WallCaps caps, Textures textures, int[] textureSlot,
+        List<string> slotNames, TextureAtlas atlas, Image sectorImage)
     {
         Level = level;
         Walls = walls;
         Floors = floors;
         Lids = lids;
+        Caps = caps;
         Pieces = WallPieces.Build(level, floors);
         foreach (WallSection s in walls.Sections)
         {
@@ -185,6 +196,9 @@ public sealed class LevelMesh
 
     /// <summary>The lid sectors (T6.13b), whose floor is in their chunk once more as the lid.</summary>
     public DoorLids Lids { get; }
+
+    /// <summary>The wall caps (T6.13e), in their sectors' chunks.</summary>
+    public WallCaps Caps { get; }
 
     /// <summary>The quads of every side (per seg, on the floor's corners, with each seg's fake contrast; T2.9): one wall quad per piece of each drawn section.</summary>
     public WallPieces Pieces { get; }
@@ -268,6 +282,9 @@ public sealed class LevelMesh
     /// <summary>Number of lid triangles (T6.13b).</summary>
     public int LidTriangleCount { get; private set; }
 
+    /// <summary>Number of wall cap triangles (T6.13e; each also twice more as cutaway caps).</summary>
+    public int WallCapTriangleCount { get; private set; }
+
     /// <summary>The per-side texture slots (T5.1, <c>side_textures</c>).</summary>
     public ImageTexture SideTexturesTexture { get; private set; } = null!;
 
@@ -302,8 +319,10 @@ public sealed class LevelMesh
         IEnumerable<IReadOnlyList<string>>? flatGroups = null)
     {
         var walls = WallSections.Build(level, textures);
-        var floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
+        var polygons = SubsectorPolygons.Build(level);
+        var floors = FloorTriangles.Build(level, polygons);
         var lids = DoorLids.Build(level, floors);
+        var caps = WallCaps.Build(level, polygons);
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
         var images = new List<IndexedImage>();
@@ -384,7 +403,7 @@ public sealed class LevelMesh
             throw new WadFormatException($"{level.Name}: nothing to draw");
         var atlas = TextureAtlas.Build(images);
 
-        var mesh = new LevelMesh(level, walls, floors, lids, textures, textureSlot, names, atlas,
+        var mesh = new LevelMesh(level, walls, floors, lids, caps, textures, textureSlot, names, atlas,
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
         foreach ((string? name, int slot) in flatSlot)
             mesh._flatSlot[name] = slot;
@@ -534,6 +553,16 @@ public sealed class LevelMesh
     {
         LidMode = mode;
         SetParameter("lids", (int)mode);
+    }
+
+    /// <summary>Whether the wall caps are drawn (T6.13e), as last set (<see cref="SetWallCaps"/>; on until set).</summary>
+    public WallCapMode CapMode { get; private set; } = WallCapMode.On;
+
+    /// <summary>Turns the wall caps (T6.13e, <see cref="Caps"/>) on or off, and with them their cutaway caps.</summary>
+    public void SetWallCaps(WallCapMode mode)
+    {
+        CapMode = mode;
+        SetParameter("wall_caps", (int)mode);
     }
 
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
@@ -881,6 +910,7 @@ public sealed class LevelMesh
         SetMaskedBackFaces(MaskedBacks);
         SetCutaway(Cutaway);
         SetDoorLids(LidMode);
+        SetWallCaps(CapMode);
         SetSprites(Sprites);
         SetCutawayCentres(null, null);
         SetFuzzPhase(0);
@@ -1010,6 +1040,33 @@ public sealed class LevelMesh
                 foreach (int i in floor.Indices)
                     c.Indices.Add(first + i);
                 LidTriangleCount += floor.TriangleCount;
+            }
+        }
+
+        // T6.13e: each wall's cap, then once more per cut centre as its cutaway cap.
+        foreach (WallCap cap in Caps.Caps)
+        {
+            Chunk c = ChunkOf(cap.Sector);
+            int part = 3 * cap.Side + PartMiddle;
+            float column = (float)(Level.Sides[cap.Side].TextureOffset / 65536.0);
+            var c2 = new Vector4(0, 0, 0, (float)Math.Atan2(cap.Dy, cap.Dx));
+            foreach (int centre in new[] { -1, CapPlayer, CapCursor })
+            {
+                var c0 = new Vector4(centre < 0 ? KindWallCap : KindWallCapCut, part, cap.Sector, centre);
+                foreach ((double X, double Y)[] piece in cap.Pieces)
+                {
+                    int first = c.Vertices.Count;
+                    foreach ((double x, double y) in piece)
+                    {
+                        var uv = new Vector2(column + (float)cap.Along(x, y), (float)cap.Behind(x, y));
+                        c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, Vector4.Zero, c2);
+                    }
+                    // A fan; clockwise in map space is Godot's front face from above, as the floors.
+                    for (int i = 1; i + 1 < piece.Length; i++)
+                        c.Indices.AddRange([first, first + i, first + i + 1]);
+                    if (centre < 0)
+                        WallCapTriangleCount += piece.Length - 2;
+                }
             }
         }
 

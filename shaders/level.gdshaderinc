@@ -38,10 +38,12 @@
 // Vertex attributes (map units; 1 map unit = 1/32 m, x -> +X, y -> -Z):
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
-//              4 a floor's cutaway cap, 5 a lid), side part (walls: the side_textures texel; floors 0,
-//              their slot is the sector's), front sector, back sector (-1: none; for a cap
-//              its cut centre, 0 player, 1 cursor)
+//              4 a floor's cutaway cap, 5 a lid, 6 a wall cap, 7 a wall cap's cutaway cap), side
+//              part (walls and wall caps: the side_textures texel; floors 0, their slot is the
+//              sector's), front sector, back sector (-1: none; for a cap its cut centre, 0
+//              player, 1 cursor)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
+//   wall caps: UV = (texture column, distance behind the wall); CUSTOM2.w the wall's direction
 //   walls:     UV.x = texture column (textureoffset at the build + distance from V1; the
 //              side's scroll is added, T5.7), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
@@ -109,6 +111,17 @@
 // Doors (T6.13d; IsoDoom.Render.DoorLids.IsDoor, `cut_doors` 0 keep, 1 cut):
 // with 0, nothing of a door sector is cut: its floor, its lid, and every wall
 // on a line with the door on either side; its caps collapse.
+//
+// Wall caps (T6.13e; IsoDoom.Render.WallCaps, `wall_caps` 0 off, 1 on): kind 6
+// is a piece of the strip of void behind a one-sided wall, placed at the
+// wall's top (its sector's ceiling, or its lid when the lids are on and it has
+// one higher: a door's jambs) and drawn while the wall faces the camera (the
+// view direction; a wall facing away is culled, and its cap would float over
+// its room) and has a height. It shows the wall's texture, its rows going
+// back from the wall's face (v_kind 3: textured as a wall, lit as a floor of
+// the sector), and is cut as any floor. Kind 7 is the same piece per cut
+// centre (CUSTOM0.w), placed at its cutoff as the floors' caps where the wall
+// reaches above it: a cut wall reads as a block cut down to its stub.
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -166,8 +179,11 @@ uniform int cut_cap = 0;
 uniform int lids = 1;
 // Doors (T6.13d): 0 kept whole, 1 cut as the rest.
 uniform int cut_doors = 0;
+// The wall caps (T6.13e): 0 off, 1 on.
+uniform int wall_caps = 1;
 
 varying flat ivec4 v_rect;
+// 0 floor, 1 solid wall, 2 masked middle, 3 wall cap (a wall's texture, a floor's light).
 varying flat int v_kind;
 varying flat int v_lightnum;
 // The cut centre whose cap this is (kind 4, T3.4a): 0 player, 1 cursor; -1 not a cap.
@@ -211,72 +227,107 @@ void vertex() {
 		kind = 0;
 	}
 	int front_id = int(CUSTOM0.z);
-	int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
-	vec4 front = data_texel(sector_data, front_id);
-	vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
-	vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
-	// T6.13b: the sector's lid height and its flat's slot (kind 5, and a cap of a lid's solid).
-	vec2 lid_data = kind == 0 ? data_texel(sector_lids, front_id).rg : vec2(0.0);
-	// T6.13d: a door's floor, lid or caps, or a wall on a door's line.
-	bool door = data_texel(sector_lids, front_id).b > 0.5 || (kind != 0 && back_id >= 0 && data_texel(sector_lids, back_id).b > 0.5);
-	v_door = cut_doors == 0 && door ? 1 : 0;
-	int lid_slot = int(floor(lid_data.g + 0.5));
-	int slot = kind == 0 ? int(front.a + 0.5) : int(floor(side.r + 0.5));
-	bool collapse = false;
-	float z = front.r;
-	if (lid) {
-		z = lid_data.r;
-		slot = lid_slot;
-		collapse = lids == 0 || front.g >= z || slot < 0;
-	} else if (v_cap >= 0) {
-		vec4 c = v_cap == 0 ? cut_player : cut_cursor;
-		z = c.z + cut_height;
-		// The floor's block, or else the solid above the sector up to its lid, spans the cutoff.
-		bool solid_lid = lids == 1 && front.g <= z && z < lid_data.r && lid_slot >= 0;
-		if (front.r <= z && solid_lid) {
-			slot = lid_slot;
+	if (kind >= 6) {
+		// T6.13e: a wall cap (kind 6) or its cutaway cap (kind 7, CUSTOM0.w its centre).
+		vec4 cap_front = data_texel(sector_data, front_id);
+		vec4 cap_lid = data_texel(sector_lids, front_id);
+		vec4 cap_side = data_texel(side_textures, int(CUSTOM0.y));
+		int cap_slot = int(floor(cap_side.r + 0.5));
+		v_door = cut_doors == 0 && cap_lid.b > 0.5 ? 1 : 0;
+		// The wall's top: its sector's ceiling, or its lid above it (a closed door's jambs).
+		float top = lids == 1 && cap_lid.g >= 0.0 ? max(cap_front.g, cap_lid.r) : cap_front.g;
+		// Towards the front sector, and the view direction towards the camera, both map axes.
+		vec2 n = vec2(sin(CUSTOM2.w), -cos(CUSTOM2.w));
+		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
+		vec2 to_camera = vec2(view_back.x, -view_back.z);
+		bool cap_collapse = wall_caps == 0 || cap_slot < 0 || top <= cap_front.r || dot(n, to_camera) < -0.001 * length(to_camera);
+		float cap_z = top;
+		v_cap = kind == 7 ? int(CUSTOM0.w) : -1;
+		if (v_cap >= 0) {
+			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+			cap_z = c.z + cut_height;
+			cap_collapse = cap_collapse || cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || v_door == 1 || top <= cap_z;
 		}
-		// Nothing to cap: collapse the triangle.
-		collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || v_door == 1 || (front.r <= z && !solid_lid);
-	}
-	ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
-	v_rect = rect;
-	v_kind = kind;
-	int light = clamp(int(front.b + 0.5), 0, 255);
-	v_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
-
-	if (kind == 0) {
-		v_texcoord = UV;
-		if (collapse) {
+		v_rect = cap_slot >= 0 ? ivec4(data_texel(texture_info, cap_slot) + 0.5) : ivec4(0);
+		v_kind = 3;
+		v_lightnum = (clamp(int(cap_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
+		v_texcoord = vec2(UV.x + cap_side.g, UV.y);
+		v_normal = vec3(0.0, 0.0, 1.0);
+		if (cap_collapse) {
 			VERTEX.xz = vec2(0.0);
 		}
-		if (v_cap >= 0 && cut_cap == 2) {
-			v_lightnum -= CAP_DARKEN;
-		}
+		VERTEX.y = cap_z / MAP_UNITS_PER_METRE;
+		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+		v_height = cap_z;
+		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
 	} else {
-		// WallSection.Span: clipped to the front sector, empty when top <= bottom.
-		float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);
-		float top = min(plane_height(int(CUSTOM1.z), front, back) + CUSTOM1.w, front.g);
-		int texture_plane = int(CUSTOM2.x);
-		float texture_top = plane_height(texture_plane & 7, front, back) + CUSTOM2.y + ((texture_plane & 8) != 0 ? float(rect.w) : 0.0);
-		if (kind == 2) {
-			// Drawn once: only the texture's rows, texture_top down by its height.
-			top = min(top, texture_top);
-			bottom = max(bottom, texture_top - float(rect.w));
+		int back_id = v_cap >= 0 ? -1 : int(CUSTOM0.w);
+		vec4 front = data_texel(sector_data, front_id);
+		vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
+		vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
+		// T6.13b: the sector's lid height and its flat's slot (kind 5, and a cap of a lid's solid).
+		vec2 lid_data = kind == 0 ? data_texel(sector_lids, front_id).rg : vec2(0.0);
+		// T6.13d: a door's floor, lid or caps, or a wall on a door's line.
+		bool door = data_texel(sector_lids, front_id).b > 0.5 || (kind != 0 && back_id >= 0 && data_texel(sector_lids, back_id).b > 0.5);
+		v_door = cut_doors == 0 && door ? 1 : 0;
+		int lid_slot = int(floor(lid_data.g + 0.5));
+		int slot = kind == 0 ? int(front.a + 0.5) : int(floor(side.r + 0.5));
+		bool collapse = false;
+		float z = front.r;
+		if (lid) {
+			z = lid_data.r;
+			slot = lid_slot;
+			collapse = lids == 0 || front.g >= z || slot < 0;
+		} else if (v_cap >= 0) {
+			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+			z = c.z + cut_height;
+			// The floor's block, or else the solid above the sector up to its lid, spans the cutoff.
+			bool solid_lid = lids == 1 && front.g <= z && z < lid_data.r && lid_slot >= 0;
+			if (front.r <= z && solid_lid) {
+				slot = lid_slot;
+			}
+			// Nothing to cap: collapse the triangle.
+			collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || v_door == 1 || (front.r <= z && !solid_lid);
 		}
-		top = max(top, bottom);
-		if ((back_face && masked_backs == 0) || slot < 0) {
-			// Collapsed: a back face turned off, or a texture changed to none.
-			top = bottom;
+		ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
+		v_rect = rect;
+		v_kind = kind;
+		int light = clamp(int(front.b + 0.5), 0, 255);
+		v_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
+
+		if (kind == 0) {
+			v_texcoord = UV;
+			if (collapse) {
+				VERTEX.xz = vec2(0.0);
+			}
+			if (v_cap >= 0 && cut_cap == 2) {
+				v_lightnum -= CAP_DARKEN;
+			}
+		} else {
+			// WallSection.Span: clipped to the front sector, empty when top <= bottom.
+			float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);
+			float top = min(plane_height(int(CUSTOM1.z), front, back) + CUSTOM1.w, front.g);
+			int texture_plane = int(CUSTOM2.x);
+			float texture_top = plane_height(texture_plane & 7, front, back) + CUSTOM2.y + ((texture_plane & 8) != 0 ? float(rect.w) : 0.0);
+			if (kind == 2) {
+				// Drawn once: only the texture's rows, texture_top down by its height.
+				top = min(top, texture_top);
+				bottom = max(bottom, texture_top - float(rect.w));
+			}
+			top = max(top, bottom);
+			if ((back_face && masked_backs == 0) || slot < 0) {
+				// Collapsed: a back face turned off, or a texture changed to none.
+				top = bottom;
+			}
+			z = UV.y > 0.5 ? top : bottom;
+			v_texcoord = vec2(UV.x + side.g, texture_top - z);
 		}
-		z = UV.y > 0.5 ? top : bottom;
-		v_texcoord = vec2(UV.x + side.g, texture_top - z);
+		VERTEX.y = z / MAP_UNITS_PER_METRE;
+		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+		v_height = z;
+		v_normal = kind == 0 ? vec3(0.0, 0.0, 1.0) : vec3(sin(CUSTOM2.w), -cos(CUSTOM2.w), 0.0);
+		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
 	}
-	VERTEX.y = z / MAP_UNITS_PER_METRE;
-	v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
-	v_height = z;
-	v_normal = kind == 0 ? vec3(0.0, 0.0, 1.0) : vec3(sin(CUSTOM2.w), -cos(CUSTOM2.w), 0.0);
-	v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
 }
 
 // IsoDoom.Map.LightTables.WallColormap / PlaneColormap.
@@ -287,7 +338,7 @@ int light_colormap() {
 	float d = light_mode == 0 ? light_reference : light_mode == 1 ? max(length(v_map - light_origin), light_near) : v_depth;
 	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
 	int lightnum = clamp(v_lightnum, 0, LIGHTLEVELS - 1);
-	if (v_kind == 0) {
+	if (v_kind == 0 || v_kind == 3) {
 		int z = dist <= 0 ? 0 : min(dist >> LIGHTZSHIFT, MAXLIGHTZ - 1);
 		return int(texelFetch(light_tables, ivec2(z, lightnum), 0).r * 255.0 + 0.5);
 	}

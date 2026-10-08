@@ -77,6 +77,9 @@ namespace IsoDoom.Game;
 /// <c>--level-door-lids=on|off</c> (T6.13b, <see cref="DoorLidMode"/>: a lid
 /// on the solid above doors, lintels and other thin low-ceilinged sectors, so
 /// a closed door reads as a block; default on);
+/// <c>--level-wall-caps=on|off</c> (T6.13e, <see cref="WallCapMode"/>: a top
+/// on each one-sided wall, the void behind it to a depth of 16 units, so walls
+/// read as blocks; default on);
 /// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
 /// player's weapon flash, <c>player_t.extralight</c>, lights the level as
 /// vanilla's lights the view; default on);
@@ -167,6 +170,9 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Whether lids are drawn on doors and lintels (T6.13b, <c>--level-door-lids</c>, key J); applied to every level.</summary>
     public DoorLidMode DoorLids { get; private set; } = DoorLidMode.On;
+
+    /// <summary>Whether the one-sided walls get a top (T6.13e, <c>--level-wall-caps</c>, key U); applied to every level.</summary>
+    public WallCapMode WallCaps { get; private set; } = WallCapMode.On;
 
     /// <summary>
     /// T6.6: whether the console player's weapon flash (<see cref="player_t.extralight"/>,
@@ -440,7 +446,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -567,6 +573,13 @@ public partial class LevelScene : Node3D, IGameHost
                     "on" => DoorLidMode.On,
                     "off" or "vanilla" => DoorLidMode.Off,
                     _ => throw new ArgumentException($"--level-door-lids: \"{lids}\" (on or off)"),
+                };
+            if (WadLocator.GetUserArg("--level-wall-caps") is string caps)
+                WallCaps = caps switch
+                {
+                    "on" => WallCapMode.On,
+                    "off" or "vanilla" => WallCapMode.Off,
+                    _ => throw new ArgumentException($"--level-wall-caps: \"{caps}\" (on or off)"),
                 };
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
                 WeaponLight = weaponLight switch
@@ -1019,6 +1032,10 @@ public partial class LevelScene : Node3D, IGameHost
             case Key.J:
                 DoorLids = DoorLids == DoorLidMode.On ? DoorLidMode.Off : DoorLidMode.On;
                 Mesh?.SetDoorLids(DoorLids);
+                break;
+            case Key.U:
+                WallCaps = WallCaps == WallCapMode.On ? WallCapMode.Off : WallCapMode.On;
+                Mesh?.SetWallCaps(WallCaps);
                 break;
             case Key.Equal:
                 // T6.11: vanilla's screen size keys: = shows more of the view (bar, fullscreen HUD, none), - less.
@@ -2034,6 +2051,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("masked middles: one side only, as vanilla (M)\n");
         if (Mesh is { LidMode: DoorLidMode.Off })
             text.Append("door lids: off (J)\n");
+        if (Mesh is { CapMode: WallCapMode.Off })
+            text.Append("wall caps: off (U)\n");
         text.Append(_status);
         text.Append(_showHelp ? "\n" + ControlsHelp : "\nF1: controls");
         return text.ToString();
@@ -2233,6 +2252,7 @@ public partial class LevelScene : Node3D, IGameHost
         mesh.SetLightDiminishing(_lightMode);
         mesh.SetMaskedBackFaces(MaskedBacks);
         mesh.SetDoorLids(DoorLids);
+        mesh.SetWallCaps(WallCaps);
         if (WadLocator.GetUserArg("--level-light-near") is string near)
             mesh.SetLightNear(Math.Max(0, ParseFloat(near, "--level-light-near")));
         if (WadLocator.GetUserArg("--level-light-reference") is string reference)
@@ -2268,7 +2288,7 @@ public partial class LevelScene : Node3D, IGameHost
             Iso?.Snap(Player.Foot);
         else
             Iso?.Snap(Mesh.Bounds.GetCenter());
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {mesh.Lids.Sectors.Count} lids, {_drawn.Count} things, "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {mesh.Lids.Sectors.Count} lids, {mesh.Caps.Caps.Count} wall caps ({mesh.WallCapTriangleCount} triangles), {_drawn.Count} things, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");

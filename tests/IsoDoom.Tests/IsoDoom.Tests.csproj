@@ -42,6 +42,7 @@
     <Compile Include="../../src/Audio/Mus2Mid.cs" Link="Audio/Mus2Mid.cs" />
     <Compile Include="../../src/Audio/MidiFile.cs" Link="Audio/MidiFile.cs" />
     <Compile Include="../../src/Render/DoorLids.cs" Link="Render/DoorLids.cs" />
+    <Compile Include="../../src/Render/WallCaps.cs" Link="Render/WallCaps.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />

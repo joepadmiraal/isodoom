@@ -60,10 +60,11 @@ public sealed class SubsectorPolygons
     /// <summary>fixed_t: consecutive corners this close (on both axes) merge into one (1/1024 map unit).</summary>
     public const int MergeEpsilon = Fixed.FRACUNIT / 1024;
 
-    private SubsectorPolygons(PolygonVertex[][] polygons, int[][] bySector)
+    private SubsectorPolygons(PolygonVertex[][] polygons, int[][] bySector, PolygonVertex[][] voids)
     {
         Polygons = polygons;
         BySector = bySector;
+        Voids = voids;
     }
 
     /// <summary>
@@ -82,20 +83,29 @@ public sealed class SubsectorPolygons
     /// </summary>
     public IReadOnlyList<int[]> BySector { get; }
 
+    /// <summary>
+    /// The void (T6.13e): the parts of the leaves' cells that the clipping cut
+    /// away behind one-sided segs, the solid space behind one-sided walls
+    /// (and around the map, inside the starting box). Convex, clockwise as
+    /// <see cref="Polygons"/>, none overlapping another or a subsector's polygon.
+    /// </summary>
+    public IReadOnlyList<PolygonVertex[]> Voids { get; }
+
     /// <summary>Builds the polygons of every subsector of <paramref name="level"/>.</summary>
     public static SubsectorPolygons Build(Level level)
     {
         var polygons = new PolygonVertex[level.Subsectors.Length][];
         for (int i = 0; i < polygons.Length; i++)
             polygons[i] = [];
+        var voids = new List<PolygonVertex[]>();
 
         if (level.Subsectors.Length > 0)
         {
             List<P> box = StartBox(level);
             if (level.Nodes.Length == 0)
-                Leaf(level, level.Subsectors[0], box, polygons);
+                Leaf(level, level.Subsectors[0], box, polygons, voids);
             else
-                Walk(level, level.Nodes.Length - 1, box, polygons);
+                Walk(level, level.Nodes.Length - 1, box, polygons, voids);
         }
 
         var bySector = new List<int>[level.Sectors.Length];
@@ -109,7 +119,7 @@ public sealed class SubsectorPolygons
         int[][] grouped = new int[bySector.Length][];
         for (int i = 0; i < grouped.Length; i++)
             grouped[i] = [.. bySector[i]];
-        return new SubsectorPolygons(polygons, grouped);
+        return new SubsectorPolygons(polygons, grouped, [.. voids]);
     }
 
     /// <summary>
@@ -152,36 +162,46 @@ public sealed class SubsectorPolygons
         return [new(minX, maxY), new(maxX, maxY), new(maxX, minY), new(minX, minY)];
     }
 
-    private static void Walk(Level level, int nodenum, List<P> cell, PolygonVertex[][] polygons)
+    private static void Walk(Level level, int nodenum, List<P> cell, PolygonVertex[][] polygons, List<PolygonVertex[]> voids)
     {
         if ((nodenum & Node.NF_SUBSECTOR) != 0)
         {
-            Leaf(level, level.Subsectors[nodenum & ~Node.NF_SUBSECTOR], cell, polygons);
+            Leaf(level, level.Subsectors[nodenum & ~Node.NF_SUBSECTOR], cell, polygons, voids);
             return;
         }
         // Level.Load checks that the tree reaches every node once, so this recursion ends.
         Node node = level.Nodes[nodenum];
-        Walk(level, node.Children[0], Clip(cell, node.X, node.Y, node.Dx, node.Dy, keepFront: true), polygons);
-        Walk(level, node.Children[1], Clip(cell, node.X, node.Y, node.Dx, node.Dy, keepFront: false), polygons);
+        Walk(level, node.Children[0], Clip(cell, node.X, node.Y, node.Dx, node.Dy, keepFront: true), polygons, voids);
+        Walk(level, node.Children[1], Clip(cell, node.X, node.Y, node.Dx, node.Dy, keepFront: false), polygons, voids);
     }
 
-    private static void Leaf(Level level, Subsector ss, List<P> cell, PolygonVertex[][] polygons)
+    private static void Leaf(Level level, Subsector ss, List<P> cell, PolygonVertex[][] polygons, List<PolygonVertex[]> voids)
     {
         for (int i = 0; i < ss.NumLines && cell.Count > 0; i++)
         {
             Seg seg = level.Segs[ss.FirstLine + i];
             long dx = (long)seg.V2.X - seg.V1.X, dy = (long)seg.V2.Y - seg.V1.Y;
             if ((dx != 0 || dy != 0) && !AlongEdge(cell, seg))
+            {
+                // T6.13e: behind a one-sided seg, what the clip cuts away is void.
+                if (seg.BackSector is null && ToPolygon(Clip(cell, seg.V1.X, seg.V1.Y, dx, dy, keepFront: false)) is { } solid)
+                    voids.Add(solid);
                 cell = Clip(cell, seg.V1.X, seg.V1.Y, dx, dy, keepFront: true);
+            }
         }
-        if (cell.Count < 3)
-            return;
+        if (ToPolygon(cell) is { } result)
+            polygons[ss.Index] = result;
+    }
 
+    // A clipped cell as a polygon, or null when it has no area.
+    private static PolygonVertex[]? ToPolygon(List<P> cell)
+    {
+        if (cell.Count < 3)
+            return null;
         var result = new PolygonVertex[cell.Count];
         for (int i = 0; i < cell.Count; i++)
-            result[i] = new PolygonVertex((int)cell[i].X, (int)cell[i].Y);
-        if (TwiceArea(result) > 0)
-            polygons[ss.Index] = result;
+            result[i] = new PolygonVertex((int)Math.Clamp(cell[i].X, int.MinValue, int.MaxValue), (int)Math.Clamp(cell[i].Y, int.MinValue, int.MaxValue));
+        return TwiceArea(result) > 0 ? result : null;
     }
 
     /// <summary>

@@ -604,6 +604,11 @@ public partial class LevelScene : ISetupHost
             DoorLids = ParseOnOff(s, "gameplay/door_lids") ? DoorLidMode.On : DoorLidMode.Off;
             Mesh?.SetDoorLids(DoorLids);
         });
+        Add("gameplay/wall_caps", () => OnOff(WallCaps == WallCapMode.On), s =>
+        {
+            WallCaps = ParseOnOff(s, "gameplay/wall_caps") ? WallCapMode.On : WallCapMode.Off;
+            Mesh?.SetWallCaps(WallCaps);
+        });
         Add("gameplay/masked_back", () => MaskedBacks == MaskedBackFaces.Mirrored ? "mirror" : "off", s =>
         {
             MaskedBacks = ParseMaskedBacks(s);

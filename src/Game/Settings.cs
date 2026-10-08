@@ -109,6 +109,7 @@ public static class Settings
         new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", _onOff, "--level-cutaway-cursor"),
         new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", ["player", "none", "camera"], "--level-light"),
         new("gameplay/door_lids", "DOOR LIDS", SettingPage.Gameplay, "on", _onOff, "--level-door-lids"),
+        new("gameplay/wall_caps", "WALL TOPS", SettingPage.Gameplay, "on", _onOff, "--level-wall-caps"),
         new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Gameplay, "mirror", ["mirror", "off"], "--level-masked-back"),
         new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", _onOff, "--level-weapon-light"),
         new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", _onOff, "--level-palette-effects"),

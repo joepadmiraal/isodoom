@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
@@ -571,6 +572,9 @@ public partial class LevelCheck : Godot.Node
         var floors = new SectorFloor?[level.Sectors.Length];
         foreach (SectorFloor f in m.Floors.BySector)
             floors[f.Sector] = f;
+        var caps = new List<WallCap>?[level.Sectors.Length];
+        foreach (WallCap cap in m.Caps.Caps)
+            (caps[cap.Sector] ??= []).Add(cap);
 
         var sideSegs = new List<Seg>?[level.Lines.Length * 2];
         foreach (Seg seg in level.Segs)
@@ -590,7 +594,8 @@ public partial class LevelCheck : Godot.Node
                     n += m.Pieces.Of(s.Line, s.Side).Count;
                 return n;
             }
-            int solidVertices = floorVertices + 4 * QuadCount(sectorWalls);
+            List<WallCap> sectorCaps = caps[sector] ?? [];
+            int solidVertices = floorVertices + 4 * QuadCount(sectorWalls) + 3 * sectorCaps.Sum(c => c.Pieces.Sum(p => p.Length));
             int maskedVertices = 4 * QuadCount(sectorMasked);
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
             if (solidVertices + maskedVertices == 0)
@@ -613,13 +618,13 @@ public partial class LevelCheck : Godot.Node
             {
                 if (mesh.SurfaceGetMaterial(surface) != m.Material)
                     Fail($"{what}: the chunk's first surface doesn't use the level material");
-                quads += CheckSurface(m, mesh, surface++, sector, floor, sectorWalls, sideSegs, what, ref sectionCount, ref vertexCount);
+                quads += CheckSurface(m, mesh, surface++, sector, floor, sectorWalls, sectorCaps, sideSegs, what, ref sectionCount, ref vertexCount);
             }
             if (maskedVertices > 0)
             {
                 if (mesh.SurfaceGetMaterial(surface) != m.MaskedMaterial)
                     Fail($"{what}: the chunk's masked surface doesn't use the masked material");
-                maskedQuads += CheckSurface(m, mesh, surface, sector, null, sectorMasked, sideSegs, $"{what} (masked)", ref sectionCount, ref vertexCount);
+                maskedQuads += CheckSurface(m, mesh, surface, sector, null, sectorMasked, [], sideSegs, $"{what} (masked)", ref sectionCount, ref vertexCount);
             }
         }
         if (quads != m.WallQuads)
@@ -637,10 +642,13 @@ public partial class LevelCheck : Godot.Node
     /// (<see cref="LevelMesh.OtherSide"/>) and the other winding. After the
     /// walls, the floor again per cut centre as its cap (T3.4a,
     /// <see cref="LevelMesh.KindCap"/>), and for a lid sector once more as its
-    /// lid (T6.13b, <see cref="LevelMesh.KindLid"/>). Returns the wall quads checked.
+    /// lid (T6.13b, <see cref="LevelMesh.KindLid"/>). Last the sector's wall caps
+    /// (T6.13e, <paramref name="caps"/>), each as a fan per piece, then again per
+    /// cut centre (<see cref="LevelMesh.KindWallCap"/>, <see cref="LevelMesh.KindWallCapCut"/>).
+    /// Returns the wall quads checked.
     /// </summary>
     private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
-        List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
+        List<WallCap> caps, List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
     {
         Level level = m.Level;
         int floorVertices = floor?.Vertices.Count ?? 0;
@@ -648,7 +656,8 @@ public partial class LevelCheck : Godot.Node
         foreach ((WallSection s, _) in sectionsOfSurface)
             quadCount += m.Pieces.Of(s.Line, s.Side).Count;
         int floorCopies = floor is not null && m.Lids.Has(sector) ? 4 : 3; // the floor, two caps, the lid (T6.13b)
-        int expectedVertices = floorCopies * floorVertices + 4 * quadCount; // the floor, the walls, the caps and lid
+        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)), capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2)));
+        int expectedVertices = floorCopies * floorVertices + 4 * quadCount + capVertices; // the floor, the walls, the caps and lid, the wall caps
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
         Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         Vector2[] uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
@@ -656,7 +665,7 @@ public partial class LevelCheck : Godot.Node
         float[] c1 = arrays[(int)Mesh.ArrayType.Custom1].AsFloat32Array();
         float[] c2 = arrays[(int)Mesh.ArrayType.Custom2].AsFloat32Array();
         int[] idx = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
-        int expectedIndices = floorCopies * (floor?.Indices.Count ?? 0) + 6 * quadCount;
+        int expectedIndices = floorCopies * (floor?.Indices.Count ?? 0) + 6 * quadCount + capIndices;
         if (pos.Length != expectedVertices || uv.Length != expectedVertices || c0.Length != 4 * expectedVertices
             || c1.Length != 4 * expectedVertices || c2.Length != 4 * expectedVertices || idx.Length != expectedIndices)
         {
@@ -807,6 +816,43 @@ public partial class LevelCheck : Godot.Node
                         Fail($"{sw}: corner {k}: the attributes give span {bottom}..{top}, row 0 at {textureTop}; expected {eb}..{et}, row 0 at {ett}");
                         break;
                     }
+                }
+            }
+        }
+
+        // T6.13e: the wall caps, each piece a fan, the cap then its cutaway caps.
+        int cv = pos.Length - capVertices, ci = idx.Length - capIndices;
+        foreach (WallCap cap in caps)
+        {
+            string sw = $"{level.Name}: line {cap.Line}'s wall cap";
+            float column = (float)(level.Sides[cap.Side].TextureOffset / 65536.0);
+            foreach (int centre in new[] { -1, LevelMesh.CapPlayer, LevelMesh.CapCursor })
+            {
+                int kind = centre < 0 ? LevelMesh.KindWallCap : LevelMesh.KindWallCapCut;
+                foreach ((double X, double Y)[] piece in cap.Pieces)
+                {
+                    bool ok = true;
+                    for (int k = 0; k < piece.Length && ok; k++)
+                    {
+                        (double x, double y) = piece[k];
+                        var at = new Vector3((float)(x / LevelMesh.MapUnitsPerMetre), 0, (float)(-y / LevelMesh.MapUnitsPerMetre));
+                        var tex = new Vector2(column + (float)cap.Along(x, y), (float)cap.Behind(x, y));
+                        ok = Near(pos[cv + k], at) && Math.Abs(uv[cv + k].X - tex.X) < 1e-3 && Math.Abs(uv[cv + k].Y - tex.Y) < 1e-3
+                            && Custom(c0, cv + k, kind, 3 * cap.Side + LevelMesh.PartMiddle, cap.Sector, centre)
+                            && Math.Abs(c2[(cv + k) * 4 + 3] - (float)Math.Atan2(cap.Dy, cap.Dx)) < 1e-6;
+                        if (!ok)
+                            Fail($"{sw}: vertex {k} differs ({Custom4(c0, cv + k)})");
+                    }
+                    for (int k = 1; k + 1 < piece.Length && ok; k++)
+                    {
+                        if (idx[ci] != cv || idx[ci + 1] != cv + k || idx[ci + 2] != cv + k + 1)
+                        {
+                            Fail($"{sw}: fan indices differ");
+                            ok = false;
+                        }
+                        ci += 3;
+                    }
+                    cv += piece.Length;
                 }
             }
         }
@@ -971,6 +1017,8 @@ public partial class LevelCheck : Godot.Node
             things.Visible = false;
         DoorLidMode lidMode = m.LidMode;
         m.SetDoorLids(DoorLidMode.Off);
+        WallCapMode capMode = m.CapMode;
+        m.SetWallCaps(WallCapMode.Off);
 
         // Light (T2.8): the player-distance mapping (default) from player 1's
         // start; then top-down again with no diminishing (and extralight 1),
@@ -1062,6 +1110,8 @@ public partial class LevelCheck : Godot.Node
         await LidCheck(m);
         m.SetDoorLids(DoorLidMode.Off);
 
+        await WallCapCheck(m);
+
         if (move is { } mv)
             await MoveCheck(m, mv.Lower, mv.Sector);
 
@@ -1084,6 +1134,7 @@ public partial class LevelCheck : Godot.Node
 
         _scene.Overlay.Visible = true;
         m.SetDoorLids(lidMode);
+        m.SetWallCaps(capMode);
         if (_scene.Things is { } shown)
             shown.Visible = true;
         _scene.Environment.BackgroundColor = oldBackground;
