@@ -93,7 +93,7 @@ public sealed class VanillaRoute
 
     /// <summary>The columns of a dump line.</summary>
     public static readonly string[] Columns =
-        { "leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "sounds", "hud", "exit" };
+        ["leveltime", "forwardmove", "sidemove", "angleturn", "buttons", "x", "y", "z", "momx", "momy", "momz", "angle", "viewz", "prndindex", "state", "tics", "sectors", "textures", "fogs", "lights", "health", "mohealth", "armorpoints", "armortype", "cards", "secretcount", "inventory", "things", "weapon", "powers", "sounds", "hud", "exit"];
 
     public string Name { get; }
     public string Path { get; }
@@ -144,15 +144,15 @@ public sealed class VanillaRoute
     /// </summary>
     public static VanillaRoute Demo(string lump)
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
-        RouteFile route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump);
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
+        var route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump);
         return new VanillaRoute(lump.ToLowerInvariant(), "doom1", route.Map!, (skill_t)(route.Skill - 1), null, 0, route.Cmds, route);
     }
 
     /// <summary>Parses a route file with the game's <see cref="RouteFile"/> (T5.10: the level script plays routes too) and checks its header.</summary>
     public static VanillaRoute Parse(string path)
     {
-        RouteFile route = RouteFile.Parse(path);
+        var route = RouteFile.Parse(path);
         string? iwad = route.Iwad, map = route.Map;
         if (iwad is not ("synthetic" or "doom1" or "testmap"))
             throw new FormatException($"{path}: needs \"iwad synthetic|doom1|testmap\" and a skill of 1-5");
@@ -189,7 +189,7 @@ public sealed class VanillaRoute
             if (!System.IO.File.Exists(path))
                 Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/routes.sh (or set {DumpDirEnvVar}).");
         }
-        return System.IO.File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+        return [.. System.IO.File.ReadAllLines(path).Where(l => l.Length > 0)];
     }
 
     /// <summary>A new game on the route's map with every tweak off (<see cref="Tweaks.Vanilla"/>), as the demo starts it.</summary>
@@ -200,8 +200,8 @@ public sealed class VanillaRoute
     {
         wad = Iwad switch
         {
-            "synthetic" => new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }),
-            "testmap" => new WadArchive(new[] { WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad") }),
+            "synthetic" => new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]),
+            "testmap" => new WadArchive([WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad")]),
             _ => WadArchive.Open(TestWads.RequireDoom1()),
         };
         var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: !Monsters), Tweaks.Vanilla)
@@ -299,7 +299,7 @@ public sealed class VanillaRoute
     {
         var v = new List<int> { (int)p.readyweapon, (int)p.pendingweapon, p.extralight, p.refire, p.attackdown ? 1 : 0 };
         foreach (pspdef_t psp in p.psprites)
-            v.AddRange(new[] { psp.state == statenum_t.S_NULL ? -1 : (int)psp.state, psp.tics, psp.sx, psp.sy });
+            v.AddRange([psp.state == statenum_t.S_NULL ? -1 : (int)psp.state, psp.tics, psp.sx, psp.sy]);
         return string.Join(':', v.Select(x => x.ToString(CultureInfo.InvariantCulture)));
     }
 
@@ -418,7 +418,7 @@ public sealed class VanillaRoute
         if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(tics) || (tics != "all" && !tics.Split(',').Contains(tic)))
             return;
         byte[] pal = Playpal.Load(graphics).GetPalette(StStuff.ST_doPaletteStuff(world.players[world.consoleplayer])).ToArray();
-        using var f = System.IO.File.Create(System.IO.Path.Combine(dir, $"{name}-simhud{tic}.ppm"));
+        using FileStream f = System.IO.File.Create(System.IO.Path.Combine(dir, $"{name}-simhud{tic}.ppm"));
         f.Write(Encoding.ASCII.GetBytes($"P6\n{HudScreen.SCREENWIDTH} {HuStuff.ScreenRows + StStuff.ST_HEIGHT}\n255\n"));
         byte[] black = new byte[3];
         foreach (HudScreen screen in new[] { hu.Screen, st.Screen })
@@ -460,15 +460,15 @@ public sealed class VanillaRoute
     }
 
     /// <summary>The sectors' light levels of a world before its first tic: the map's (the light thinkers spawn without changing them).</summary>
-    public static short[] MapLights(World world) => world.sectors.Select(s => s.lightlevel).ToArray();
+    public static short[] MapLights(World world) => [.. world.sectors.Select(s => s.lightlevel)];
 
     /// <summary>The sidedefs' textures, top, middle and bottom of each in sidedef order (before the first tic: the map's).</summary>
     public static string[] MapTextures(World world) =>
-        world.sides.SelectMany(s => new[] { s.toptexture, s.midtexture, s.bottomtexture }).ToArray();
+        [.. world.sides.SelectMany(s => new[] { s.toptexture, s.midtexture, s.bottomtexture })];
 
     /// <summary>The sectors' floor and ceiling heights (fixed_t) of a world before its first tic: the map's.</summary>
     public static (int Floor, int Ceiling)[] MapHeights(World world) =>
-        world.sectors.Select(s => (s.floorheight, s.ceilingheight)).ToArray();
+        [.. world.sectors.Select(s => (s.floorheight, s.ceilingheight))];
 
     /// <summary>
     /// Plays the route in a new world and fails at the first tic whose state

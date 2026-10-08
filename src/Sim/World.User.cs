@@ -168,7 +168,7 @@ public sealed partial class World
     public const int TURBOTHRESHOLD = 0x32;
 
     /// <summary>hu_stuff.c <c>player_names</c> (d_englsh.h <c>HUSTR_PLRGREEN</c>…).</summary>
-    public static readonly string[] player_names = { "Green: ", "Indigo: ", "Brown: ", "Red: " };
+    public static readonly string[] player_names = ["Green: ", "Indigo: ", "Brown: ", "Red: "];
 
     /// <summary>
     /// g_game.c <c>G_Ticker</c>'s turbo check (T6.11; Chocolate Doom's, as

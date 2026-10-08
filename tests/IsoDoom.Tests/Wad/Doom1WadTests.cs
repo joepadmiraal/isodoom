@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
@@ -68,25 +69,25 @@ public class Doom1WadTests
         WadArchive wad = OpenDoom1();
 
         // S_START (552) .. S_END (1036).
-        var sprites = wad.GetNamespace(LumpNamespace.Sprites);
+        IReadOnlyList<WadLump> sprites = wad.GetNamespace(LumpNamespace.Sprites);
         Assert.Equal(483, sprites.Count);
         Assert.Equal(553, sprites[0].Index);
         Assert.Contains(sprites, l => l.Name == "TROOA1");
 
         // F_START (1206) .. F_END (1263), less the F1_START/F1_END markers.
-        var flats = wad.GetNamespace(LumpNamespace.Flats);
+        IReadOnlyList<WadLump> flats = wad.GetNamespace(LumpNamespace.Flats);
         Assert.Equal(54, flats.Count);
         Assert.All(flats, l => Assert.Equal(4096, l.Size));
         Assert.Equal("F_SKY1", flats[^1].Name);
 
         // P_START (1037) .. P_END (1205), less P1_START/P1_END: 165 lumps,
         // and the IWAD's duplicate SW18_7 (1120, 1121) collapses to the later one.
-        var patches = wad.GetNamespace(LumpNamespace.Patches);
+        IReadOnlyList<WadLump> patches = wad.GetNamespace(LumpNamespace.Patches);
         Assert.Equal(164, patches.Count);
         Assert.Equal(1121, wad.Find("SW18_7", LumpNamespace.Patches)!.Index);
         Assert.Equal(1121, wad.W_CheckNumForName("SW18_7"));
 
-        Assert.All(new[] { 552, 1036, 1037, 1038, 1204, 1205, 1206, 1207, 1262, 1263 },
+        Assert.All([552, 1036, 1037, 1038, 1204, 1205, 1206, 1207, 1262, 1263],
             i => Assert.True(wad.Lumps[i].IsMarker, wad.Lumps[i].Name));
         Assert.Null(wad.Find("TROOA1", LumpNamespace.Flats));
         Assert.Equal(LumpNamespace.Global, wad.Lumps.Single(l => l.Name == "THINGS" && l.Index == 7).Namespace);
@@ -95,18 +96,18 @@ public class Doom1WadTests
     [Fact]
     public void PwadOverridesIwad()
     {
-        WadFile iwad = WadFile.Open(TestWads.RequireDoom1());
-        WadFile pwad = new WadBuilder()
+        var iwad = WadFile.Open(TestWads.RequireDoom1());
+        var pwad = new WadBuilder()
             .Lump("PLAYPAL", 1, 2, 3)
             .Markers("FF_START").Lump("NUKAGE2", new byte[4096]).Lump("MYFLAT", new byte[4096]).Markers("FF_END")
             .ToWadFile("mod.wad");
-        WadArchive wad = new(new[] { iwad, pwad });
+        WadArchive wad = new([iwad, pwad]);
 
         Assert.Equal(1264 + 5, wad.NumLumps);
         Assert.Equal(new byte[] { 1, 2, 3 }, wad.W_CacheLumpName("PLAYPAL").ToArray());
         Assert.Same(pwad, wad.Find("PLAYPAL")!.File);
 
-        var flats = wad.GetNamespace(LumpNamespace.Flats);
+        IReadOnlyList<WadLump> flats = wad.GetNamespace(LumpNamespace.Flats);
         Assert.Equal(55, flats.Count);
         int nukage1 = IndexOf(flats, "NUKAGE1");
         Assert.Equal("NUKAGE2", flats[nukage1 + 1].Name);

@@ -125,7 +125,7 @@ public sealed class LevelMesh
     private readonly Image _sideImage;
     private readonly int[] _textureSlot; // texture number → slot, -1 if unused
     private readonly Dictionary<string, int> _flatSlot = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<(int Line, int Side)> _maskedSides = new();
+    private readonly HashSet<(int Line, int Side)> _maskedSides = [];
 
     // What the data textures hold (T5.1): per sector its texel and the floor
     // flat name it was resolved from, per side part the texture name and slot.
@@ -136,7 +136,7 @@ public sealed class LevelMesh
     private readonly bool[] _sidePartDrawn;
     private readonly int[] _sideBaseOffset; // each sidedef's textureoffset at the build (T5.7)
     private readonly int[] _sideScroll; // and how far it moved since, as uploaded (fixed_t)
-    private int[] _slotShows = Array.Empty<int>(); // the slot whose rectangle each slot's texture_info holds (T5.7)
+    private int[] _slotShows = []; // the slot whose rectangle each slot's texture_info holds (T5.7)
     private bool _infoDirty;
     private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
 
@@ -212,13 +212,13 @@ public sealed class LevelMesh
     /// other textures of the texture groups (switch pairs) the level uses,
     /// which the sim may change a wall to (SPEC §12 T5.1).
     /// </summary>
-    public IReadOnlyCollection<string> RuntimeTextures { get; private set; } = Array.Empty<string>();
+    public IReadOnlyCollection<string> RuntimeTextures { get; private set; } = [];
 
     /// <summary>
     /// The flats in the atlas that no sector's floor uses at load: the other
     /// frames of the animated flat sequences the level draws (T5.7).
     /// </summary>
-    public IReadOnlyCollection<string> RuntimeFlats { get; private set; } = Array.Empty<string>();
+    public IReadOnlyCollection<string> RuntimeFlats { get; private set; } = [];
 
     /// <summary>
     /// Run-time texture or flat changes to a name the atlas lacks (SPEC §12
@@ -228,7 +228,7 @@ public sealed class LevelMesh
     public int RuntimeMisses { get; private set; }
 
     /// <summary>The chunk of each sector (null when the sector has no floor and no wall).</summary>
-    public ArrayMesh?[] SectorMeshes { get; private set; } = Array.Empty<ArrayMesh?>();
+    public ArrayMesh?[] SectorMeshes { get; private set; } = [];
 
     /// <summary>The material of every chunk's floor and solid walls (its first surface).</summary>
     public ShaderMaterial Material { get; private set; } = null!;
@@ -256,7 +256,7 @@ public sealed class LevelMesh
     public ShaderMaterial ShadowMaterial { get; private set; } = null!;
 
     /// <summary>Every material (level, masked, sprites and their fuzz pass), for setting a shader parameter on each.</summary>
-    public IEnumerable<ShaderMaterial> Materials => new[] { Material, MaskedMaterial, SpriteMaterial, FuzzMaterial };
+    public IEnumerable<ShaderMaterial> Materials => [Material, MaskedMaterial, SpriteMaterial, FuzzMaterial];
 
     public ImageTexture AtlasTexture { get; private set; } = null!;
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
@@ -301,9 +301,9 @@ public sealed class LevelMesh
         TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla, IEnumerable<IReadOnlyList<string>>? textureGroups = null,
         IEnumerable<IReadOnlyList<string>>? flatGroups = null)
     {
-        WallSections walls = WallSections.Build(level, textures);
-        FloorTriangles floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
-        DoorLids lids = DoorLids.Build(level, floors);
+        var walls = WallSections.Build(level, textures);
+        var floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
+        var lids = DoorLids.Build(level, floors);
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
         var images = new List<IndexedImage>();
@@ -319,7 +319,7 @@ public sealed class LevelMesh
             names.Add(textures.TextureDefs[s.Texture].Name);
         }
         var runtime = new List<string>();
-        foreach (IReadOnlyList<string> group in textureGroups ?? Array.Empty<IReadOnlyList<string>>())
+        foreach (IReadOnlyList<string> group in textureGroups ?? [])
         {
             var nums = new List<int>();
             bool used = false;
@@ -363,7 +363,7 @@ public sealed class LevelMesh
             names.Add(pic);
         }
         var runtimeFlats = new List<string>();
-        foreach (IReadOnlyList<string> group in flatGroups ?? Array.Empty<IReadOnlyList<string>>())
+        foreach (IReadOnlyList<string> group in flatGroups ?? [])
         {
             bool used = false;
             foreach (string name in group)
@@ -382,11 +382,11 @@ public sealed class LevelMesh
         }
         if (images.Count == 0)
             throw new WadFormatException($"{level.Name}: nothing to draw");
-        TextureAtlas atlas = TextureAtlas.Build(images);
+        var atlas = TextureAtlas.Build(images);
 
         var mesh = new LevelMesh(level, walls, floors, lids, textures, textureSlot, names, atlas,
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
-        foreach (var (name, slot) in flatSlot)
+        foreach ((string? name, int slot) in flatSlot)
             mesh._flatSlot[name] = slot;
         mesh.RuntimeTextures = runtime;
         mesh.RuntimeFlats = runtimeFlats;
@@ -824,7 +824,7 @@ public sealed class LevelMesh
         _playpal = playpal;
         AtlasTexture = IndexedTextures.CreateTexture(Atlas.Image);
 
-        var info = _infoImage = Image.CreateEmpty(DataWidth, Rows(Atlas.Rects.Count), false, Image.Format.Rgbaf);
+        Image info = _infoImage = Image.CreateEmpty(DataWidth, Rows(Atlas.Rects.Count), false, Image.Format.Rgbaf);
         _slotShows = new int[Atlas.Rects.Count];
         for (int i = 0; i < Atlas.Rects.Count; i++)
         {
@@ -879,10 +879,10 @@ public sealed class LevelMesh
 
     private sealed class Chunk
     {
-        public readonly List<Vector3> Vertices = new();
-        public readonly List<Vector2> Uv = new();
-        public readonly List<float> Custom0 = new(), Custom1 = new(), Custom2 = new();
-        public readonly List<int> Indices = new();
+        public readonly List<Vector3> Vertices = [];
+        public readonly List<Vector2> Uv = [];
+        public readonly List<float> Custom0 = [], Custom1 = [], Custom2 = [];
+        public readonly List<int> Indices = [];
 
         public void Add(Vector3 v, Vector2 uv, Vector4 c0, Vector4 c1, Vector4 c2)
         {
@@ -943,7 +943,7 @@ public sealed class LevelMesh
                 c.Add(p2, new Vector2(u2, 0), c0, c1, c2); // V2 bottom
                 // Seen from the front sector (on the side's right), V1 is on the left:
                 // V1b, V1t, V2t is clockwise on screen, Godot's front face.
-                c.Indices.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
+                c.Indices.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
                 if (masked)
                     MaskedQuads++;
                 else
@@ -1051,7 +1051,7 @@ public sealed class LevelMesh
     }
 
     /// <summary>A back-face quad's indices (T3.1a): the front quad's triangles (A bottom, A top, B top, B bottom from <paramref name="first"/>) wound the other way.</summary>
-    public static int[] BackFaceIndices(int first) => new[] { first, first + 2, first + 1, first, first + 3, first + 2 };
+    public static int[] BackFaceIndices(int first) => [first, first + 2, first + 1, first, first + 3, first + 2];
 
     /// <summary>
     /// The direction of a wall piece from its end A to B, radians (map space,

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Map;
@@ -31,7 +30,7 @@ public class LineTriggerTests
     private static uint Deg(int degrees) => (uint)((ulong)degrees * 0x100000000UL / 360);
 
     private static Level SpecialsLevel() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M2");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M2");
 
     private static World Specials(Tweaks? tweaks = null, Level? level = null)
     {
@@ -43,7 +42,7 @@ public class LineTriggerTests
     private static mobj_t Player(World world) => world.players[0].mo!;
 
     /// <summary>The tag-5 alcoves (sectors 4, 8 and 13), which lines 0 and 1 open as doors.</summary>
-    private static readonly int[] Tagged = { 1 + 3, 1 + 7, 1 + 12 };
+    private static readonly int[] Tagged = [1 + 3, 1 + 7, 1 + 12];
 
     /// <summary>
     /// The type of the doors moving the tag-5 alcoves (every one has the same),
@@ -88,7 +87,7 @@ public class LineTriggerTests
     /// <summary>The thinkers of type <typeparamref name="T"/> moving the tag-5 alcoves (none or all three).</summary>
     private static T[] TaggedMovers<T>(World world) where T : thinker_t
     {
-        var movers = Tagged.Select(s => world.sectors[s].specialdata).OfType<T>().ToArray();
+        T[] movers = [.. Tagged.Select(s => world.sectors[s].specialdata).OfType<T>()];
         Assert.True(movers.Length is 0 or 3, $"{movers.Length} of the tagged alcoves move");
         return movers;
     }
@@ -346,7 +345,7 @@ public class LineTriggerTests
             th => Assert.Equal(LightFlash.FASTDARK, Assert.IsType<strobe_t>(th).darktime));
         Assert.Equal(0, world.sectors[6].special);
         Assert.Equal(4, world.sectors[7].special); // death slime keeps its special
-        var door = Assert.IsType<vldoor_t>(world.sectors[8].specialdata);
+        vldoor_t door = Assert.IsType<vldoor_t>(world.sectors[8].specialdata);
         Assert.Equal(vldoor_e.vld_raiseIn5Mins, door.type);
         Assert.Equal(0, world.sectors[8].special);
         Assert.Equal(2, world.numlinespecials); // and line 28's (the map's, T5.7)
@@ -373,7 +372,7 @@ public class LineTriggerTests
     [Fact]
     public void Doom1E1M1SpawnsItsSpecials()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         Assert.Equal(3, world.totalsecret);

@@ -178,7 +178,7 @@ public partial class FreeFlyCamera : Camera3D
     /// </summary>
     private Vector3 Step(Vector3 move, float metres)
     {
-        Basis yawOnly = Basis.FromEuler(new Vector3(0, Mathf.DegToRad(Yaw), 0));
+        var yawOnly = Basis.FromEuler(new Vector3(0, Mathf.DegToRad(Yaw), 0));
         Vector3 back = IsOrthographic ? yawOnly.Z : ViewBasis.Z;
         Vector3 v = yawOnly.X * move.X + Vector3.Up * Math.Clamp(move.Y, -1f, 1f) + back * move.Z;
         return v.LengthSquared() > 1 ? v.Normalized() * metres : v * metres;

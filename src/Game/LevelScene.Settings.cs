@@ -201,12 +201,12 @@ public partial class LevelScene : ISetupHost
 
     /// <inheritdoc/>
     public string GetSetting(string key) =>
-        _settingAccess.TryGetValue(key, out var access) ? access.Get() : throw new ArgumentException($"no setting \"{key}\"");
+        _settingAccess.TryGetValue(key, out (Func<string> Get, Action<string> Set) access) ? access.Get() : throw new ArgumentException($"no setting \"{key}\"");
 
     /// <inheritdoc/>
     public void SetSetting(string key, string value)
     {
-        if (!_settingAccess.TryGetValue(key, out var access))
+        if (!_settingAccess.TryGetValue(key, out (Func<string> Get, Action<string> Set) access))
             throw new ArgumentException($"no setting \"{key}\"");
         access.Set(value);
         SyncSettings(bindings: key.StartsWith("controls/", StringComparison.Ordinal) && Settings.Find(key) is null);
@@ -311,7 +311,7 @@ public partial class LevelScene : ISetupHost
     {
         if (!InputMap.HasAction(action))
             return;
-        List<Binding> list = bindings.ToList(); // before the erase: it may read the action's events
+        List<Binding> list = [.. bindings]; // before the erase: it may read the action's events
         InputMap.ActionEraseEvents(action);
         foreach (Binding b in list)
             InputMap.ActionAddEvent(action, EventOf(b));
@@ -325,7 +325,7 @@ public partial class LevelScene : ISetupHost
     public void BindAction(string action, Binding input)
     {
         string[] group = Settings.MenuActions.Contains(action) ? Settings.MenuActions : Settings.GameActions;
-        var table = group.ToDictionary(a => a, BindingsOf);
+        Dictionary<string, List<Binding>> table = group.ToDictionary(a => a, BindingsOf);
         List<string> lost = Binding.Rebind(table, group, action, input);
         SetBindings(action, table[action]);
         foreach (string other in lost)

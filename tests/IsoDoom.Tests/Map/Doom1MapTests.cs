@@ -1,4 +1,3 @@
-using System.Linq;
 using IsoDoom.Map;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
@@ -15,7 +14,7 @@ public class Doom1MapTests
     [Fact]
     public void E1M1ElementCountsAndPlayerStart()
     {
-        Level map = Level.Load(OpenDoom1(), "E1M1");
+        var map = Level.Load(OpenDoom1(), "E1M1");
         Assert.Equal(138, map.Things.Length);
         Assert.Equal(475, map.Lines.Length);
         Assert.Equal(648, map.Sides.Length);
@@ -31,7 +30,7 @@ public class Doom1MapTests
         MapThing start = Assert.Single(map.Things, t => t.Type == 1);
         Assert.Equal(new MapThing(1056, -3616, 90, 1, MapThing.MTF_EASY | MapThing.MTF_NORMAL | MapThing.MTF_HARD), start);
         Assert.Equal(start, map.PlayerStart(0));
-        Assert.All(new[] { 1, 2, 3 }, p => Assert.NotNull(map.PlayerStart(p))); // co-op starts
+        Assert.All([1, 2, 3], p => Assert.NotNull(map.PlayerStart(p))); // co-op starts
         Sector startSector = map.R_PointInSubsector(start.X << FRACBITS, start.Y << FRACBITS).Sector;
         Assert.Equal(38, startSector.Index);
         Assert.Equal(0, startSector.FloorHeight);
@@ -50,7 +49,7 @@ public class Doom1MapTests
     public void EveryMapLoadsConsistently(string name)
     {
         WadArchive wad = OpenDoom1();
-        Level map = Level.Load(wad, name);
+        var map = Level.Load(wad, name);
         MapTestChecks.CheckConsistent(wad, map);
         Assert.Single(map.Things, t => t.Type == 1);
         // Every seg faces into its subsector's sector in the shareware maps.

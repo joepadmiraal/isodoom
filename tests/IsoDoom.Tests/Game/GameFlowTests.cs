@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using IsoDoom.Game;
 using IsoDoom.Map;
@@ -19,7 +18,7 @@ namespace IsoDoom.Tests.Game;
 /// </summary>
 public class GameFlowTests
 {
-    private static readonly WadArchive Wad = new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static readonly WadArchive Wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     internal sealed class Host : IGameHost
     {
@@ -30,9 +29,9 @@ public class GameFlowTests
         public World? World { get; private set; }
 
         /// <summary>The lumps the WAD has besides the synthetic IWAD's (the title loop's pages).</summary>
-        public HashSet<string> Extra { get; } = new();
+        public HashSet<string> Extra { get; } = [];
 
-        public List<string> Loads { get; } = new();
+        public List<string> Loads { get; } = [];
         public int Completed, LevelTics, PausedTics;
         public string? Ended;
 
@@ -124,7 +123,7 @@ public class GameFlowTests
     public void TheTitleLoopShowsVanillasPagesWithoutTheDemos(GameMode mode, string expected)
     {
         (GameFlow flow, Host host) = New(mode);
-        host.Extra.UnionWith(new[] { "CREDIT", "HELP2" });
+        host.Extra.UnionWith(["CREDIT", "HELP2"]);
         flow.D_StartTitle(null);
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
         var shown = new List<string>();
@@ -242,7 +241,7 @@ public class GameFlowTests
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         host.World!.G_ExitLevel();
         int tics = 0;
-        ticcmd_t[] cmds = { None, new() { buttons = buttoncode_t.BT_ATTACK } };
+        ticcmd_t[] cmds = [None, new() { buttons = buttoncode_t.BT_ATTACK }];
         while (flow.gamestate != gamestate_t.GS_LEVEL || host.World.level.Name != "E1M2")
         {
             flow.G_Ticker(cmds[tics % 2]);

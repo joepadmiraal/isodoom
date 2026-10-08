@@ -50,7 +50,7 @@ public sealed partial class World
     /// (<see cref="P_SetupLevel"/>), so it holds at most one tic's worth.
     /// Not in the checksum: the sim never reads it.
     /// </summary>
-    public readonly List<sim_event_t> events = new();
+    public readonly List<sim_event_t> events = [];
 
     /// <summary>
     /// Moves the queued events to <paramref name="into"/> (appended, in

@@ -55,7 +55,7 @@ public sealed class RecordingMusicDevice : IMusicDevice
 {
     private sealed record Handle(string LumpName, int Length);
 
-    private readonly List<string> _calls = new();
+    private readonly List<string> _calls = [];
 
     /// <summary>How many calls <see cref="Calls"/> keeps.</summary>
     public const int LogLength = 64;

@@ -17,7 +17,7 @@ public sealed class CommandLine
     {
         var all = new List<string> { program };
         all.AddRange(args);
-        myargv = all.ToArray();
+        myargv = [.. all];
     }
 
     /// <summary>

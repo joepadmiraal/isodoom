@@ -326,22 +326,22 @@ public sealed partial class World
 
     /// <summary>p_enemy.c <c>opposite</c>: the direction opposite each <see cref="dirtype_t"/> (P_NewChaseDir related LUT).</summary>
     private static readonly dirtype_t[] opposite =
-    {
+    [
         dirtype_t.DI_WEST, dirtype_t.DI_SOUTHWEST, dirtype_t.DI_SOUTH, dirtype_t.DI_SOUTHEAST,
         dirtype_t.DI_EAST, dirtype_t.DI_NORTHEAST, dirtype_t.DI_NORTH, dirtype_t.DI_NORTHWEST, dirtype_t.DI_NODIR,
-    };
+    ];
 
     /// <summary>p_enemy.c <c>diags</c>: the diagonal towards a target, by <c>((deltay &lt; 0) &lt;&lt; 1) + (deltax &gt; 0)</c>.</summary>
     private static readonly dirtype_t[] diags =
-    {
+    [
         dirtype_t.DI_NORTHWEST, dirtype_t.DI_NORTHEAST, dirtype_t.DI_SOUTHWEST, dirtype_t.DI_SOUTHEAST,
-    };
+    ];
 
     /// <summary>p_enemy.c <c>xspeed</c>: a step's x per unit of speed in each direction (fixed_t; 47000 ≈ FRACUNIT·√½).</summary>
-    private static readonly int[] xspeed = { Fixed.FRACUNIT, 47000, 0, -47000, -Fixed.FRACUNIT, -47000, 0, 47000 };
+    private static readonly int[] xspeed = [Fixed.FRACUNIT, 47000, 0, -47000, -Fixed.FRACUNIT, -47000, 0, 47000];
 
     /// <summary>p_enemy.c <c>yspeed</c>: a step's y per unit of speed in each direction (fixed_t).</summary>
-    private static readonly int[] yspeed = { 0, 47000, Fixed.FRACUNIT, 47000, 0, -47000, -Fixed.FRACUNIT, -47000 };
+    private static readonly int[] yspeed = [0, 47000, Fixed.FRACUNIT, 47000, 0, -47000, -Fixed.FRACUNIT, -47000];
 
     /// <summary>
     /// p_enemy.c <c>P_CheckMeleeRange</c>: whether <paramref name="actor"/>'s
@@ -521,7 +521,7 @@ public sealed partial class World
 
         System.Span<dirtype_t> d = stackalloc dirtype_t[3];
 
-        dirtype_t olddir = (dirtype_t)actor.movedir;
+        var olddir = (dirtype_t)actor.movedir;
         dirtype_t turnaround = opposite[(int)olddir];
 
         int deltax = unchecked(actor.target.x - actor.x);

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace IsoDoom.Map;
@@ -79,7 +78,7 @@ public sealed class Sector
     /// The lines with this sector on either side (<c>lines</c>/<c>linecount</c>,
     /// built by <c>P_GroupLines</c>), in line order.
     /// </summary>
-    public IReadOnlyList<Line> Lines { get; internal set; } = Array.Empty<Line>();
+    public IReadOnlyList<Line> Lines { get; internal set; } = [];
 
     /// <summary>
     /// The sector's line bounding box in blockmap blocks, widened by
@@ -321,7 +320,7 @@ public sealed class Node
     public int Dy { get; internal set; }
 
     /// <summary>fixed_t bounding box of each child (<c>bbox[2][4]</c>, indexed by <see cref="BBox"/>).</summary>
-    public int[][] BBox { get; } = { new int[4], new int[4] };
+    public int[][] BBox { get; } = [new int[4], new int[4]];
 
     /// <summary>
     /// <c>children[2]</c>: a node number, or a subsector number with

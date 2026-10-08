@@ -150,7 +150,7 @@ public class LightTablesTests
     /// </summary>
     private static List<string> UnusualSides(Level level)
     {
-        SideContrasts contrasts = SideContrasts.Build(level);
+        var contrasts = SideContrasts.Build(level);
         var sides = new List<string>();
         foreach (Line l in level.Lines)
         {
@@ -172,16 +172,16 @@ public class LightTablesTests
     [Fact]
     public void SyntheticSidesHaveTheirLinedefsContrast()
     {
-        Level level = Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1");
+        var level = Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1");
         Assert.Empty(UnusualSides(level));
-        SideContrasts contrasts = SideContrasts.Build(level);
-        Assert.Equal(new[] { new ContrastRun(0, -1) }, contrasts.Runs(level.Lines[0], 0)); // (-128,128)-(128,128): along x
+        var contrasts = SideContrasts.Build(level);
+        Assert.Equal([new ContrastRun(0, -1)], contrasts.Runs(level.Lines[0], 0)); // (-128,128)-(128,128): along x
     }
 
     [Fact]
     public void E1SidesSplitByAxisAlignedSegs()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         var sides = new List<string>();
         for (int m = 1; m <= 9; m++)
             sides.AddRange(UnusualSides(Level.Load(wad, $"E1M{m}")));
@@ -191,7 +191,7 @@ public class LightTablesTests
     [Fact]
     public void Doom2SidesSplitByAxisAlignedSegs()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
         var sides = new List<string>();
         for (int m = 1; m <= 32; m++)
             sides.AddRange(UnusualSides(Level.Load(wad, $"MAP{m:D2}")));

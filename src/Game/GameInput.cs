@@ -45,8 +45,8 @@ public sealed class GameInput
         };
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
             actions.Add(Weapon(i));
-        actions.AddRange(new[] { MenuOpen, MenuUp, MenuDown, MenuLeft, MenuRight, MenuSelect, MenuBack, MenuYes, MenuNo });
-        return actions.ToArray();
+        actions.AddRange([MenuOpen, MenuUp, MenuDown, MenuLeft, MenuRight, MenuSelect, MenuBack, MenuYes, MenuNo]);
+        return [.. actions];
     }
 
     /// <summary>The actions missing from the <see cref="InputMap"/>.</summary>

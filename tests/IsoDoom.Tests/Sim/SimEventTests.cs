@@ -25,7 +25,7 @@ public class SimEventTests
     private static World Specials(Tweaks? tweaks = null)
     {
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), tweaks ?? Tweaks.Vanilla);
-        world.G_DoLoadLevel(Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M2"));
+        world.G_DoLoadLevel(Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M2"));
         return world;
     }
 
@@ -38,7 +38,7 @@ public class SimEventTests
     [InlineData("testmap-weapons")]
     public void TheChecksumIsTheSameWhetherAnythingListens(string name)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         World listened = route.NewWorld(), ignored = route.NewWorld();
         var drained = new List<sim_event_t>();
         for (int tic = 0; tic < route.Cmds.Count; tic++)
@@ -63,7 +63,7 @@ public class SimEventTests
     [Fact]
     public void APickupQueuesItsSoundAndMessage()
     {
-        VanillaRoute route = VanillaRoute.Load("synthetic-keys");
+        var route = VanillaRoute.Load("synthetic-keys");
         World world = route.NewWorld();
         var drained = new List<sim_event_t>();
         for (int tic = 0; tic < route.Cmds.Count; tic++)
@@ -76,7 +76,7 @@ public class SimEventTests
         sim_event_t message = drained.First(e => e.type == simevent_t.se_message);
         Assert.Equal(0, message.player);
         // In the same tic: the pickup's stop (P_RemoveMobj), its sound, then the message after the tic.
-        Assert.Equal(new[] { simevent_t.se_stopsound, simevent_t.se_startsound, simevent_t.se_message },
+        Assert.Equal([simevent_t.se_stopsound, simevent_t.se_startsound, simevent_t.se_message],
             drained.Where(e => e.tic == message.tic).Select(e => e.type).TakeLast(3));
         Assert.Contains(drained, e => e.tic == message.tic && e.sound.sfx == sfxenum_t.sfx_itemup && e.sound.origin is null);
     }
@@ -115,7 +115,7 @@ public class SimEventTests
         static World Use(Tweaks? tweaks, int x, int y, int degrees)
         {
             var w = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), tweaks ?? Tweaks.Vanilla);
-            w.G_DoLoadLevel(Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1"));
+            w.G_DoLoadLevel(Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1"));
             w.PlaceMobj(Player(w), F(x), F(y), Deg(degrees));
             w.events.Clear();
             w.P_UseLines(w.players[0]);
@@ -137,7 +137,7 @@ public class SimEventTests
         world = Use(tweaks, -100, 100, 150);
         Assert.Equal(gameaction_t.ga_completed, world.gameaction);
         Assert.DoesNotContain(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_noway);
-        Assert.Equal(new[] { sfxenum_t.sfx_noway }, Use(null, -100, 100, 150).StartedSounds().Select(s => s.sfx)); // vanilla grunts
+        Assert.Equal([sfxenum_t.sfx_noway], Use(null, -100, 100, 150).StartedSounds().Select(s => s.sfx)); // vanilla grunts
 
         // No wall on the trace, nothing within reach: silence, as vanilla.
         world = Use(tweaks, 0, 0, 270);

@@ -100,9 +100,9 @@ public partial class ThingSprites : MultiMeshInstance3D
     public readonly record struct Shown(int Slot, bool Flip, int Rot);
 
     private SpriteAtlas? _atlas;
-    private Entry[] _entries = Array.Empty<Entry>();
-    private Shown[] _shown = Array.Empty<Shown>();
-    private Color[] _custom = Array.Empty<Color>();
+    private Entry[] _entries = [];
+    private Shown[] _shown = [];
+    private Color[] _custom = [];
     private int? _isolated;
     private HashSet<int>? _isolatedSet;
     private (bool Ortho, Vector3 Forward, Vector3 Position)? _view;
@@ -159,11 +159,11 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// </summary>
     private static ArrayMesh QuadMesh()
     {
-        var vertices = new[]
-        {
+        Vector3[] vertices =
+        [
             new Vector3(0, 0, 1), new Vector3(1, 0, 1), new Vector3(1, 1, 1), new Vector3(0, 1, 1),
             new Vector3(0, 1, 0), new Vector3(1, 1, 0), new Vector3(1, 2, 0), new Vector3(0, 2, 0),
-        };
+        ];
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = vertices;
@@ -242,7 +242,7 @@ public partial class ThingSprites : MultiMeshInstance3D
     public void IsolateSet(IEnumerable<int> indices)
     {
         _isolated = null;
-        _isolatedSet = new HashSet<int>(indices);
+        _isolatedSet = [.. indices];
         Refresh();
     }
 

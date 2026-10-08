@@ -22,7 +22,7 @@ public class DoomRandomTests
     public void First_P_Random_values_skip_entry_zero()
     {
         var r = new DoomRandom();
-        int[] first = { 8, 109, 220, 222, 241, 149, 107, 75, 248, 254, 140, 16, 66, 74, 21, 211 };
+        int[] first = [8, 109, 220, 222, 241, 149, 107, 75, 248, 254, 140, 16, 66, 74, 21, 211];
         foreach (int v in first)
             Assert.Equal(v, r.P_Random());
         Assert.Equal(16, r.prndindex);
@@ -46,7 +46,7 @@ public class DoomRandomTests
     public void P_Random_after_wrap_returns_entry_zero_then_repeats()
     {
         var r = new DoomRandom();
-        var firstPass = new int[256];
+        int[] firstPass = new int[256];
         for (int i = 0; i < 256; i++)
             firstPass[i] = r.P_Random();
         Assert.Equal(0, r.prndindex);

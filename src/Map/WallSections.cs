@@ -264,7 +264,7 @@ public sealed class WallSections
     /// </summary>
     public static WallSections Build(Level level, Textures textures)
     {
-        var hasSeg = new bool[level.Lines.Length, 2];
+        bool[,] hasSeg = new bool[level.Lines.Length, 2];
         foreach (Seg seg in level.Segs)
             hasSeg[seg.LineDef.Index, seg.Side] = true;
 
@@ -297,7 +297,7 @@ public sealed class WallSections
                 }
             }
         }
-        return new WallSections(sections.ToArray(), missing.ToArray());
+        return new WallSections([.. sections], [.. missing]);
     }
 
     private static int TextureNum(Textures textures, string name, Side side)

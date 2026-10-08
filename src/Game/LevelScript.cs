@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Collections.Generic;
 using Godot;
-using SectorFloor = IsoDoom.Map.SectorFloor;
 using IsoDoom.Render;
+using IsoDoom.Sim;
+using SectorFloor = IsoDoom.Map.SectorFloor;
 
 namespace IsoDoom.Game;
 
@@ -293,7 +294,7 @@ public partial class LevelScript : Node
                         break;
                     case "ticcmd":
                         {
-                            var cmd = _scene.BuildTiccmd(w.Length > 1 && w[1] == "vanilla" ? IsoDoom.Sim.Tweaks.Vanilla : IsoDoom.Sim.Tweaks.TopDown);
+                            ticcmd_t cmd = _scene.BuildTiccmd(w.Length > 1 && w[1] == "vanilla" ? IsoDoom.Sim.Tweaks.Vanilla : IsoDoom.Sim.Tweaks.TopDown);
                             GD.Print($"Level script: ticcmd forwardmove {cmd.forwardmove} sidemove {cmd.sidemove} angleturn {cmd.angleturn} ({(ushort)cmd.angleturn * 360.0 / 65536:0.##} deg) buttons {cmd.buttons}");
                             break;
                         }
@@ -355,7 +356,7 @@ public partial class LevelScript : Node
                     case "tictime": await TicTime(Int(w[1])); break;
                     case "missile":
                         {
-                            var type = w.Length > 1
+                            mobjtype_t type = w.Length > 1
                                 ? Enum.Parse<IsoDoom.Sim.mobjtype_t>("MT_" + w[1].ToUpperInvariant())
                                 : IsoDoom.Sim.mobjtype_t.MT_ROCKET;
                             _scene.BeforeNextTic(world =>
@@ -368,7 +369,7 @@ public partial class LevelScript : Node
                     case "spawn":
                         {
                             // T6.9: a debug spawn (P_SpawnMobj on the floor), e.g. a spectre.
-                            var type = Enum.Parse<IsoDoom.Sim.mobjtype_t>("MT_" + w[1].ToUpperInvariant());
+                            mobjtype_t type = Enum.Parse<IsoDoom.Sim.mobjtype_t>("MT_" + w[1].ToUpperInvariant());
                             int x = Int(w[2]), y = Int(w[3]);
                             uint angle = w.Length > 4 ? ThingSprites.BamOfDegrees(double.Parse(w[4], CultureInfo.InvariantCulture)) : 0;
                             _scene.BeforeNextTic(world =>
@@ -403,7 +404,7 @@ public partial class LevelScript : Node
                     case "power":
                         {
                             // T6.8: a debug power-up, as its pickup gives it (P_GivePower), optionally with TICS left.
-                            var power = Enum.Parse<IsoDoom.Sim.powertype_t>("pw_" + w[1].ToLowerInvariant());
+                            powertype_t power = Enum.Parse<IsoDoom.Sim.powertype_t>("pw_" + w[1].ToLowerInvariant());
                             int? left = w.Length > 2 ? Int(w[2]) : null;
                             _scene.BeforeNextTic(world =>
                             {
@@ -655,7 +656,7 @@ public partial class LevelScript : Node
             GD.PrintErr("Level script: no sound");
             return 1;
         }
-        var sfx = Enum.Parse<IsoDoom.Sim.sfxenum_t>("sfx_" + w[1].ToLowerInvariant());
+        sfxenum_t sfx = Enum.Parse<IsoDoom.Sim.sfxenum_t>("sfx_" + w[1].ToLowerInvariant());
         if (!playing)
         {
             int min = w.Length > 2 ? Int(w[2]) : 1, times = snd.ChannelStarts[(int)sfx];
@@ -793,7 +794,7 @@ public partial class LevelScript : Node
         float sum = 0;
         foreach (float s in steps)
             sum += s;
-        string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
+        static string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
         GD.Print($"Level script: smooth: {n} frames, {_scene.TicsRun - tics} tics; player step per frame min {F(steps[0])} median {F(steps[steps.Count / 2])} max {F(steps[^1])} mean {F(sum / steps.Count)} units, largest change between consecutive steps {F(jerk)}");
     }
 
@@ -820,7 +821,7 @@ public partial class LevelScript : Node
         for (int i = 1; i < steps.Count; i++)
             jerk = Math.Max(jerk, Math.Abs(steps[i] - steps[i - 1]));
         steps.Sort();
-        string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
+        static string F(float v) => v.ToString("F2", CultureInfo.InvariantCulture);
         GD.Print($"Level script: smooth: sector {sector}, {n} frames, {_scene.TicsRun - tics} tics; drawn floor + ceiling step per frame min {F(steps[0])} "
             + $"median {F(steps[steps.Count / 2])} max {F(steps[^1])} units, largest change between consecutive steps {F(jerk)}; now floor {F(last.R)}, ceiling {F(last.G)}");
     }
@@ -852,7 +853,7 @@ public partial class LevelScript : Node
             mean += t;
         mean /= times.Count;
         times.Sort();
-        string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
+        static string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
         GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: mean {F(mean)} ms, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])} (tic {worstTic}); {gcs} garbage collections meanwhile");
     }
 
@@ -1052,7 +1053,7 @@ public partial class LevelScript : Node
     private async Task FrameTime(int n)
     {
         await Frames(10);
-        var ms = new double[Math.Max(1, n)];
+        double[] ms = new double[Math.Max(1, n)];
         ulong last = Time.GetTicksUsec();
         for (int i = 0; i < ms.Length; i++)
         {
@@ -1066,7 +1067,7 @@ public partial class LevelScript : Node
             mean += t;
         mean /= ms.Length;
         Array.Sort(ms);
-        string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
+        static string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
         GD.Print($"Level script: frame time over {ms.Length} frames at {GetViewport().GetVisibleRect().Size}: mean {F(mean)} ms ({F(1000 / mean)} fps), median {F(ms[ms.Length / 2])}, p95 {F(ms[(int)(ms.Length * 0.95)])}, worst {F(ms[^1])}");
     }
 

@@ -10,7 +10,7 @@ namespace IsoDoom.Tests.Support;
 public sealed class WadBuilder
 {
     private readonly string _magic;
-    private readonly List<(string Name, byte[] Data)> _lumps = new();
+    private readonly List<(string Name, byte[] Data)> _lumps = [];
 
     public WadBuilder(WadType type = WadType.Pwad) => _magic = type == WadType.Iwad ? "IWAD" : "PWAD";
 
@@ -35,7 +35,7 @@ public sealed class WadBuilder
     public byte[] Build()
     {
         int dataSize = 0;
-        foreach (var lump in _lumps)
+        foreach ((string Name, byte[] Data) lump in _lumps)
             dataSize += lump.Data.Length;
 
         byte[] wad = new byte[12 + dataSize + 16 * _lumps.Count];

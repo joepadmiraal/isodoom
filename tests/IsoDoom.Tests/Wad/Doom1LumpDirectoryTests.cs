@@ -11,7 +11,7 @@ namespace IsoDoom.Tests.Wad;
 /// <summary>T1.6a lump directory against the shareware DOOM1.WAD and a DOOM II IWAD (skipped without them).</summary>
 public class Doom1LumpDirectoryTests
 {
-    public static TheoryData<string> Iwads => new() { "DOOM1", "DOOM2" };
+    public static TheoryData<string> Iwads => ["DOOM1", "DOOM2"];
 
     private static WadArchive OpenIwad(string which) =>
         WadArchive.Open(which == "DOOM1" ? TestWads.RequireDoom1() : TestWads.RequireDoom2());
@@ -52,7 +52,7 @@ public class Doom1LumpDirectoryTests
         Assert.Equal(1264, kinds.Values.Sum());
 
         // The IWAD's only duplicate: SW18_7 is in the patch namespace twice, and the second copy wins.
-        LumpEntry[] overridden = list.Where(e => e.IsOverridden).ToArray();
+        LumpEntry[] overridden = [.. list.Where(e => e.IsOverridden)];
         LumpEntry sw18 = Assert.Single(overridden);
         Assert.Equal("SW18_7", sw18.Lump.Name);
         Assert.Same(list.Last(e => e.Lump.Name == "SW18_7").Lump, sw18.OverriddenBy);
@@ -72,7 +72,7 @@ public class Doom1LumpDirectoryTests
     {
         WadArchive wad = OpenIwad(which);
         IReadOnlyList<LumpEntry> list = LumpDirectory.Build(wad);
-        GraphicsCatalog catalog = GraphicsCatalog.Load(wad);
+        var catalog = GraphicsCatalog.Load(wad);
         Assert.DoesNotContain(list, e => e.Kind == LumpKind.Other);
         foreach (LumpEntry e in list)
         {

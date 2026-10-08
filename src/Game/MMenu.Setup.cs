@@ -60,10 +60,10 @@ public sealed partial class MMenu
     public menu_t SetupDef = null!, ControlsDef = null!;
 
     /// <summary>The settings pages, by page.</summary>
-    public readonly Dictionary<SettingPage, menu_t> SettingDefs = new();
+    public readonly Dictionary<SettingPage, menu_t> SettingDefs = [];
 
     /// <summary>The binding pages (<see cref="Settings.ControlPages"/>' order) and the action of each item.</summary>
-    public readonly List<(menu_t Def, string[] Actions)> BindingDefs = new();
+    public readonly List<(menu_t Def, string[] Actions)> BindingDefs = [];
 
     public const string RESETALL = "reset every option and control\nto its default?\n\n" + PRESSYN;
     public const string RESETCONTROLS = "reset every control to its default?\n\n" + PRESSYN;
@@ -80,7 +80,7 @@ public sealed partial class MMenu
         };
 
         var setupItems = new List<menuitem_t> { new(1, "", _ => M_SetupNextMenu(ControlsDef), 'c', "CONTROLS...") };
-        SetupDef = TextMenu("setup", "MORE OPTIONS", OptionsDef, Array.Empty<menuitem_t>());
+        SetupDef = TextMenu("setup", "MORE OPTIONS", OptionsDef, []);
         foreach ((string name, string title, SettingPage page, char key) in pages)
         {
             menu_t def = TextMenu(name, title, SetupDef, SettingItems(page));
@@ -89,10 +89,10 @@ public sealed partial class MMenu
         }
         setupItems.Add(new menuitem_t(-1, "", null, '\0'));
         setupItems.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETALL, M_ResetAllResponse, true), 'r', "RESET ALL TO DEFAULTS"));
-        SetTextItems(SetupDef, setupItems.ToArray());
+        SetTextItems(SetupDef, [.. setupItems]);
 
         var controls = new List<menuitem_t>(SettingItems(SettingPage.Controls));
-        ControlsDef = TextMenu("controls", "CONTROLS", SetupDef, Array.Empty<menuitem_t>());
+        ControlsDef = TextMenu("controls", "CONTROLS", SetupDef, []);
         controls.Add(new menuitem_t(-1, "", null, '\0'));
         foreach ((string title, (string Action, string Label)[] actions) in Settings.ControlPages)
         {
@@ -113,7 +113,7 @@ public sealed partial class MMenu
         }
         controls.Add(new menuitem_t(-1, "", null, '\0'));
         controls.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETCONTROLS, M_ResetControlsResponse, true), 'r', "RESET CONTROLS"));
-        SetTextItems(ControlsDef, controls.ToArray());
+        SetTextItems(ControlsDef, [.. controls]);
     }
 
     private menu_t TextMenu(string name, string title, menu_t prev, menuitem_t[] items)

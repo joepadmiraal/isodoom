@@ -11,7 +11,7 @@ public sealed partial class FFinale
 
     /// <summary>f_finale.c <c>textscreens</c>.</summary>
     public static readonly textscreen_t[] textscreens =
-    {
+    [
         new(GameMission.doom, 1, 8, "FLOOR4_8", E1TEXT),
         new(GameMission.doom, 2, 8, "SFLR6_1", E2TEXT),
         new(GameMission.doom, 3, 8, "MFLR8_4", E3TEXT),
@@ -37,7 +37,7 @@ public sealed partial class FFinale
         new(GameMission.pack_plut, 1, 30, "RROCK17", P4TEXT),
         new(GameMission.pack_plut, 1, 15, "RROCK13", P5TEXT),
         new(GameMission.pack_plut, 1, 31, "RROCK19", P6TEXT),
-    };
+    ];
 
     /// <summary>d_englsh.h <c>E1TEXT</c>.</summary>
     public const string E1TEXT =

@@ -88,7 +88,7 @@ public sealed partial class World
             case think_t.T_Glow:
                 T_Glow((glow_t)thinker);
                 break;
-            // think_t.NULL: nothing
+                // think_t.NULL: nothing
         }
     }
 

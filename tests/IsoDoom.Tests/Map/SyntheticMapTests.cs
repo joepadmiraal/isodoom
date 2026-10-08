@@ -13,7 +13,7 @@ namespace IsoDoom.Tests.Map;
 public class SyntheticMapTests
 {
     private static Level Load() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1");
 
     [Fact]
     public void ElementCountsAndPlayerStart()
@@ -112,18 +112,18 @@ public class SyntheticMapTests
         // On a partition line: x <= node.x is the back side of a north-pointing partition.
         Assert.Equal(0, map.R_PointInSubsector(128 * FRACUNIT, 64 * FRACUNIT).Index);
         // The strip east of the root's partition: room C, door D, courtyard A, ledge B.
-        Assert.Equal(new[] { 3, 4, 5, 6 }, new[] { 576, 648, 784, 976 }.Select(x => map.R_PointInSubsector(x * FRACUNIT, 0).Index));
+        Assert.Equal([3, 4, 5, 6], new[] { 576, 648, 784, 976 }.Select(x => map.R_PointInSubsector(x * FRACUNIT, 0).Index));
     }
 
     [Fact]
     public void GroupLinesSetsSubsectorAndSectorData()
     {
         Level map = Load();
-        Assert.Equal(new[] { 0, 1, 1, 2, 3, 4, 5 }, map.Subsectors.Select(s => s.Sector.Index));
+        Assert.Equal([0, 1, 1, 2, 3, 4, 5], map.Subsectors.Select(s => s.Sector.Index));
         Assert.Equal((4, 0), (map.Subsectors[0].NumLines, map.Subsectors[0].FirstLine));
-        Assert.Equal(new[] { 0, 1, 2, 3 }, map.Sectors[0].Lines.Select(l => l.Index));
-        Assert.Equal(new[] { 1, 4, 5, 6 }, map.Sectors[1].Lines.Select(l => l.Index));
-        Assert.Equal(new[] { 8, 11, 12, 13 }, map.Sectors[3].Lines.Select(l => l.Index));
+        Assert.Equal([0, 1, 2, 3], map.Sectors[0].Lines.Select(l => l.Index));
+        Assert.Equal([1, 4, 5, 6], map.Sectors[1].Lines.Select(l => l.Index));
+        Assert.Equal([8, 11, 12, 13], map.Sectors[3].Lines.Select(l => l.Index));
         Assert.Equal(24, map.TotalLines);
         Assert.Equal((256 * FRACUNIT, 0), (map.Sectors[1].SoundOrgX, map.Sectors[1].SoundOrgY));
         // East room x 128..384, y -128..128, widened by 32, from origin (-136, -136): blocks x 1..4, y 0..2 (clamped).
@@ -136,11 +136,11 @@ public class SyntheticMapTests
         Level map = Load();
         Blockmap bm = map.Blockmap;
         Assert.Equal((-136 * FRACUNIT, -136 * FRACUNIT, 10, 3), (bm.BmapOrgX, bm.BmapOrgY, bm.BmapWidth, bm.BmapHeight));
-        Assert.Equal(new[] { 0, 2, 3 }, bm.BlockLines(0, 0));       // bottom left: L2, L3
-        Assert.Equal(new[] { 0, 1, 2, 6 }, bm.BlockLines(2, 0));    // L1 and the south walls
-        Assert.Equal(new[] { 0, 5 }, bm.BlockLines(4, 1));          // east wall only
-        Assert.Equal(new[] { 0, 9, 10 }, bm.BlockLines(5, 0));   // room C's south and west walls
-        Assert.Equal(new[] { 0 }, bm.BlockLines(3, 1));             // inside the east room
+        Assert.Equal([0, 2, 3], bm.BlockLines(0, 0));       // bottom left: L2, L3
+        Assert.Equal([0, 1, 2, 6], bm.BlockLines(2, 0));    // L1 and the south walls
+        Assert.Equal([0, 5], bm.BlockLines(4, 1));          // east wall only
+        Assert.Equal([0, 9, 10], bm.BlockLines(5, 0));   // room C's south and west walls
+        Assert.Equal([0], bm.BlockLines(3, 1));             // inside the east room
         Assert.Empty(bm.BlockLines(10, 0));
         Assert.Equal(5, map.Reject.RejectMatrix.Length);
         Assert.False(map.Reject.IsRejected(0, 1, map.Sectors.Length));
@@ -152,20 +152,20 @@ public class SyntheticMapTests
         // The synthetic E1M1 with 3 extra (lineless) sectors and an empty REJECT:
         // 9 sectors need 11 bytes, which PadRejectArray fills with the zone block
         // header vanilla read past the lump: ((totallines * 4 + 3) & ~3) + 24, 0, PU_LEVEL (50).
-        var iwad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var iwad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         int e1m1 = iwad.W_GetNumForName("E1M1");
-        var b = new WadBuilder(WadType.Iwad).Markers("E1M1");
+        WadBuilder b = new WadBuilder(WadType.Iwad).Markers("E1M1");
         for (int ml = Level.ML_THINGS; ml <= Level.ML_BLOCKMAP; ml++)
         {
             WadLump lump = iwad.Lumps[e1m1 + ml];
             byte[] data = lump.Data.ToArray();
             if (ml == Level.ML_SECTORS)
-                data = data.Concat(new byte[26 * 3]).ToArray();
+                data = [.. data, .. new byte[26 * 3]];
             if (ml == Level.ML_REJECT)
-                data = Array.Empty<byte>();
+                data = [];
             b.Lump(lump.Name, data);
         }
-        Level map = Level.Load(new WadArchive(new[] { b.ToWadFile() }), "E1M1");
+        var map = Level.Load(new WadArchive([b.ToWadFile()]), "E1M1");
         Assert.Equal(9, map.Sectors.Length);
         Assert.Equal(24, map.TotalLines);
         Assert.Equal(new byte[] { 120, 0, 0, 0, 0, 0, 0, 0, 50, 0, 0 }, map.Reject.RejectMatrix);
@@ -175,7 +175,7 @@ public class SyntheticMapTests
     [Fact]
     public void MissingOrMisorderedMapsAreRejected()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         Assert.Throws<WadFormatException>(() => Level.Load(wad, "E1M3"));
         Assert.Throws<WadFormatException>(() => Level.Load(wad, "PLAYPAL"));
     }

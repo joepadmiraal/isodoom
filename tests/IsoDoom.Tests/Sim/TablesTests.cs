@@ -1,5 +1,4 @@
 using System;
-using IsoDoom.Sim;
 using Xunit;
 using static IsoDoom.Map.Fixed;
 using static IsoDoom.Sim.Tables;

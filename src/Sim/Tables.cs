@@ -55,7 +55,7 @@ public static partial class Tables
     /// <c>&amp;finesine[FINEANGLES/4]</c>, here a view of
     /// <see cref="finesine"/> from that entry (8192 entries).
     /// </summary>
-    public static ReadOnlySpan<int> finecosine => finesine.Slice(FINEANGLES / 4);
+    public static ReadOnlySpan<int> finecosine => finesine[(FINEANGLES / 4)..];
 
     /// <summary>
     /// tables.c <c>SlopeDiv</c>: the <see cref="tantoangle"/> index of the

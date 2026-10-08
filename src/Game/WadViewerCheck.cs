@@ -35,7 +35,7 @@ public partial class WadViewerCheck : Node
 {
     private readonly WadViewer _viewer;
     private int _failures;
-    private readonly List<string> _failureLog = new();
+    private readonly List<string> _failureLog = [];
 
     public WadViewerCheck(WadViewer viewer) => _viewer = viewer;
 
@@ -81,9 +81,9 @@ public partial class WadViewerCheck : Node
         _viewer.SetZoom(1);
 
         // (light, invulnerable, palette): full bright; dim; invulnerability with a red tint.
-        var settings = gpu
-            ? new[] { (255, false, 0), (100, false, 0), (255, true, Playpal.STARTREDPALS + 2) }
-            : new[] { (255, false, 0) };
+        (int, bool, int)[] settings = gpu
+            ? [(255, false, 0), (100, false, 0), (255, true, Playpal.STARTREDPALS + 2)]
+            : [(255, false, 0)];
 
         int expectedViews = 0;
         foreach (GraphicView _ in catalog.EnumerateAll())
@@ -161,7 +161,7 @@ public partial class WadViewerCheck : Node
         int viaBrowser = 0, direct = 0, tables = 0, others = 0, pixels = 0, sounds = 0, unplayable = 0, songs = 0, banks = 0;
         int songsPlayed = 0;
         int? firstSong = null;
-        var kinds = new int[Enum.GetValues<LumpKind>().Length];
+        int[] kinds = new int[Enum.GetValues<LumpKind>().Length];
         foreach (int i in _viewer.LumpRows)
         {
             LumpEntry e = lumps[i];

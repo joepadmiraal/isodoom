@@ -165,7 +165,7 @@ public sealed class sector_t
     /// is its length), in line order, as <c>P_GroupLines</c> lists them (the
     /// map's <see cref="Sector.Lines"/>).
     /// </summary>
-    public line_t[] lines = System.Array.Empty<line_t>();
+    public line_t[] lines = [];
 
     /// <summary><c>linecount</c>.</summary>
     public int linecount => lines.Length;

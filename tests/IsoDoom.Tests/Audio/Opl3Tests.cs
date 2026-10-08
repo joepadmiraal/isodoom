@@ -22,7 +22,7 @@ public sealed class OplLog
     public uint Rate;
     public int Length;
     public bool Buffered;
-    public readonly List<(int sample, ushort reg, byte val)> Writes = new();
+    public readonly List<(int sample, ushort reg, byte val)> Writes = [];
 
     public static string Dir => Path.Combine(TestWads.RepoRoot ?? throw new InvalidOperationException("no repo root"), "tools", "OplRef", "logs");
 
@@ -58,7 +58,7 @@ public sealed class OplLog
     {
         chip ??= new opl3_chip();
         Opl3.OPL3_Reset(chip, Rate != 0 ? Rate : Opl3.OPL_RATE);
-        var output = new short[2 * Length];
+        short[] output = new short[2 * Length];
         int w = 0;
         for (int i = 0; i < Length; i++)
         {
@@ -81,7 +81,7 @@ public sealed class OplLog
     /// <summary>SHA-256 of the samples as opl_ref.c writes them (signed 16-bit little-endian).</summary>
     public static string Sha256(short[] samples)
     {
-        var bytes = new byte[samples.Length * 2];
+        byte[] bytes = new byte[samples.Length * 2];
         for (int i = 0; i < samples.Length; i++)
         {
             bytes[2 * i] = (byte)samples[i];
@@ -133,7 +133,7 @@ public class Opl3Tests
     [MemberData(nameof(Logs))]
     public void SamplesHashAsTheCReference(string name)
     {
-        OplLog log = OplLog.Load(name);
+        var log = OplLog.Load(name);
         short[] samples = log.Render();
         Assert.Equal(log.Length * 2, samples.Length);
         Assert.Contains(samples, s => s != 0);
@@ -154,7 +154,7 @@ public class Opl3Tests
         string raw = Path.Combine(Path.GetTempPath(), $"isodoom-opl-{name}-{Environment.ProcessId}.raw");
         try
         {
-            using (var p = Process.Start(new ProcessStartInfo(exe) { ArgumentList = { Path.Combine(OplLog.Dir, name + ".log"), raw } })!)
+            using (Process p = Process.Start(new ProcessStartInfo(exe) { ArgumentList = { Path.Combine(OplLog.Dir, name + ".log"), raw } })!)
             {
                 p.WaitForExit();
                 Assert.Equal(0, p.ExitCode);
@@ -187,7 +187,7 @@ public class Opl3Tests
             Assert.Equal(0, buf[1]);
         }
         // A chip reset after a log plays it as a new one does.
-        OplLog log = OplLog.Load("opl3-4op");
+        var log = OplLog.Load("opl3-4op");
         string first = OplLog.Sha256(log.Render(chip));
         Assert.Equal(first, OplLog.Sha256(log.Render(chip)));
         Assert.Equal(first, OplLog.Sha256(log.Render()));
@@ -202,7 +202,7 @@ public class Opl3Tests
         var chip = new opl3_chip();
         Opl3.OPL3_Reset(chip, rate);
         Assert.Equal(rateratio, chip.rateratio);
-        var buf = new short[2 * (int)rate];
+        short[] buf = new short[2 * (int)rate];
         Opl3.OPL3_GenerateStream(chip, buf, rate);
         // The chip runs rateratio's 1024ths of a sample per output sample: 49716 a second, but for its rounding.
         long chipSamples = (long)chip.writebuf_samplecnt;
@@ -227,7 +227,7 @@ public class Opl3Tests
         Opl3.OPL3_WriteReg(chip, 0x105, 0x01);
         Opl3.OPL3_WriteReg(chip, 0x104, 0x09);
         Opl3.OPL3_WriteReg(chip, 0xBD, 0xC0);
-        int[] mods = { 0x00, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x10, 0x11, 0x12 };
+        int[] mods = [0x00, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x10, 0x11, 0x12];
         for (int ch = 0; ch < 18; ch++)
         {
             int bank = ch < 9 ? 0 : 0x100, c = ch % 9;
@@ -244,7 +244,7 @@ public class Opl3Tests
             Opl3.OPL3_WriteReg(chip, (ushort)(bank + 0xB0 + c), (byte)(0x20 | (4 << 2) | 1));
         }
         const int rate = 48000, block = 512, seconds = 60;
-        var buf = new short[2 * block];
+        short[] buf = new short[2 * block];
         for (int done = 0; done < rate; done += block)
             Opl3.OPL3_GenerateStream(chip, buf, block); // a second of warm-up: the JIT's optimized code, as a music thread runs
         long sum = 0;

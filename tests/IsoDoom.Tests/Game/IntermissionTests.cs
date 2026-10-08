@@ -68,7 +68,7 @@ public class IntermissionTests
 
     /// <summary>The DOOM1.WAD exit routes with an intermission (all but E1M8's).</summary>
     private static List<VanillaRoute> ExitRoutes() =>
-        VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map != "E1M8").ToList();
+        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map != "E1M8")];
 
     /// <summary>The exit routes with an intermission and the dumps' suffixes (<c>wi</c>: counted out; <c>wiskip</c>: skipped).</summary>
     public static TheoryData<string, string> Dumps()
@@ -86,7 +86,7 @@ public class IntermissionTests
     public void EveryEpisode1ExitHasAnIntermissionToCompare()
     {
         List<VanillaRoute> routes = ExitRoutes();
-        Assert.Equal(new[] { "E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M9" }, routes.Select(r => r.Map).Distinct().Order());
+        Assert.Equal(["E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M9"], routes.Select(r => r.Map).Distinct().Order());
         Assert.Contains(routes, r => r.Map == "E1M3" && r.Exit == 2);
     }
 
@@ -94,7 +94,7 @@ public class IntermissionTests
     [MemberData(nameof(Dumps))]
     public void MatchesVanilla(string name, string suffix)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         TestWads.RequireDoom1();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
@@ -102,10 +102,10 @@ public class IntermissionTests
         string path = Path.Combine(dir, $"{name}.{suffix}");
         if (!File.Exists(path))
             Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/intermissions.sh (or set {VanillaRoute.DumpDirEnvVar}).");
-        string[] expected = File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+        string[] expected = [.. File.ReadAllLines(path).Where(l => l.Length > 0)];
         Assert.StartsWith("presses ", expected[0]);
         Assert.StartsWith("wminfo ", expected[1]);
-        HashSet<int> presses = expected[0]["presses ".Length..].Split(',').Select(int.Parse).ToHashSet();
+        HashSet<int> presses = [.. expected[0]["presses ".Length..].Split(',').Select(int.Parse)];
 
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
@@ -156,7 +156,7 @@ public class IntermissionTests
 
     // ---- without a WAD ----
 
-    private static readonly WadArchive Synthetic = new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static readonly WadArchive Synthetic = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     [Theory]
     [InlineData(GameMode.shareware, 1, 1, 30)]

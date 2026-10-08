@@ -514,8 +514,8 @@ public sealed partial class World
         // this line doesn't block movement
         return true;
 
-    // the line does block movement,
-    // see if it is closer than best so far
+        // the line does block movement,
+        // see if it is closer than best so far
     isblocking:
         if (@in.frac < bestslidefrac)
         {
@@ -779,7 +779,7 @@ public sealed partial class World
     public bool usetracenoway;
 
     // The use fallback's candidates (line, squared distance) and the one its trace looks for.
-    private readonly System.Collections.Generic.List<(line_t line, long dist2)> _useCandidates = new();
+    private readonly System.Collections.Generic.List<(line_t line, long dist2)> _useCandidates = [];
     private line_t? _useFallbackTarget;
     private bool _useFallbackReached;
 
@@ -898,7 +898,7 @@ public sealed partial class World
         // Nearest first, then by line number (insertion sort: stable and allocation free).
         for (int i = 1; i < _useCandidates.Count; i++)
         {
-            var c = _useCandidates[i];
+            (line_t line, long dist2) c = _useCandidates[i];
             int j = i - 1;
             while (j >= 0 && (_useCandidates[j].dist2 > c.dist2
                 || (_useCandidates[j].dist2 == c.dist2 && _useCandidates[j].line.Index > c.line.Index)))

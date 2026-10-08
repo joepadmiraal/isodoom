@@ -321,15 +321,15 @@ public static class Opl3
         address decoding
     */
     private static readonly sbyte[] ad_slot =
-    {
+    [
         0, 1, 2, 3, 4, 5, -1, -1, 6, 7, 8, 9, 10, 11, -1, -1,
         12, 13, 14, 15, 16, 17, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    };
+    ];
 
     private static readonly byte[] ch_slot =
-    {
+    [
         0, 1, 2, 6, 7, 8, 12, 13, 14, 18, 19, 20, 24, 25, 26, 30, 31, 32,
-    };
+    ];
 
     /*
         Envelope generator

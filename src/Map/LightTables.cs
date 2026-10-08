@@ -241,7 +241,7 @@ public readonly record struct ContrastRun(int Start, int Contrast);
 /// </summary>
 public sealed class SideContrasts
 {
-    private static readonly ContrastRun[] NoRuns = Array.Empty<ContrastRun>();
+    private static readonly ContrastRun[] NoRuns = [];
     private readonly ContrastRun[][] _runs; // per line * 2 + side
 
     private SideContrasts(ContrastRun[][] runs) => _runs = runs;
@@ -251,7 +251,7 @@ public sealed class SideContrasts
     {
         var segs = new List<Seg>?[level.Lines.Length * 2];
         foreach (Seg seg in level.Segs)
-            (segs[seg.LineDef.Index * 2 + seg.Side] ??= new List<Seg>()).Add(seg);
+            (segs[seg.LineDef.Index * 2 + seg.Side] ??= []).Add(seg);
         var runs = new ContrastRun[segs.Length][];
         for (int i = 0; i < segs.Length; i++)
         {
@@ -271,7 +271,7 @@ public sealed class SideContrasts
                 else if (side[^1].Contrast != contrast)
                     side.Add(new ContrastRun(seg.Offset, contrast));
             }
-            runs[i] = side.ToArray();
+            runs[i] = [.. side];
         }
         return new SideContrasts(runs);
     }

@@ -13,12 +13,12 @@ public class DoorLidsTests
 {
     private static (Level Level, FloorTriangles Floors, DoorLids Lids) Build(WadArchive wad, string map)
     {
-        Level level = Level.Load(wad, map);
-        FloorTriangles floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
+        var level = Level.Load(wad, map);
+        var floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
         return (level, floors, DoorLids.Build(level, floors));
     }
 
-    private static WadArchive Synthetic() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static float Ceiling(Level level, int sector) => (float)(level.Sectors[sector].CeilingHeight / 65536.0);
 
@@ -27,14 +27,14 @@ public class DoorLidsTests
     {
         (Level level, FloorTriangles floors, DoorLids lids) = Build(Synthetic(), "E1M1");
         // Door D (sector 3, 16 thick, closed) between room C (ceiling 128) and courtyard A (sky at 256).
-        Assert.Equal(new[] { 3 }, lids.Sectors);
-        Assert.Equal(new[] { 2, 4 }, lids.Neighbours(3));
+        Assert.Equal([3], lids.Sectors);
+        Assert.Equal([2, 4], lids.Neighbours(3));
         Assert.Equal(128f, lids.LidHeight(3, s => Ceiling(level, s)));
         Assert.True(DoorLids.Shows(128, Ceiling(level, 3)));
         Assert.InRange(DoorLids.Thickness(level, floors.BySector.Single(f => f.Sector == 3)), 15, 16);
 
         // Neither the rooms (too thick), the sky courtyard and ledge, nor the raised east room get one.
-        Assert.All(new[] { 0, 1, 2, 4, 5 }, s => Assert.False(lids.Has(s)));
+        Assert.All([0, 1, 2, 4, 5], s => Assert.False(lids.Has(s)));
         Assert.Equal(DoorLids.None, lids.LidHeight(2, s => Ceiling(level, s)));
         Assert.Empty(lids.Neighbours(2));
     }

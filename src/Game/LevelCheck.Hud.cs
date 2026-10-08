@@ -96,8 +96,7 @@ public partial class LevelCheck
         _scene.Environment.BackgroundColor = Color.Color8((byte)ur, (byte)ug, (byte)ub);
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = false;
+            chunk?.Visible = false;
         }
         if (_scene.Things is { } things)
             things.Visible = false;
@@ -148,8 +147,7 @@ public partial class LevelCheck
         _scene.Environment.BackgroundColor = background;
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = true;
+            chunk?.Visible = true;
         }
         if (_scene.Things is { } shown)
             shown.Visible = true;

@@ -25,7 +25,7 @@ public class MapUtlTests
 
     private static World Synthetic()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         return Load(wad, "E1M1");
     }
 
@@ -40,7 +40,7 @@ public class MapUtlTests
 
     private static int[] Box(int left, int right, int bottom, int top)
     {
-        var box = new int[4];
+        int[] box = new int[4];
         box[BBox.BOXLEFT] = F(left);
         box[BBox.BOXRIGHT] = F(right);
         box[BBox.BOXBOTTOM] = F(bottom);
@@ -77,12 +77,12 @@ public class MapUtlTests
     private const int GridOrg = -64, GridBlocks = 5;
 
     private static readonly short[] GridVertexes =
-    {
+    [
         0, 0, 0, 512, 512, 512, 512, 0, // v0-v3: the room
         448, 64, 448, 320,              // v4, v5: L4
         128, 128, 256, 256,             // v6, v7: L5
         80, 432, 176, 336,              // v8, v9: L6
-    };
+    ];
 
     // v1, v2, flags, special, tag, right side, left side
     private static readonly short[,] GridLinedefs =
@@ -127,7 +127,7 @@ public class MapUtlTests
             }
         }
         offsets.AddRange(lists);
-        return Shorts(offsets.ToArray());
+        return Shorts([.. offsets]);
     }
 
     private static World Grid()
@@ -153,18 +153,18 @@ public class MapUtlTests
 
         byte[] wad = new WadBuilder()
             .Markers("MAP01")
-            .Lump("THINGS", Array.Empty<byte>())
-            .Lump("LINEDEFS", Shorts(linedefs.ToArray()))
+            .Lump("THINGS", [])
+            .Lump("LINEDEFS", Shorts([.. linedefs]))
             .Lump("SIDEDEFS", sides)
             .Lump("VERTEXES", Shorts(GridVertexes))
             .Lump("SEGS", Shorts(0, 1, 0x4000, 0, 0, 0, 1, 2, 0, 1, 0, 0, 2, 3, unchecked((short)0xC000), 2, 0, 0, 3, 0, unchecked((short)0x8000), 3, 0, 0))
             .Lump("SSECTORS", Shorts(4, 0))
-            .Lump("NODES", Array.Empty<byte>())
+            .Lump("NODES", [])
             .Lump("SECTORS", sector)
             .Lump("REJECT", new byte[1])
             .Lump("BLOCKMAP", GridBlockmap())
             .Build();
-        return Load(new WadArchive(new[] { WadFile.FromBytes(wad, "grid.wad") }), "MAP01");
+        return Load(new WadArchive([WadFile.FromBytes(wad, "grid.wad")]), "MAP01");
     }
 
     // ---- P_AproxDistance ----
@@ -382,7 +382,7 @@ public class MapUtlTests
         Assert.Equal(new[] { 4 }, LinesIn(w, 2, 2));
         w.validcount++;
         Assert.Equal(new[] { 0, 1 }, LinesIn(w, 2, 1)); // a new search sees them again
-        Assert.All(new[] { 0, 1 }, i => Assert.Equal(w.validcount, w.lines[i].validcount));
+        Assert.All([0, 1], i => Assert.Equal(w.validcount, w.lines[i].validcount));
 
         // Off the map: no lines, true.
         Assert.Empty(LinesIn(w, -1, 0));
@@ -468,9 +468,9 @@ public class MapUtlTests
         // (0, 0) → (360, 72), y = x / 5: from the player's centre, through the imp at (80, 0) (radius 20: its
         // diagonal (60, 20)–(100, -20) is met at x = 66.7), L1 (x = 128) and the imp at (320, 64) (its diagonal
         // (300, 84)–(340, 44) at x = 320). The barrel at (64, 64) and the other imps are missed.
-        var (result, visited) = Traverse(w, 0, 0, 360, 72, World.PT_ADDLINES | World.PT_ADDTHINGS);
+        (bool result, List<(object What, int Frac)>? visited) = Traverse(w, 0, 0, 360, 72, World.PT_ADDLINES | World.PT_ADDTHINGS);
         Assert.True(result);
-        Assert.Equal(new object[] { player, imp80, w.lines[1], imp320 }, visited.Select(v => v.What));
+        Assert.Equal([player, imp80, w.lines[1], imp320], visited.Select(v => v.What));
         AssertFrac(0, visited[0].Frac);
         AssertFrac(66.667 / 360, visited[1].Frac);
         AssertFrac(128.0 / 360, visited[2].Frac);
@@ -480,12 +480,12 @@ public class MapUtlTests
         Assert.All(w.intercepts.Take(4), i => Assert.Equal(int.MaxValue, i.frac)); // visited ones are spent
 
         // Lines or things only.
-        Assert.Equal(new object[] { w.lines[1] }, Traverse(w, 0, 0, 360, 72, World.PT_ADDLINES).Visited.Select(v => v.What));
-        Assert.Equal(new object[] { player, imp80, imp320 }, Traverse(w, 0, 0, 360, 72, World.PT_ADDTHINGS).Visited.Select(v => v.What));
+        Assert.Equal([w.lines[1]], Traverse(w, 0, 0, 360, 72, World.PT_ADDLINES).Visited.Select(v => v.What));
+        Assert.Equal([player, imp80, imp320], Traverse(w, 0, 0, 360, 72, World.PT_ADDTHINGS).Visited.Select(v => v.What));
 
         // Things beyond the end are collected but not visited (maxfrac FRACUNIT); behind the start not at all.
         (_, visited) = Traverse(w, 40, 0, 150, 30, World.PT_ADDLINES | World.PT_ADDTHINGS);
-        Assert.Equal(new object[] { imp80, w.lines[1] }, visited.Select(v => v.What));
+        Assert.Equal([imp80, w.lines[1]], visited.Select(v => v.What));
 
         // The traverser stops it.
         int calls = 0;
@@ -498,9 +498,9 @@ public class MapUtlTests
     {
         World w = Synthetic();
         // West through L3 (one-sided, x = -128) at 128/300.
-        var (result, visited) = Traverse(w, 0, 0, -300, 0, World.PT_ADDLINES);
+        (bool result, List<(object What, int Frac)>? visited) = Traverse(w, 0, 0, -300, 0, World.PT_ADDLINES);
         Assert.True(result);
-        Assert.Equal(new object[] { w.lines[3] }, visited.Select(v => v.What));
+        Assert.Equal([w.lines[3]], visited.Select(v => v.What));
         AssertFrac(128.0 / 300, visited[0].Frac);
 
         (result, visited) = Traverse(w, 0, 0, -300, 0, World.PT_ADDLINES | World.PT_EARLYOUT);
@@ -511,7 +511,7 @@ public class MapUtlTests
         Assert.True(Traverse(w, 0, 0, -100, 0, World.PT_ADDLINES | World.PT_EARLYOUT).Result);
         (result, visited) = Traverse(w, 0, 0, 300, 0, World.PT_ADDLINES | World.PT_EARLYOUT);
         Assert.True(result);
-        Assert.Equal(new object[] { w.lines[1] }, visited.Select(v => v.What));
+        Assert.Equal([w.lines[1]], visited.Select(v => v.What));
         // A one-sided line beyond the end of a trace (frac >= 1) does not stop it either.
         (result, visited) = Traverse(w, 300, 0, 380, 0, World.PT_ADDLINES | World.PT_EARLYOUT);
         Assert.True(result);
@@ -523,16 +523,16 @@ public class MapUtlTests
     {
         World w = Grid();
         // x + y = 384 crosses L5 (y = x) exactly at the block corner (192, 192), from block (1, 2) to (2, 1).
-        var (result, visited) = Traverse(w, 150, 234, 234, 150, World.PT_ADDLINES);
+        (bool result, List<(object What, int Frac)>? visited) = Traverse(w, 150, 234, 234, 150, World.PT_ADDLINES);
         Assert.True(result);
-        Assert.Equal(new object[] { w.lines[5] }, visited.Select(v => v.What));
+        Assert.Equal([w.lines[5]], visited.Select(v => v.What));
         AssertFrac(0.5, visited[0].Frac);
         // And the other way round, and along the line's own direction through the corner (not crossed).
-        Assert.Equal(new object[] { w.lines[5] }, Traverse(w, 234, 150, 150, 234, World.PT_ADDLINES).Visited.Select(v => v.What));
+        Assert.Equal([w.lines[5]], Traverse(w, 234, 150, 150, 234, World.PT_ADDLINES).Visited.Select(v => v.What));
         Assert.Empty(Traverse(w, 100, 100, 300, 300, World.PT_ADDLINES).Visited);
 
         // A steep trace beside the corner crosses it once.
-        Assert.Equal(new object[] { w.lines[5] }, Traverse(w, 180, 100, 200, 300, World.PT_ADDLINES).Visited.Select(v => v.What));
+        Assert.Equal([w.lines[5]], Traverse(w, 180, 100, 200, 300, World.PT_ADDLINES).Visited.Select(v => v.What));
     }
 
     [Fact]
@@ -540,10 +540,10 @@ public class MapUtlTests
     {
         World w = Grid();
         // Crossing L4, which lies on the boundary x = 448 (listed in columns 3 and 4): one intercept.
-        var (_, visited) = Traverse(w, 400, 200, 500, 200, World.PT_ADDLINES);
-        Assert.Equal(new object[] { w.lines[4] }, visited.Select(v => v.What));
+        (bool _, List<(object What, int Frac)>? visited) = Traverse(w, 400, 200, 500, 200, World.PT_ADDLINES);
+        Assert.Equal([w.lines[4]], visited.Select(v => v.What));
         AssertFrac(48.0 / 100, visited[0].Frac);
-        Assert.Equal(new object[] { w.lines[4] }, Traverse(w, 500, 200, 400, 200, World.PT_ADDLINES).Visited.Select(v => v.What));
+        Assert.Equal([w.lines[4]], Traverse(w, 500, 200, 400, 200, World.PT_ADDLINES).Visited.Select(v => v.What));
 
         // A start exactly on a block boundary moves one unit up or right ("don't side exactly on a line").
         Traverse(w, 192, 100, 300, 100, World.PT_ADDLINES);
@@ -555,12 +555,12 @@ public class MapUtlTests
 
         // Down the boundary x = 192 (x = 193 after the nudge) to the south wall: L5 just beside the corner, then L3.
         (_, visited) = Traverse(w, 192, 300, 192, -10, World.PT_ADDLINES);
-        Assert.Equal(new object[] { w.lines[5], w.lines[3] }, visited.Select(v => v.What));
+        Assert.Equal([w.lines[5], w.lines[3]], visited.Select(v => v.What));
         AssertFrac((300 - 193) / 310.0, visited[0].Frac);
 
         // A trace that ends on a corner of L4 crosses it (both ends of the line on different sides).
         (_, visited) = Traverse(w, 300, 300, 448, 320, World.PT_ADDLINES);
-        Assert.Equal(new object[] { w.lines[4] }, visited.Select(v => v.What));
+        Assert.Equal([w.lines[4]], visited.Select(v => v.What));
     }
 
     [Fact]
@@ -575,11 +575,11 @@ public class MapUtlTests
         // only looks at things whose centre is in a block the trace passes.
         Assert.Empty(Traverse(w, 186, 20, 186, 180, World.PT_ADDTHINGS).Visited);
         // The same trace in column 2 (x = 195) finds it, at the box's diagonal: y = 100 - (195 - 192) = 97 here.
-        var (_, visited) = Traverse(w, 195, 20, 195, 180, World.PT_ADDTHINGS);
-        Assert.Equal(new object[] { barrel }, visited.Select(v => v.What));
+        (bool _, List<(object What, int Frac)>? visited) = Traverse(w, 195, 20, 195, 180, World.PT_ADDTHINGS);
+        Assert.Equal([barrel], visited.Select(v => v.What));
         AssertFrac(77.0 / 160, visited[0].Frac);
         // A trace crossing from column 1 into 2 finds it.
-        Assert.Equal(new object[] { barrel }, Traverse(w, 150, 90, 250, 110, World.PT_ADDTHINGS).Visited.Select(v => v.What));
+        Assert.Equal([barrel], Traverse(w, 150, 90, 250, 110, World.PT_ADDTHINGS).Visited.Select(v => v.What));
     }
 
     [Fact]
@@ -590,8 +590,8 @@ public class MapUtlTests
         mobj_t first = w.P_SpawnMobj(F(100), F(100), World.ONFLOORZ, mobjtype_t.MT_BARREL);
         mobj_t second = w.P_SpawnMobj(F(100), F(100), World.ONFLOORZ, mobjtype_t.MT_BARREL);
         mobj_t near = w.P_SpawnMobj(F(40), F(100), World.ONFLOORZ, mobjtype_t.MT_BARREL);
-        var (_, visited) = Traverse(w, 10, 100, 180, 100, World.PT_ADDTHINGS);
-        Assert.Equal(new object[] { near, second, first }, visited.Select(v => v.What)); // the block list is newest first
+        (bool _, List<(object What, int Frac)>? visited) = Traverse(w, 10, 100, 180, 100, World.PT_ADDTHINGS);
+        Assert.Equal([near, second, first], visited.Select(v => v.What)); // the block list is newest first
         Assert.Equal(visited[1].Frac, visited[2].Frac);
     }
 
@@ -603,7 +603,7 @@ public class MapUtlTests
         var barrels = new List<mobj_t>();
         for (int i = 0; i < 150; i++)
             barrels.Add(w.P_SpawnMobj(F(20 + i * 3), F(100), World.ONFLOORZ, mobjtype_t.MT_BARREL));
-        var (result, visited) = Traverse(w, 10, 100, 500, 100, World.PT_ADDTHINGS);
+        (bool result, List<(object What, int Frac)>? visited) = Traverse(w, 10, 100, 500, 100, World.PT_ADDTHINGS);
         Assert.True(result);
         Assert.Equal(150, w.intercept_p);
         Assert.Equal(150 - World.MAXINTERCEPTS, w.interceptoverruns);
@@ -623,12 +623,12 @@ public class MapUtlTests
         World w = Grid();
         // Blocks off the map are empty, and the walk stops after 64 blocks. From inside the room westwards
         // 10000 units: the west wall L0 is in the first blocks, so it is found.
-        var (_, visited) = Traverse(w, 100, 100, -10000, 100, World.PT_ADDLINES);
-        Assert.Equal(new object[] { w.lines[0] }, visited.Select(v => v.What));
+        (bool _, List<(object What, int Frac)>? visited) = Traverse(w, 100, 100, -10000, 100, World.PT_ADDLINES);
+        Assert.Equal([w.lines[0]], visited.Select(v => v.What));
         // From 10000 units west into the room: the room's blocks are more than 64 blocks away, nothing is found.
         Assert.Empty(Traverse(w, -10000, 100, 100, 100, World.PT_ADDLINES).Visited);
         // From 7000 units west (55 blocks): the walk reaches the room.
-        Assert.Equal(new object[] { w.lines[0] }, Traverse(w, -7000, 100, 100, 100, World.PT_ADDLINES).Visited.Select(v => v.What));
+        Assert.Equal([w.lines[0]], Traverse(w, -7000, 100, 100, 100, World.PT_ADDLINES).Visited.Select(v => v.What));
     }
 
     // ---- DOOM1 E1M1 spot checks ----
@@ -658,19 +658,19 @@ public class MapUtlTests
                 continue;
             crossed.Add((ld, frac));
         }
-        return crossed.Select(c => c.Line).ToList();
+        return [.. crossed.Select(c => c.Line)];
     }
 
     [Fact]
     public void Doom1E1M1TracesMatchBruteForce()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         World w = Load(wad, "E1M1");
         mobj_t player = w.players[0].mo!;
 
         // Random traces: the traversal finds exactly the lines a brute force search over all lines finds.
         int mismatches = 0, traces = 0;
-        var rng = 12345u;
+        uint rng = 12345u;
         int Next(int range) { rng = rng * 1103515245 + 12345; return (int)((rng >> 8) % (uint)range); }
         for (int i = 0; i < 400; i++)
         {
@@ -695,14 +695,14 @@ public class MapUtlTests
         Assert.True(mismatches == 0, $"{mismatches} of {traces} traces missed lines");
 
         // The player at the start is found by a trace from just south through its centre.
-        var (_, visited) = Traverse(w, player.x >> 16, (player.y >> 16) - 100, player.x >> 16, (player.y >> 16) + 10, World.PT_ADDTHINGS);
+        (bool _, List<(object What, int Frac)>? visited) = Traverse(w, player.x >> 16, (player.y >> 16) - 100, player.x >> 16, (player.y >> 16) + 10, World.PT_ADDTHINGS);
         Assert.Contains(player, visited.Select(v => v.What));
     }
 
     [Fact]
     public void Doom1E1M1LineOpeningsAndBoxSides()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         World w = Load(wad, "E1M1");
         int twoSided = 0;
         foreach (line_t ld in w.lines)
@@ -730,16 +730,16 @@ public class MapUtlTests
         // Every thing's box (radius) against every line: P_BoxOnLineSide agrees with the corners' sides.
         foreach (mobj_t m in w.Mobjs())
         {
-            int[] box = { m.y + m.radius, m.y - m.radius, m.x - m.radius, m.x + m.radius };
+            int[] box = [m.y + m.radius, m.y - m.radius, m.x - m.radius, m.x + m.radius];
             foreach (line_t ld in w.lines.Where(l => l.slopetype is SlopeType.ST_POSITIVE or SlopeType.ST_NEGATIVE))
             {
                 int[] corners =
-                {
+                [
                     World.P_PointOnLineSide(box[BBox.BOXLEFT], box[BBox.BOXTOP], ld),
                     World.P_PointOnLineSide(box[BBox.BOXRIGHT], box[BBox.BOXTOP], ld),
                     World.P_PointOnLineSide(box[BBox.BOXLEFT], box[BBox.BOXBOTTOM], ld),
                     World.P_PointOnLineSide(box[BBox.BOXRIGHT], box[BBox.BOXBOTTOM], ld),
-                };
+                ];
                 int side = World.P_BoxOnLineSide(box, ld);
                 if (side >= 0)
                     Assert.All(corners, c => Assert.Equal(side, c));

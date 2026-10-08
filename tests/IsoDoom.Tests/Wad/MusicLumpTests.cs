@@ -16,7 +16,7 @@ namespace IsoDoom.Tests.Wad;
 /// </summary>
 public class MusicLumpTests
 {
-    private static WadArchive Synthetic() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static byte[] Lump(WadArchive wad, string name) => wad.W_CacheLumpName(name).ToArray();
 
@@ -26,7 +26,7 @@ public class MusicLumpTests
     public void ReadsTheSyntheticBank()
     {
         byte[] lump = Lump(Synthetic(), "GENMIDI");
-        Genmidi g = Genmidi.Read(lump);
+        var g = Genmidi.Read(lump);
         Assert.True(g.HasNames);
         Assert.Equal(175, g.Instruments.Count);
         Assert.Equal(128, g.main_instrs.Length);
@@ -84,12 +84,12 @@ public class MusicLumpTests
     public void ReadsABankWithoutAllItsNames()
     {
         byte[] lump = Lump(Synthetic(), "GENMIDI");
-        Genmidi none = Genmidi.Read(lump.AsSpan(0, Genmidi.NamesOffset)); // i_oplmusic.c never reads the names
+        var none = Genmidi.Read(lump.AsSpan(0, Genmidi.NamesOffset)); // i_oplmusic.c never reads the names
         Assert.False(none.HasNames);
         Assert.All(none.Instruments, i => Assert.Equal("", i.Name));
         Assert.EndsWith(", names missing", none.Summary);
 
-        Genmidi some = Genmidi.Read(lump.AsSpan(0, Genmidi.NamesOffset + 2 * Genmidi.NameSize + 5));
+        var some = Genmidi.Read(lump.AsSpan(0, Genmidi.NamesOffset + 2 * Genmidi.NameSize + 5));
         Assert.False(some.HasNames);
         Assert.Equal("Synthetic 1", some.Instruments[1].Name);
         Assert.Equal("Synth", some.Instruments[2].Name);
@@ -106,7 +106,7 @@ public class MusicLumpTests
             byte[] lump = new byte[random.Next(Genmidi.FullSize + 100)];
             random.NextBytes(lump);
             "#OPL_II#"u8[..Math.Min(8, lump.Length)].CopyTo(lump);
-            Genmidi? g = Genmidi.TryRead(lump, out string? error);
+            var g = Genmidi.TryRead(lump, out string? error);
             Assert.Equal(lump.Length < Genmidi.NamesOffset, g is null);
             Assert.Equal(g is null, error is not null);
         }
@@ -118,14 +118,14 @@ public class MusicLumpTests
     public void ReadsTheSyntheticSong()
     {
         byte[] lump = Lump(Synthetic(), "D_E1M1");
-        MusSong song = MusSong.Read(lump);
+        var song = MusSong.Read(lump);
         Assert.Equal(SyntheticIwad.SongEvents, song.Events.Count);
         Assert.Equal(SyntheticIwad.SongTics, song.LengthTics);
         Assert.Equal(SyntheticIwad.SongTics / 140.0, song.Seconds);
         Assert.Null(song.Mus2MidError);
         Assert.Equal(3, song.PrimaryChannels);
         Assert.Equal(0, song.SecondaryChannels);
-        Assert.Equal(new ushort[] { 3, 33, 80, 135, 138, 142 }, song.Instruments);
+        Assert.Equal([3, 33, 80, 135, 138, 142], song.Instruments);
         Assert.Equal(MusSong.HeaderSize + 12, song.ScoreStart);
         Assert.Equal(lump.Length - song.ScoreStart, song.ScoreLength);
         Assert.Equal(lump.Length - 1, song.ScoreEndOffset);
@@ -140,7 +140,7 @@ public class MusicLumpTests
         Assert.Equal(2, first.DataBytes);
 
         // A press with a volume, then one without (the channel's last volume), each 35 tics apart.
-        MusEvent[] lead = song.Events.Where(e => e.Type == MusEventType.PressKey && e.Channel == 1).ToArray();
+        MusEvent[] lead = [.. song.Events.Where(e => e.Type == MusEventType.PressKey && e.Channel == 1)];
         Assert.Equal((48 + 12, true, 110, 0L), (lead[0].Note, lead[0].HasVolume, lead[0].Volume, lead[0].Time));
         Assert.Equal((64, false, 0, 35L), (lead[1].Note, lead[1].HasVolume, lead[1].Volume, lead[1].Time));
         Assert.Equal(1, lead[1].DataBytes);
@@ -156,8 +156,8 @@ public class MusicLumpTests
         }
         Assert.Contains(song.Events, e => e.Delay == 200); // two delay bytes
 
-        MusEvent[] bends = song.Events.Where(e => e.Type == MusEventType.PitchWheel).ToArray();
-        Assert.Equal(new[] { 160, 192, 128 }, bends.Select(e => e.Bend));
+        MusEvent[] bends = [.. song.Events.Where(e => e.Type == MusEventType.PitchWheel)];
+        Assert.Equal([160, 192, 128], bends.Select(e => e.Bend));
         MusEvent system = song.Events.Single(e => e.Type == MusEventType.SystemEvent);
         Assert.Equal((1, 11, SyntheticIwad.SongTics - 35L), (system.Channel, system.Controller, system.Time));
         MusEvent end = song.Events[^1];
@@ -209,10 +209,10 @@ public class MusicLumpTests
             return lump;
         }
 
-        Assert.Null(MusSong.TryRead(Song(0x70, 0x60), out string? seven));
+        Assert.Null(MusSong.TryRead(Song("p`"u8.ToArray()), out string? seven));
         Assert.Equal($"event type 7 (undefined) at byte {MusSong.HeaderSize}", seven);
 
-        MusSong measure = MusSong.Read(Song(0xD0, 10, 0x60)); // a measure end (type 5) with a delay of 10
+        var measure = MusSong.Read(Song(0xD0, 10, 0x60)); // a measure end (type 5) with a delay of 10
         Assert.Equal((MusEventType.MeasureEnd, 0, 10L), (measure.Events[0].Type, measure.Events[0].DataBytes, measure.LengthTics));
         Assert.Equal("a measure end (type 5) at byte 16", measure.Mus2MidError);
         Assert.EndsWith("mus2mid.c refuses it: a measure end (type 5) at byte 16", measure.Summary);
@@ -223,13 +223,13 @@ public class MusicLumpTests
         Assert.Null(MusSong.Read(Song(0x40, 9, 200, 0x60)).Mus2MidError); // mus2mid.c clamps the value
 
         // The score end stops the reading whatever follows; flagged, no delay is read.
-        MusSong flagged = MusSong.Read(Song(0x10, 60, 0xE0));
+        var flagged = MusSong.Read(Song(0x10, 60, 0xE0));
         Assert.Equal(2, flagged.Events.Count);
         Assert.Equal(0, flagged.LengthTics);
         Assert.Equal(1, flagged.ChannelsUsed);
 
         // A delay of four bytes (as mus2mid.c: 7 bits a byte, big-endian).
-        MusSong longDelay = MusSong.Read(Song(0x80, 60, 0x81, 0x80, 0x80, 0x00, 0x60));
+        var longDelay = MusSong.Read(Song(0x80, 60, 0x81, 0x80, 0x80, 0x00, 0x60));
         Assert.Equal(1L << 21, longDelay.LengthTics);
         Assert.Null(MusSong.TryRead(Song(0x80, 60, 0x81, 0x80), out string? cutDelay));
         Assert.Contains("delay", cutDelay);
@@ -250,7 +250,7 @@ public class MusicLumpTests
                 BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(6), 16); // a score start in the lump
                 BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(12), 0);
             }
-            MusSong? song = MusSong.TryRead(lump, out string? error);
+            var song = MusSong.TryRead(lump, out string? error);
             Assert.Equal(song is null, error is not null);
             if (song is not null)
             {
@@ -267,7 +267,7 @@ public class MusicLumpTests
     public void LumpListShowsTheBankAndSongs()
     {
         WadArchive wad = Synthetic();
-        var lumps = LumpDirectory.Build(wad);
+        IReadOnlyList<LumpEntry> lumps = LumpDirectory.Build(wad);
         LumpEntry genmidi = lumps.Single(e => e.Lump.Name == "GENMIDI");
         Assert.Equal((LumpKind.Instruments, Genmidi.Read(genmidi.Lump.Data.Span).Summary), (genmidi.Kind, genmidi.Detail));
         LumpEntry song = lumps.Single(e => e.Lump.Name == "D_E1M1");
@@ -279,27 +279,27 @@ public class MusicLumpTests
 
     // DOOM1.WAD v1.9's songs: events (the score end included) and length in tics.
     private static readonly (string Name, int Events, long Tics)[] Doom1Songs =
-    {
+    [
         ("D_E1M1", 5826, 13440), ("D_E1M2", 10847, 21751), ("D_E1M3", 7507, 38080), ("D_E1M4", 6270, 23893),
         ("D_E1M5", 3270, 22960), ("D_E1M6", 3332, 11760), ("D_E1M7", 2835, 21120), ("D_E1M8", 18113, 21280),
         ("D_E1M9", 7766, 19231), ("D_INTER", 9884, 28191), ("D_INTRO", 498, 960), ("D_VICTOR", 4532, 26880),
         ("D_INTROA", 214, 960),
-    };
+    ];
 
     [Fact]
     public void ReadsEverySharewareSongAndTheBank()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         Assert.Equal(Doom1Songs.Select(s => s.Name), wad.Lumps.Where(l => l.Name.StartsWith("D_", StringComparison.Ordinal)).Select(l => l.Name));
         foreach ((string name, int events, long tics) in Doom1Songs)
         {
-            MusSong song = MusSong.Read(wad.W_CacheLumpName(name).Span, name);
+            var song = MusSong.Read(wad.W_CacheLumpName(name).Span, name);
             Assert.Equal((name, events, tics), (name, song.Events.Count, song.LengthTics));
             CheckSong(name, song);
         }
         Assert.Equal("0-2, 15", MusSong.Read(wad.W_CacheLumpName("D_E1M1").Span).ChannelList());
 
-        Genmidi g = Genmidi.Read(wad.W_CacheLumpName("GENMIDI").Span);
+        var g = Genmidi.Read(wad.W_CacheLumpName("GENMIDI").Span);
         Assert.True(g.HasNames);
         Assert.Equal("Acoustic Grand Piano", g.Instruments[0].Name);
         Assert.Equal((33, 46), (g.Instruments.Count(i => i.IsTwoVoice), g.Instruments.Count(i => i.IsFixed)));
@@ -309,12 +309,12 @@ public class MusicLumpTests
     [Fact]
     public void ReadsEveryDoom2SongAndTheBank()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
-        WadLump[] songs = wad.Lumps.Where(l => l.Name.StartsWith("D_", StringComparison.Ordinal)).ToArray();
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
+        WadLump[] songs = [.. wad.Lumps.Where(l => l.Name.StartsWith("D_", StringComparison.Ordinal))];
         Assert.True(songs.Length >= 35, $"{songs.Length} songs");
         foreach (WadLump l in songs)
         {
-            MusSong? song = MusSong.TryRead(l.Data.Span, out string? error);
+            var song = MusSong.TryRead(l.Data.Span, out string? error);
             Assert.True(song is not null, $"{l.Name}: {error}");
             CheckSong(l.Name, song!);
         }

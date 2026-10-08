@@ -15,7 +15,7 @@ public class Doom1GraphicsTests
     [Fact]
     public void Playpal()
     {
-        Playpal pal = IsoDoom.Wad.Graphics.Playpal.Load(OpenDoom1());
+        var pal = IsoDoom.Wad.Graphics.Playpal.Load(OpenDoom1());
         Assert.Equal(14, pal.Count);
         Assert.Equal(((byte)0, (byte)0, (byte)0), pal.GetColor(0, 0));
         Assert.Equal(((byte)255, (byte)255, (byte)255), pal.GetColor(0, 4));
@@ -28,7 +28,7 @@ public class Doom1GraphicsTests
     [Fact]
     public void Colormap()
     {
-        Colormap cm = IsoDoom.Wad.Graphics.Colormap.Load(OpenDoom1());
+        var cm = IsoDoom.Wad.Graphics.Colormap.Load(OpenDoom1());
         Assert.Equal(34, cm.Count);
         Assert.Equal(Enumerable.Range(0, 8).Select(i => (byte)i), cm.GetMap(0)[..8].ToArray());
         Assert.Equal(0, cm.GetMap(31)[176]);  // darkest light map: red goes black
@@ -84,8 +84,8 @@ public class Doom1GraphicsTests
         string dir = Path.Combine(TestWads.RepoRoot!, "TestResults", "graphics");
         Directory.CreateDirectory(dir);
 
-        Playpal pal = IsoDoom.Wad.Graphics.Playpal.Load(wad);
-        Colormap cm = IsoDoom.Wad.Graphics.Colormap.Load(wad);
+        var pal = IsoDoom.Wad.Graphics.Playpal.Load(wad);
+        var cm = IsoDoom.Wad.Graphics.Colormap.Load(wad);
 
         void Write(string file, IndexedImage img, int scale = 1, int map = -1)
         {

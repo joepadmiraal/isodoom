@@ -26,7 +26,7 @@ public class TeleportTests
 
     private static World Specials()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M2"));
         return world;
@@ -36,7 +36,7 @@ public class TeleportTests
 
     private static mobj_t Destination(World world) => world.Mobjs().Single(m => m.type == mobjtype_t.MT_TELEPORTMAN);
 
-    private static mobj_t[] Fogs(World world) => world.Mobjs().Where(m => m.type == mobjtype_t.MT_TFOG).ToArray();
+    private static mobj_t[] Fogs(World world) => [.. world.Mobjs().Where(m => m.type == mobjtype_t.MT_TFOG)];
 
     /// <summary>Walks the player east from room T (x = 360) until it leaves the room or <paramref name="tics"/> pass; returns the tics run.</summary>
     private static int WalkEast(World world, int forward = 25, int tics = 40)
@@ -90,7 +90,7 @@ public class TeleportTests
         // (finecosine[0] is 65535, finesine[0] 25: vanilla's table, sampled half a step in)
         Assert.Equal((F(64) + 20 * Tables.finecosine[0], F(196) + 20 * Tables.finesine[0], 0), (fogs[1].x, fogs[1].y, fogs[1].z));
         Assert.All(fogs, f => Assert.False(f.interp));
-        Assert.Equal(new[] { (sfxenum_t.sfx_telept, fogs[0]), (sfxenum_t.sfx_telept, fogs[1]) },
+        Assert.Equal([(sfxenum_t.sfx_telept, fogs[0]), (sfxenum_t.sfx_telept, fogs[1])],
             world.StartedSounds().Select(s => (s.sfx, s.origin!)));
         // WR: the line keeps its special.
         Assert.Equal(97, world.lines[Line].special);

@@ -31,7 +31,7 @@ public class WipeTests
     // ---- against vanilla ----
 
     /// <summary>The routes <c>wipes.sh</c> dumps by default.</summary>
-    public static readonly string[] Routes = { "e1m1-exit", "e1m3-secret-exit", "e1m8-exit", "e1m8-death" };
+    public static readonly string[] Routes = ["e1m1-exit", "e1m3-secret-exit", "e1m8-exit", "e1m8-death"];
 
     public static TheoryData<string> Dumps()
     {
@@ -90,7 +90,7 @@ public class WipeTests
     [MemberData(nameof(Dumps))]
     public void MatchesVanilla(string name)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         TestWads.RequireDoom1();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
@@ -98,10 +98,10 @@ public class WipeTests
         string path = Path.Combine(dir, $"{name}.wipe");
         if (!File.Exists(path))
             Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/wipes.sh (or set {VanillaRoute.DumpDirEnvVar}).");
-        string[] expected = File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+        string[] expected = [.. File.ReadAllLines(path).Where(l => l.Length > 0)];
         string[] tail = expected[0].Split(' ');
         Assert.Equal("tail", tail[0]);
-        HashSet<int> presses = tail[1] == "-" ? new() : tail[1].Split(',').Select(int.Parse).ToHashSet();
+        HashSet<int> presses = tail[1] == "-" ? [] : [.. tail[1].Split(',').Select(int.Parse)];
         var cmds = new List<ticcmd_t>(route.Cmds);
         for (int t = 1; t <= int.Parse(tail[2]); t++)
             cmds.Add(new ticcmd_t { buttons = presses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
@@ -113,7 +113,7 @@ public class WipeTests
         var g = new ScreenGraphics(wad, new HuStuff(wad));
         var shown = new HudScreen(0, HudScreen.SCREENHEIGHT);
         var now = new HudScreen(0, HudScreen.SCREENHEIGHT);
-        var frame = new byte[HudScreen.SCREENWIDTH * HudScreen.SCREENHEIGHT];
+        byte[] frame = new byte[HudScreen.SCREENWIDTH * HudScreen.SCREENHEIGHT];
         var actual = new List<string>();
         bool shownFull = false, nowFull = false;
         int fullWipes = 0, fullSteps = 0;
@@ -143,7 +143,7 @@ public class WipeTests
                 bool full = shownFull && nowFull;
                 for (int step = 0; flow.Wipe.go; step++)
                 {
-                    string[] melt = line + actual.Count < expected.Length ? expected[line + actual.Count].Split(' ') : new[] { "melt", "1" };
+                    string[] melt = line + actual.Count < expected.Length ? expected[line + actual.Count].Split(' ') : ["melt", "1"];
                     bool done = flow.Wipe.wipe_ScreenWipe(melt[0] == "melt" ? int.Parse(melt[1]) : 1);
                     string hash = "-";
                     if (full)
@@ -201,7 +201,7 @@ public class WipeTests
         var mrandom = new DoomRandom { rndindex = 2 }; // a new game's first two tics (the status bar's draws)
         wipe.wipe_initMelt(mrandom);
         Assert.Equal((2 + 320) & 0xff, mrandom.rndindex); // 320 draws
-        Assert.Equal(new[] { -12, -13, -13, -12, -11, -12 }, wipe.y.Take(6)); // vanilla's first wipe after a new game's first tics
+        Assert.Equal([-12, -13, -13, -12, -11, -12], wipe.y.Take(6)); // vanilla's first wipe after a new game's first tics
         for (int i = 0; i < wipe.y.Length; i++)
         {
             Assert.InRange(wipe.y[i], -15, 0);

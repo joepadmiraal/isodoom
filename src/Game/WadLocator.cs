@@ -54,9 +54,9 @@ public static class WadLocator
             ? ProjectSettings.GlobalizePath("res://")
             : Path.GetDirectoryName(OS.GetExecutablePath());
         if (string.IsNullOrEmpty(root))
-            return Array.Empty<string>();
+            return [];
         root = root.TrimEnd('/', '\\');
-        return new[] { root, Path.Combine(root, "wads") };
+        return [root, Path.Combine(root, "wads")];
     }
 
     /// <summary>

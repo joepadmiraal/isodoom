@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -80,7 +79,7 @@ public static class DeterminismScanner
             if (include is null || include(type))
                 ScanType(type, violations);
         }
-        return violations.ToList();
+        return [.. violations];
     }
 
     private static IEnumerable<TypeDefinition> AllTypes(ModuleDefinition module)

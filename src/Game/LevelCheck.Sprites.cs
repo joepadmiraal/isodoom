@@ -6,6 +6,7 @@ using Godot;
 using IsoDoom.Map;
 using IsoDoom.Render;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Game;
@@ -79,7 +80,7 @@ public partial class LevelCheck
             if (atlas.Lumps[slot] < 0)
                 continue;
             lumps++;
-            var l = _scene.Wad!.Lumps[atlas.Lumps[slot]];
+            WadLump l = _scene.Wad!.Lumps[atlas.Lumps[slot]];
             IndexedImage expected = Patch.Decode(l.Data.Span, l.Name);
             AtlasRect r = atlas.Atlas.Rects[slot];
             if (atlas.InfoTexel(2 * slot) != new Color(r.X, r.Y, r.Width, r.Height)
@@ -137,8 +138,7 @@ public partial class LevelCheck
             return;
         }
         // T5.6: without the MF_NOSECTOR things (teleport destinations), which vanilla never draws.
-        SpawnedThing[] expected = SpawnedThings.Build(m.Level, MapThingSpawning.SpawnList(m.Level.Things, new SpawnSettings(_scene.GameMode, _scene.Skill)))
-            .Where(t => (Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_NOSECTOR) == 0).ToArray();
+        SpawnedThing[] expected = [.. SpawnedThings.Build(m.Level, MapThingSpawning.SpawnList(m.Level.Things, new SpawnSettings(_scene.GameMode, _scene.Skill))).Where(t => (Info.mobjinfo[(int)t.Spawn.Type].flags & mobjflag_t.MF_NOSECTOR) == 0)];
         // T4.7: the billboards are the world's mobjs but the player's, in
         // thinker order: the spawn list in THINGS order, plus voodoo dolls
         // (MT_PLAYER mobjs of extra player 1 starts), which T3.2's list leaves out.
@@ -247,7 +247,7 @@ public partial class LevelCheck
         if (_scene.World is not { } world || _scene.PlayerMobj is not { } me || _scene.Things is not { } things)
             return; // CheckThings failed already
         _loopMaps++;
-        var cmd = _scene.Tweaks.AbsoluteAiming
+        ticcmd_t cmd = _scene.Tweaks.AbsoluteAiming
             ? new ticcmd_t { forwardmove = 50, angleturn = Ticcmds.AbsoluteAngle(Tables.ANG90) }
             : new ticcmd_t { forwardmove = 50 };
         for (int t = 0; t < GameLoopTics; t++)
@@ -345,7 +345,7 @@ public partial class LevelCheck
             if (m.Palette != palette || m.ColormapOverride != colormap)
                 Fail($"{map}: {what}: drawn with palette {m.Palette} and colormap override {m.ColormapOverride}, expected {palette} and {colormap}");
             (byte r, byte g, byte b) = Playpal.GetColor(palette, 0);
-            Color zero = Color.Color8(r, g, b);
+            var zero = Color.Color8(r, g, b);
             if (tintsVoid && !_scene.Environment.BackgroundColor.IsEqualApprox(zero))
                 Fail($"{map}: {what}: the void is {_scene.Environment.BackgroundColor.ToHtml(false)}, expected palette {palette}'s colour 0 {zero.ToHtml(false)}");
             if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(zero.SrgbToLinear()))
@@ -511,7 +511,7 @@ public partial class LevelCheck
                 Fail($"{map}: line {line.Index}'s teleport: interp {me.interp}, camera snap {_scene.SnapPending}, angle {me.angle} (destination {dest.angle}), z {me.z} (floor {me.floorz}), reactiontime {me.reactiontime}");
             _scene.SetTicFraction(0);
             _scene.PresentWorld();
-            List<mobj_t> fogs = _scene.DrawnMobjs.Where(mo => mo.type == mobjtype_t.MT_TFOG).ToList();
+            List<mobj_t> fogs = [.. _scene.DrawnMobjs.Where(mo => mo.type == mobjtype_t.MT_TFOG)];
             int an = (int)(dest.angle >> Tables.ANGLETOFINESHIFT);
             (int X, int Y) front = (dest.x + 20 * Tables.finecosine[an], dest.y + 20 * Tables.finesine[an]);
             if (fogs.Count < 2 || fogs.Any(f => f.interp)
@@ -574,8 +574,7 @@ public partial class LevelCheck
         things.Visible = true;
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = false;
+            chunk?.Visible = false;
         }
 
         // Horizontal, along the game camera's yaw: its rotations, the sprites seen straight on.
@@ -665,8 +664,7 @@ public partial class LevelCheck
 
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = true;
+            chunk?.Visible = true;
         }
         await CheckRowsBelowOrigin(m, things, atlas);
         await CheckTiltDepth(m, things, atlas);
@@ -874,9 +872,9 @@ public partial class LevelCheck
         IndexedImage patch = atlas.Images[shown.Slot];
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
         Ortho(basis, e.MapPosition + toCamera * back, 1, 2 * back);
-        things.IsolateSet(new[] { j });
+        things.IsolateSet([j]);
         byte[]? before = await Capture($"{what}: thing {j} alone");
-        things.IsolateSet(new[] { i, j });
+        things.IsolateSet([i, j]);
         byte[]? frame = await Capture(what);
         things.Isolate(null);
         if (before is null || frame is null)
@@ -959,7 +957,7 @@ public partial class LevelCheck
         string map = m.Level.Name;
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
         var right = new Vector2(ground.Y, -ground.X);
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
         int chosen = -1;
@@ -1017,14 +1015,12 @@ public partial class LevelCheck
         byte[]? withLevel = await Capture(what);
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = false;
+            chunk?.Visible = false;
         }
         byte[]? alone = await Capture($"{what}, alone");
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = true;
+            chunk?.Visible = true;
         }
         if (withLevel is null || alone is null)
             return;
@@ -1072,7 +1068,7 @@ public partial class LevelCheck
         double pitch = Mathf.DegToRad(IsoCamera.DefaultPitch);
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
         var right = new Vector2(ground.Y, -ground.X);
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
 
@@ -1129,15 +1125,13 @@ public partial class LevelCheck
         byte[]? tilted = await Capture($"{what}, tilted depth");
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = false;
+            chunk?.Visible = false;
         }
         m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = 0 });
         byte[]? alone = await Capture($"{what}, alone");
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = true;
+            chunk?.Visible = true;
         }
         m.SetSprites(settings);
         things.SetEntry(thing, original);
@@ -1248,9 +1242,9 @@ public partial class LevelCheck
         double tan = Math.Tan(pitch), cos = Math.Cos(pitch);
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
         Vector3 screenRight = Cutaway.ToMapAxes(basis.X);
-        var right = new Vector2(screenRight.X, screenRight.Y).Normalized();
+        Vector2 right = new Vector2(screenRight.X, screenRight.Y).Normalized();
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
         SpriteSettings settings = m.Sprites;
         SpriteSettings With(SpriteHidden hidden) => settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = SpriteSettings.DefaultWallPull, Hidden = hidden };
@@ -1407,10 +1401,10 @@ public partial class LevelCheck
         string map = m.Level.Name;
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
         // The screen's right (the sprite's +x), horizontal.
         Vector3 screenRight = Cutaway.ToMapAxes(basis.X);
-        var right = new Vector2(screenRight.X, screenRight.Y).Normalized();
+        Vector2 right = new Vector2(screenRight.X, screenRight.Y).Normalized();
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
         const float pull = SpriteSettings.DefaultWallPull;
 
@@ -1467,7 +1461,7 @@ public partial class LevelCheck
             ("against a wall behind it", wall.Spot, false, new[] { ("no pull", Pulled(0), original.Radius, false), ("radius 0", Pulled(pull), 0f, false) }),
             ("behind a wall", behindSpot, true, new[] { ("radius 64", Pulled(pull), 64f, true), ("a 64-unit pull and radius", Pulled(64), 64f, false) }),
         };
-        foreach ((string label, Vector2 at, bool behind, var others) in views)
+        foreach ((string label, Vector2 at, bool behind, (string Name, SpriteSettings Sprites, float Radius, bool Same)[]? others) in views)
         {
             ThingSprites.Entry moved = original with { MapPosition = new Vector3(at.X, at.Y, wall.Sector.FloorHeight / 65536f), Sector = wall.Sector.Index };
             things.SetEntry(thing, moved);
@@ -1491,14 +1485,12 @@ public partial class LevelCheck
             things.Visible = true;
             foreach (MeshInstance3D? chunk in _scene.Chunks)
             {
-                if (chunk is not null)
-                    chunk.Visible = false;
+                chunk?.Visible = false;
             }
             byte[]? alone = await Capture($"{what}, alone");
             foreach (MeshInstance3D? chunk in _scene.Chunks)
             {
-                if (chunk is not null)
-                    chunk.Visible = true;
+                chunk?.Visible = true;
             }
             m.SetSprites(settings);
             if (pulled is null || level is null || alone is null || otherFrames.Contains(null))
@@ -1507,7 +1499,7 @@ public partial class LevelCheck
             // inside its edges) must stay as without the thing (whatever is in front of the wall is in front of the thing too).
             byte[] want = behind ? level : alone;
             int drawn = 0, bad = 0;
-            var badOthers = new int[others.Length];
+            int[] badOthers = new int[others.Length];
             Vector2I size = ViewSize();
             Camera3D cam = _scene.Camera;
             var wallA = new Vector3(wall.Line.V1.X / 65536f, wall.Line.V1.Y / 65536f, wall.Sector.FloorHeight / 65536f);

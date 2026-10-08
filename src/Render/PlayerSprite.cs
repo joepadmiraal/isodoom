@@ -56,7 +56,7 @@ public partial class PlayerSprite : Node3D
 
     public PlayerSprite()
     {
-        _sprite.SetEntries(new[] { _entry });
+        _sprite.SetEntries([_entry]);
     }
 
     public override void _Ready() => AddChild(_sprite);

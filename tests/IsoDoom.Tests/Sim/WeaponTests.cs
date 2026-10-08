@@ -43,7 +43,7 @@ public class WeaponTests
 
     private static World Load(TestMap map, GameMode mode = GameMode.shareware)
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(map.Build(), "testmap.wad") });
+        var wad = new WadArchive([WadFile.FromBytes(map.Build(), "testmap.wad")]);
         var world = new World(new SpawnSettings(mode, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         return world;

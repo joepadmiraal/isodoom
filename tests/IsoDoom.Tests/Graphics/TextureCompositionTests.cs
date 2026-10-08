@@ -25,7 +25,7 @@ public class TextureCompositionTests
 
     internal static byte[] BuildTextureLump(params Tex[] textures)
     {
-        List<byte> body = new();
+        List<byte> body = [];
         int dirSize = 4 + 4 * textures.Length;
         byte[] dir = new byte[dirSize];
         BinaryPrimitives.WriteInt32LittleEndian(dir, textures.Length);
@@ -93,7 +93,7 @@ public class TextureCompositionTests
             BuildTextureLump(new Tex("GRATE", 8, 8, false, (0, 0, 0))),
             ("PA", Solid(4, 4, 10)), ("PB", Solid(4, 4, 20)));
 
-        Assert.Equal(new[] { "PA", "MISSING", "PB" }, t.PatchNames);  // an unused missing patch is fine
+        Assert.Equal(["PA", "MISSING", "PB"], t.PatchNames);  // an unused missing patch is fine
         Assert.Equal(3, t.NumTextures);
         TextureDef grate = t.TextureDefs[1];
         Assert.Equal(("GRATE", 4, 2, true), (grate.Name, grate.Width, grate.Height, grate.Masked));
@@ -108,7 +108,7 @@ public class TextureCompositionTests
     [Fact]
     public void MissingPatchInATextureIsAnError()
     {
-        var ex = Assert.Throws<WadFormatException>(() => Load(
+        WadFormatException ex = Assert.Throws<WadFormatException>(() => Load(
             BuildPNames("PA", "MISSING"),
             BuildTextureLump(new Tex("T", 4, 4, false, (0, 0, 1))),
             null, ("PA", Solid(4, 4, 10))));

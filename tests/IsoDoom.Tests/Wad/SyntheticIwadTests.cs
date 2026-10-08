@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
@@ -13,7 +14,7 @@ namespace IsoDoom.Tests.Wad;
 /// </summary>
 public class SyntheticIwadTests
 {
-    private static WadArchive Open() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Open() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     [Fact]
     public void LoadsAsSharewareWithEveryLumpKindAndCategory()
@@ -33,9 +34,9 @@ public class SyntheticIwadTests
     [Fact]
     public void TexturesCoverSingleMultiPatchMaskedAndShortTextures()
     {
-        GraphicsCatalog catalog = GraphicsCatalog.Load(Open());
+        var catalog = GraphicsCatalog.Load(Open());
         Textures t = catalog.Textures;
-        Assert.Equal(new[] { "NULLTEX", "BRICK1", "BRKPNL", "GRATE", "PANEL", "WINFRAME", "SW1BRCOM", "SW2BRCOM", "SLADRIP1", "SLADRIP2", "SLADRIP3" }, t.TextureDefs.Select(d => d.Name));
+        Assert.Equal(["NULLTEX", "BRICK1", "BRKPNL", "GRATE", "PANEL", "WINFRAME", "SW1BRCOM", "SW2BRCOM", "SLADRIP1", "SLADRIP2", "SLADRIP3"], t.TextureDefs.Select(d => d.Name));
         Assert.Equal(5, t.TextureDefs[t.R_TextureNumForName("BRKPNL")].Patches.Count);
         Assert.True(t.TextureDefs[t.R_TextureNumForName("GRATE")].Masked);
         Assert.Equal(72, t.TextureDefs[t.R_TextureNumForName("PANEL")].Height);
@@ -50,10 +51,10 @@ public class SyntheticIwadTests
     public void SpritesHaveMirroredRotationsAndRotationZeroFrames()
     {
         WadArchive wad = Open();
-        Sprites s = Sprites.R_InitSprites(wad);
+        var s = Sprites.R_InitSprites(wad);
         SpriteFrame a = s.Find("TROO")!.Frames.Single();
         Assert.True(a.Rotate);
-        Assert.Equal(new[] { false, false, false, false, false, true, true, true }, a.Flip);
+        Assert.Equal([false, false, false, false, false, true, true, true], a.Flip);
         Assert.Equal("TROOA2A8", wad.Lumps[a.Lump[7]].Name);
         SpriteDef bar1 = s.Find("BAR1")!;
         Assert.Equal(2, bar1.NumFrames);
@@ -64,9 +65,9 @@ public class SyntheticIwadTests
     public void LumpListHasAnOverriddenPatchAndAnUnusedSpriteLump()
     {
         WadArchive wad = Open();
-        GraphicsCatalog catalog = GraphicsCatalog.Load(wad);
-        var lumps = LumpDirectory.Build(wad);
-        LumpEntry[] wallpnl = lumps.Where(e => e.Lump.Name == "WALLPNL").ToArray();
+        var catalog = GraphicsCatalog.Load(wad);
+        IReadOnlyList<LumpEntry> lumps = LumpDirectory.Build(wad);
+        LumpEntry[] wallpnl = [.. lumps.Where(e => e.Lump.Name == "WALLPNL")];
         Assert.Equal(2, wallpnl.Length);
         Assert.True(wallpnl[0].IsOverridden);
         Assert.False(wallpnl[1].IsOverridden);
@@ -86,7 +87,7 @@ public class SyntheticIwadTests
         for (int p = 0; p < playpal.Count; p++)
         {
             for (int i = 0; i < 256; i++)
-                Assert.NotEqual(255, playpal.GetColor(p, i).Item1);
+                Assert.NotEqual(255, playpal.GetColor(p, i).R);
         }
     }
 }

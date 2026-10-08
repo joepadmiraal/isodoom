@@ -194,7 +194,7 @@ public class SightSoundTests
         return map.Load();
     }
 
-    private static int[] Traversed(World world) => world.sectors.Select(s => s.soundtraversed).ToArray();
+    private static int[] Traversed(World world) => [.. world.sectors.Select(s => s.soundtraversed)];
 
     [Fact]
     public void SoundCrossesOneSoundBlockingLineButNotTwo()
@@ -205,7 +205,7 @@ public class SightSoundTests
 
         // rooms 0, 1 directly; 2 and 3 after one blocking line; room 4 would be the second
         Assert.Equal(new[] { 1, 1, 2, 2, 0 }, Traversed(world));
-        Assert.Equal(new mobj_t?[] { player, player, player, player, null }, world.sectors.Select(s => s.soundtarget).ToArray());
+        Assert.Equal([player, player, player, player, null], world.sectors.Select(s => s.soundtarget).ToArray());
     }
 
     [Fact]

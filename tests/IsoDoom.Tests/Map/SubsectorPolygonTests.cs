@@ -55,7 +55,7 @@ public class SubsectorPolygonTests
     }
 
     private static Level LoadSynthetic() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1");
 
     private static PolygonVertex V(int x, int y) => new(x << FRACBITS, y << FRACBITS);
 
@@ -63,12 +63,12 @@ public class SubsectorPolygonTests
     public void SyntheticMapPolygonsAreTheRoomsAndHalves()
     {
         Level map = LoadSynthetic();
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
+        var polys = SubsectorPolygons.Build(map);
         PolygonChecks.CheckShapes(map, polys);
 
         // West room 256×256; east room split at y = 0 (a partition with no linedef on it);
         // the strip east of x = 448: room C 128×256, door D 16×256, courtyard A 256×256, ledge B 128×256.
-        double[] areas = polys.Polygons.Select(PolygonChecks.PolygonArea).ToArray();
+        double[] areas = [.. polys.Polygons.Select(PolygonChecks.PolygonArea)];
         Assert.Equal(new double[] { 256 * 256, 256 * 128, 256 * 128, 128 * 256, 16 * 256, 256 * 256, 128 * 256 }, areas);
         Assert.Equal(PolygonChecks.SectorAreasFromLines(map), PolygonChecks.SectorAreasFromPolygons(map, polys));
         Assert.Equal(new[] { 256.0 * 256, 256.0 * 256, 128.0 * 256, 16.0 * 256, 256.0 * 256, 128.0 * 256 }, PolygonChecks.SectorAreasFromLines(map));
@@ -118,8 +118,8 @@ public class SubsectorPolygonTests
     /// </summary>
     private static (PolygonChecks.Coverage, List<PolygonChecks.AreaMismatch>) CheckMap(WadArchive wad, string name, string prefix, double step)
     {
-        Level map = Level.Load(wad, name);
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
+        var map = Level.Load(wad, name);
+        var polys = SubsectorPolygons.Build(map);
         PolygonChecks.CheckShapes(map, polys);
         PolygonChecks.CheckCentroidsInBsp(map, polys);
 

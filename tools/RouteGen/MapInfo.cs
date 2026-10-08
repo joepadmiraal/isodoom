@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
@@ -47,7 +48,7 @@ public static class MapInfo
                 var ls = w.lines.Where(l => l.frontsector == s || l.backsector == s).ToList();
                 int x0 = ls.Min(l => Math.Min(l.v1.X, l.v2.X)) >> 16, x1 = ls.Max(l => Math.Max(l.v1.X, l.v2.X)) >> 16;
                 int y0 = ls.Min(l => Math.Min(l.v1.Y, l.v2.Y)) >> 16, y1 = ls.Max(l => Math.Max(l.v1.Y, l.v2.Y)) >> 16;
-                var nb = ls.Select(l => l.frontsector == s ? l.backsector : l.frontsector).Where(n => n != null).Select(n => $"{n!.Index}({n.floorheight >> 16}/{n.ceilingheight >> 16})").Distinct();
+                IEnumerable<string> nb = ls.Select(l => l.frontsector == s ? l.backsector : l.frontsector).Where(n => n != null).Select(n => $"{n!.Index}({n.floorheight >> 16}/{n.ceilingheight >> 16})").Distinct();
                 foreach (line_t l in ls)
                     Console.WriteLine($"  line {l.Index}: ({l.v1.X >> 16},{l.v1.Y >> 16})-({l.v2.X >> 16},{l.v2.Y >> 16}) front {l.frontsector?.Index} back {l.backsector?.Index} special {l.special}");
                 Console.WriteLine($"sector {i}: floor {s.floorheight >> 16} ceil {s.ceilingheight >> 16} special {s.special} tag {s.tag} box ({x0},{y0})-({x1},{y1}) next {string.Join(" ", nb)}");

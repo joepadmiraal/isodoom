@@ -221,10 +221,10 @@ public sealed class FloorTriangles
         }
 
         var rings = new PolygonVertex[n][];
-        var sectorOf = new int[n];
+        int[] sectorOf = new int[n];
         var perSector = new List<int>[level.Sectors.Length];
         for (int i = 0; i < perSector.Length; i++)
-            perSector[i] = new List<int>();
+            perSector[i] = [];
 
         for (int i = 0; i < n; i++)
         {
@@ -233,7 +233,7 @@ public sealed class FloorTriangles
             Sector? sector = polygon.Length == 0 ? null : floorSector is null ? ss.Sector : floorSector(ss);
             if (sector is null)
             {
-                rings[i] = Array.Empty<PolygonVertex>();
+                rings[i] = [];
                 sectorOf[i] = -1;
                 continue;
             }
@@ -268,7 +268,7 @@ public sealed class FloorTriangles
                     indices.Add(vi);
                 }
             }
-            bySector[s] = new SectorFloor(s, perSector[s].ToArray(), vertices.ToArray(), indices.ToArray());
+            bySector[s] = new SectorFloor(s, [.. perSector[s]], [.. vertices], [.. indices]);
         }
         var segChains = new PolygonVertex[level.Segs.Length][];
         for (int i = 0; i < n; i++)
@@ -292,11 +292,11 @@ public sealed class FloorTriangles
                     AddBetween(chain, grid, end, a);
                     chain.Add(a);
                 }
-                segChains[segIndex] = chain.ToArray();
+                segChains[segIndex] = [.. chain];
             }
         }
         for (int i = 0; i < segChains.Length; i++)
-            segChains[i] ??= Array.Empty<PolygonVertex>();
+            segChains[i] ??= [];
         return new FloorTriangles(rings, bySector, sectorOf, segChains);
     }
 
@@ -417,7 +417,7 @@ public sealed class FloorTriangles
     {
         int i0 = Array.IndexOf(ring, start), i1 = Array.IndexOf(ring, end);
         if (i0 < 0 || i1 < 0)
-            return new[] { start, end };
+            return [start, end];
         long sdx = (long)seg.V2.X - seg.V1.X, sdy = (long)seg.V2.Y - seg.V1.Y;
         Int128 tol = (Int128)SubsectorPolygons.SegSnapEpsilon * (Math.Abs(sdx) + Math.Abs(sdy));
         var chain = new List<PolygonVertex> { start };
@@ -426,11 +426,11 @@ public sealed class FloorTriangles
             PolygonVertex p = ring[k];
             Int128 cross = (Int128)((long)p.X - seg.V1.X) * sdy - (Int128)((long)p.Y - seg.V1.Y) * sdx;
             if (cross > tol || cross < -tol)
-                return new[] { start, end };
+                return [start, end];
             chain.Add(p);
         }
         chain.Add(end);
-        return chain.ToArray();
+        return [.. chain];
     }
 
     /// <summary>
@@ -503,8 +503,8 @@ public sealed class FloorTriangles
         while (result.Count > 1 && result[^1] == result[0])
             result.RemoveAt(result.Count - 1);
         if (result.Count < 3 || SubsectorPolygons.TwiceArea(result.ToArray()) <= 0)
-            return Array.Empty<PolygonVertex>();
-        return result.ToArray();
+            return [];
+        return [.. result];
     }
 
     /// <summary>The polygon with every other polygon's corner that lies on one of its edges inserted, in order along the edge.</summary>
@@ -528,7 +528,7 @@ public sealed class FloorTriangles
             foreach ((_, PolygonVertex p) in onEdge)
                 ring.Add(p);
         }
-        return ring.ToArray();
+        return [.. ring];
     }
 
     /// <summary>
@@ -596,7 +596,7 @@ public sealed class FloorTriangles
                 for (int k = 1; k + 1 < rest.Count; k++)
                 {
                     if (TwiceArea(ring[rest[0]], ring[rest[k]], ring[rest[k + 1]]) > 0)
-                        output.AddRange(new[] { rest[0], rest[k], rest[k + 1] });
+                        output.AddRange([rest[0], rest[k], rest[k + 1]]);
                 }
                 return true;
             }
@@ -636,7 +636,7 @@ public sealed class FloorTriangles
             }
         }
         for (int i = 1; i + 1 < n; i++)
-            output.AddRange(new[] { apex, (apex + i) % n, (apex + i + 1) % n });
+            output.AddRange([apex, (apex + i) % n, (apex + i + 1) % n]);
         return true;
     }
 
@@ -670,7 +670,7 @@ public sealed class FloorTriangles
     /// <summary>The distinct (welded) corners of all polygons, bucketed in 64-unit cells.</summary>
     private sealed class CornerGrid
     {
-        private readonly Dictionary<(int, int), List<PolygonVertex>> cells = new();
+        private readonly Dictionary<(int, int), List<PolygonVertex>> cells = [];
 
         /// <summary>
         /// The corner already in the grid within <see cref="WeldEpsilon"/> of
@@ -697,7 +697,7 @@ public sealed class FloorTriangles
                 }
             }
             if (!cells.TryGetValue((cx, cy), out List<PolygonVertex>? list))
-                cells.Add((cx, cy), list = new List<PolygonVertex>());
+                cells.Add((cx, cy), list = []);
             list.Add(v);
             return v;
         }

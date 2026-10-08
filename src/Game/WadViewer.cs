@@ -32,11 +32,11 @@ namespace IsoDoom.Game;
 /// </summary>
 public partial class WadViewer : Control
 {
-    private static readonly string[] CategoryNames = { "Wall textures", "Flats", "Sprites", "Wall patches", "Other graphics", "Palette" };
+    private static readonly string[] CategoryNames = ["Wall textures", "Flats", "Sprites", "Wall patches", "Other graphics", "Palette"];
 
     /// <summary>Lump list columns.</summary>
     public const int LumpColumnIndex = 0, LumpColumnName = 1, LumpColumnSize = 2, LumpColumnFile = 3, LumpColumnNamespace = 4, LumpColumnKind = 5;
-    private static readonly string[] LumpColumnTitles = { "#", "Name", "Size", "File", "Namespace", "Kind" };
+    private static readonly string[] LumpColumnTitles = ["#", "Name", "Size", "File", "Namespace", "Kind"];
     private const int GraphicsTab = 0, LumpsTab = 1;
     private const float GraphicsTabWidth = 240, LumpsTabWidth = 700;
 
@@ -49,8 +49,8 @@ public partial class WadViewer : Control
     private OptionButton _lumpKind = null!;
     private Tree _lumpTree = null!;
     private IReadOnlyList<LumpEntry>? _lumps;
-    private readonly List<int> _lumpRows = new(); // archive lump indices behind the tree rows
-    private readonly Dictionary<int, TreeItem> _lumpItems = new();
+    private readonly List<int> _lumpRows = []; // archive lump indices behind the tree rows
+    private readonly Dictionary<int, TreeItem> _lumpItems = [];
     private bool _selectingLump;
 
     private OptionButton _category = null!;
@@ -70,7 +70,7 @@ public partial class WadViewer : Control
     private IndexedGraphicRect _main = null!;
     private GridContainer _strip = null!;
 
-    private readonly List<int> _shown = new(); // catalog indices behind the list rows
+    private readonly List<int> _shown = []; // catalog indices behind the list rows
 
     // T7.7: the sound lumps' preview (on the master bus).
     private AudioStreamPlayer _preview = null!;
@@ -235,7 +235,7 @@ public partial class WadViewer : Control
 
     private void OnIwadPicked(string path)
     {
-        if (!LoadWad(path, Array.Empty<string>()))
+        if (!LoadWad(path, []))
             return;
         WadLocator.SaveConfiguredIwad(path);
         GD.Print($"WAD viewer: saved {path} as the configured IWAD in {WadLocator.SettingsPath}");
@@ -364,7 +364,7 @@ public partial class WadViewer : Control
             SizeFlagsVertical = SizeFlags.ExpandFill,
             TooltipText = "Select a graphic to show it; double-click to open it in the Graphics tab",
         };
-        int[] widths = { 60, 104, 64, 120, 84, 0 };
+        int[] widths = [60, 104, 64, 120, 84, 0];
         for (int c = 0; c < LumpColumnTitles.Length; c++)
         {
             _lumpTree.SetColumnTitle(c, LumpColumnTitles[c]);

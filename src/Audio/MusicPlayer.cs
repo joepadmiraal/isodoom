@@ -237,7 +237,7 @@ public partial class MusicPlayer : Node, IMusicDevice
 
     private void Run()
     {
-        var block = new short[BlockFrames * 2];
+        short[] block = new short[BlockFrames * 2];
         var frames = new Vector2[BlockFrames];
         while (!_stop)
         {

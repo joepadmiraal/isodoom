@@ -362,28 +362,28 @@ public sealed partial class World
                     break;
 
                 case floor_e.raiseToTexture:
-                {
-                    int minsize = int.MaxValue;
-
-                    floor.direction = 1;
-                    floor.sector = sec;
-                    floor.speed = FloorMove.FLOORSPEED;
-                    for (int i = 0; i < sec.linecount; i++)
                     {
-                        if (twoSided(secnum, i) != 0)
+                        int minsize = int.MaxValue;
+
+                        floor.direction = 1;
+                        floor.sector = sec;
+                        floor.speed = FloorMove.FLOORSPEED;
+                        for (int i = 0; i < sec.linecount; i++)
                         {
-                            // (side->bottomtexture >= 0 always holds: "-" is texture 0)
-                            side_t side = getSide(secnum, i, 0);
-                            if (textureheight(side.bottomtexture) < minsize)
-                                minsize = textureheight(side.bottomtexture);
-                            side = getSide(secnum, i, 1);
-                            if (textureheight(side.bottomtexture) < minsize)
-                                minsize = textureheight(side.bottomtexture);
+                            if (twoSided(secnum, i) != 0)
+                            {
+                                // (side->bottomtexture >= 0 always holds: "-" is texture 0)
+                                side_t side = getSide(secnum, i, 0);
+                                if (textureheight(side.bottomtexture) < minsize)
+                                    minsize = textureheight(side.bottomtexture);
+                                side = getSide(secnum, i, 1);
+                                if (textureheight(side.bottomtexture) < minsize)
+                                    minsize = textureheight(side.bottomtexture);
+                            }
                         }
+                        floor.floordestheight = unchecked(floor.sector.floorheight + minsize);
+                        break;
                     }
-                    floor.floordestheight = unchecked(floor.sector.floorheight + minsize);
-                    break;
-                }
 
                 case floor_e.lowerAndChange:
                     floor.direction = -1;

@@ -19,7 +19,7 @@ namespace IsoDoom.Tests.Sim;
 /// </summary>
 public class PickupTests
 {
-    private static WadArchive Wad() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Wad() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static World NewWorld(skill_t skill = skill_t.sk_medium)
     {
@@ -102,7 +102,7 @@ public class PickupTests
         Assert.Equal(gives.Power == powertype_t.pw_invisibility, (me.flags & mobjflag_t.MF_SHADOW) != 0);
         Assert.Equal(gives.Item ? 1 : 0, p.itemcount);
         Assert.Equal(gives.Bonus, p.bonuscount);
-        Assert.Equal(new[] { gives.Sound }, world.StartedSounds().Select(s => s.sfx));
+        Assert.Equal([gives.Sound], world.StartedSounds().Select(s => s.sfx));
         Assert.Null(world.StartedSounds()[0].origin); // vanilla's S_StartSound(NULL, sound): heard everywhere
     }
 
@@ -298,9 +298,11 @@ public class PickupTests
     [InlineData(20, 0, 0, 1, 4)]
     public void PaletteFlashesAreVanillas(int damagecount, int bonuscount, int ironfeet, int strength, int palette)
     {
-        var p = new player_t();
-        p.damagecount = damagecount;
-        p.bonuscount = bonuscount;
+        var p = new player_t
+        {
+            damagecount = damagecount,
+            bonuscount = bonuscount
+        };
         p.powers[(int)powertype_t.pw_ironfeet] = ironfeet;
         p.powers[(int)powertype_t.pw_strength] = strength;
         Assert.Equal(palette, StStuff.ST_doPaletteStuff(p));

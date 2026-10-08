@@ -22,13 +22,13 @@ namespace IsoDoom.Tests.Map;
 public class WallSectionTests
 {
     private static WadArchive Synthetic() =>
-        new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static (Level Map, Textures Textures, WallSections Walls) BuildSynthetic()
     {
         WadArchive wad = Synthetic();
-        Level map = Level.Load(wad, "E1M1");
-        Textures textures = Textures.R_InitTextures(wad);
+        var map = Level.Load(wad, "E1M1");
+        var textures = Textures.R_InitTextures(wad);
         return (map, textures, WallSections.Build(map, textures));
     }
 
@@ -47,7 +47,7 @@ public class WallSectionTests
 
     // line, side, kind, texture ("-" for none), bottom, top, row 0, x offset (map units)
     private static readonly (int Line, int Side, WallSectionKind Kind, string Texture, PlaneRef Bottom, PlaneRef Top, PlaneRef TextureTop, int XOffset)[] SyntheticSections =
-    {
+    [
         (0, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         // L1: PANEL (72 high) upper pegged to the back ceiling, lower to the back floor.
         (1, 0, Upper, "PANEL", P(BackCeiling), P(FrontCeiling), P(BackCeiling, 72), 0),
@@ -86,7 +86,7 @@ public class WallSectionTests
         (17, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         (18, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         (19, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
-    };
+    ];
 
     /// <summary>
     /// T5.1: the sections whose texture bottom is pegged (the texture height is
@@ -98,7 +98,7 @@ public class WallSectionTests
     public void BottomPeggedSectionsAnchorOnTheirTextureHeight()
     {
         (_, _, WallSections walls) = BuildSynthetic();
-        var pegged = walls.Sections.Where(s => s.BottomPegged).Select(s => (s.Line.Index, s.Side, s.Kind)).ToArray();
+        (int Index, int Side, WallSectionKind Kind)[] pegged = [.. walls.Sections.Where(s => s.BottomPegged).Select(s => (s.Line.Index, s.Side, s.Kind))];
         Assert.Equal(new[]
         {
             (1, 0, Upper), (1, 1, Upper), (8, 0, Upper), (8, 1, Upper), (10, 0, Middle), (11, 0, Middle), (13, 0, Middle),
@@ -208,15 +208,15 @@ public class WallSectionTests
     public void MissingTexturesAreReportedNotThrown()
     {
         WadArchive wad = Synthetic();
-        Level map = Level.Load(wad, "E1M1");
-        Textures textures = Textures.R_InitTextures(wad);
+        var map = Level.Load(wad, "E1M1");
+        var textures = Textures.R_InitTextures(wad);
         map.Sides[0].MidTexture = "-";     // one-sided wall
         map.Sides[1].TopTexture = "-";     // L1's upper, 16 high
         map.Sides[9].BottomTexture = "-";  // already "-": no height, not reported
         map.Sides[18].TopTexture = "-";    // sky on both sides: no upper, not reported
         map.Sides[2].MidTexture = "-";     // no masked middle: never reported
-        WallSections walls = WallSections.Build(map, textures);
-        Assert.Equal(new[] { new MissingWallTexture(0, 0, Middle), new MissingWallTexture(1, 0, Upper) }, walls.Missing);
+        var walls = WallSections.Build(map, textures);
+        Assert.Equal([new MissingWallTexture(0, 0, Middle), new MissingWallTexture(1, 0, Upper)], walls.Missing);
         Assert.Equal(0, Find(walls, 0, 0, Middle).Texture);
         Assert.DoesNotContain(walls.Sections, s => s.Line.Index == 1 && s.Kind == MaskedMiddle);
 
@@ -232,7 +232,7 @@ public class WallSectionTests
         // p_setup.c P_LoadSegs: no ML_TWOSIDED, no backsector, whatever sidenum[1] says.
         (Level map, Textures textures, _) = BuildSynthetic();
         map.Lines[1].Flags = 0;
-        WallSections walls = WallSections.Build(map, textures);
+        var walls = WallSections.Build(map, textures);
         WallSection front = Find(walls, 1, 0, Middle), back = Find(walls, 1, 1, Middle);
         Assert.Null(front.BackSector);
         Assert.Equal("-", map.Sides[1].MidTexture);
@@ -244,8 +244,8 @@ public class WallSectionTests
 
     private static (Textures, WallSections) BuildDoom1(string name)
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
-        Textures textures = Textures.R_InitTextures(wad);
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
+        var textures = Textures.R_InitTextures(wad);
         return (textures, WallSections.Build(Level.Load(wad, name), textures));
     }
 
@@ -393,9 +393,9 @@ public class WallSectionTests
     [MemberData(nameof(Doom2Maps))]
     public void EveryDoom2MapBuilds(string name)
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
-        Textures textures = Textures.R_InitTextures(wad);
-        WallSections walls = WallSections.Build(Level.Load(wad, name), textures);
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
+        var textures = Textures.R_InitTextures(wad);
+        var walls = WallSections.Build(Level.Load(wad, name), textures);
         CheckConsistent(walls);
         if (TestWads.Doom2Md5 == TestWads.Doom2V1666Md5)
             Assert.Equal(Doom2V1666Missing[name], Format(walls.Missing));

@@ -1,4 +1,3 @@
-using System;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 

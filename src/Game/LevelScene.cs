@@ -156,7 +156,7 @@ public partial class LevelScene : Node3D, IGameHost
     private string _status = "";
     private Control _crosshair = null!;
     private bool _showHelp;
-    private readonly List<MeshInstance3D> _chunks = new();
+    private readonly List<MeshInstance3D> _chunks = [];
     private LightDiminishing _lightMode = LightDiminishing.Player;
 
     /// <summary>Whether one-sided masked middles are drawn from behind (T3.1a, <c>--level-masked-back</c>, key M); applied to every level.</summary>
@@ -348,8 +348,8 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>The mobj of each entry of <see cref="Things"/>.</summary>
     public IReadOnlyList<mobj_t> DrawnMobjs => _drawn;
 
-    private readonly List<mobj_t> _drawn = new();
-    private readonly List<mobj_t> _scratch = new();
+    private readonly List<mobj_t> _drawn = [];
+    private readonly List<mobj_t> _scratch = [];
 
     /// <summary>
     /// The loaded map's game state (T4.7): a new game on <see cref="Skill"/>
@@ -378,7 +378,7 @@ public partial class LevelScene : Node3D, IGameHost
     private readonly Queue<(ticcmd_t? Cmd, Action<World>? Before)> _scriptTics = new();
 
     // Debug plane moves (T5.1, the level script's plane): run after each tic, as a mover thinker would.
-    private readonly List<(sector_t Sector, bool Ceiling, int Target, int Speed)> _planeMoves = new();
+    private readonly List<(sector_t Sector, bool Ceiling, int Target, int Speed)> _planeMoves = [];
 
     /// <summary>How far the presentation is between the last two tics (0–1): the time banked towards the next tic, in tics.</summary>
     public double TicFraction { get; private set; } = 1;
@@ -404,7 +404,7 @@ public partial class LevelScene : Node3D, IGameHost
     public int QueuedTics => _scriptTics.Count;
 
     /// <summary>The maps of the WAD (<c>ExMy</c>/<c>MAPxx</c> headers followed by <c>THINGS</c>), in lump order, each once.</summary>
-    public IReadOnlyList<string> MapNames { get; private set; } = Array.Empty<string>();
+    public IReadOnlyList<string> MapNames { get; private set; } = [];
 
     /// <summary>The scene's camera (the overview camera; checks move it).</summary>
     public Camera3D Camera => _camera;
@@ -450,7 +450,7 @@ public partial class LevelScene : Node3D, IGameHost
     public CanvasLayer Overlay { get; private set; } = null!;
 
     /// <summary>The node of each sector's chunk (null where <see cref="LevelMesh.SectorMeshes"/> has none).</summary>
-    public MeshInstance3D?[] Chunks { get; private set; } = Array.Empty<MeshInstance3D?>();
+    public MeshInstance3D?[] Chunks { get; private set; } = [];
 
     private static bool IsCheckRun => WadLocator.HasUserArg("--level-check");
 
@@ -692,13 +692,19 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(Player);
 
         // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
-        var ring = new TorusMesh { InnerRadius = 5f / LevelMesh.MapUnitsPerMetre, OuterRadius = 8f / LevelMesh.MapUnitsPerMetre, Rings = 16, RingSegments = 4 };
-        ring.Material = new StandardMaterial3D
+        var ring = new TorusMesh
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            AlbedoColor = new Color(1f, 0.85f, 0.1f),
-            NoDepthTest = true,
-            RenderPriority = 1,
+            InnerRadius = 5f / LevelMesh.MapUnitsPerMetre,
+            OuterRadius = 8f / LevelMesh.MapUnitsPerMetre,
+            Rings = 16,
+            RingSegments = 4,
+            Material = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                AlbedoColor = new Color(1f, 0.85f, 0.1f),
+                NoDepthTest = true,
+                RenderPriority = 1,
+            }
         };
         _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_cursorMarker);
@@ -953,7 +959,7 @@ public partial class LevelScene : Node3D, IGameHost
         switch (key.PhysicalKeycode)
         {
             case Key.Tab:
-                CameraMode next = (CameraMode)(((int)CurrentCamera + 1) % 3);
+                var next = (CameraMode)(((int)CurrentCamera + 1) % 3);
                 if (next == CameraMode.Iso && Iso is null)
                     next = CameraMode.Overview;
                 UseCamera(next);
@@ -1255,8 +1261,8 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (DisplayServer.GetName() == "headless")
             return null;
-        Vector2I size = (Vector2I)GetViewport().GetVisibleRect().Size;
-        Image image = Image.CreateEmpty(size.X, size.Y, false, Image.Format.Rgba8);
+        var size = (Vector2I)GetViewport().GetVisibleRect().Size;
+        var image = Image.CreateEmpty(size.X, size.Y, false, Image.Format.Rgba8);
         image.Fill(Colors.Black);
         Screens.ComposeInto(image);
         MenuScreens.ComposeInto(image);
@@ -1348,8 +1354,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (mo is null || World is not { } world)
             return;
         StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
-        if (StatusBar is not null)
-            StatusBar.ConsolePlayer = world.consoleplayer;
+        StatusBar?.ConsolePlayer = world.consoleplayer;
         MessageLine?.HU_Start();
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }
@@ -1375,8 +1380,7 @@ public partial class LevelScene : Node3D, IGameHost
         Hud.Visible = IsoActive && PlayerMobj is not null && StatusBar is not null && GameState == gamestate_t.GS_LEVEL;
         if (Hud.Visible && Playpal is not null)
             Hud.Show(StatusBar, MessageLine, Playpal, Mesh?.Palette ?? 0);
-        if (Iso is not null)
-            Iso.BottomInset = Hud.BottomInset;
+        Iso?.BottomInset = Hud.BottomInset;
         _message.Position = new Vector2(8, 8 + Hud.TopInset);
     }
 
@@ -1402,7 +1406,7 @@ public partial class LevelScene : Node3D, IGameHost
             _screenKey = null;
             return;
         }
-        var key = (state, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
+        (gamestate_t state, int gametic, bool pause, Vector2 Size, int palette) key = (state, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
         if (_screenKey == key && Screens.Visible)
             return;
         _screenKey = key;
@@ -1443,7 +1447,7 @@ public partial class LevelScene : Node3D, IGameHost
             FocusPaused = false;
     }
 
-    private readonly List<sim_event_t> _events = new();
+    private readonly List<sim_event_t> _events = [];
 
     /// <summary>How many started sounds <see cref="SoundLog"/> keeps.</summary>
     public const int SoundLogLength = 6;
@@ -1455,7 +1459,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public IReadOnlyList<(int Tic, sound_event_t Sound)> SoundLog => _soundLog;
 
-    private readonly List<(int Tic, sound_event_t Sound)> _soundLog = new();
+    private readonly List<(int Tic, sound_event_t Sound)> _soundLog = [];
 
     /// <summary>
     /// The tic's events (T6.10, <see cref="World.DrainEvents"/>), drained
@@ -1573,10 +1577,10 @@ public partial class LevelScene : Node3D, IGameHost
     {
         World world = World!;
         string map = world.level.Name;
-        var queued = _scriptTics.ToArray();
+        (ticcmd_t? Cmd, Action<World>? Before)[] queued = [.. _scriptTics];
         if (!TryLoad(map, world))
             return false;
-        foreach (var tic in queued)
+        foreach ((ticcmd_t? Cmd, Action<World>? Before) tic in queued)
             _scriptTics.Enqueue(tic);
         Reborns++;
         if (queued.Length > 0 && RouteStartPoint is { } s && !PlaceRouteStart(s.X, s.Y, s.Angle))
@@ -2036,7 +2040,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public static string StatusText(World world, player_t p)
     {
-        string[] keyNames = { "blue card", "yellow card", "red card", "blue skull", "yellow skull", "red skull" };
+        string[] keyNames = ["blue card", "yellow card", "red card", "blue skull", "yellow skull", "red skull"];
         var keys = new List<string>();
         for (int i = 0; i < p.cards.Length; i++)
         {
@@ -2066,7 +2070,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public static string WeaponText(player_t p)
     {
-        string Name(weapontype_t w) => w.ToString()[3..];
+        static string Name(weapontype_t w) => w.ToString()[3..];
         ammotype_t ammo = Info.weaponinfo[(int)p.readyweapon].ammo;
         var owned = new List<string>();
         for (int i = 0; i < p.weaponowned.Length; i++)
@@ -2215,9 +2219,9 @@ public partial class LevelScene : Node3D, IGameHost
         TicFraction = 1;
 
         var clock = Stopwatch.StartNew();
-        Level level = Level.Load(wad, map);
+        var level = Level.Load(wad, map);
         (List<string[]> animTextures, List<string[]> animFlats) = AnimGroups(wad);
-        LevelMesh mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!,
+        var mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!,
             textureGroups: System.Linq.Enumerable.Concat(SwitchGroups(GameMode), animTextures), flatGroups: animFlats);
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
@@ -2249,8 +2253,7 @@ public partial class LevelScene : Node3D, IGameHost
         Mesh = mesh;
         if (SpriteAtlas is not null)
             Player?.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
-        if (Player is not null)
-            Player.Visible = _showThings && PlayerMobj is not null;
+        Player?.Visible = _showThings && PlayerMobj is not null;
 
         FrameCamera();
         if (FreeFly is not null)
@@ -2276,18 +2279,16 @@ public partial class LevelScene : Node3D, IGameHost
         foreach (MeshInstance3D chunk in _chunks)
             chunk.QueueFree();
         _chunks.Clear();
-        Chunks = Array.Empty<MeshInstance3D?>();
+        Chunks = [];
         Mesh = null;
         Things?.QueueFree();
         Things = null;
         _drawn.Clear();
         World = null;
         _hudMobj = null;
-        if (Player is not null)
-            Player.Visible = false;
+        Player?.Visible = false;
         Cursor = null;
-        if (_cursorMarker is not null)
-            _cursorMarker.Visible = false;
+        _cursorMarker?.Visible = false;
         _soundLog.Clear();
         _planeMoves.Clear();
     }

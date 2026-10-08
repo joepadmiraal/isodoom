@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using IsoDoom.Map;
 using IsoDoom.Sim;
@@ -27,7 +28,7 @@ public class PlatTests
 
     private static World Specials()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M2"));
         world.PlaceMobj(world.players[0].mo!, F(64), F(196)); // room R, out of the way
@@ -54,7 +55,7 @@ public class PlatTests
     /// <summary>The floor heights (units) of <paramref name="sector"/> over <paramref name="tics"/> tics.</summary>
     private static int[] Heights(World world, int sector, int tics)
     {
-        var heights = new int[tics];
+        int[] heights = new int[tics];
         for (int i = 0; i < tics; i++)
         {
             world.G_Ticker(new ticcmd_t());
@@ -74,7 +75,7 @@ public class PlatTests
             plat_t plat = PlatOf(world, A3);
             Assert.Equal((plat_e.down, F(0), F(136), 105, F(speed)), (plat.status, plat.low, plat.high, plat.wait, plat.speed));
             Assert.Contains(plat, world.activeplats);
-            Assert.Equal(new[] { sfxenum_t.sfx_pstart }, world.StartedSounds().Select(s => s.sfx));
+            Assert.Equal([sfxenum_t.sfx_pstart], world.StartedSounds().Select(s => s.sfx));
             Assert.Equal(0, world.EV_DoPlat(line, type, 0)); // busy
 
             // Down: 136 / speed steps, at the bottom (pastdest) the tic after.
@@ -84,13 +85,13 @@ public class PlatTests
             Assert.Equal(plat_e.down, plat.status);
             Run(world, 1);
             Assert.Equal(plat_e.waiting, plat.status);
-            Assert.Equal(new[] { sfxenum_t.sfx_pstop }, world.StartedSounds().Select(s => s.sfx));
+            Assert.Equal([sfxenum_t.sfx_pstop], world.StartedSounds().Select(s => s.sfx));
             // 105 tics, then up.
             Run(world, 104);
             Assert.Equal(plat_e.waiting, plat.status);
             Run(world, 1);
             Assert.Equal(plat_e.up, plat.status);
-            Assert.Equal(new[] { sfxenum_t.sfx_pstart }, world.StartedSounds().Select(s => s.sfx));
+            Assert.Equal([sfxenum_t.sfx_pstart], world.StartedSounds().Select(s => s.sfx));
             Run(world, down);
             Assert.Equal(F(136), world.sectors[A3].floorheight);
             Assert.NotNull(world.sectors[A3].specialdata);
@@ -150,7 +151,7 @@ public class PlatTests
             Assert.Equal((plat_e.up, F(high), FRACUNIT / 2, 0), (plat.status, plat.high, plat.speed, plat.wait));
             Assert.Equal("FLOOR1", world.sectors[A3].floorpic); // line 0's front sector's (the corridor), at once
             Assert.Equal(type == plattype_e.raiseToNearestAndChange ? 0 : 7, world.sectors[A3].special);
-            Assert.Equal(new[] { sfxenum_t.sfx_stnmov }, world.StartedSounds().Select(s => s.sfx));
+            Assert.Equal([sfxenum_t.sfx_stnmov], world.StartedSounds().Select(s => s.sfx));
             int tics = 0;
             while (world.sectors[A3].specialdata != null)
             {
@@ -210,14 +211,14 @@ public class PlatTests
         World world = Specials();
         for (int i = 0; i < Plat.MAXPLATS; i++)
             world.P_AddActivePlat(new plat_t { sector = world.sectors[0] });
-        var e = Assert.Throws<System.InvalidOperationException>(() => world.P_AddActivePlat(new plat_t()));
+        InvalidOperationException e = Assert.Throws<System.InvalidOperationException>(() => world.P_AddActivePlat(new plat_t()));
         Assert.Contains("no more plats", e.Message);
         Assert.Throws<System.InvalidOperationException>(() => world.P_RemoveActivePlat(new plat_t()));
 
         world = Specials();
         world.EV_DoPlat(Tagged(world, 7, A3), plattype_e.perpetualRaise, 0);
         Assert.NotNull(world.activeplats[0]);
-        world.G_DoLoadLevel(Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M2"));
+        world.G_DoLoadLevel(Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M2"));
         Assert.All(world.activeplats, p => Assert.Null(p));
     }
 

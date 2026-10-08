@@ -32,8 +32,12 @@ public partial class LevelCheck
     {
         GameMode mode = _scene.GameMode;
         int title = mode == GameMode.commercial ? 35 * 11 : 170;
-        var pages = new List<(string, int)> { ("TITLEPIC", title), ("CREDIT", 200) };
-        pages.Add(mode == GameMode.commercial ? ("TITLEPIC", title) : mode == GameMode.retail ? ("CREDIT", 200) : ("HELP2", 200));
+        var pages = new List<(string, int)>
+        {
+            ("TITLEPIC", title),
+            ("CREDIT", 200),
+            mode == GameMode.commercial ? ("TITLEPIC", title) : mode == GameMode.retail ? ("CREDIT", 200) : ("HELP2", 200)
+        };
         pages.RemoveAll(p => !_scene.HasLump(p.Item1));
         if (pages.Count == 0)
             pages.Add(("TITLEPIC", title));

@@ -16,14 +16,14 @@ public class SpawnedThingsTests
 
     private static SpawnedThing[] Spawn(WadArchive wad, string map, GameMode mode, skill_t skill)
     {
-        Level level = Level.Load(wad, map);
+        var level = Level.Load(wad, map);
         return SpawnedThings.Build(level, MapThingSpawning.SpawnList(level.Things, new SpawnSettings(mode, skill)));
     }
 
     [Fact]
     public void SyntheticE1M1()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         SpawnedThing[] things = Spawn(wad, "E1M1", GameMode.shareware, skill_t.sk_medium);
         Assert.Equal(11, things.Length); // every mobj; not the player start
 
@@ -46,8 +46,8 @@ public class SpawnedThingsTests
     [Fact]
     public void Doom1E1M1SpawnFramesExist()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
-        Sprites sprites = Sprites.R_InitSprites(wad);
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
+        var sprites = Sprites.R_InitSprites(wad);
         SpawnedThing[] things = Spawn(wad, "E1M1", GameMode.shareware, skill_t.sk_medium);
         Assert.Equal(91, things.Length); // T3.2: 91 mobjs on skill 3, plus player 1
         Assert.All(things, t => Assert.True(t.frame < sprites.SpriteDefs[(int)t.sprite].NumFrames, $"{t.sprite} frame {t.frame}"));
@@ -58,8 +58,8 @@ public class SpawnedThingsTests
     [Fact]
     public void Doom2SpawnFramesExistOnEveryMapAndSkill()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
-        Sprites sprites = Sprites.R_InitSprites(wad);
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
+        var sprites = Sprites.R_InitSprites(wad);
         int ceiling = 0;
         for (int m = 1; m <= 32; m++)
         {

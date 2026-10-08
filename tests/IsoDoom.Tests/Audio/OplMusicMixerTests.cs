@@ -17,7 +17,7 @@ public class OplMusicMixerTests
 {
     private const int Rate = 48000, Block = 512;
 
-    private static readonly WadArchive Wad = new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static readonly WadArchive Wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static byte[] Bank => Wad.W_CacheLumpName("GENMIDI").ToArray();
 
@@ -25,7 +25,7 @@ public class OplMusicMixerTests
 
     private static short[] Render(Action<Span<short>> mix, int blocks)
     {
-        var all = new short[blocks * Block * 2];
+        short[] all = new short[blocks * Block * 2];
         for (int b = 0; b < blocks; b++)
             mix(all.AsSpan(b * Block * 2, Block * 2));
         return all;
@@ -87,7 +87,7 @@ public class OplMusicMixerTests
         Assert.Equal(want.AsSpan(faded).ToArray(), after.AsSpan(faded).ToArray());
 
         // no click at the switch: the step across it no larger than the song's own steps
-        var seam = new short[8];
+        short[] seam = new short[8];
         before.AsSpan(before.Length - 4).CopyTo(seam);
         after.AsSpan(0, 4).CopyTo(seam.AsSpan(4));
         Assert.True(MaxStep(seam) <= MaxStep(before), $"step {MaxStep(seam)} at the switch, {MaxStep(before)} in the song");

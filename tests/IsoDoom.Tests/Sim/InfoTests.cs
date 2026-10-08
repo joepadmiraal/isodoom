@@ -95,14 +95,14 @@ public class InfoTests
         }
         foreach (mobjinfo_t m in Info.mobjinfo)
         {
-            statenum_t[] st = { m.spawnstate, m.seestate, m.painstate, m.meleestate, m.missilestate, m.deathstate, m.xdeathstate, m.raisestate };
+            statenum_t[] st = [m.spawnstate, m.seestate, m.painstate, m.meleestate, m.missilestate, m.deathstate, m.xdeathstate, m.raisestate];
             Assert.All(st, x => Assert.InRange((int)x, 0, (int)statenum_t.NUMSTATES - 1));
-            sfxenum_t[] sfx = { m.seesound, m.attacksound, m.painsound, m.deathsound, m.activesound };
+            sfxenum_t[] sfx = [m.seesound, m.attacksound, m.painsound, m.deathsound, m.activesound];
             Assert.All(sfx, x => Assert.InRange((int)x, 0, (int)sfxenum_t.NUMSFX - 1));
         }
 
         // Editor numbers are unique (the doomednum lookup takes the first match).
-        int[] numbers = Info.mobjinfo.Select(m => m.doomednum).Where(n => n != -1).ToArray();
+        int[] numbers = [.. Info.mobjinfo.Select(m => m.doomednum).Where(n => n != -1)];
         Assert.Equal(numbers.Length, numbers.Distinct().Count());
     }
 }

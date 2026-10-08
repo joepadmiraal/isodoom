@@ -26,7 +26,7 @@ public partial class ScreenView : CanvasLayer
     };
     private Image? _image;
     private ImageTexture? _texture;
-    private byte[] _rgba = Array.Empty<byte>();
+    private byte[] _rgba = [];
 
     /// <summary>The screen drawn into (vanilla's whole 320×200 screen).</summary>
     public HudScreen Screen { get; } = new(0, HudScreen.SCREENHEIGHT);
@@ -97,7 +97,7 @@ public partial class ScreenView : CanvasLayer
                 if (_rgba[i + 3] == 0)
                     continue;
                 var c = Color.Color8(_rgba[i], _rgba[i + 1], _rgba[i + 2]);
-                var block = new Rect2I(at.X + x * scale, at.Y + y * scale, scale, scale).Intersection(new Rect2I(0, 0, w, h));
+                Rect2I block = new Rect2I(at.X + x * scale, at.Y + y * scale, scale, scale).Intersection(new Rect2I(0, 0, w, h));
                 if (block.Size.X > 0 && block.Size.Y > 0)
                     image.FillRect(block, c);
             }

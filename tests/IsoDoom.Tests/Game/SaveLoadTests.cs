@@ -35,7 +35,7 @@ public sealed class SaveLoadTests : IDisposable
         public MenuHost(GameFlow flow) => _flow = flow;
 
         public int ScreenSize { get; set; }
-        public List<sfxenum_t> Sounds { get; } = new();
+        public List<sfxenum_t> Sounds { get; } = [];
 
         public void PlayerMessage(string text, bool dontfuckwithme)
         {

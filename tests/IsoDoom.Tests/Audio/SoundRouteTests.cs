@@ -21,14 +21,14 @@ namespace IsoDoom.Tests.Audio;
 /// </summary>
 public class SoundRouteTests
 {
-    public static TheoryData<string> Routes() => new(VanillaRoute.Names());
+    public static TheoryData<string> Routes() => [.. VanillaRoute.Names()];
 
     /// <summary>The game camera's screen-up direction (map north-west), the listener's angle in the default stereo.</summary>
     private const uint ScreenUp = 0x60000000; // 135°
 
     private sealed class LumpDevice(WadArchive wad) : ISoundDevice
     {
-        private readonly Dictionary<sfxenum_t, double> _seconds = new();
+        private readonly Dictionary<sfxenum_t, double> _seconds = [];
 
         public double I_StartSound(sfxenum_t sfx, int cnum, int vol, int sep)
         {
@@ -52,7 +52,7 @@ public class SoundRouteTests
     [MemberData(nameof(Routes))]
     public void EverySoundPlaysAtItsTicAndPlace(string name)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         World world = route.NewWorld(out WadArchive wad);
         var sound = new SSound(new LumpDevice(wad)) { snd_SfxVolume = 127 };
         var events = new List<sim_event_t>();

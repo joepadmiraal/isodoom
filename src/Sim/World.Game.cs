@@ -97,12 +97,12 @@ public sealed partial class World
 
     /// <summary>g_game.c <c>cpars</c>: DOOM II par times in seconds, by map less 1 (T7.4).</summary>
     public static readonly int[] cpars =
-    {
+    [
         30, 90, 120, 120, 90, 150, 120, 120, 270, 90, //  1-10
         210, 150, 150, 150, 210, 150, 420, 150, 210, 150, // 11-20
         240, 150, 180, 150, 150, 300, 330, 420, 300, 180, // 21-30
         120, 30, // 31-32
-    };
+    ];
 
     /// <summary>g_game.c <c>G_ExitLevel</c>.</summary>
     public void G_ExitLevel()

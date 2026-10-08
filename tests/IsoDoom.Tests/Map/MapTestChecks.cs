@@ -24,8 +24,8 @@ internal static class MapTestChecks
 
         // A binary tree over the subsectors, every node and subsector reached once from the root.
         Assert.Equal(map.Subsectors.Length - 1, map.Nodes.Length);
-        var seenNodes = new bool[map.Nodes.Length];
-        var seenSubsectors = new bool[map.Subsectors.Length];
+        bool[] seenNodes = new bool[map.Nodes.Length];
+        bool[] seenSubsectors = new bool[map.Subsectors.Length];
         var stack = new System.Collections.Generic.Stack<int>();
         stack.Push(map.Nodes.Length - 1);
         while (stack.Count > 0)

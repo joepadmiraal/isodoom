@@ -109,8 +109,8 @@ public class MovementTests
         int x = 32456704 + 35689;
         AssertPos(mo, x, 8888320 + 17844 + 190723, 0, 0, 172842, 0, "tic 3");
         // Then it keeps sliding north along the wall, slowing down.
-        int[] ys = { 9269729, 9426367, 9568320, 9696964, 9813547 };
-        int[] moms = { 156638, 141953, 128644, 116583, 105653 };
+        int[] ys = [9269729, 9426367, 9568320, 9696964, 9813547];
+        int[] moms = [156638, 141953, 128644, 116583, 105653];
         for (int t = 0; t < ys.Length; t++)
         {
             w.P_Ticker();
@@ -205,8 +205,8 @@ public class MovementTests
         // tic: 20.5 (3.25), 23.75 (3.5), 27.25 (3.75), 31 (4), 35 (4.25), 39.25 (4.5), then 41 (0).
         Assert.Equal(F(41) / 2, p.viewheight);
         Assert.Equal(F(3) + FRACUNIT / 4, p.deltaviewheight);
-        int[] heights = { F(23) + 3 * FRACUNIT / 4, F(27) + FRACUNIT / 4, F(31), F(35), F(39) + FRACUNIT / 4, F(41) };
-        int[] deltas = { F(3) + FRACUNIT / 2, F(3) + 3 * FRACUNIT / 4, F(4), F(4) + FRACUNIT / 4, F(4) + FRACUNIT / 2, 0 };
+        int[] heights = [F(23) + 3 * FRACUNIT / 4, F(27) + FRACUNIT / 4, F(31), F(35), F(39) + FRACUNIT / 4, F(41)];
+        int[] deltas = [F(3) + FRACUNIT / 2, F(3) + 3 * FRACUNIT / 4, F(4), F(4) + FRACUNIT / 4, F(4) + FRACUNIT / 2, 0];
         for (int t = 0; t < heights.Length; t++)
         {
             w.P_Ticker();
@@ -267,7 +267,7 @@ public class MovementTests
 
         // ML_BLOCKMONSTERS blocks monsters, not players; ML_BLOCKING blocks both.
         w.sectors[1].floorheight = F(24);
-        line_t boundary = w.lines[w.lines.Length - 1];
+        line_t boundary = w.lines[^1];
         Assert.True(w.P_TryMove(troop, F(200), F(64)));
         boundary.flags |= Line.ML_BLOCKMONSTERS;
         Assert.False(w.P_TryMove(troop, F(250), F(64)));
@@ -294,8 +294,8 @@ public class MovementTests
         Assert.Equal(F(64), mo.z);
         mo.momx = Mom8;
 
-        int[] xs = { 15990784, 16465920, 16896512, 17286736, 17640376 };
-        int[] moms = { Mom8F1, Mom8F2, Mom8F3, Mom8F4, Mom8F5 };
+        int[] xs = [15990784, 16465920, 16896512, 17286736, 17640376];
+        int[] moms = [Mom8F1, Mom8F2, Mom8F3, Mom8F4, Mom8F5];
         for (int t = 0; t < 5; t++)
         {
             w.P_Ticker();
@@ -337,8 +337,8 @@ public class MovementTests
         World w = Room().Player(100, 100).Load();
         mobj_t mo = Player(w);
         mo.z = F(12);
-        int[] zs = { F(12), F(10), F(7), F(3), 0 };
-        int[] momzs = { -2 * FRACUNIT, -3 * FRACUNIT, -4 * FRACUNIT, -5 * FRACUNIT, 0 };
+        int[] zs = [F(12), F(10), F(7), F(3), 0];
+        int[] momzs = [-2 * FRACUNIT, -3 * FRACUNIT, -4 * FRACUNIT, -5 * FRACUNIT, 0];
         for (int t = 0; t < zs.Length; t++)
         {
             w.P_Ticker();
@@ -361,8 +361,8 @@ public class MovementTests
         mobj_t mo = Player(w);
         mo.momx = Mom8;
 
-        int[] xs = { F(208), F(208), F(208), 14021712, 14021712, 14021712 };
-        int[] moms = { Mom8F1, Mom8F2, Mom8F3, Mom8F4, Mom8F5, 290440 };
+        int[] xs = [F(208), F(208), F(208), 14021712, 14021712, 14021712];
+        int[] moms = [Mom8F1, Mom8F2, Mom8F3, Mom8F4, Mom8F5, 290440];
         for (int t = 0; t < xs.Length; t++)
         {
             w.P_Ticker();
@@ -570,7 +570,7 @@ public class MovementTests
         // angleturn 728, about 4° a tic) for 20 seconds bounces around the start room and
         // beyond: two worlds stay identical, the links hold, and it always stands where
         // P_CheckPosition allows, on or above its floor.
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         World Load()
         {
             var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);

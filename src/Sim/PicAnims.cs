@@ -39,7 +39,7 @@ public static class PicAnims
     /// terminating entry left out.)
     /// </summary>
     public static readonly animdef_t[] animdefs =
-    {
+    [
         new(false, "NUKAGE3", "NUKAGE1", 8),
         new(false, "FWATER4", "FWATER1", 8),
         new(false, "SWATER4", "SWATER1", 8),
@@ -67,7 +67,7 @@ public static class PicAnims
         new(true, "SFALL4", "SFALL1", 8),
         new(true, "WFALL4", "WFALL1", 8),
         new(true, "DBRAIN4", "DBRAIN1", 8),
-    };
+    ];
 
     /// <summary>
     /// p_spec.c <c>P_InitPicAnims</c>' lookup: the <see cref="animdefs"/>

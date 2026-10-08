@@ -44,7 +44,7 @@ public class FuzzTests
     [Fact]
     public void TheNearestIndexIsTheLowestOfEquals()
     {
-        var data = new byte[Playpal.PaletteSize * Playpal.NumPalettes];
+        byte[] data = new byte[Playpal.PaletteSize * Playpal.NumPalettes];
         for (int i = 0; i < 256; i++)
         {
             data[i * 3] = (byte)i;
@@ -54,7 +54,7 @@ public class FuzzTests
         // Index 200 duplicates index 100.
         data[200 * 3] = 100;
         data[200 * 3 + 1] = 50;
-        Playpal playpal = Playpal.Decode(data);
+        var playpal = Playpal.Decode(data);
         Assert.Equal(100, Fuzz.NearestIndex(playpal, 0, 100, 50, 0));
         Assert.Equal(37, Fuzz.NearestIndex(playpal, 0, 37, 18, 0));
         Assert.Equal(255, Fuzz.NearestIndex(playpal, 0, 255, 255, 255));

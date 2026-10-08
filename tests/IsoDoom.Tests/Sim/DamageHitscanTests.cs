@@ -25,7 +25,7 @@ public class DamageHitscanTests
     private static mobj_t Spawn(World world, int x, int y, mobjtype_t type) =>
         world.P_SpawnMobj(F(x), F(y), World.ONFLOORZ, type);
 
-    private static mobj_t[] Of(World world, mobjtype_t type) => world.Mobjs().Where(m => m.type == type).ToArray();
+    private static mobj_t[] Of(World world, mobjtype_t type) => [.. world.Mobjs().Where(m => m.type == type)];
 
     /// <summary>Makes the next <c>P_Random</c> return <c>rndtable[index + 1]</c> (1: 8, 2: 109, 3: 220).</summary>
     private static void NextRandom(World world, int index) => world.random.prndindex = index - 1;

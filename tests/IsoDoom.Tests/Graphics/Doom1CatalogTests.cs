@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
@@ -26,14 +27,14 @@ public class Doom1CatalogTests
     [Fact]
     public void GraphicsHoldTheUiLumpsAndNothingElse()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
-        string[] names = GraphicLumps.FindGlobalPatches(wad).Select(l => l.Name).ToArray();
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
+        string[] names = [.. GraphicLumps.FindGlobalPatches(wad).Select(l => l.Name)];
         foreach (string expected in new[] { "TITLEPIC", "CREDIT", "HELP1", "HELP2", "STBAR", "STARMS", "M_DOOM", "M_SKULL1",
                      "STCFN033", "STCFN095", "STTNUM0", "STFST00", "WIMAP0", "WIA00000", "AMMNUM0", "BRDR_TL" })
             Assert.Contains(expected, names);
 
         // Every global lump that is not one of these is a known non-graphic (maps, sounds, music, tables).
-        var rest = wad.Lumps.Where(l => l.Namespace == LumpNamespace.Global && !l.IsMarker && !names.Contains(l.Name));
+        IEnumerable<WadLump> rest = wad.Lumps.Where(l => l.Namespace == LumpNamespace.Global && !l.IsMarker && !names.Contains(l.Name));
         Assert.All(rest, l => Assert.True(GraphicLumps.IsNonGraphicName(l.Name), l.Name));
     }
 
@@ -41,7 +42,7 @@ public class Doom1CatalogTests
     public void EveryViewDecodes()
     {
         GraphicsCatalog c = OpenDoom1();
-        GraphicView[] views = c.EnumerateAll().ToArray();
+        GraphicView[] views = [.. c.EnumerateAll()];
         Assert.All(views, v => Assert.True(v.Image.Width > 0 && v.Image.Height > 0, v.Label));
 
         // 125 + 54 + 164 + 320 + 2 non-sprite views; every sprite frame/rotation slot.

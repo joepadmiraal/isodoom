@@ -32,7 +32,7 @@ public partial class LevelCheck
     /// <summary>The lid height of each sector from the level's current ceilings (<see cref="DoorLids.LidHeight"/>; <see cref="DoorLids.None"/> without a lid).</summary>
     private static float[] LidHeights(LevelMesh m)
     {
-        var heights = new float[m.Level.Sectors.Length];
+        float[] heights = new float[m.Level.Sectors.Length];
         for (int i = 0; i < heights.Length; i++)
             heights[i] = m.Lids.LidHeight(i, n => (float)(m.Level.Sectors[n].CeilingHeight / 65536.0));
         return heights;
@@ -71,7 +71,7 @@ public partial class LevelCheck
         var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off };
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
         Vector2I size = ViewSize();
         float[] lids = LidHeights(m);
 
@@ -238,7 +238,7 @@ public partial class LevelCheck
         byte[]? on = await Capture($"{what}, lids on");
         if (off is null || on is null)
             return;
-        var box = classes.Box;
+        (int Left, int Top, int Right, int Bottom) box = classes.Box;
         int bw = box.Right - box.Left;
         int compared = 0, lidPixels = 0, badLid = 0, badKeep = 0;
         string firstLid = "", firstKeep = "";

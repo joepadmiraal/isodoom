@@ -31,7 +31,7 @@ public class TextureAtlasTests
         Assert.Equal(images.Count, atlas.Rects.Count);
         Assert.True(a.Width <= TextureAtlas.MaxSize && a.Height <= TextureAtlas.MaxSize);
         Assert.True((a.Width & (a.Width - 1)) == 0, "atlas width is a power of two");
-        var owner = new int[a.Width * a.Height];
+        int[] owner = new int[a.Width * a.Height];
         Array.Fill(owner, -1);
         for (int i = 0; i < images.Count; i++)
         {
@@ -61,8 +61,8 @@ public class TextureAtlasTests
     [Fact]
     public void PacksWithoutOverlapAndCopiesPixels()
     {
-        var images = new[] { Image(64, 128, 1), Image(64, 64, 2), Image(256, 128, 3), Image(72, 72, 4), Image(8, 200, 5), Image(64, 64, 6), Image(1, 1, 7) };
-        TextureAtlas atlas = TextureAtlas.Build(images);
+        IndexedImage[] images = [Image(64, 128, 1), Image(64, 64, 2), Image(256, 128, 3), Image(72, 72, 4), Image(8, 200, 5), Image(64, 64, 6), Image(1, 1, 7)];
+        var atlas = TextureAtlas.Build(images);
         CheckAtlas(images, atlas);
         Assert.Equal(256, atlas.Image.Width); // widest image, and 256² ≥ total area
     }
@@ -70,7 +70,7 @@ public class TextureAtlasTests
     [Fact]
     public void LayoutIsDeterministicAndSortedByHeight()
     {
-        var sizes = new[] { (64, 64), (128, 128), (64, 64), (64, 128) };
+        (int, int)[] sizes = [(64, 64), (128, 128), (64, 64), (64, 128)];
         (AtlasRect[] rects, int width, int height) = TextureAtlas.Layout(sizes);
         (AtlasRect[] again, int width2, int height2) = TextureAtlas.Layout(sizes);
         Assert.Equal(rects, again);
@@ -87,13 +87,13 @@ public class TextureAtlasTests
     [Fact]
     public void RejectsEmptyAndOversizedImages()
     {
-        Assert.Throws<ArgumentException>(() => TextureAtlas.Layout(new[] { (0, 64) }));
-        Assert.Throws<ArgumentException>(() => TextureAtlas.Layout(new[] { (TextureAtlas.MaxSize * 2, 1) }));
+        Assert.Throws<ArgumentException>(() => TextureAtlas.Layout([(0, 64)]));
+        Assert.Throws<ArgumentException>(() => TextureAtlas.Layout([(TextureAtlas.MaxSize * 2, 1)]));
     }
 
     private static void CheckWholeIwad(WadArchive wad)
     {
-        Textures textures = Textures.R_InitTextures(wad);
+        var textures = Textures.R_InitTextures(wad);
         var images = new List<IndexedImage>();
         for (int t = 1; t < textures.NumTextures; t++)
             images.Add(textures.R_GenerateComposite(t));
@@ -104,7 +104,7 @@ public class TextureAtlasTests
 
     [Fact]
     public void SyntheticIwadFitsInOneAtlas() =>
-        CheckWholeIwad(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }));
+        CheckWholeIwad(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]));
 
     [Fact]
     public void Doom1FitsInOneAtlas() => CheckWholeIwad(WadArchive.Open(TestWads.RequireDoom1()));

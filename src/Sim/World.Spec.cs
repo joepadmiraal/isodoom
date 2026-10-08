@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using IsoDoom.Wad.Graphics;
 using IsoDoom.Map;
 using IsoDoom.Wad;
+using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Sim;
 
@@ -766,13 +766,13 @@ public sealed partial class World
     /// <see cref="P_UpdateSpecials"/> rotates). Render state the sim never
     /// reads; the presentation re-points the frames' atlas slots by it (T5.7).
     /// </summary>
-    public int[] texturetranslation = Array.Empty<int>();
+    public int[] texturetranslation = [];
 
     /// <summary>r_data.c <c>flattranslation</c>: as <see cref="texturetranslation"/> for flat numbers (<see cref="flatnames"/>).</summary>
-    public int[] flattranslation = Array.Empty<int>();
+    public int[] flattranslation = [];
 
     /// <summary>The flat namespace by name, in order: what <see cref="flattranslation"/>'s numbers are (vanilla's <c>firstflat</c> + n).</summary>
-    public IReadOnlyList<string> flatnames { get; private set; } = Array.Empty<string>();
+    public IReadOnlyList<string> flatnames { get; private set; } = [];
 
     /// <summary>
     /// p_spec.c <c>P_InitPicAnims</c> (vanilla's <c>P_Init</c>, after

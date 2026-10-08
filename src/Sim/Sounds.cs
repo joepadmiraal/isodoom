@@ -139,7 +139,7 @@ public static class SoundInfo
 
     /// <summary>sounds.c <c>S_sfx</c> (Chocolate Doom's, v1.9 data), indexed by <see cref="sfxenum_t"/>.</summary>
     public static readonly sfxinfo_t[] S_sfx =
-    {
+    [
         // S_sfx[0] needs to be a dummy for odd reasons.
         SOUND("none", 0),
         SOUND("pistol", 64),
@@ -250,7 +250,7 @@ public static class SoundInfo
         SOUND("skesit", 70),
         SOUND("skeatk", 70),
         SOUND("radio", 60),
-    };
+    ];
 
     /// <summary>The sound's lump name: <c>DS</c> + its (or its link's) name, upper case (i_sdlsound.c <c>GetSfxLumpName</c>).</summary>
     public static string LumpName(sfxenum_t sfx)
@@ -354,7 +354,7 @@ public static class MusicInfo
 
     /// <summary>sounds.c <c>S_music</c>, indexed by <see cref="musicenum_t"/>.</summary>
     public static readonly musicinfo_t[] S_music =
-    {
+    [
         MUSIC(""), // mus_None
         MUSIC("e1m1"),
         MUSIC("e1m2"),
@@ -423,7 +423,7 @@ public static class MusicInfo
         MUSIC("read_m"),
         MUSIC("dm2ttl"),
         MUSIC("dm2int"),
-    };
+    ];
 
     /// <summary>The song's lump name: <c>D_</c> + its name, upper case (s_sound.c <c>S_ChangeMusic</c>'s <c>"d_%s"</c>).</summary>
     public static string LumpName(musicenum_t music) => "D_" + S_music[(int)music].name.ToUpperInvariant();

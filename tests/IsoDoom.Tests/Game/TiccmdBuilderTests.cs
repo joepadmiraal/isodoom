@@ -2,8 +2,8 @@ using System;
 using IsoDoom.Game;
 using IsoDoom.Map;
 using IsoDoom.Sim;
-using IsoDoom.Wad;
 using IsoDoom.Tests.Support;
+using IsoDoom.Wad;
 using Xunit;
 
 namespace IsoDoom.Tests.Game;
@@ -245,7 +245,7 @@ public class TiccmdBuilderTests
     [Fact]
     public void VanillaCommand()
     {
-        var v = Tweaks.Vanilla;
+        Tweaks v = Tweaks.Vanilla;
         Assert.Equal((25, 0), Move(Build(Keys(w: true), v)));
         Assert.Equal((-50, 0), Move(Build(Keys(s: true, run: true), v)));
         Assert.Equal((0, -24), Move(Build(Keys(a: true), v)));
@@ -268,7 +268,7 @@ public class TiccmdBuilderTests
     [Fact]
     public void AbsoluteAimingAloneMovesAgainstTheNewFacing()
     {
-        var aimOnly = Tweaks.Vanilla with { AbsoluteAiming = true };
+        Tweaks aimOnly = Tweaks.Vanilla with { AbsoluteAiming = true };
         // Aiming east, W with a north-up screen: north is the player's left.
         ticcmd_t cmd = Build(new TiccmdInput { MoveY = 1, CursorMoved = true, Cursor = (100, 0) }, aimOnly, Tables.ANG90);
         Assert.Equal((0, -25), Move(cmd));
@@ -277,7 +277,7 @@ public class TiccmdBuilderTests
         cmd = Build(new TiccmdInput { MoveX = 1, CursorMoved = true, Cursor = (100, 100) }, aimOnly, Tables.ANG90);
         Assert.Equal((18, 18), Move(cmd));
         // Absolute movement alone: world directions, vanilla turning.
-        var moveOnly = Tweaks.Vanilla with { AbsoluteMovement = true };
+        Tweaks moveOnly = Tweaks.Vanilla with { AbsoluteMovement = true };
         cmd = Build(new TiccmdInput { MoveY = 1, TurnLeft = true }, moveOnly, Tables.ANG90);
         Assert.Equal((25, 0), Move(cmd));
         Assert.Equal(320, cmd.angleturn);

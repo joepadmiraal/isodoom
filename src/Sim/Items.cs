@@ -15,7 +15,7 @@ public static partial class Info
 {
     /// <summary>d_items.c <c>weaponinfo</c>, in <see cref="weapontype_t"/> order.</summary>
     public static readonly weaponinfo_t[] weaponinfo =
-    {
+    [
         // fist
         new(ammotype_t.am_noammo, statenum_t.S_PUNCHUP, statenum_t.S_PUNCHDOWN, statenum_t.S_PUNCH, statenum_t.S_PUNCH1, statenum_t.S_NULL),
         // pistol
@@ -34,5 +34,5 @@ public static partial class Info
         new(ammotype_t.am_noammo, statenum_t.S_SAWUP, statenum_t.S_SAWDOWN, statenum_t.S_SAW, statenum_t.S_SAW1, statenum_t.S_NULL),
         // super shotgun
         new(ammotype_t.am_shell, statenum_t.S_DSGUNUP, statenum_t.S_DSGUNDOWN, statenum_t.S_DSGUN, statenum_t.S_DSGUN1, statenum_t.S_DSGUNFLASH1),
-    };
+    ];
 }

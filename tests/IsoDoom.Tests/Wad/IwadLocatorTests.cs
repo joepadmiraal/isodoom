@@ -10,8 +10,8 @@ namespace IsoDoom.Tests.Wad;
 public sealed class IwadLocatorTests : IDisposable
 {
     private readonly string _root;
-    private readonly Dictionary<string, string> _env = new();
-    private readonly Dictionary<(string, string), string> _registry = new();
+    private readonly Dictionary<string, string> _env = [];
+    private readonly Dictionary<(string, string), string> _registry = [];
 
     public IwadLocatorTests()
     {
@@ -44,7 +44,7 @@ public sealed class IwadLocatorTests : IDisposable
     {
         string path = Path.Combine(_root, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllBytes(path, new byte[] { (byte)'I', (byte)'W', (byte)'A', (byte)'D' });
+        File.WriteAllBytes(path, [(byte)'I', (byte)'W', (byte)'A', (byte)'D']);
         return path;
     }
 
@@ -52,10 +52,10 @@ public sealed class IwadLocatorTests : IDisposable
         string[]? gameDirs = null) =>
         new(new IwadSearchContext
         {
-            CommandLine = new CommandLine("isodoom", args ?? Array.Empty<string>()),
+            CommandLine = new CommandLine("isodoom", args ?? []),
             GetEnv = name => _env.TryGetValue(name, out string? v) ? v : null,
             CurrentDirectory = Dir("cwd"),
-            GameDirectories = gameDirs ?? new[] { Dir("game"), Dir("game/wads") },
+            GameDirectories = gameDirs ?? [Dir("game"), Dir("game/wads")],
             ConfiguredIwad = config,
             Platform = platform,
             ReadRegistry = (key, value) => _registry.TryGetValue((key, value), out string? v) ? v : null,
@@ -69,7 +69,7 @@ public sealed class IwadLocatorTests : IDisposable
     [Fact]
     public void CheckParmIsCaseInsensitiveAndSkipsTheProgram()
     {
-        var cl = new CommandLine("-iwad", new[] { "-WARP", "1", "-iwad" });
+        var cl = new CommandLine("-iwad", ["-WARP", "1", "-iwad"]);
         Assert.Equal(1, cl.M_CheckParm("-warp"));
         Assert.Equal(3, cl.M_CheckParm("-iwad")); // index 0 is the program, never matched
         Assert.Equal(0, cl.M_CheckParm("-file"));
@@ -81,9 +81,9 @@ public sealed class IwadLocatorTests : IDisposable
     [Fact]
     public void FileListStopsAtTheNextOption()
     {
-        var cl = new CommandLine("isodoom", new[] { "-file", "a.wad", "b.wad", "-warp", "1", "c.wad" });
-        Assert.Equal(new[] { "a.wad", "b.wad" }, cl.GetParmList("-file"));
-        Assert.Empty(new CommandLine("isodoom", new[] { "-file" }).GetParmList("-file"));
+        var cl = new CommandLine("isodoom", ["-file", "a.wad", "b.wad", "-warp", "1", "c.wad"]);
+        Assert.Equal(["a.wad", "b.wad"], cl.GetParmList("-file"));
+        Assert.Empty(new CommandLine("isodoom", ["-file"]).GetParmList("-file"));
     }
 
     // ---- Explicit IWADs ----
@@ -94,7 +94,7 @@ public sealed class IwadLocatorTests : IDisposable
         string explicitWad = Touch("elsewhere/my.wad");
         _env["ISODOOM_IWAD"] = Touch("env/doom.wad");
         Touch("cwd/doom1.wad");
-        IwadSearchResult r = Find(new[] { "-iwad", explicitWad }, config: Touch("config/doom.wad"));
+        IwadSearchResult r = Find(["-iwad", explicitWad], config: Touch("config/doom.wad"));
         Assert.Equal(explicitWad, r.Path);
         Assert.Equal(IwadSource.CommandLine, r.Source);
         Assert.Null(r.Error);
@@ -104,14 +104,14 @@ public sealed class IwadLocatorTests : IDisposable
     public void DoubleDashIwadIsAnAlias()
     {
         string wad = Touch("elsewhere/doom1.wad");
-        Assert.Equal(wad, Find(new[] { "--iwad", wad }).Path);
+        Assert.Equal(wad, Find(["--iwad", wad]).Path);
     }
 
     [Fact]
     public void RelativeIwadResolvesAgainstTheWorkingDirectory()
     {
         string wad = Touch("cwd/sub/doom1.wad");
-        Assert.Equal(wad, Find(new[] { "-iwad", "sub/doom1.wad" }).Path);
+        Assert.Equal(wad, Find(["-iwad", "sub/doom1.wad"]).Path);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class IwadLocatorTests : IDisposable
     {
         _env["DOOMWADDIR"] = Dir("waddir");
         string wad = Touch("waddir/DOOM2.WAD");
-        IwadSearchResult r = Find(new[] { "-iwad", "doom2.wad" });
+        IwadSearchResult r = Find(["-iwad", "doom2.wad"]);
         Assert.Equal(wad, r.Path);
     }
 
@@ -127,7 +127,7 @@ public sealed class IwadLocatorTests : IDisposable
     public void MissingExplicitIwadIsAnErrorWithoutFallback()
     {
         Touch("cwd/doom1.wad");
-        IwadSearchResult r = Find(new[] { "-iwad", Path.Combine(_root, "nope.wad") });
+        IwadSearchResult r = Find(["-iwad", Path.Combine(_root, "nope.wad")]);
         Assert.Null(r.Path);
         Assert.Equal(IwadSource.CommandLine, r.Source);
         Assert.Contains("nope.wad", r.Error);
@@ -185,7 +185,7 @@ public sealed class IwadLocatorTests : IDisposable
             $"\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{steamLibrary}\"\n\t}}\n}}\n");
 
         string[] order =
-        {
+        [
             Touch("cwd/doom1.wad"),
             Touch("game/DOOM1.WAD"),
             Touch("game/wads/DOOM1.WAD"),
@@ -201,7 +201,7 @@ public sealed class IwadLocatorTests : IDisposable
             Touch("home/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Final Doom/base/TNT.WAD"),
             Touch("home/GOG Games/DOOM II/Doom2/DOOM2.WAD"),
             Touch("home/Games/Heroic/Ultimate DOOM/base/DOOM.WAD"),
-        };
+        ];
 
         foreach (string expected in order)
         {
@@ -246,8 +246,8 @@ public sealed class IwadLocatorTests : IDisposable
         string a = Touch("cwd/DOOM1.WAD");
         string b = Touch("cwd/doom2.wad");
         string c = Touch("game/wads/DOOM.WAD");
-        IwadLocator locator = Locator(gameDirs: new[] { Dir("game/wads"), Dir("game/wads") + "/../wads" });
-        Assert.Equal(new[] { a, b, c }, locator.D_FindAllIWADs());
+        IwadLocator locator = Locator(gameDirs: [Dir("game/wads"), Dir("game/wads") + "/../wads"]);
+        Assert.Equal([a, b, c], locator.D_FindAllIWADs());
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public sealed class IwadLocatorTests : IDisposable
     {
         const string vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/deck/.local/share/Steam\"\n\t\t\"label\"\t\t\"\"\n\t}\n"
             + "\t\"1\"\n\t{\n\t\t\"PATH\"\t\t\"D:\\\\SteamLibrary\"\n\t}\n}\n";
-        Assert.Equal(new[] { "/home/deck/.local/share/Steam", @"D:\SteamLibrary" }, IwadLocator.ParseSteamLibraryFolders(vdf));
+        Assert.Equal(["/home/deck/.local/share/Steam", @"D:\SteamLibrary"], IwadLocator.ParseSteamLibraryFolders(vdf));
     }
 
     // ---- Files ----
@@ -332,8 +332,8 @@ public sealed class IwadLocatorTests : IDisposable
         string local = Touch("cwd/maps/a.wad");
         string inWadDir = Touch("waddir/B.WAD");
         Touch("cwd/doom1.wad");
-        IwadSearchResult r = Find(new[] { "-file", "maps/a.wad", "b.wad", "missing.wad", "-warp", "1" });
-        Assert.Equal(new[] { local, inWadDir, Path.Combine(_root, "cwd", "missing.wad") }, r.Pwads);
+        IwadSearchResult r = Find(["-file", "maps/a.wad", "b.wad", "missing.wad", "-warp", "1"]);
+        Assert.Equal([local, inWadDir, Path.Combine(_root, "cwd", "missing.wad")], r.Pwads);
         Assert.Empty(Find().Pwads);
     }
 
@@ -345,7 +345,7 @@ public sealed class IwadLocatorTests : IDisposable
         string wads = Path.Combine(repo ?? _root, "wads");
         if (!File.Exists(Path.Combine(wads, "DOOM1.WAD")))
             Assert.Skip("wads/DOOM1.WAD not present");
-        IwadSearchResult r = Locator(gameDirs: new[] { wads }).D_FindIWAD();
+        IwadSearchResult r = Locator(gameDirs: [wads]).D_FindIWAD();
         Assert.Equal(Path.Combine(wads, "DOOM1.WAD"), r.Path);
     }
 }

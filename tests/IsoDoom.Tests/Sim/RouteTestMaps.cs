@@ -92,14 +92,14 @@ public static class RouteTestMaps
 
     /// <summary>The pickups along y = 128 in <see cref="Pickups"/>' room P, west to east (doomednums), from x = 240 every 48 units.</summary>
     public static readonly int[] PickupRow =
-    {
+    [
         2011, 2012, 2014, 2014, 2013, 2011, 2015, 2018, 2019, 2018, 2007, 2048, 2008, 2049, 2010, 2046, 8,
         2001, 2002, 2003, 2005, 5, 6, 13, 2024, 2026, 2026, 2045,
-    };
+    ];
 
     private static TestMap Pickups()
     {
-        TestMap map = TestMap.Strip(0, 0, 256, new TestMap.Room(192, 0, 128), new TestMap.Room(1408, 0, 128));
+        var map = TestMap.Strip(0, 0, 256, new TestMap.Room(192, 0, 128), new TestMap.Room(1408, 0, 128));
         map.SectorSpecial(0, 5);
         for (int i = 0; i < PickupRow.Length; i++)
             map.Thing(240 + 48 * i, 128, PickupRow[i]);
@@ -108,7 +108,7 @@ public static class RouteTestMaps
 
     private static TestMap Death()
     {
-        TestMap map = TestMap.Strip(0, 0, 512, new TestMap.Room(1024, 0, 128));
+        var map = TestMap.Strip(0, 0, 512, new TestMap.Room(1024, 0, 128));
         return map.Thing(160, 256, 2001).Thing(224, 256, 2019).Thing(288, 256, 5)
             .Thing(704, 192, 3001, 180).Thing(704, 320, 3001, 180).Thing(832, 256, 3004, 180)
             .Player(96, 256, 180);
@@ -116,7 +116,7 @@ public static class RouteTestMaps
 
     private static TestMap Weapons()
     {
-        TestMap map = TestMap.Strip(0, 0, 512,
+        var map = TestMap.Strip(0, 0, 512,
             new TestMap.Room(512, 0, 128), new TestMap.Room(64, 0, 128), new TestMap.Room(16, 0, 0), new TestMap.Room(384, 0, 128),
             new TestMap.Room(64, 0, 128), new TestMap.Room(16, 0, 0), new TestMap.Room(256, 0, 128));
         map.SectorTag(2, 1).SectorTag(5, 2);
@@ -131,7 +131,7 @@ public static class RouteTestMaps
 
     private static TestMap Missiles()
     {
-        TestMap map = TestMap.Strip(0, 0, 512,
+        var map = TestMap.Strip(0, 0, 512,
             new TestMap.Room(64, 0, 36), new TestMap.Room(512, 0, 128), new TestMap.Room(64, 0, 36));
         map.CeilingPic(0, "F_SKY1").CeilingPic(2, "F_SKY1");
         return map.Thing(136, 448, 2035).Thing(480, 256, 3001, 0).Player(136, 256, 180);
@@ -139,7 +139,7 @@ public static class RouteTestMaps
 
     private static TestMap Teleport()
     {
-        TestMap map = TestMap.Strip(0, 0, 256,
+        var map = TestMap.Strip(0, 0, 256,
             new TestMap.Room(256, 32, 160), new TestMap.Room(64, 0, 160), new TestMap.Room(256, 0, 160),
             new TestMap.Room(64, 0, 160), new TestMap.Room(256, -16, 160));
         map.SectorTag(0, 1).SectorTag(4, 2);
@@ -149,7 +149,7 @@ public static class RouteTestMaps
 
     private static TestMap Lifts()
     {
-        TestMap map = TestMap.Strip(0, 0, 256,
+        var map = TestMap.Strip(0, 0, 256,
             new TestMap.Room(192, 64, 192), new TestMap.Room(64, 64, 192), new TestMap.Room(256, 0, 192),
             new TestMap.Room(64, 0, 192), new TestMap.Room(128, 48, 192));
         map.SectorTag(1, 1).SectorTag(3, 5);
@@ -159,7 +159,7 @@ public static class RouteTestMaps
 
     private static TestMap Stairs()
     {
-        TestMap map = TestMap.Strip(0, 0, 256,
+        var map = TestMap.Strip(0, 0, 256,
             new TestMap.Room(128, 128, 256), new TestMap.Room(128, 32, 256),
             new TestMap.Room(64, 0, 256), new TestMap.Room(64, 0, 256), new TestMap.Room(64, 0, 256), new TestMap.Room(64, 0, 256),
             new TestMap.Room(64, 0, 256), new TestMap.Room(192, 0, 256));
@@ -175,7 +175,7 @@ public static class RouteTestMaps
         for (int i = 1; i < 21; i++)
             rooms[i] = new TestMap.Room(2, 0, 128);
         rooms[21] = new TestMap.Room(100, 0, 128);
-        TestMap map = TestMap.Strip(0, 0, 256, rooms);
+        var map = TestMap.Strip(0, 0, 256, rooms);
         for (int i = 1; i < rooms.Length; i++)
             map.Special(map.Boundaries[i], 88);
         return map.Player(50, 128);

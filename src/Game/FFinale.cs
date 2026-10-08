@@ -1,4 +1,3 @@
-using System;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 

@@ -349,7 +349,7 @@ public partial class LevelScene : IMenuHost
             HelpGone();
             return;
         }
-        var key = (menu.Changes, flow.gamestate, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
+        (int Changes, gamestate_t gamestate, int gametic, bool pause, Vector2 Size, int palette) key = (menu.Changes, flow.gamestate, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
         if (_menuKey == key && MenuScreens.Visible)
             return;
         _menuKey = key;

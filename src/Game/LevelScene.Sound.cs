@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using IsoDoom.Audio;
@@ -96,8 +97,7 @@ public partial class LevelScene
         {
             commercial = GameMode == GameMode.commercial,
         };
-        if (_flow is not null)
-            _flow.Sound = Sound; // the flow changes the music and pauses it (T7.8c)
+        _flow?.Sound = Sound; // the flow changes the music and pauses it (T7.8c)
         SyncSoundVolume();
     }
 
@@ -168,7 +168,7 @@ public partial class LevelScene
         if (Sound is not { } s)
             return "no sound";
         mobj_t? player = PlayerMobj;
-        var lines = s.channels.Select((c, i) => c.sfxinfo is null ? null
+        IEnumerable<string?> lines = s.channels.Select((c, i) => c.sfxinfo is null ? null
             : $"ch{i} {SSound.SfxName(c.sfx)}@{SSound.OriginText(c.origin, player)} vol {c.vol}/{s.snd_SfxVolume} sep {c.sep} {c.remaining:0.00}s")
             .Where(l => l is not null);
         string text = string.Join("\n", lines);

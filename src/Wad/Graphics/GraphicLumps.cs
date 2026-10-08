@@ -16,17 +16,17 @@ public static class GraphicLumps
 {
     // Map data lumps that follow an ExMy/MAPxx marker (doomdata.h ML_*).
     private static readonly string[] MapLumps =
-    {
+    [
         "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS",
         "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP",
-    };
+    ];
 
     // Whole lumps known not to be patches.
     private static readonly string[] NonGraphicLumps =
-    {
+    [
         "PLAYPAL", "COLORMAP", "ENDOOM", "GENMIDI", "PNAMES", "TEXTURE1", "TEXTURE2",
         "DMXGUS", "DMXGUSC",
-    };
+    ];
 
     /// <summary>
     /// True for lumps whose name says they are not a graphic: map markers and

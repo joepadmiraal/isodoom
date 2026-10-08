@@ -13,8 +13,8 @@ public static partial class Tables
     /// <c>(i - 2048 + 0.5)</c> fine angles, i.e. from just above -90° to just
     /// below +90°, in fixed point.
     /// </summary>
-    public static ReadOnlySpan<int> finetangent => new int[]
-    {
+    public static ReadOnlySpan<int> finetangent =>
+    [
         -170910304, -56965752, -34178904, -24413316, -18988036, -15535599, -13145455, -11392683,
         -10052327, -8994149, -8137527, -7429880, -6835455, -6329090, -5892567, -5512368,
         -5178251, -4882318, -4618375, -4381502, -4167737, -3973855, -3797206, -3635590,
@@ -527,15 +527,15 @@ public static partial class Tables
         3635590, 3797206, 3973855, 4167737, 4381502, 4618375, 4882318, 5178251,
         5512368, 5892567, 6329090, 6835455, 7429880, 8137527, 8994149, 10052327,
         11392683, 13145455, 15535599, 18988036, 24413316, 34178904, 56965752, 170910304,
-    };
+    ];
 
     /// <summary>
     /// tables.c <c>finesine[5*FINEANGLES/4]</c>: the sine of <c>(i + 0.5)</c>
     /// fine angles in fixed point; the last quarter repeats the first, so
     /// <see cref="finecosine"/> is a view of it.
     /// </summary>
-    public static ReadOnlySpan<int> finesine => new int[]
-    {
+    public static ReadOnlySpan<int> finesine =>
+    [
         25, 75, 125, 175, 226, 276, 326, 376,
         427, 477, 527, 578, 628, 678, 728, 779,
         829, 879, 929, 980, 1030, 1080, 1130, 1181,
@@ -1816,14 +1816,14 @@ public static partial class Tables
         65525, 65526, 65527, 65527, 65528, 65529, 65530, 65530,
         65531, 65531, 65532, 65532, 65533, 65533, 65534, 65534,
         65534, 65535, 65535, 65535, 65535, 65535, 65535, 65535,
-    };
+    ];
 
     /// <summary>
     /// tables.c <c>tantoangle[SLOPERANGE+1]</c>: the BAM angle of the slope
     /// <c>i / SLOPERANGE</c> (0 to 45°), indexed by <see cref="SlopeDiv"/>.
     /// </summary>
-    public static ReadOnlySpan<uint> tantoangle => new uint[]
-    {
+    public static ReadOnlySpan<uint> tantoangle =>
+    [
         0, 333772, 667544, 1001315, 1335086, 1668857, 2002626, 2336395,
         2670163, 3003929, 3337694, 3671457, 4005219, 4338979, 4672736, 5006492,
         5340245, 5673995, 6007743, 6341488, 6675230, 7008968, 7342704, 7676435,
@@ -2081,5 +2081,5 @@ public static partial class Tables
         534190272, 534358432, 534526496, 534694496, 534862400, 535030240, 535197984, 535365632,
         535533216, 535700704, 535868128, 536035456, 536202720, 536369888, 536536992, 536704000,
         536870912,
-    };
+    ];
 }

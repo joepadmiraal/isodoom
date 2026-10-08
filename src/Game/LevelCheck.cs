@@ -86,10 +86,10 @@ public partial class LevelCheck : Godot.Node
     private int _logged;
     private long _pixels;
     private int _views;
-    private readonly Dictionary<int, IndexedImage> _composites = new();
+    private readonly Dictionary<int, IndexedImage> _composites = [];
     private readonly Dictionary<string, IndexedImage> _flats = new(StringComparer.OrdinalIgnoreCase);
     private (int R, int G, int B) _background;
-    private readonly SortedSet<int> _lightLevels = new(), _contrasts = new(), _colormaps = new();
+    private readonly SortedSet<int> _lightLevels = [], _contrasts = [], _colormaps = [];
     private long _lightSkipped;
 
     /// <summary>Pixels compared whose colormap Player mode's shortest distance (T3.7) changed.</summary>
@@ -362,7 +362,7 @@ public partial class LevelCheck : Godot.Node
     /// <summary>Texture binding: each drawn section's and floor's slot, its <c>texture_info</c> texel and atlas pixels. Returns slots checked.</summary>
     private int CheckSlots(LevelMesh m, string map)
     {
-        var used = new bool[m.SlotNames.Count];
+        bool[] used = new bool[m.SlotNames.Count];
         if (m.Atlas.Rects.Count != m.SlotNames.Count)
             Fail($"{map}: {m.Atlas.Rects.Count} atlas rectangles for {m.SlotNames.Count} slots");
 
@@ -560,10 +560,10 @@ public partial class LevelCheck : Godot.Node
         foreach (WallSection s in m.Walls.Sections)
         {
             if (LevelMesh.IsDrawn(s))
-                ((LevelMesh.IsMasked(s) ? maskedWalls : walls)[s.FrontSector.Index] ??= new List<(WallSection, bool)>()).Add((s, false));
+                ((LevelMesh.IsMasked(s) ? maskedWalls : walls)[s.FrontSector.Index] ??= []).Add((s, false));
             if (m.HasBackFace(s))
             {
-                (maskedWalls[s.BackSector!.Index] ??= new List<(WallSection, bool)>()).Add((s, true));
+                (maskedWalls[s.BackSector!.Index] ??= []).Add((s, true));
                 backFaces += m.Pieces.Of(s.Line, s.Side).Count;
             }
         }
@@ -573,14 +573,14 @@ public partial class LevelCheck : Godot.Node
 
         var sideSegs = new List<Seg>?[level.Lines.Length * 2];
         foreach (Seg seg in level.Segs)
-            (sideSegs[seg.LineDef.Index * 2 + seg.Side] ??= new List<Seg>()).Add(seg);
+            (sideSegs[seg.LineDef.Index * 2 + seg.Side] ??= []).Add(seg);
         int sectionCount = 0, vertexCount = 0, quads = 0, maskedQuads = 0;
         for (int sector = 0; sector < level.Sectors.Length; sector++)
         {
             string what = $"{map}: sector {sector}";
             SectorFloor? floor = floors[sector] is { TriangleCount: > 0 } f ? f : null;
-            List<(WallSection, bool)> sectorWalls = walls[sector] ?? new List<(WallSection, bool)>();
-            List<(WallSection, bool)> sectorMasked = maskedWalls[sector] ?? new List<(WallSection, bool)>();
+            List<(WallSection, bool)> sectorWalls = walls[sector] ?? [];
+            List<(WallSection, bool)> sectorMasked = maskedWalls[sector] ?? [];
             int floorVertices = floor?.Vertices.Count ?? 0;
             int QuadCount(List<(WallSection, bool)> list)
             {
@@ -737,10 +737,10 @@ public partial class LevelCheck : Godot.Node
                 int b = floorVertices + 4 * quad, bi = (floor?.Indices.Count ?? 0) + 6 * quad;
                 quad++;
                 Vector3 p1 = LevelMesh.ToGodot(piece.A.X, piece.A.Y, 0), p2 = LevelMesh.ToGodot(piece.B.X, piece.B.Y, 0);
-                Vector3[] corners = { p1, p1, p2, p2 };
+                Vector3[] corners = [p1, p1, p2, p2];
                 double ua = (s.TextureOffset + (long)piece.ColumnA) / 65536.0, ub = (s.TextureOffset + (long)piece.ColumnB) / 65536.0;
-                double[] us = { ua, ua, ub, ub };
-                float[] vs = { 0, 1, 1, 0 };
+                double[] us = [ua, ua, ub, ub];
+                float[] vs = [0, 1, 1, 0];
                 for (int k = 0; k < 4; k++)
                 {
                     if (!Near(pos[b + k], corners[k]))
@@ -760,7 +760,7 @@ public partial class LevelCheck : Godot.Node
                     if (c2[(b + k) * 4 + 3] != LevelMesh.PieceAngle(piece))
                         Fail($"{sw}: corner {k}: direction {c2[(b + k) * 4 + 3]}, expected {LevelMesh.PieceAngle(piece)} (T3.4)");
                 }
-                int[] quadIndices = backFace ? LevelMesh.BackFaceIndices(b) : new[] { b, b + 1, b + 2, b, b + 2, b + 3 };
+                int[] quadIndices = backFace ? LevelMesh.BackFaceIndices(b) : [b, b + 1, b + 2, b, b + 2, b + 3];
                 for (int k = 0; k < 6; k++)
                 {
                     if (idx[bi + k] != quadIndices[k])
@@ -854,8 +854,8 @@ public partial class LevelCheck : Godot.Node
             if (piece.Contrast != LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y))
                 Fail($"{what}: piece {i} has fake contrast {piece.Contrast}, its seg {seg.Index} {LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y)}");
             // A connector pair p → q, q → p: only q (its seg's first corner) is on its seg; p ends the previous seg.
-            var corners = !connector ? new[] { (piece.A, piece.ColumnA), (piece.B, piece.ColumnB) }
-                : Reversed(i, i + 1) ? new[] { (piece.B, piece.ColumnB) } : new[] { (piece.A, piece.ColumnA) };
+            (PolygonVertex, int)[] corners = !connector ? [(piece.A, piece.ColumnA), (piece.B, piece.ColumnB)]
+                : Reversed(i, i + 1) ? new[] { (piece.B, piece.ColumnB) } : [(piece.A, piece.ColumnA)];
             foreach ((PolygonVertex p, int column) in corners)
             {
                 (double along, double off, double length) = OnSeg(seg, p);
@@ -927,7 +927,7 @@ public partial class LevelCheck : Godot.Node
     /// <summary>The back sector of the first drawn, pegged, axis-aligned lower (and the lower) that can rise <see cref="MoveUnits"/>.</summary>
     private static (WallSection Lower, Sector Sector)? PickMovedSector(LevelMesh m)
     {
-        var hasFloor = new bool[m.Level.Sectors.Length];
+        bool[] hasFloor = new bool[m.Level.Sectors.Length];
         foreach (SectorFloor f in m.Floors.BySector)
             hasFloor[f.Sector] |= f.TriangleCount > 0;
         const int room = 2 * MoveUnits << Fixed.FRACBITS;
@@ -1157,7 +1157,7 @@ public partial class LevelCheck : Godot.Node
         var basis = new Basis(new Vector3(1, 0, 0), new Vector3(0, 0, -1), new Vector3(0, 1, 0));
 
         long compared = 0, voidPixels = 0;
-        var sectorsSeen = new bool[m.Level.Sectors.Length];
+        bool[] sectorsSeen = new bool[m.Level.Sectors.Length];
         for (int ty = 0; ty < tilesY; ty++)
         {
             for (int tx = 0; tx < tilesX; tx++)
@@ -1474,7 +1474,7 @@ public partial class LevelCheck : Godot.Node
                 else
                 {
                     (tc, tr) = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, tiling);
-                    var other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, otherTiling);
+                    (int Column, int Row) other = TextureWrap.WallTexel(col, row, tex.Width, tex.Height, otherTiling);
                     differ |= other != (tc, tr) && tex[other.Column, other.Row] != tex[tc, tr];
                 }
                 int map0 = ExpectedColormap(m, true, light, contrast, v1x + dirX * dPixel, v1y + dirY * dPixel, 0.5);
@@ -1509,10 +1509,9 @@ public partial class LevelCheck : Godot.Node
         int old = sector.FloorHeight;
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = chunk == _scene.Chunks[sector.Index];
+            chunk?.Visible = chunk == _scene.Chunks[sector.Index];
         }
-        var before = await CheckFloorOblique(m, sector, old, $"{map}: sector {sector.Index}'s floor, oblique, at {old >> Fixed.FRACBITS}");
+        int[] before = await CheckFloorOblique(m, sector, old, $"{map}: sector {sector.Index}'s floor, oblique, at {old >> Fixed.FRACBITS}");
         int textureTopBefore = lower.TextureTop.Evaluate(lower.FrontSector, lower.BackSector);
         (int, int) spanBefore = lower.Span();
 
@@ -1521,7 +1520,7 @@ public partial class LevelCheck : Godot.Node
         string moved = $"{map} (sector {sector.Index} raised {MoveUnits})";
         CheckSectorData(m, moved);
         CheckChunks(m, moved);
-        var after = await CheckFloorOblique(m, sector, old, $"{moved}: its floor, oblique, at {sector.FloorHeight >> Fixed.FRACBITS}");
+        int[] after = await CheckFloorOblique(m, sector, old, $"{moved}: its floor, oblique, at {sector.FloorHeight >> Fixed.FRACBITS}");
         int changed = 0;
         for (int i = 0; i < before.Length; i++)
         {
@@ -1532,8 +1531,7 @@ public partial class LevelCheck : Godot.Node
             Fail($"{moved}: the floor's expected pixels did not change, so the move isn't visible in the check");
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = true;
+            chunk?.Visible = true;
         }
 
         if (lower.TextureTop.Evaluate(lower.FrontSector, lower.BackSector) == textureTopBefore || lower.Span() == spanBefore)
@@ -1670,7 +1668,7 @@ public partial class LevelCheck : Godot.Node
 
     private static double SegmentDistance(double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy)
     {
-        double Cross(double ox, double oy, double px, double py, double qx, double qy) => (px - ox) * (qy - oy) - (py - oy) * (qx - ox);
+        static double Cross(double ox, double oy, double px, double py, double qx, double qy) => (px - ox) * (qy - oy) - (py - oy) * (qx - ox);
         double d1 = Cross(cx, cy, dx, dy, ax, ay), d2 = Cross(cx, cy, dx, dy, bx, by);
         double d3 = Cross(ax, ay, bx, by, cx, cy), d4 = Cross(ax, ay, bx, by, dx, dy);
         if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)))

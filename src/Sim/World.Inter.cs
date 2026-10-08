@@ -62,7 +62,7 @@ public sealed partial class World
     public const int BASETHRESHOLD = 100;
 
     /// <summary>p_inter.c <c>clipammo</c>: a clip or its equivalent of each ammo type.</summary>
-    public static readonly int[] clipammo = { 10, 4, 20, 1 };
+    public static readonly int[] clipammo = [10, 4, 20, 1];
 
     /// <summary>
     /// p_inter.c <c>P_GiveAmmo</c>: <paramref name="num"/> is the number of

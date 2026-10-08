@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using IsoDoom.Sim;
 using IsoDoom.Tests.Sim;
 using IsoDoom.Wad;
 
@@ -37,10 +38,10 @@ public static class Program
         WadArchive.Open(Environment.GetEnvironmentVariable("ISODOOM_DOOM1_WAD") is { Length: > 0 } p ? p : Path.Combine(RepoRoot(), "wads", "DOOM1.WAD"));
 
     private static WadArchive Synthetic() =>
-        new(new[] { WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName) });
+        new([WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName)]);
 
     private static WadArchive TestMapWad(string name) =>
-        new(new[] { WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad") });
+        new([WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad")]);
 
     private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null,
         IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false);
@@ -203,8 +204,8 @@ exit normal
 """, (g, Log) =>
         {
             g.TightCorners = true;
-            g.ShutDoors.UnionWith(new[] { 52, 58 }); // open from the other side only (58 is blue from this one)
-            g.Avoid.UnionWith(new[] { 55, 56 }); // the teleporter (lines 787-796) in room 54
+            g.ShutDoors.UnionWith([52, 58]); // open from the other side only (58 is blue from this one)
+            g.Avoid.UnionWith([55, 56]); // the teleporter (lines 787-796) in room 54
             g.GoToDoors(888, 300, 8, 50);
             Log("across line 271 " + g.Heights(91));
             g.WaitIdle(91);
@@ -1125,7 +1126,7 @@ monsters
                 Log("strafed, the imp awake " + Missiles());
                 g.Settle();
             }
-            var imp = g.w.Mobjs().First(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP);
+            mobj_t imp = g.w.Mobjs().First(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP);
             for (int i = 0; i < 8 && imp.health > 0; i++)
             {
                 g.Face(imp.x / 65536.0, imp.y / 65536.0);
@@ -1327,7 +1328,7 @@ map stairs
         if (args.Length is 2 or 3 && args[0] == "--monsters")
             return MapInfo.PrintMonsters(Doom1(), args[1], args.Length == 3 ? int.Parse(args[2]) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
-            return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? args[2].Split(',').Select(int.Parse).ToArray() : null);
+            return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? [.. args[2].Split(',').Select(int.Parse)] : null);
         if (args.Length is < 1 or > 2 || !Scripts.TryGetValue(args[0], out Script? script))
         {
             Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", Scripts.Keys)}");
@@ -1343,7 +1344,7 @@ map stairs
         // The planning must not have changed the play: replay the ticcmds in a fresh world.
         var replay = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
         replay.Events.AddRange(g.Events);
-        foreach (var c in g.Cmds)
+        foreach ((int Forward, int Side, int Turn, int Buttons) c in g.Cmds)
             replay.Tic(c.Forward, c.Side, c.Turn, c.Buttons); // (with the events)
         if (replay.w.Checksum() != g.w.Checksum())
         {

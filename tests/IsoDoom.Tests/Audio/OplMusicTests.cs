@@ -28,7 +28,7 @@ public sealed class MusicRefRun
     public bool NoChip;
     public int Volume = 64;
     public opl_driver_ver_t Version = opl_driver_ver_t.opl_doom_1_9;
-    public readonly List<(int sample, string cmd)> Events = new();
+    public readonly List<(int sample, string cmd)> Events = [];
 
     public static MusicRefRun Parse(string headerLine)
     {
@@ -85,7 +85,7 @@ public sealed class MusicRefRun
         short[] scratch = new short[2 * Block];
         midi_file_t? handle = null;
         int done = 0, e = 0;
-        for (;;)
+        for (; ; )
         {
             for (; e < Events.Count && Events[e].sample <= done; e++)
                 Run(Events[e].cmd);
@@ -190,7 +190,7 @@ public class OplMusicTests
             ? d
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "opl-music");
 
-    private static WadArchive Synthetic() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static Dictionary<string, string> Sums() =>
         File.ReadAllLines(Path.Combine(OplLog.Dir, "SHA256SUMS"))
@@ -209,9 +209,9 @@ public class OplMusicTests
     [Fact]
     public void TheSyntheticRunsCoverTheDriver()
     {
-        string[] names = OplLog.Names().Where(n => n.StartsWith("music-", StringComparison.Ordinal)).ToArray();
+        string[] names = [.. OplLog.Names().Where(n => n.StartsWith("music-", StringComparison.Ordinal))];
         Assert.Equal(new[] { "music-controls", "music-doom1-1666", "music-doom2-1666-opl2", "music-e1m1", "music-intro-opl2" }, names);
-        var runs = names.Select(n => MusicRefRun.Load(Path.Combine(OplLog.Dir, n + ".log")).run).ToArray();
+        MusicRefRun[] runs = [.. names.Select(n => MusicRefRun.Load(Path.Combine(OplLog.Dir, n + ".log")).run)];
         Assert.Contains(runs, r => !r.Opl3);
         Assert.Contains(runs, r => r.Reverse);
         Assert.Contains(runs, r => r.Version == opl_driver_ver_t.opl_doom1_1_666);
@@ -293,7 +293,7 @@ public class OplMusicTests
 
     private static short[] Render(OplMusic m, int samples, int block = 512)
     {
-        var buf = new short[2 * samples];
+        short[] buf = new short[2 * samples];
         for (int done = 0; done < samples; done += block)
             m.OPL_Mix_Callback(buf.AsSpan(2 * done, 2 * Math.Min(block, samples - done)));
         return buf;
@@ -311,7 +311,7 @@ public class OplMusicTests
     public void InitWritesTheRegistersAtSampleZero()
     {
         var writes = new List<(long, ushort, byte)>();
-        var gen = Synthetic().W_CacheLumpName("GENMIDI").ToArray();
+        byte[] gen = Synthetic().W_CacheLumpName("GENMIDI").ToArray();
         var opl2 = new OplMusic(gen, 44100, opl3: false);
         Assert.False(opl2.Opl3Mode);
         var m = new OplMusic(gen, 44100) { RegisterWritten = null };
@@ -418,8 +418,8 @@ public class OplMusicTests
     public void RefusesWhatChocolateDoomRefuses()
     {
         OplMusic m = New();
-        Assert.Null(m.I_OPL_RegisterSong(ReadOnlySpan<byte>.Empty));
-        Assert.Null(m.I_OPL_RegisterSong(new byte[] { 1, 2, 3 }));
+        Assert.Null(m.I_OPL_RegisterSong([]));
+        Assert.Null(m.I_OPL_RegisterSong([1, 2, 3]));
         Assert.Null(m.I_OPL_RegisterSong("MThd\0\0\0\u0006\0\u0002\0\u0001\0`"u8)); // MIDI type 2
         // A MUS song mus2mid.c refuses (a measure end, type 5) and one cut off.
         byte[] song = Song();
@@ -474,10 +474,10 @@ public class OplMusicTests
         byte[] fresh = new Mus2Mid().mus2mid(song)!;
         Assert.Equal(first, fresh);
         // A song whose first note has no volume: 127 at first, then what the last song left.
-        byte[] bare = { (byte)'M', (byte)'U', (byte)'S', 0x1a, 6, 0, 16, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0x10, 60, 0x60 };
+        byte[] bare = [(byte)'M', (byte)'U', (byte)'S', 0x1a, 6, 0, 16, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0x10, 60, 0x60];
         var conv2 = new Mus2Mid();
         Assert.Equal(127, Velocity(conv2.mus2mid(bare)!));
-        byte[] loud = { (byte)'M', (byte)'U', (byte)'S', 0x1a, 7, 0, 16, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0x10, 0x80 | 60, 33, 0x60 };
+        byte[] loud = [(byte)'M', (byte)'U', (byte)'S', 0x1a, 7, 0, 16, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0x10, 0x80 | 60, 33, 0x60];
         Assert.Equal(33, Velocity(conv2.mus2mid(loud)!));
         Assert.Equal(33, Velocity(conv2.mus2mid(bare)!));
 
@@ -560,7 +560,7 @@ public class OplMusicTests
         var m = new OplMusic(wad.W_CacheLumpName("GENMIDI").Span, 48000);
         m.I_OPL_SetMusicVolume(100);
         m.I_OPL_PlaySong(m.I_OPL_RegisterSong(wad.W_CacheLumpName("D_E1M1").Span), true);
-        var buf = new short[2 * 1024];
+        short[] buf = new short[2 * 1024];
         var sw = Stopwatch.StartNew();
         for (int done = 0; done < 60 * 48000; done += 1024)
             m.OPL_Mix_Callback(buf);

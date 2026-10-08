@@ -1,4 +1,3 @@
-using IsoDoom.Tests.Support;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
@@ -42,10 +41,10 @@ public class SpriteRotationTests
     [Fact]
     public void SelectPicksTheRotationLumpAndItsMirror()
     {
-        WadArchive wad = new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
-        Sprites sprites = Sprites.R_InitSprites(wad);
+        WadArchive wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+        var sprites = Sprites.R_InitSprites(wad);
         SpriteFrame troo = sprites.Find("TROO")!.Frames[0];
-        string[] names = { "TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5", "TROOA4A6", "TROOA3A7", "TROOA2A8" };
+        string[] names = ["TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5", "TROOA4A6", "TROOA3A7", "TROOA2A8"];
         for (int r = 0; r < 8; r++)
         {
             (int lump, bool flip, int rot) = troo.Select(unchecked(ANG180 + (uint)r * ANG45), 0);

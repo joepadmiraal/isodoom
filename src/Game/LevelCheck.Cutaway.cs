@@ -72,9 +72,9 @@ public partial class LevelCheck
     {
         string map = m.Level.Name;
         var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off };
-        Basis basis = Basis.FromEuler(new Vector3(-Mathf.DegToRad(IsoCamera.DefaultPitch), Mathf.DegToRad(IsoCamera.Yaw), 0));
+        var basis = Basis.FromEuler(new Vector3(-Mathf.DegToRad(IsoCamera.DefaultPitch), Mathf.DegToRad(IsoCamera.Yaw), 0));
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
 
         List<CutQuad> quads = CutQuads(m);
         int[] floorHeights = FloorHeights(m);
@@ -236,7 +236,7 @@ public partial class LevelCheck
         if (off is null || cut is null || cursor is null || dither is null || dark is null || darkCursor is null || flat is null)
             return;
 
-        var box = classes.Box;
+        (int Left, int Top, int Right, int Bottom) box = classes.Box;
         int bw = box.Right - box.Left;
         long compared = 0;
         int badKeep = 0, badClear = 0, badCursor = 0, badDither = 0, ditherCleared = 0, offShowsBackground = 0;
@@ -312,7 +312,7 @@ public partial class LevelCheck
     {
         Vector2I size = ViewSize();
         int w = size.X, h = size.Y;
-        var box = classes.Box;
+        (int Left, int Top, int Right, int Bottom) box = classes.Box;
         int bw = box.Right - box.Left;
         long compared = 0;
         int badKeep = 0, badClear = 0, badCap = 0, capped = 0;
@@ -393,7 +393,7 @@ public partial class LevelCheck
         var classes = new CutPixel[bw * bh];
         var capClasses = new CutPixel[bw * bh];
         var capPoints = new CapPoint[bw * bh];
-        var lidStates = new byte[bw * bh];
+        byte[] lidStates = new byte[bw * bh];
         var lidPoints = new CapPoint[bw * bh];
         int cleared = 0, keptWalls = 0, keptAbove = 0, clearedFloors = 0, capped = 0, lidCount = 0;
         var lidPlanes = new SortedSet<float>();
@@ -525,7 +525,7 @@ public partial class LevelCheck
                 // Keep: every surface up to the first definite one is definitely not cut.
                 bool keep = true;
                 bool firstIsWall = false, firstAbove = false;
-                foreach (var hit in hits)
+                foreach ((float T, bool Definite, int Cut, bool Wall, float Z, int Lid) hit in hits)
                 {
                     if (hit.Cut != 0)
                     {
@@ -629,7 +629,7 @@ public partial class LevelCheck
         string map = m.Level.Name;
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        var ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2 ground = new Vector2(toCamera.X, toCamera.Y).Normalized();
         var facing = new Vector3(ground.X, ground.Y, 0);
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
 
@@ -657,8 +657,7 @@ public partial class LevelCheck
         SpriteSettings sprites = m.Sprites;
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = false;
+            chunk?.Visible = false;
         }
         things.Isolate(thing);
         m.SetSprites(sprites with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright });
@@ -668,7 +667,7 @@ public partial class LevelCheck
         string name = $"{map}: thing cutaway, thing {thing} ({SpriteName(original)}, {tallest} rows) at ({foot.X:F0}, {foot.Y:F0}, {foot.Z:F0})";
 
         var behind = new Vector3(foot.X - ground.X * 24, foot.Y - ground.Y * 24, foot.Z);
-        var below = behind with { Z = foot.Z - 64 };
+        Vector3 below = behind with { Z = foot.Z - 64 };
         var inFront = new Vector3(foot.X + ground.X * 24, foot.Y + ground.Y * 24, foot.Z);
         foreach ((Vector3 centre, string where, CutawaySettings decor) in new[]
             { (behind, "centre 24 behind", narrow), (below, "centre 24 behind and 64 below", narrow), (inFront, "centre 24 in front", narrow with { Radius = CutawaySettings.DefaultRadius }) })
@@ -791,8 +790,7 @@ public partial class LevelCheck
         m.SetSprites(sprites);
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
-            if (chunk is not null)
-                chunk.Visible = true;
+            chunk?.Visible = true;
         }
     }
 }

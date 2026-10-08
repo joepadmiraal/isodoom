@@ -21,7 +21,7 @@ public sealed class RouteFile
     /// <summary>The <c>monsters</c> header (T6.4): the demo spawns monsters (no <c>nomonsters</c>).</summary>
     public bool Monsters { get; private init; }
     /// <summary>The route's events (T6.4), in order, each before the tic of its <see cref="RouteEvent.Tic"/> (0-based).</summary>
-    public IReadOnlyList<RouteEvent> Events { get; private init; } = Array.Empty<RouteEvent>();
+    public IReadOnlyList<RouteEvent> Events { get; private init; } = [];
 
     /// <summary><c>synthetic</c>, <c>doom1</c> or <c>testmap</c> (not checked here).</summary>
     public string? Iwad { get; private init; }
@@ -33,7 +33,7 @@ public sealed class RouteFile
     public (int X, int Y, int Angle)? Start { get; private init; }
     /// <summary>The <c>exit</c> header (T5.9): 1 for <c>normal</c>, 2 for <c>secret</c>, 0 without one.</summary>
     public int Exit { get; private init; }
-    public IReadOnlyList<ticcmd_t> Cmds { get; private init; } = Array.Empty<ticcmd_t>();
+    public IReadOnlyList<ticcmd_t> Cmds { get; private init; } = [];
 
     public static RouteFile Parse(string path) => Parse(File.ReadLines(path), path);
 
@@ -105,7 +105,7 @@ public sealed class RouteFile
             }
             if (f.Length != 4)
                 throw new FormatException($"{where}: expected FORWARD SIDE TURN BUTTONS [xCOUNT]");
-            int[] v = { Int(f[0]), Int(f[1]), Int(f[2]), Int(f[3]) };
+            int[] v = [Int(f[0]), Int(f[1]), Int(f[2]), Int(f[3])];
             for (int i = 0; i < 3; i++)
             {
                 if (v[i] < -128 || v[i] > 127)

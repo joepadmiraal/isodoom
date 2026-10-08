@@ -21,7 +21,7 @@ public sealed class Gunner
     private const int FU = 1 << 16;
 
     private readonly Steer _g;
-    private readonly HashSet<mobj_t> _attacked = new();
+    private readonly HashSet<mobj_t> _attacked = [];
     private int _wait;
     private int _shots;
 
@@ -61,7 +61,7 @@ public sealed class Gunner
     /// <summary>Monster types that attacked, for the log.</summary>
     public readonly SortedSet<string> Attackers = new(StringComparer.Ordinal);
 
-    private readonly HashSet<mobj_t> _shot = new();
+    private readonly HashSet<mobj_t> _shot = [];
 
     /// <summary>How far (units) from the player a barrel must be to be shot.</summary>
     public double BarrelSafe = 200;

@@ -18,7 +18,7 @@ public class Doom2SpriteTests
 {
     private static (WadArchive Wad, Sprites Sprites) OpenDoom2()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
         return (wad, Sprites.R_InitSprites(wad));
     }
 
@@ -38,7 +38,7 @@ public class Doom2SpriteTests
 
         // No sprite lump is left over, so no DOOM II sprite is missing from the name table.
         IReadOnlyList<WadLump> ns = wad.GetNamespace(LumpNamespace.Sprites);
-        HashSet<WadLump> used = UsedLumps(s).Select(l => wad.Lumps[l]).ToHashSet();
+        HashSet<WadLump> used = [.. UsedLumps(s).Select(l => wad.Lumps[l])];
         Assert.Equal(ns.Count, used.Count);
         Assert.All(ns, l => Assert.True(used.Contains(l), $"sprite lump {l.Name} is not used"));
 
@@ -90,7 +90,7 @@ public class Doom2SpriteTests
                     // Rotation 0 fills every slot; otherwise slot r holds rotation r+1,
                     // from the first half of the name or (flipped) the second.
                     string expected = frame.Rotate ? $"{c}{r + 1}" : $"{c}0";
-                    string half = frame.Flip[r] ? lump.Substring(6) : lump.Substring(4, 2);
+                    string half = frame.Flip[r] ? lump[6..] : lump.Substring(4, 2);
                     Assert.True(half == expected, $"{def.Name} frame {c} slot {r}: {lump} (flip {frame.Flip[r]})");
                 }
             }

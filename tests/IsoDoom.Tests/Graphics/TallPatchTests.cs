@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
@@ -15,7 +14,7 @@ namespace IsoDoom.Tests.Graphics;
 /// </summary>
 public class TallPatchTests
 {
-    private static byte[] Run(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
+    private static byte[] Run(int length, byte value) => [.. Enumerable.Repeat(value, length)];
 
     // One 400-row column: posts at raw topdelta 0, 254 and 100. The third post's
     // topdelta is not greater than the previous top (254), so a tall-patch
@@ -97,7 +96,7 @@ public class TallPatchTests
         }
     }
 
-    public static TheoryData<string> Iwads => new() { "DOOM1", "DOOM2" };
+    public static TheoryData<string> Iwads => ["DOOM1", "DOOM2"];
 
     private static WadArchive OpenIwad(string which) =>
         WadArchive.Open(which == "DOOM1" ? TestWads.RequireDoom1() : TestWads.RequireDoom2());
@@ -134,8 +133,8 @@ public class TallPatchTests
     public void IwadTexturesCompositeTheSameWithTallPatchSupport(string which)
     {
         WadArchive wad = OpenIwad(which);
-        Textures tall = Textures.R_InitTextures(wad);
-        Textures vanilla = Textures.R_InitTextures(wad, PatchTopDeltaMode.Vanilla);
+        var tall = Textures.R_InitTextures(wad);
+        var vanilla = Textures.R_InitTextures(wad, PatchTopDeltaMode.Vanilla);
         for (int i = 0; i < tall.NumTextures; i++)
         {
             foreach (TextureCompositeMode mode in new[] { TextureCompositeMode.Vanilla, TextureCompositeMode.Corrected })

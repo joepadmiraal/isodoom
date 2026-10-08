@@ -70,13 +70,13 @@ public static class buttoncode_t
 public static class Ticcmds
 {
     /// <summary>g_game.c <c>forwardmove</c>: walk, run.</summary>
-    public static ReadOnlySpan<sbyte> forwardmove => new sbyte[] { 0x19, 0x32 };
+    public static ReadOnlySpan<sbyte> forwardmove => [0x19, 0x32];
 
     /// <summary>g_game.c <c>sidemove</c>: walk, run.</summary>
-    public static ReadOnlySpan<sbyte> sidemove => new sbyte[] { 0x18, 0x28 };
+    public static ReadOnlySpan<sbyte> sidemove => [0x18, 0x28];
 
     /// <summary>g_game.c <c>angleturn</c>: walk, run, slow turn (the first <see cref="SLOWTURNTICS"/> tics).</summary>
-    public static ReadOnlySpan<short> angleturn => new short[] { 640, 1280, 320 };
+    public static ReadOnlySpan<short> angleturn => [640, 1280, 320];
 
     /// <summary>g_game.c <c>MAXPLMOVE</c>: <c>forwardmove[1]</c>, the builder's clamp on both moves.</summary>
     public const int MAXPLMOVE = 0x32;

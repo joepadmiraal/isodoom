@@ -27,7 +27,7 @@ public class DoorTests
     private static uint Deg(int degrees) => (uint)((ulong)degrees * 0x100000000UL / 360);
 
     private static Level SpecialsLevel() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M2");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M2");
 
     private static World Specials(Level? level = null)
     {
@@ -57,7 +57,7 @@ public class DoorTests
     }
 
     private static sfxenum_t[] DoorSounds(World world) =>
-        world.StartedSounds().Where(s => s.sector == DoorSec(world)).Select(s => s.sfx).ToArray();
+        [.. world.StartedSounds().Where(s => s.sector == DoorSec(world)).Select(s => s.sfx)];
 
     [Fact]
     public void ARaiseDoorOpensWaitsAndClosesAsVanilla()
@@ -69,7 +69,7 @@ public class DoorTests
         vldoor_t door = Assert.IsType<vldoor_t>(DoorSec(world).specialdata);
         Assert.Equal(vldoor_e.vld_normal, door.type);
         Assert.Equal(Top, door.topheight);
-        Assert.Equal(new[] { sfxenum_t.sfx_doropn }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_doropn], DoorSounds(world));
         Assert.Equal(1, world.lines[SyntheticIwad.DoorLineR].special); // a DR line stays
 
         // Up 2 units a tic: 124 at tic 62, at the top (pastdest) at 63.
@@ -87,7 +87,7 @@ public class DoorTests
         Assert.Equal(0, door.direction);
         Run(world, 1);
         Assert.Equal(-1, door.direction);
-        Assert.Equal(new[] { sfxenum_t.sfx_dorcls }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_dorcls], DoorSounds(world));
         Assert.Equal(Top, DoorSec(world).ceilingheight);
         Run(world, 62);
         Assert.Equal(0, DoorSec(world).ceilingheight);
@@ -127,7 +127,7 @@ public class DoorTests
         Assert.Equal(F(56), lowest);
         Assert.Equal(35, tics); // 124 to 56 in 34 tics; the 35th step (54) does not fit
         Assert.Equal(1, door.direction);
-        Assert.Equal(new[] { sfxenum_t.sfx_doropn }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_doropn], DoorSounds(world));
         Assert.Equal(F(56), DoorSec(world).ceilingheight);
         Assert.Equal(F(56), Player(world).ceilingz);
         // Up again, waits at the top again.
@@ -244,7 +244,7 @@ public class DoorTests
                 vldoor_t door = DoorThinker(world)!;
                 Assert.Equal(special < 29 ? vldoor_e.vld_normal : vldoor_e.vld_open, door.type);
                 Assert.Null(player.message);
-                Assert.Equal(new[] { sfxenum_t.sfx_doropn }, DoorSounds(world));
+                Assert.Equal([sfxenum_t.sfx_doropn], DoorSounds(world));
                 Assert.Equal(special < 29 ? special : 0, world.lines[SyntheticIwad.DoorLineR].special);
             }
         }
@@ -259,7 +259,7 @@ public class DoorTests
         vldoor_t door = DoorThinker(world)!;
         Assert.Equal(vldoor_e.vld_blazeRaise, door.type);
         Assert.Equal(4 * VDoor.VDOORSPEED, door.speed);
-        Assert.Equal(new[] { sfxenum_t.sfx_bdopn }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_bdopn], DoorSounds(world));
         Run(world, 15); // 8 a tic: 120 at 15, at the top (124, pastdest) at 16
         Assert.Equal(F(120), DoorSec(world).ceilingheight);
         Run(world, 1);
@@ -269,13 +269,13 @@ public class DoorTests
         Assert.Equal(0, door.direction);
         Run(world, 1);
         Assert.Equal(-1, door.direction);
-        Assert.Equal(new[] { sfxenum_t.sfx_bdcls }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_bdcls], DoorSounds(world));
         Run(world, 15);
         Assert.Equal(F(4), DoorSec(world).ceilingheight);
         Run(world, 1);
         Assert.Equal(0, DoorSec(world).ceilingheight);
         Assert.Null(DoorSec(world).specialdata);
-        Assert.Equal(new[] { sfxenum_t.sfx_bdcls }, DoorSounds(world)); // blazing doors clunk shut
+        Assert.Equal([sfxenum_t.sfx_bdcls], DoorSounds(world)); // blazing doors clunk shut
 
         world = Specials();
         world.lines[SyntheticIwad.DoorLineR].special = 118;
@@ -311,7 +311,7 @@ public class DoorTests
 
         // Close: down, no sound at the bottom, gone.
         Assert.Equal(1, world.EV_DoDoor(line, vldoor_e.vld_close));
-        Assert.Equal(new[] { sfxenum_t.sfx_dorcls }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_dorcls], DoorSounds(world));
         Run(world, 62);
         Assert.Equal(0, DoorSec(world).ceilingheight);
         Run(world, 1);
@@ -346,7 +346,7 @@ public class DoorTests
         Assert.Equal(35 * 30, door.topcountdown);
         Run(world, 35 * 30);
         Assert.Equal(1, door.direction);
-        Assert.Equal(new[] { sfxenum_t.sfx_doropn }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_doropn], DoorSounds(world));
         Run(world, 51);
         Assert.Equal(F(100), DoorSec(world).ceilingheight);
         Assert.Null(DoorThinker(world));
@@ -358,17 +358,17 @@ public class DoorTests
         World world = Specials();
         line_t line = Tagged(world, 0);
         Assert.Equal(1, world.EV_DoDoor(line, vldoor_e.vld_blazeOpen));
-        Assert.Equal(new[] { sfxenum_t.sfx_bdopn }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_bdopn], DoorSounds(world));
         Run(world, 16);
         Assert.Null(DoorThinker(world));
         Assert.Equal(1, world.EV_DoDoor(line, vldoor_e.vld_blazeClose));
-        Assert.Equal(new[] { sfxenum_t.sfx_bdcls }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_bdcls], DoorSounds(world));
         Run(world, 15);
         Assert.Equal(F(4), DoorSec(world).ceilingheight);
         Run(world, 1);
         Assert.Equal(0, DoorSec(world).ceilingheight);
         Assert.Null(DoorThinker(world));
-        Assert.Equal(new[] { sfxenum_t.sfx_bdcls }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_bdcls], DoorSounds(world));
 
         // A locked blazing switch (S1 133, blue): the message without the key, the door with it.
         world = Specials();
@@ -448,7 +448,7 @@ public class DoorTests
         Assert.Equal(0, door.direction);
         Run(world, 1);
         Assert.Equal(-1, door.direction);
-        Assert.Equal(new[] { sfxenum_t.sfx_dorcls }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_dorcls], DoorSounds(world));
         Run(world, 63);
         Assert.Equal(0, DoorSec(world).ceilingheight);
         Assert.Null(DoorThinker(world));
@@ -467,7 +467,7 @@ public class DoorTests
         Run(world, 1);
         Assert.Equal(1, door.direction);
         Assert.Equal(vldoor_e.vld_normal, door.type);
-        Assert.Equal(new[] { sfxenum_t.sfx_doropn }, DoorSounds(world));
+        Assert.Equal([sfxenum_t.sfx_doropn], DoorSounds(world));
         Run(world, 63 + VDoor.VDOORWAIT);
         Assert.Equal(-1, door.direction);
     }

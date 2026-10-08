@@ -72,7 +72,7 @@ public sealed class DoorLids
     public bool Has(int sector) => _neighbours[sector] is not null;
 
     /// <summary>The other sectors across a lid sector's two-sided lines, in sector order (empty for a sector without a lid).</summary>
-    public IReadOnlyList<int> Neighbours(int sector) => _neighbours[sector] ?? Array.Empty<int>();
+    public IReadOnlyList<int> Neighbours(int sector) => _neighbours[sector] ?? [];
 
     /// <summary>
     /// A lid sector's lid height from its neighbours' ceilings
@@ -101,10 +101,10 @@ public sealed class DoorLids
         {
             if (line.FrontSector is not Sector front || line.BackSector is not Sector back || front == back)
                 continue;
-            (neighbours[front.Index] ??= new SortedSet<int>()).Add(back.Index);
-            (neighbours[back.Index] ??= new SortedSet<int>()).Add(front.Index);
+            (neighbours[front.Index] ??= []).Add(back.Index);
+            (neighbours[back.Index] ??= []).Add(front.Index);
         }
-        var lids = new int[]?[level.Sectors.Length];
+        int[]?[] lids = new int[]?[level.Sectors.Length];
         var sectors = new List<int>();
         foreach (SectorFloor floor in floors.BySector)
         {
@@ -146,7 +146,7 @@ public sealed class DoorLids
         bool Sample(double x, double y)
         {
             double nearest = double.MaxValue;
-            foreach (var (ax, ay, bx, by) in boundary)
+            foreach ((double ax, double ay, double bx, double by) in boundary)
                 nearest = Math.Min(nearest, PointSegment(x, y, ax, ay, bx, by));
             radius = Math.Max(radius, nearest);
             return 2 * radius > limit;

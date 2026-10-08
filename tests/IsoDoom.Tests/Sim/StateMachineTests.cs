@@ -24,7 +24,7 @@ public class StateMachineTests
 
     private static int F(int units) => units * FRACUNIT;
 
-    private static WadArchive Wad() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Wad() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static World NewWorld(skill_t skill = skill_t.sk_medium, string map = "E1M1")
     {
@@ -181,7 +181,7 @@ public class StateMachineTests
         Assert.True((imp.flags & mobjflag_t.MF_SOLID) != 0);
 
         // Teleport fogs at both spots (here the same: the corpse did not move), with their sounds.
-        mobj_t[] fogs = world.Mobjs().Where(m => m.type == mobjtype_t.MT_TFOG).ToArray();
+        mobj_t[] fogs = [.. world.Mobjs().Where(m => m.type == mobjtype_t.MT_TFOG)];
         Assert.Equal(2, fogs.Length);
         Assert.All(fogs, f => Assert.Equal((F(320), F(64)), (f.x, f.y)));
         Assert.Equal(2, world.StartedSounds().Count(s => s.sfx == sfxenum_t.sfx_telept));

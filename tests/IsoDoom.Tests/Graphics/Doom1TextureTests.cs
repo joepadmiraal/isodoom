@@ -11,7 +11,7 @@ public class Doom1TextureTests
 {
     private static (WadArchive Wad, Textures Textures) OpenDoom1()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         return (wad, Textures.R_InitTextures(wad));
     }
 
@@ -28,7 +28,7 @@ public class Doom1TextureTests
 
         TextureDef startan3 = t.TextureDefs[t.R_TextureNumForName("STARTAN3")];
         Assert.Equal((128, 128), (startan3.Width, startan3.Height));
-        Assert.Equal(new[] { ("SW19_1", 64, 0), ("SW19_2", 0, 0) },
+        Assert.Equal([("SW19_1", 64, 0), ("SW19_2", 0, 0)],
             startan3.Patches.Select(p => (p.PatchName, p.OriginX, p.OriginY)));
 
         TextureDef door3 = t.TextureDefs[t.R_TextureNumForName("DOOR3")];

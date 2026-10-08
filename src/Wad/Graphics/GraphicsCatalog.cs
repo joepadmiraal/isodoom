@@ -55,7 +55,7 @@ public sealed class GraphicsCatalog
     private readonly IReadOnlyList<WadLump> _flats;
     private readonly IReadOnlyList<WadLump> _patches;
     private readonly IReadOnlyList<WadLump> _graphics;
-    private readonly List<SpriteDef> _sprites = new();
+    private readonly List<SpriteDef> _sprites = [];
     private Dictionary<WadLump, GraphicLocation>? _locations;
 
     private GraphicsCatalog(WadArchive wad)
@@ -123,16 +123,16 @@ public sealed class GraphicsCatalog
         switch (category)
         {
             case GraphicCategory.Textures:
-            {
-                TextureDef def = Textures.TextureDefs[index];
-                return new(category, name, Textures.R_GenerateComposite(index, CompositeMode), false,
-                    $"{name}  {def.Width}x{def.Height}, {def.Patches.Count} patch(es), {CompositeMode} composite");
-            }
+                {
+                    TextureDef def = Textures.TextureDefs[index];
+                    return new(category, name, Textures.R_GenerateComposite(index, CompositeMode), false,
+                        $"{name}  {def.Width}x{def.Height}, {def.Patches.Count} patch(es), {CompositeMode} composite");
+                }
             case GraphicCategory.Flats:
-            {
-                WadLump lump = _flats[index];
-                return new(category, name, Flat.Decode(lump.Data.Span, name), false, $"{name}  64x64 flat ({lump.File.Name})");
-            }
+                {
+                    WadLump lump = _flats[index];
+                    return new(category, name, Flat.Decode(lump.Data.Span, name), false, $"{name}  64x64 flat ({lump.File.Name})");
+                }
             case GraphicCategory.Patches:
                 return PatchView(category, _patches[index]);
             case GraphicCategory.Graphics:

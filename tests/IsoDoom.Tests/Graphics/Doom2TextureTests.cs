@@ -24,7 +24,7 @@ public class Doom2TextureTests
 
     private static (WadArchive Wad, Textures Textures) OpenDoom2()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
         return (wad, Textures.R_InitTextures(wad));
     }
 
@@ -42,7 +42,7 @@ public class Doom2TextureTests
 
         TextureDef midgrate = t.TextureDefs[t.R_TextureNumForName("MIDGRATE")];
         Assert.Equal((128, 128), (midgrate.Width, midgrate.Height));
-        Assert.Equal(new[] { ("M1_1", 0, 0) }, midgrate.Patches.Select(p => (p.PatchName, p.OriginX, p.OriginY)));
+        Assert.Equal([("M1_1", 0, 0)], midgrate.Patches.Select(p => (p.PatchName, p.OriginX, p.OriginY)));
 
         if (IsV1666)
         {
@@ -100,7 +100,7 @@ public class Doom2TextureTests
         }
     }
 
-    public static TheoryData<string> MaskedMidtextureNames() => new(MaskedMidtextures);
+    public static TheoryData<string> MaskedMidtextureNames() => [.. MaskedMidtextures];
 
     /// <summary>
     /// Multi-patch textures leave no gaps between their patches: all are fully
@@ -125,8 +125,8 @@ public class Doom2TextureTests
         Assert.SkipUnless(IsV1666, "Hole list is for DOOM II v1.666.");
         foreach (TextureCompositeMode mode in Modes)
         {
-            string[] withHoles = All(t).Where(i => t.R_GenerateComposite(i, mode).Opaque.Any(b => b == 0))
-                .Select(i => t.TextureDefs[i].Name).Order().ToArray();
+            string[] withHoles = [.. All(t).Where(i => t.R_GenerateComposite(i, mode).Opaque.Any(b => b == 0))
+                .Select(i => t.TextureDefs[i].Name).Order()];
             // Plus three single missing pixels in the patch data itself.
             Assert.Equal(MaskedMidtextures.Concat(["SKINEDGE", "SKY2", "ZZZFACE3"]).Order(), withHoles);
         }
@@ -144,12 +144,12 @@ public class Doom2TextureTests
     {
         (_, Textures t) = OpenDoom2();
         Assert.SkipUnless(IsV1666, "Difference list is for DOOM II v1.666.");
-        string[] differ = All(t).Where(i =>
+        string[] differ = [.. All(t).Where(i =>
             {
                 IndexedImage v = t.R_GenerateComposite(i), c = t.R_GenerateComposite(i, TextureCompositeMode.Corrected);
                 return !v.Pixels.SequenceEqual(c.Pixels) || !v.Opaque.SequenceEqual(c.Opaque);
             })
-            .Select(i => t.TextureDefs[i].Name).Order().ToArray();
+            .Select(i => t.TextureDefs[i].Name).Order()];
         Assert.Equal(["BROWN144", "GRAY2", "GRAYVINE", "STEP2", "SW1DIRT", "SW1VINE", "SW2DIRT", "SW2VINE", "TEKWALL1"], differ);
         Assert.All(differ, n => Assert.Contains(t.TextureDefs[t.R_TextureNumForName(n)].Patches, p => p.OriginY != 0));
     }

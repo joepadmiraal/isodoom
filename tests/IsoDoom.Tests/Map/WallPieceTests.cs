@@ -21,12 +21,12 @@ public class WallPieceTests
 
     private static (Level, FloorTriangles, WallPieces) Build(Level level)
     {
-        FloorTriangles floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
+        var floors = FloorTriangles.Build(level, SubsectorPolygons.Build(level));
         return (level, floors, WallPieces.Build(level, floors));
     }
 
     private static Level LoadSynthetic() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1");
 
     [Fact]
     public void IntegerSquareRootRounds()
@@ -105,7 +105,7 @@ public class WallPieceTests
     private static void CheckPieces(Level level, FloorTriangles floors, WallPieces pieces, out int onFloor, out int total)
     {
         onFloor = total = 0;
-        var floorCorners = floors.BySector.Select(f => new HashSet<PolygonVertex>(f.Vertices)).ToArray();
+        HashSet<PolygonVertex>[] floorCorners = [.. floors.BySector.Select(f => new HashSet<PolygonVertex>(f.Vertices))];
         var problems = new List<string>();
         foreach (Line line in level.Lines)
         {
@@ -131,7 +131,7 @@ public class WallPieceTests
                     if (i > 0 && !reversed && list[i - 1].B != p.A && !(i > 1 && list[i - 2].A == list[i - 1].B && list[i - 2].B == list[i - 1].A))
                         problems.Add($"line {line.Index} side {side}: pieces {i - 1} and {i} don't join");
                     // A connector pair stands across the floor (between two floor edges' ends), not on its edge.
-                    foreach (Sector? s in reversed ? Array.Empty<Sector?>() : new[] { front, back })
+                    foreach (Sector? s in reversed ? Array.Empty<Sector?>() : [front, back])
                     {
                         if (s is null)
                             continue;

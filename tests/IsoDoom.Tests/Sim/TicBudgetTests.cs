@@ -34,7 +34,7 @@ public class TicBudgetTests
     [InlineData("all")]
     public void Doom1E1M9TicsStayInTheBudget(string awake)
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_hard), Tweaks.TopDown);
         world.G_DoLoadLevel(Level.Load(wad, "E1M9"));
         int mobjs = world.Mobjs().Count();
@@ -59,7 +59,7 @@ public class TicBudgetTests
         }
 
         const int warmup = 105, measured = 1050;
-        var ms = new double[measured];
+        double[] ms = new double[measured];
         var clock = new Stopwatch();
         mobj_t player = world.players[world.consoleplayer].mo!;
         var sectors = new System.Collections.Generic.SortedSet<int>();

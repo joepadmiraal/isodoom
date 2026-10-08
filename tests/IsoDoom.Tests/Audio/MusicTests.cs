@@ -90,7 +90,7 @@ public class MusicTests
     [MemberData(nameof(Dumps))]
     public void TheSongsAreVanillas(string name)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         TestWads.RequireDoom1();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
@@ -98,10 +98,10 @@ public class MusicTests
         string path = Path.Combine(dir, $"{name}.music");
         if (!File.Exists(path))
             Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/wipes.sh (or set {VanillaRoute.DumpDirEnvVar}).");
-        string[] expected = File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+        string[] expected = [.. File.ReadAllLines(path).Where(l => l.Length > 0)];
         string[] tail = expected[0].Split(' ');
         Assert.Equal("tail", tail[0]);
-        HashSet<int> presses = tail[1] == "-" ? new() : tail[1].Split(',').Select(int.Parse).ToHashSet();
+        HashSet<int> presses = tail[1] == "-" ? [] : [.. tail[1].Split(',').Select(int.Parse)];
         var cmds = new List<ticcmd_t>(route.Cmds);
         for (int t = 1; t <= int.Parse(tail[2]); t++)
             cmds.Add(new ticcmd_t { buttons = presses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
@@ -190,7 +190,7 @@ public class MusicTests
     private static (SSound Sound, RecordingMusicDevice Device) New(params string[] lumps)
     {
         var device = new RecordingMusicDevice();
-        var have = lumps.Length > 0 ? lumps.ToHashSet() : null;
+        HashSet<string>? have = lumps.Length > 0 ? [.. lumps] : null;
         var s = new SSound(null, SSound.DefaultChannels, device,
             name => have is null || have.Contains(name) ? new ReadOnlyMemory<byte>(new byte[name.Length]) : (ReadOnlyMemory<byte>?)null);
         return (s, device);
@@ -201,12 +201,12 @@ public class MusicTests
     {
         (SSound s, RecordingMusicDevice d) = New();
         Assert.Equal(music_result_t.mr_started, s.S_ChangeMusic(musicenum_t.mus_e1m1, true).result);
-        Assert.Equal(new[] { "I_RegisterSong D_E1M1 6", "I_PlaySong D_E1M1 looping" }, d.Calls);
+        Assert.Equal(["I_RegisterSong D_E1M1 6", "I_PlaySong D_E1M1 looping"], d.Calls);
         Assert.Equal((musicenum_t.mus_e1m1, true), (s.mus_playing, s.mus_looping));
         Assert.Equal(music_result_t.mr_same, s.S_ChangeMusic(musicenum_t.mus_e1m1, false).result);
         Assert.Equal(2, d.CallCount); // the same song goes on
         s.S_StartMusic(musicenum_t.mus_inter);
-        Assert.Equal(new[] { "I_StopSong", "I_UnRegisterSong D_E1M1", "I_RegisterSong D_INTER 7", "I_PlaySong D_INTER" }, d.Calls.Skip(2));
+        Assert.Equal(["I_StopSong", "I_UnRegisterSong D_E1M1", "I_RegisterSong D_INTER 7", "I_PlaySong D_INTER"], d.Calls.Skip(2));
         Assert.Equal(("D_INTER", false, 1), (d.Song, d.Looping, d.Registered));
         s.S_StopMusic();
         Assert.Equal((musicenum_t.mus_None, null, 0), (s.mus_playing, d.Song, d.Registered));
@@ -273,13 +273,13 @@ public class MusicTests
         s.S_ResumeSound();
         Assert.True(d.Paused); // the focus pause still holds it
         s.S_ChangeMusic(musicenum_t.mus_e1m2, true);
-        Assert.Equal(new[] { "I_ResumeSong", "I_StopSong", "I_UnRegisterSong D_E1M1", "I_RegisterSong D_E1M2 6", "I_PlaySong D_E1M2 looping", "I_PauseSong" }, d.Calls.TakeLast(6));
+        Assert.Equal(["I_ResumeSong", "I_StopSong", "I_UnRegisterSong D_E1M1", "I_RegisterSong D_E1M2 6", "I_PlaySong D_E1M2 looping", "I_PauseSong"], d.Calls.TakeLast(6));
         s.PauseAll(false);
         Assert.False(d.Paused);
         // a song paused by the game is resumed before it stops (S_StopMusic), mus_paused staying (vanilla's)
         s.S_PauseSound();
         s.S_StartMusic(musicenum_t.mus_intro);
-        Assert.Equal(new[] { "I_PauseSong", "I_ResumeSong", "I_StopSong" }, d.Calls.TakeLast(6).Take(3));
+        Assert.Equal(["I_PauseSong", "I_ResumeSong", "I_StopSong"], d.Calls.TakeLast(6).Take(3));
         Assert.True(s.mus_paused && !d.Paused);
         // a level's start: no sound, not paused, its song
         s.S_Start(1, 3);
@@ -293,7 +293,7 @@ public class MusicTests
     private static (GameFlow Flow, GameFlowTests.Host Host, SSound Sound, RecordingMusicDevice Device) Flow(GameMode mode = GameMode.shareware)
     {
         (GameFlow flow, GameFlowTests.Host host) = GameFlowTests.New(mode);
-        host.Extra.UnionWith(new[] { "CREDIT", "HELP2" });
+        host.Extra.UnionWith(["CREDIT", "HELP2"]);
         (SSound s, RecordingMusicDevice d) = New();
         s.commercial = mode == GameMode.commercial;
         flow.Sound = s;
@@ -399,7 +399,7 @@ public class MusicTests
             flow.G_Ticker(None);
         Assert.Equal(1, flow.Finale.finalestage);
         Assert.Equal(end, s.mus_playing); // E3's bunny once (S_StartMusic), the others' song on
-        Assert.Equal(end != text ? false : true, s.mus_looping);
+        Assert.Equal(end == text, s.mus_looping);
     }
 
     [Fact]

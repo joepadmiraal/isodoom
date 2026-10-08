@@ -21,8 +21,8 @@ public class Doom2MapTests
     [MemberData(nameof(MapNames))]
     public void EveryMapLoadsConsistently(string name)
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
-        Level map = Level.Load(wad, name);
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
+        var map = Level.Load(wad, name);
         MapTestChecks.CheckConsistent(wad, map);
         Assert.Contains(map.Things, t => t.Type == 1);
     }
@@ -30,10 +30,10 @@ public class Doom2MapTests
     [Fact]
     public void Map01ElementCountsAndPlayerStart()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
         if (TestWads.Doom2Md5 != TestWads.Doom2V1666Md5)
             Assert.Skip("MAP01 counts are asserted for DOOM II v1.666 only.");
-        Level map = Level.Load(wad, "MAP01");
+        var map = Level.Load(wad, "MAP01");
         Assert.Equal(
             (69, 370, 529, 383, 601, 194, 193, 59),
             (map.Things.Length, map.Lines.Length, map.Sides.Length, map.Vertexes.Length,

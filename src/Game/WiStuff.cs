@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
@@ -73,41 +72,38 @@ public sealed class WiStuff
     private static anim_t[][] NewAnims()
     {
         const int T3 = SimInfo.TICRATE / 3, T4 = SimInfo.TICRATE / 4;
-        var a = animenum_t.ANIM_ALWAYS;
-        var l = animenum_t.ANIM_LEVEL;
-        return new[]
-        {
-            new[]
-            {
+        animenum_t a = animenum_t.ANIM_ALWAYS;
+        animenum_t l = animenum_t.ANIM_LEVEL;
+        return
+        [
+            [
                 ANIM(a, T3, 3, 224, 104, 0), ANIM(a, T3, 3, 184, 160, 0), ANIM(a, T3, 3, 112, 136, 0),
                 ANIM(a, T3, 3, 72, 112, 0), ANIM(a, T3, 3, 88, 96, 0), ANIM(a, T3, 3, 64, 48, 0),
                 ANIM(a, T3, 3, 192, 40, 0), ANIM(a, T3, 3, 136, 16, 0), ANIM(a, T3, 3, 80, 16, 0),
                 ANIM(a, T3, 3, 64, 24, 0),
-            },
-            new[]
-            {
+            ],
+            [
                 ANIM(l, T3, 1, 128, 136, 1), ANIM(l, T3, 1, 128, 136, 2), ANIM(l, T3, 1, 128, 136, 3),
                 ANIM(l, T3, 1, 128, 136, 4), ANIM(l, T3, 1, 128, 136, 5), ANIM(l, T3, 1, 128, 136, 6),
                 ANIM(l, T3, 1, 128, 136, 7), ANIM(l, T3, 3, 192, 144, 8), ANIM(l, T3, 1, 128, 136, 8),
-            },
-            new[]
-            {
+            ],
+            [
                 ANIM(a, T3, 3, 104, 168, 0), ANIM(a, T3, 3, 40, 136, 0), ANIM(a, T3, 3, 160, 96, 0),
                 ANIM(a, T3, 3, 104, 80, 0), ANIM(a, T3, 3, 120, 32, 0), ANIM(a, T4, 3, 40, 0, 0),
-            },
-        };
+            ],
+        ];
     }
 
     /// <summary>wi_stuff.c <c>lnodes</c>: the levels' places on the world maps of episodes 1–3, by episode and map (origin 0).</summary>
     private static readonly (int x, int y)[][] lnodes =
-    {
+    [
         // Episode 0 World Map
-        new[] { (185, 164), (148, 143), (69, 122), (209, 102), (116, 89), (166, 55), (71, 56), (135, 29), (71, 24) },
+        [(185, 164), (148, 143), (69, 122), (209, 102), (116, 89), (166, 55), (71, 56), (135, 29), (71, 24)],
         // Episode 1 World Map should go here
-        new[] { (254, 25), (97, 50), (188, 64), (128, 78), (214, 92), (133, 130), (208, 136), (148, 140), (235, 158) },
+        [(254, 25), (97, 50), (188, 64), (128, 78), (214, 92), (133, 130), (208, 136), (148, 140), (235, 158)],
         // Episode 2 World Map should go here
-        new[] { (156, 168), (48, 154), (174, 95), (265, 75), (130, 48), (279, 23), (198, 48), (140, 25), (281, 136) },
-    };
+        [(156, 168), (48, 154), (174, 95), (265, 75), (130, 48), (279, 23), (198, 48), (140, 25), (281, 136)],
+    ];
 
     // GLOBAL LOCATIONS
     private const int WI_TITLEY = 2;
@@ -156,10 +152,10 @@ public sealed class WiStuff
     public bool snl_pointeron;
 
     /// <summary>The world map's animations of <see cref="wbs"/>'s episode (wi_stuff.c <c>anims[wbs->epsd]</c>), or none.</summary>
-    public anim_t[] anims = Array.Empty<anim_t>();
+    public anim_t[] anims = [];
 
     /// <summary>The sounds the last <see cref="WI_Ticker"/> started (<c>S_StartSound(NULL, …)</c>), for the tests and the overlay.</summary>
-    public readonly List<sfxenum_t> sounds = new();
+    public readonly List<sfxenum_t> sounds = [];
 
     private World? world;
 
@@ -197,7 +193,7 @@ public sealed class WiStuff
     /// <summary>wi_stuff.c <c>WI_loadData</c>'s animations (the patches load by name when drawn: <see cref="ScreenGraphics.Patch"/>).</summary>
     private void WI_loadData()
     {
-        anims = Array.Empty<anim_t>();
+        anims = [];
         if (flow.gamemode == GameMode.commercial || wbs!.epsd > 2)
             return;
         anims = NewAnims()[wbs.epsd];
@@ -636,8 +632,8 @@ public sealed class WiStuff
             screen.V_DrawPatch(node.x, node.y, patch);
     }
 
-    private static readonly string?[] splat = { "WISPLAT", null };
-    private static readonly string?[] yah = { "WIURH0", "WIURH1" };
+    private static readonly string?[] splat = ["WISPLAT", null];
+    private static readonly string?[] yah = ["WIURH0", "WIURH1"];
 
     /// <summary>wi_stuff.c <c>WI_drawAnimatedBack</c>.</summary>
     private void WI_drawAnimatedBack(ScreenGraphics g, HudScreen screen)

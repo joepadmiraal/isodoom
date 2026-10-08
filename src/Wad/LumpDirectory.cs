@@ -96,10 +96,10 @@ public static class LumpDirectory
 {
     // doomdata.h ML_* order after the header; BEHAVIOR is Hexen-format maps' extra lump.
     private static readonly string[] MapLumpNames =
-    {
+    [
         "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS",
         "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP", "BEHAVIOR",
-    };
+    ];
 
     /// <summary>Display name of a kind ("map data", "sound", …).</summary>
     public static string KindName(LumpKind kind) => kind switch

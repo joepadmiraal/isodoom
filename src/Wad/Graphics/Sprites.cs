@@ -140,12 +140,12 @@ public sealed class Sprites
 
         // The sprite lumps of each file, in directory order. A name repeated in
         // one file collapses to its last copy (as WadArchive's namespace merge does).
-        List<List<int>> perFile = new();
-        Dictionary<WadFile, int> fileIndex = new();
+        List<List<int>> perFile = [];
+        Dictionary<WadFile, int> fileIndex = [];
         for (int i = 0; i < wad.Files.Count; i++)
         {
             fileIndex[wad.Files[i]] = i;
-            perFile.Add(new List<int>());
+            perFile.Add([]);
         }
         for (int l = 0; l < wad.NumLumps; l++)
         {
@@ -159,7 +159,7 @@ public sealed class Sprites
             list.Add(l);
         }
 
-        SpriteDef[] sprites = new SpriteDef[namelist.Count];
+        var sprites = new SpriteDef[namelist.Count];
         for (int i = 0; i < namelist.Count; i++)
             sprites[i] = R_InitSpriteDef(wad, WadFile.NormalizeName(namelist[i]), perFile);
         return new Sprites(sprites);
@@ -217,7 +217,7 @@ public sealed class Sprites
                     maxframe = f;
 
         // Check the frames that were found for completeness (r_things.c).
-        SpriteFrame[] frames = new SpriteFrame[maxframe + 1];
+        var frames = new SpriteFrame[maxframe + 1];
         for (int f = 0; f <= maxframe; f++)
         {
             bool any = false, rotate = false, complete = true;
@@ -286,12 +286,12 @@ public sealed class Sprites
     private sealed class SpriteTemp
     {
         public int Rotate = -1;
-        public readonly int[] Lump = { -1, -1, -1, -1, -1, -1, -1, -1 };
+        public readonly int[] Lump = [-1, -1, -1, -1, -1, -1, -1, -1];
         public readonly bool[] Flip = new bool[8];
 
         public static SpriteTemp[] NewTable()
         {
-            SpriteTemp[] table = new SpriteTemp[MaxFrames];
+            var table = new SpriteTemp[MaxFrames];
             for (int i = 0; i < table.Length; i++)
                 table[i] = new SpriteTemp();
             return table;

@@ -13,23 +13,23 @@ public class WadFileTests
     [Fact]
     public void ParsesHeaderAndDirectory()
     {
-        WadFile wad = new WadBuilder(WadType.Iwad).Lump("PLAYPAL", 1, 2, 3).Lump("E1M1").Lump("THINGS", 9).ToWadFile();
+        var wad = new WadBuilder(WadType.Iwad).Lump("PLAYPAL", 1, 2, 3).Lump("E1M1").Lump("THINGS", "\t"u8.ToArray()).ToWadFile();
         Assert.Equal(WadType.Iwad, wad.Type);
-        Assert.Equal(new[] { "PLAYPAL", "E1M1", "THINGS" }, wad.Lumps.Select(l => l.Name));
+        Assert.Equal(["PLAYPAL", "E1M1", "THINGS"], wad.Lumps.Select(l => l.Name));
         Assert.Equal(new byte[] { 1, 2, 3 }, wad.Lumps[0].Data.ToArray());
         Assert.Equal(0, wad.Lumps[1].Size);
-        Assert.Equal(new byte[] { 9 }, wad.Lumps[2].Data.ToArray());
+        Assert.Equal("\t"u8.ToArray(), wad.Lumps[2].Data.ToArray());
     }
 
     [Fact]
     public void NamesAreNormalised()
     {
         byte[] data = new WadBuilder().Lump("abcdefgh", 1).Lump("x", 2).Build();
-        WadFile wad = WadFile.FromBytes(data);
+        var wad = WadFile.FromBytes(data);
         Assert.Equal("ABCDEFGH", wad.Lumps[0].Name); // 8 chars, no terminating NUL
         Assert.Equal("X", wad.Lumps[1].Name);
 
-        WadArchive archive = new(new[] { wad });
+        WadArchive archive = new([wad]);
         Assert.Equal(0, archive.W_CheckNumForName("AbCdEfGh"));
         Assert.Equal(0, archive.W_CheckNumForName("ABCDEFGHIJ")); // vanilla compares 8 chars only
     }
@@ -55,7 +55,7 @@ public class WadFileTests
     [Fact]
     public void ClassifiesNamespaces()
     {
-        WadFile wad = new WadBuilder()
+        var wad = new WadBuilder()
             .Lump("A", 1)
             .Markers("S_START").Lump("TROOA1", 1).Markers("S_END")
             .Markers("PP_START", "P1_START").Lump("WALL", 1).Markers("P1_END", "PP_END")
@@ -66,7 +66,7 @@ public class WadFileTests
             .ToWadFile();
 
         (string, LumpNamespace, bool)[] expected =
-        {
+        [
             ("A", LumpNamespace.Global, false),
             ("S_START", LumpNamespace.Sprites, true), ("TROOA1", LumpNamespace.Sprites, false), ("S_END", LumpNamespace.Sprites, true),
             ("PP_START", LumpNamespace.Patches, true), ("P1_START", LumpNamespace.Patches, true), ("WALL", LumpNamespace.Patches, false),
@@ -75,34 +75,34 @@ public class WadFileTests
             ("SS_START", LumpNamespace.Sprites, true), ("BOSSA1", LumpNamespace.Sprites, false), ("SS_END", LumpNamespace.Sprites, true),
             ("F_END", LumpNamespace.Global, false), ("P1_START", LumpNamespace.Global, false),
             ("F_START", LumpNamespace.Flats, true), ("LAST", LumpNamespace.Flats, false),
-        };
+        ];
         Assert.Equal(expected, wad.Lumps.Select(l => (l.Name, l.Namespace, l.IsMarker)));
     }
 
     [Fact]
     public void NamespaceEndsWithTheFile()
     {
-        WadFile a = new WadBuilder().Markers("S_START").Lump("TROOA1", 1).ToWadFile("a.wad");
-        WadFile b = new WadBuilder().Lump("PLAYPAL", 1).ToWadFile("b.wad");
-        WadArchive archive = new(new[] { a, b });
+        var a = new WadBuilder().Markers("S_START").Lump("TROOA1", 1).ToWadFile("a.wad");
+        var b = new WadBuilder().Lump("PLAYPAL", 1).ToWadFile("b.wad");
+        WadArchive archive = new([a, b]);
         Assert.Equal(LumpNamespace.Global, archive.Find("PLAYPAL")!.Namespace);
     }
 
     [Fact]
     public void LaterFilesOverrideEarlierOnes()
     {
-        WadFile iwad = new WadBuilder(WadType.Iwad)
-            .Lump("PLAYPAL", 1).Lump("E1M1").Lump("THINGS", 10)
+        var iwad = new WadBuilder(WadType.Iwad)
+            .Lump("PLAYPAL", 1).Lump("E1M1").Lump("THINGS", "\n"u8.ToArray())
             .Markers("S_START").Lump("TROOA1", 1).Lump("TROOB1", 1).Markers("S_END")
             .Markers("F_START").Lump("NUKAGE1", 1).Lump("NUKAGE2", 1).Lump("NUKAGE3", 1).Markers("F_END")
             .ToWadFile("iwad.wad");
-        WadFile pwad = new WadBuilder()
+        var pwad = new WadBuilder()
             .Lump("E1M1").Lump("THINGS", 20)
             .Markers("SS_START").Lump("TROOA1", 2).Lump("CYBRA1", 2).Markers("SS_END")
             .Markers("FF_START").Lump("NUKAGE2", 2).Markers("FF_END")
             .Lump("TROOB1", 3) // global lump that shares a sprite's name
             .ToWadFile("pwad.wad");
-        WadArchive archive = new(new[] { iwad, pwad });
+        WadArchive archive = new([iwad, pwad]);
 
         Assert.Equal(iwad.Lumps.Count + pwad.Lumps.Count, archive.NumLumps);
 
@@ -114,9 +114,9 @@ public class WadFileTests
         Assert.Equal(new byte[] { 3 }, archive.W_CacheLumpName("TROOB1").ToArray());
 
         // Namespace merge: replace in place, append new names, markers excluded.
-        Assert.Equal(new[] { ("TROOA1", 2), ("TROOB1", 1), ("CYBRA1", 2) },
+        Assert.Equal([("TROOA1", 2), ("TROOB1", 1), ("CYBRA1", 2)],
             archive.GetNamespace(LumpNamespace.Sprites).Select(l => (l.Name, (int)l.Data.Span[0])));
-        Assert.Equal(new[] { ("NUKAGE1", 1), ("NUKAGE2", 2), ("NUKAGE3", 1) },
+        Assert.Equal([("NUKAGE1", 1), ("NUKAGE2", 2), ("NUKAGE3", 1)],
             archive.GetNamespace(LumpNamespace.Flats).Select(l => (l.Name, (int)l.Data.Span[0])));
         Assert.Empty(archive.GetNamespace(LumpNamespace.Patches));
         Assert.Equal(1, archive.Find("TROOB1", LumpNamespace.Sprites)!.Data.Span[0]);
@@ -127,5 +127,5 @@ public class WadFileTests
 
     [Fact]
     public void ArchiveNeedsAFile() =>
-        Assert.Throws<ArgumentException>(() => new WadArchive(Array.Empty<WadFile>()));
+        Assert.Throws<ArgumentException>(() => new WadArchive([]));
 }

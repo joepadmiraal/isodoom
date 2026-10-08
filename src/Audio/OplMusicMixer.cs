@@ -24,9 +24,9 @@ public sealed class OplMusicMixer
     public const double CrossfadeSeconds = 0.03;
 
     private readonly byte[] _bank;
-    private readonly List<(OplMusic Driver, int Left)> _old = new(); // fading out (a second switch while one fades adds one)
+    private readonly List<(OplMusic Driver, int Left)> _old = []; // fading out (a second switch while one fades adds one)
     private int _oldFrames;
-    private short[] _scratch = Array.Empty<short>();
+    private short[] _scratch = [];
     private midi_file_t? _song;
     private bool _looping;
 

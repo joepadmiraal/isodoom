@@ -95,7 +95,7 @@ public partial class SfxPlayer : Node, ISoundDevice
     public (AudioStreamWav? Stream, double Seconds) StreamFor(sfxenum_t sfx)
     {
         string name = SoundInfo.LumpName(sfx);
-        if (_streams.TryGetValue(name, out var cached))
+        if (_streams.TryGetValue(name, out (AudioStreamWav? Stream, double Seconds) cached))
             return cached;
         (AudioStreamWav?, double) entry = (null, 0);
         int lump = _wad.W_CheckNumForName(name);

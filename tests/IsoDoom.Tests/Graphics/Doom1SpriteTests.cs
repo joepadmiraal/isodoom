@@ -11,7 +11,7 @@ public class Doom1SpriteTests
 {
     private static (WadArchive Wad, Sprites Sprites) OpenDoom1()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         return (wad, Sprites.R_InitSprites(wad));
     }
 
@@ -59,13 +59,13 @@ public class Doom1SpriteTests
         {
             char c = (char)('A' + f);
             string[] expected =
-            {
+            [
                 $"{name}{c}1", $"{name}{c}2{c}8", $"{name}{c}3{c}7", $"{name}{c}4{c}6",
                 $"{name}{c}5", $"{name}{c}4{c}6", $"{name}{c}3{c}7", $"{name}{c}2{c}8",
-            };
+            ];
             Assert.Equal(expected, Enumerable.Range(0, 8).Select(r => LumpName(wad, frame, r)));
             // Rotations 6-8 are the flipped halves of the pairs.
-            Assert.Equal(new[] { false, false, false, false, false, true, true, true }, frame.Flip);
+            Assert.Equal([false, false, false, false, false, true, true, true], frame.Flip);
         }
     }
 

@@ -20,7 +20,7 @@ namespace IsoDoom.Tests.Game;
 /// </summary>
 public class StatusBarTests
 {
-    private static WadArchive Synthetic() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static World NewWorld()
     {
@@ -72,7 +72,7 @@ public class StatusBarTests
     public void TheFaceGlancesAtRandomEveryHalfSecond()
     {
         (World world, _, StStuff st) = Start();
-        var faces = new int[40];
+        int[] faces = new int[40];
         for (int i = 0; i < faces.Length; i++)
         {
             st.ST_Ticker();
@@ -243,7 +243,7 @@ public class StatusBarTests
     [Fact]
     public void DrawsTheNumbersAsVanilla()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         World world = NewWorld();
         player_t p = world.players[0];
         var st = new StStuff(StStuff.Graphics.Load(wad), new DoomRandom());
@@ -375,7 +375,7 @@ public class StatusBarTests
     [InlineData("testmap-pickups")]
     public void TheSimDoesNotDependOnTheStatusBar(string name)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         World plain = route.NewWorld(), watched = route.NewWorld();
         var st = new StStuff(StStuff.Graphics.Load(Synthetic()), new DoomRandom());
         var hu = new HuStuff(Synthetic());

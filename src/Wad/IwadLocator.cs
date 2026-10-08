@@ -36,7 +36,7 @@ public enum IwadSource
 public sealed class IwadSearchContext
 {
     /// <summary>The command line (<c>-iwad</c>, <c>-file</c>).</summary>
-    public CommandLine CommandLine { get; init; } = new("isodoom", Array.Empty<string>());
+    public CommandLine CommandLine { get; init; } = new("isodoom", []);
 
     /// <summary>Environment variables (null when unset).</summary>
     public Func<string, string?> GetEnv { get; init; } = Environment.GetEnvironmentVariable;
@@ -45,7 +45,7 @@ public sealed class IwadSearchContext
     public string CurrentDirectory { get; init; } = Directory.GetCurrentDirectory();
 
     /// <summary>The game folder(s), searched right after the working directory.</summary>
-    public IReadOnlyList<string> GameDirectories { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> GameDirectories { get; init; } = [];
 
     /// <summary>The configured IWAD path (from the settings file), or null.</summary>
     public string? ConfiguredIwad { get; init; }
@@ -110,8 +110,8 @@ public sealed class IwadLocator
     /// game before the shareware one, because DOOM 1 is the content supported
     /// first (SPEC §2). Revisit when DOOM II is playable (SPEC §12).
     /// </summary>
-    public static readonly IReadOnlyList<IwadName> iwads = new IwadName[]
-    {
+    public static readonly IReadOnlyList<IwadName> iwads =
+    [
         new("doom.wad", "Doom"),
         new("doomu.wad", "The Ultimate Doom"),
         new("doom1.wad", "Doom Shareware"),
@@ -122,11 +122,11 @@ public sealed class IwadLocator
         new("freedoom1.wad", "Freedoom: Phase 1"),
         new("freedoom2.wad", "Freedoom: Phase 2"),
         new("freedm.wad", "FreeDM"),
-    };
+    ];
 
     /// <summary>Steam app folders (under <c>steamapps/common</c>) that hold IWADs, in search order.</summary>
-    public static readonly IReadOnlyList<string> SteamSubdirs = new[]
-    {
+    public static readonly IReadOnlyList<string> SteamSubdirs =
+    [
         "Ultimate Doom/base",
         "Ultimate Doom/rerelease",
         "Doom 2/base",
@@ -135,22 +135,22 @@ public sealed class IwadLocator
         "Final Doom/base",
         "DOOM 3 BFG Edition/base/wads",
         "Master Levels of Doom/doom2",
-    };
+    ];
 
     /// <summary>GOG registry keys (<c>HKLM\SOFTWARE\GOG.com\Games\…</c>, value <c>PATH</c>) from d_iwad.c's <c>root_path_keys</c>.</summary>
-    public static readonly IReadOnlyList<string> GogRegistryKeys = new[]
-    {
+    public static readonly IReadOnlyList<string> GogRegistryKeys =
+    [
         @"SOFTWARE\GOG.com\Games\1435827232", // The Ultimate Doom
         @"SOFTWARE\GOG.com\Games\1435848814", // Doom II
         @"SOFTWARE\GOG.com\Games\1435848742", // Final Doom
         @"SOFTWARE\GOG.com\Games\1135892318", // Doom 3: BFG Edition
-    };
+    ];
 
     /// <summary>Subfolders of a GOG install that hold IWADs (d_iwad.c: <c>root_path_subdirs</c>, plus the re-release folders).</summary>
-    public static readonly IReadOnlyList<string> GogSubdirs = new[]
-    {
+    public static readonly IReadOnlyList<string> GogSubdirs =
+    [
         ".", "base", "rerelease", "Ultimate Doom", "Doom2", "Final Doom", "TNT", "Plutonia", "base/wads",
-    };
+    ];
 
     private readonly IwadSearchContext _ctx;
     private List<string>? _iwadDirs;
@@ -350,57 +350,57 @@ public sealed class IwadLocator
         switch (_ctx.Platform)
         {
             case IwadPlatform.Linux:
-            {
-                string? dataHome = _ctx.GetEnv("XDG_DATA_HOME");
-                if (string.IsNullOrEmpty(dataHome) && home is not null)
-                    dataHome = Path.Combine(home, ".local", "share");
-                if (!string.IsNullOrEmpty(dataHome))
-                    yield return Path.Combine(dataHome, "games", "doom");
-                string? dataDirs = _ctx.GetEnv("XDG_DATA_DIRS");
-                if (string.IsNullOrEmpty(dataDirs))
-                    dataDirs = "/usr/local/share:/usr/share";
-                foreach (string d in SplitPath(dataDirs))
                 {
-                    yield return Path.Combine(d, "games", "doom");
-                    yield return Path.Combine(d, "doom");
+                    string? dataHome = _ctx.GetEnv("XDG_DATA_HOME");
+                    if (string.IsNullOrEmpty(dataHome) && home is not null)
+                        dataHome = Path.Combine(home, ".local", "share");
+                    if (!string.IsNullOrEmpty(dataHome))
+                        yield return Path.Combine(dataHome, "games", "doom");
+                    string? dataDirs = _ctx.GetEnv("XDG_DATA_DIRS");
+                    if (string.IsNullOrEmpty(dataDirs))
+                        dataDirs = "/usr/local/share:/usr/share";
+                    foreach (string d in SplitPath(dataDirs))
+                    {
+                        yield return Path.Combine(d, "games", "doom");
+                        yield return Path.Combine(d, "doom");
+                    }
+                    if (home is not null)
+                    {
+                        steamRoots.Add(Path.Combine(home, ".steam", "root"));
+                        steamRoots.Add(Path.Combine(home, ".steam", "steam"));
+                        steamRoots.Add(Path.Combine(home, ".local", "share", "Steam"));
+                        steamRoots.Add(Path.Combine(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"));
+                        steamRoots.Add(Path.Combine(home, "snap", "steam", "common", ".local", "share", "Steam"));
+                        gogRoots.Add(Path.Combine(home, "GOG Games"));
+                        gogRoots.Add(Path.Combine(home, "Games", "Heroic"));
+                        gogRoots.Add(Path.Combine(home, "Games"));
+                    }
+                    break;
                 }
-                if (home is not null)
-                {
-                    steamRoots.Add(Path.Combine(home, ".steam", "root"));
-                    steamRoots.Add(Path.Combine(home, ".steam", "steam"));
-                    steamRoots.Add(Path.Combine(home, ".local", "share", "Steam"));
-                    steamRoots.Add(Path.Combine(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"));
-                    steamRoots.Add(Path.Combine(home, "snap", "steam", "common", ".local", "share", "Steam"));
-                    gogRoots.Add(Path.Combine(home, "GOG Games"));
-                    gogRoots.Add(Path.Combine(home, "Games", "Heroic"));
-                    gogRoots.Add(Path.Combine(home, "Games"));
-                }
-                break;
-            }
             case IwadPlatform.Windows:
-            {
-                foreach (string key in GogRegistryKeys)
                 {
-                    string? root = _ctx.ReadRegistry(key, "PATH");
-                    if (string.IsNullOrEmpty(root))
-                        continue;
-                    foreach (string sub in GogSubdirs)
-                        yield return sub == "." ? root : Path.Combine(root, sub);
+                    foreach (string key in GogRegistryKeys)
+                    {
+                        string? root = _ctx.ReadRegistry(key, "PATH");
+                        if (string.IsNullOrEmpty(root))
+                            continue;
+                        foreach (string sub in GogSubdirs)
+                            yield return sub == "." ? root : Path.Combine(root, sub);
+                    }
+                    string? steam = _ctx.ReadRegistry(@"SOFTWARE\Valve\Steam", "InstallPath");
+                    if (!string.IsNullOrEmpty(steam))
+                        steamRoots.Add(steam);
+                    string? programFiles = _ctx.GetEnv("ProgramFiles(x86)");
+                    if (!string.IsNullOrEmpty(programFiles))
+                    {
+                        steamRoots.Add(Path.Combine(programFiles, "Steam"));
+                        gogRoots.Add(Path.Combine(programFiles, "GOG Galaxy", "Games"));
+                    }
+                    string? systemDrive = _ctx.GetEnv("SystemDrive");
+                    if (!string.IsNullOrEmpty(systemDrive))
+                        gogRoots.Add(Path.Combine(systemDrive + Path.DirectorySeparatorChar, "GOG Games"));
+                    break;
                 }
-                string? steam = _ctx.ReadRegistry(@"SOFTWARE\Valve\Steam", "InstallPath");
-                if (!string.IsNullOrEmpty(steam))
-                    steamRoots.Add(steam);
-                string? programFiles = _ctx.GetEnv("ProgramFiles(x86)");
-                if (!string.IsNullOrEmpty(programFiles))
-                {
-                    steamRoots.Add(Path.Combine(programFiles, "Steam"));
-                    gogRoots.Add(Path.Combine(programFiles, "GOG Galaxy", "Games"));
-                }
-                string? systemDrive = _ctx.GetEnv("SystemDrive");
-                if (!string.IsNullOrEmpty(systemDrive))
-                    gogRoots.Add(Path.Combine(systemDrive + Path.DirectorySeparatorChar, "GOG Games"));
-                break;
-            }
             case IwadPlatform.MacOS:
                 if (home is not null)
                     steamRoots.Add(Path.Combine(home, "Library", "Application Support", "Steam"));
@@ -507,7 +507,7 @@ public sealed class IwadLocator
 
     private IEnumerable<string> SplitPath(string? list) =>
         string.IsNullOrEmpty(list)
-            ? Array.Empty<string>()
+            ? []
             : list.Split(_ctx.Platform == IwadPlatform.Windows ? ';' : ':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     private StringComparer PathComparer =>

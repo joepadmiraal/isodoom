@@ -12,9 +12,9 @@ namespace IsoDoom.Sim;
 public sealed partial class World
 {
     // Candidates of the current P_AimAssist, nearest first (reused, no allocation per shot).
-    private readonly List<mobj_t> _aimCandidates = new();
-    private readonly List<int> _aimCandidateDist = new();
-    private readonly List<uint> _aimCandidateOff = new();
+    private readonly List<mobj_t> _aimCandidates = [];
+    private readonly List<int> _aimCandidateDist = [];
+    private readonly List<uint> _aimCandidateOff = [];
 
     /// <summary>
     /// The aim assist's horizontal snap (SPEC §6.3 #2, §12 T6.7): the angle

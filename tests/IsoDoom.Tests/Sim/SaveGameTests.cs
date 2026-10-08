@@ -44,12 +44,12 @@ public class SaveGameTests
         return world;
     }
 
-    public static TheoryData<string> Routes() => new(VanillaRoute.Names().Where(n =>
+    public static TheoryData<string> Routes() => [.. VanillaRoute.Names().Where(n =>
     {
-        VanillaRoute r = VanillaRoute.Load(n);
+        var r = VanillaRoute.Load(n);
         // every DOOM1 map's exit route and fight, and every route without the WAD
         return r.Iwad != "doom1" || r.Exit != 0 || r.Monsters;
-    }));
+    })];
 
     [Theory]
     [MemberData(nameof(Routes))]
@@ -87,7 +87,7 @@ public class SaveGameTests
         int n = route.Cmds.Count;
         var at = new SortedSet<int> { 0, n / 4, n / 2, 3 * n / 4, Math.Max(0, n - 2) };
         var saves = new Dictionary<int, byte[]>();
-        var checksums = new ulong[n];
+        ulong[] checksums = new ulong[n];
         var states = new Dictionary<int, byte[]>();
         for (int tic = 0; tic < n; tic++)
         {
@@ -125,7 +125,7 @@ public class SaveGameTests
     [Fact]
     public void ADamagedSaveIsRefused()
     {
-        VanillaRoute route = VanillaRoute.Load("synthetic-monsters");
+        var route = VanillaRoute.Load("synthetic-monsters");
         World world = route.NewWorld(out WadArchive wad);
         for (int tic = 0; tic < 100; tic++)
             world.G_Ticker(route.Cmds[tic]);
@@ -159,7 +159,7 @@ public class SaveGameTests
     [Fact]
     public void ARemovedTargetIsKept()
     {
-        VanillaRoute route = VanillaRoute.Load("synthetic-monsters");
+        var route = VanillaRoute.Load("synthetic-monsters");
         World world = route.NewWorld(out WadArchive wad);
         world.G_Ticker(route.Cmds[0]);
         mobj_t player = world.players[0].mo!;

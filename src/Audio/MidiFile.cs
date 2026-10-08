@@ -55,14 +55,14 @@ public sealed class midi_event_t
     public uint param1;
     public uint param2;
     public uint meta_type;
-    public byte[] data = Array.Empty<byte>();
+    public byte[] data = [];
 }
 
 /// <summary>midifile.c <c>midi_track_t</c>.</summary>
 public sealed class midi_track_t
 {
     public uint data_len;
-    public readonly List<midi_event_t> events = new();
+    public readonly List<midi_event_t> events = [];
     public int num_events => events.Count;
 }
 
@@ -95,7 +95,7 @@ public sealed class midi_file_t
     public ushort format_type;
     public ushort time_division;
 
-    public midi_track_t[] tracks = Array.Empty<midi_track_t>();
+    public midi_track_t[] tracks = [];
     public uint num_tracks;
 
     /// <summary>The C's <c>FILE *</c>: the bytes and a position; <c>fgetc</c> past the end is <c>EOF</c>.</summary>
@@ -303,7 +303,7 @@ public sealed class midi_file_t
         // Then the events:
         uint last_event_type = 0;
 
-        for (;;)
+        for (; ; )
         {
             // Read the next event:
             var @event = new midi_event_t();

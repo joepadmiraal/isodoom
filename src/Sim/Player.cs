@@ -86,7 +86,7 @@ public sealed class player_t
     public const int VIEWHEIGHT = 41 * Fixed.FRACUNIT;
 
     /// <summary>p_inter.c <c>maxammo</c>: the maximum of each ammo type without a backpack.</summary>
-    public static readonly int[] maxammo_table = { 200, 50, 300, 50 };
+    public static readonly int[] maxammo_table = [200, 50, 300, 50];
 
     public mobj_t? mo;
     public playerstate_t playerstate;
@@ -166,7 +166,7 @@ public sealed class player_t
     public int colormap;
 
     /// <summary>Overlay view sprites (gun, etc): indexed by <see cref="World.ps_weapon"/> and <see cref="World.ps_flash"/>.</summary>
-    public readonly pspdef_t[] psprites = { new(), new() };
+    public readonly pspdef_t[] psprites = [new(), new()];
 
     /// <summary>True if secret level has been done.</summary>
     public bool didsecret;

@@ -127,12 +127,12 @@ public sealed class Textures
         for (int i = 0; i < names.Length; i++)
             patchlookup[i] = wad.W_CheckNumForName(names[i]);
 
-        List<TextureDef> textures = new();
+        List<TextureDef> textures = [];
         ParseTextureLump(wad.W_CacheLumpName("TEXTURE1").Span, "TEXTURE1", names, patchlookup, textures);
         if (wad.W_CheckNumForName("TEXTURE2") != -1)
             ParseTextureLump(wad.W_CacheLumpName("TEXTURE2").Span, "TEXTURE2", names, patchlookup, textures);
 
-        return new Textures(wad, names, textures.ToArray(), topDeltaMode);
+        return new Textures(wad, names, [.. textures], topDeltaMode);
     }
 
     private static void ParseTextureLump(ReadOnlySpan<byte> maptex, string lumpName, string[] names, int[] patchlookup, List<TextureDef> textures)
@@ -161,7 +161,7 @@ public sealed class Textures
             if (MapTextureHeaderSize + (long)MapPatchSize * patchcount > mtexture.Length)
                 throw new WadFormatException($"{lumpName}: texture {name}'s patches run past the end of the lump.");
 
-            TexturePatch[] patches = new TexturePatch[patchcount];
+            var patches = new TexturePatch[patchcount];
             for (int j = 0; j < patchcount; j++)
             {
                 ReadOnlySpan<byte> mpatch = mtexture[(MapTextureHeaderSize + MapPatchSize * j)..];

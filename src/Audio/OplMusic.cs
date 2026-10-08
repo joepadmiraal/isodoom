@@ -194,15 +194,15 @@ public sealed class OplMusic : IMusicDevice
 
     // Operators used by the different voices.
     private static readonly int[][] voice_operators =
-    {
-        new[] { 0x00, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x10, 0x11, 0x12 },
-        new[] { 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x13, 0x14, 0x15 }
-    };
+    [
+        [0x00, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x10, 0x11, 0x12],
+        [0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x13, 0x14, 0x15]
+    ];
 
     // Frequency values to use for each note (the C's comments on the
     // octaves are left out; its last value is a buffer overrun, as there).
     private static readonly ushort[] frequency_curve =
-    {
+    [
         0x133, 0x133, 0x134, 0x134, 0x135, 0x136, 0x136, 0x137,
         0x137, 0x138, 0x138, 0x139, 0x139, 0x13a, 0x13b, 0x13b,
         0x13c, 0x13c, 0x13d, 0x13d, 0x13e, 0x13f, 0x13f, 0x140,
@@ -287,11 +287,11 @@ public sealed class OplMusic : IMusicDevice
         0x3dd, 0x3df, 0x3e1, 0x3e3, 0x3e4, 0x3e6, 0x3e8, 0x3ea,
         0x3ec, 0x3ed, 0x3ef, 0x3f1, 0x3f3, 0x3f5, 0x3f6, 0x3f8,
         0x3fa, 0x3fc, 0x3fe, 0x36c,
-    };
+    ];
 
     // Mapping from MIDI volume level to OPL level value.
     private static readonly uint[] volume_mapping_table =
-    {
+    [
         0, 1, 3, 5, 6, 8, 10, 11,
         13, 14, 16, 17, 19, 20, 22, 23,
         25, 26, 27, 29, 30, 32, 33, 34,
@@ -308,9 +308,9 @@ public sealed class OplMusic : IMusicDevice
         116, 117, 117, 118, 118, 119, 119, 120,
         120, 121, 121, 122, 122, 123, 123, 123,
         124, 124, 125, 125, 126, 126, 127, 127,
-    };
+    ];
 
-    private opl_driver_ver_t opl_drv_ver = opl_driver_ver_t.opl_doom_1_9;
+    private readonly opl_driver_ver_t opl_drv_ver = opl_driver_ver_t.opl_doom_1_9;
     private readonly bool music_initialized;
 
     private int start_music_volume;
@@ -1688,7 +1688,7 @@ public sealed class OplMusic : IMusicDevice
 
             // Percolate down.
             int i = 0;
-            for (;;)
+            for (; ; )
             {
                 int child1 = i * 2 + 1;
                 int child2 = i * 2 + 2;

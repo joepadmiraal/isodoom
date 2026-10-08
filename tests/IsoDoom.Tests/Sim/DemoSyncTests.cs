@@ -28,7 +28,7 @@ public class DemoSyncTests
     [InlineData("DEMO3", "E1M7", 2134)]
     public void ReadsTheDemoHeaders(string demo, string map, int tics)
     {
-        VanillaRoute route = VanillaRoute.Demo(demo);
+        var route = VanillaRoute.Demo(demo);
         Assert.Equal(map, route.Map);
         Assert.Equal(skill_t.sk_medium, route.Skill);
         Assert.True(route.Monsters);
@@ -39,8 +39,8 @@ public class DemoSyncTests
     [Fact]
     public void ReadsAV19Demo()
     {
-        byte[] lump = { 109, 3, 1, 2, 0, 0, 0, 1, 0, 1, 0, 0, 0, 25, 0xe8, 0xff, 1, 0x32, 0, 0x7f, 6, RouteFile.DEMOMARKER };
-        RouteFile r = RouteFile.FromDemo(lump, "test");
+        byte[] lump = [109, 3, 1, 2, 0, 0, 0, 1, 0, 1, 0, 0, 0, 25, 0xe8, 0xff, 1, 0x32, 0, 0x7f, 6, RouteFile.DEMOMARKER];
+        var r = RouteFile.FromDemo(lump, "test");
         Assert.Equal("E1M2", r.Map);
         Assert.Equal(4, r.Skill);
         Assert.False(r.Monsters);

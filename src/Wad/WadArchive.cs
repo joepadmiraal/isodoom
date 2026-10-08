@@ -25,11 +25,11 @@ public sealed class WadArchive
 
     public WadArchive(IEnumerable<WadFile> files)
     {
-        _files = files.ToArray();
+        _files = [.. files];
         if (_files.Length == 0)
             throw new ArgumentException("At least one WAD is required.", nameof(files));
 
-        _lumps = _files.SelectMany(f => f.Lumps).ToArray();
+        _lumps = [.. _files.SelectMany(f => f.Lumps)];
         for (int i = 0; i < _lumps.Length; i++)
             _lastByName[_lumps[i].Name] = i;
 
@@ -119,7 +119,7 @@ public sealed class WadArchive
 
     private sealed class NamespaceList
     {
-        private readonly List<WadLump> _lumps = new();
+        private readonly List<WadLump> _lumps = [];
         private readonly Dictionary<string, int> _indexByName = new(StringComparer.Ordinal);
 
         public IReadOnlyList<WadLump> Lumps => _lumps;

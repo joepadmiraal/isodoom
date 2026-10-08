@@ -115,7 +115,7 @@ public sealed partial class MMenu
 
     /// <summary>dstrings.c <c>doom1_endmsg</c>.</summary>
     public static readonly string[] doom1_endmsg =
-    {
+    [
         "are you sure you want to\nquit this great game?",
         "please don't leave, there's more\ndemons to toast!",
         "let's beat it -- this is turning\ninto a bloodbath!",
@@ -124,11 +124,11 @@ public sealed partial class MMenu
         "don't leave yet -- there's a\ndemon around that corner!",
         "ya know, next time you come in here\ni'm gonna toast ya.",
         "go ahead and leave. see if i care.",
-    };
+    ];
 
     /// <summary>dstrings.c <c>doom2_endmsg</c>.</summary>
     public static readonly string[] doom2_endmsg =
-    {
+    [
         "are you sure you want to\nquit this great game?",
         "you want to quit?\nthen, thou hast lost an eighth!",
         "don't go now, there's a \ndimensional shambler waiting\nat the dos prompt!",
@@ -137,21 +137,21 @@ public sealed partial class MMenu
         "look, bud. you leave now\nand you forfeit your body count!",
         "just leave. when you come\nback, i'll be waiting with a bat.",
         "you're lucky i don't smack\nyou for thinking about leaving.",
-    };
+    ];
 
     /// <summary>m_menu.c <c>quitsounds</c>: the quit sound (Doom), by <c>(gametic &gt;&gt; 2) &amp; 7</c>.</summary>
     public static readonly sfxenum_t[] quitsounds =
-    {
+    [
         sfxenum_t.sfx_pldeth, sfxenum_t.sfx_dmpain, sfxenum_t.sfx_popain, sfxenum_t.sfx_slop,
         sfxenum_t.sfx_telept, sfxenum_t.sfx_posit1, sfxenum_t.sfx_posit3, sfxenum_t.sfx_sgtatk,
-    };
+    ];
 
     /// <summary>m_menu.c <c>quitsounds2</c> (Doom II).</summary>
     public static readonly sfxenum_t[] quitsounds2 =
-    {
+    [
         sfxenum_t.sfx_vilact, sfxenum_t.sfx_getpow, sfxenum_t.sfx_boscub, sfxenum_t.sfx_slop,
         sfxenum_t.sfx_skeswg, sfxenum_t.sfx_kntdth, sfxenum_t.sfx_bspact, sfxenum_t.sfx_sgtatk,
-    };
+    ];
 
     /// <summary>m_menu.c <c>menuitem_t</c>, with a stand-in text for a WAD without the item's patch.</summary>
     public sealed class menuitem_t
@@ -230,8 +230,8 @@ public sealed partial class MMenu
         this.flow = flow;
         this.gamevariant = gamevariant;
 
-        MainMenu = new menuitem_t[]
-        {
+        MainMenu =
+        [
             new(1, "M_NGAME", M_NewGame, 'n', "NEW GAME"),
             new(1, "M_OPTION", M_Options, 'o', "OPTIONS"),
             new(1, "M_LOADG", M_LoadGame, 'l', "LOAD GAME"),
@@ -239,30 +239,30 @@ public sealed partial class MMenu
             // Another hickup with Special edition.
             new(1, "M_RDTHIS", M_ReadThis, 'r', "READ THIS!"),
             new(1, "M_QUITG", M_QuitDOOM, 'q', "QUIT GAME"),
-        };
+        ];
         MainDef = new menu_t("main", main_end, null, MainMenu, M_DrawMainMenu, 97, 64, 0);
 
-        EpisodeMenu = new menuitem_t[]
-        {
+        EpisodeMenu =
+        [
             new(1, "M_EPI1", M_Episode, 'k', "KNEE-DEEP IN THE DEAD"),
             new(1, "M_EPI2", M_Episode, 't', "THE SHORES OF HELL"),
             new(1, "M_EPI3", M_Episode, 'i', "INFERNO"),
             new(1, "M_EPI4", M_Episode, 't', "THY FLESH CONSUMED"),
-        };
+        ];
         EpiDef = new menu_t("episode", ep_end, MainDef, EpisodeMenu, M_DrawEpisode, 48, 63, ep1);
 
-        NewGameMenu = new menuitem_t[]
-        {
+        NewGameMenu =
+        [
             new(1, "M_JKILL", M_ChooseSkill, 'i', "I'M TOO YOUNG TO DIE."),
             new(1, "M_ROUGH", M_ChooseSkill, 'h', "HEY, NOT TOO ROUGH."),
             new(1, "M_HURT", M_ChooseSkill, 'h', "HURT ME PLENTY."),
             new(1, "M_ULTRA", M_ChooseSkill, 'u', "ULTRA-VIOLENCE."),
             new(1, "M_NMARE", M_ChooseSkill, 'n', "NIGHTMARE!"),
-        };
+        ];
         NewDef = new menu_t("skill", newg_end, EpiDef, NewGameMenu, M_DrawNewGame, 48, 63, hurtme);
 
-        OptionsMenu = new menuitem_t[]
-        {
+        OptionsMenu =
+        [
             new(1, "M_ENDGAM", M_EndGame, 'e', "END GAME"),
             new(1, "M_MESSG", M_ChangeMessages, 'm', "MESSAGES:"),
             new(1, "M_DETAIL", M_ChangeDetail, 'g', "GRAPHIC DETAIL:"),
@@ -272,22 +272,22 @@ public sealed partial class MMenu
             new(-1, "", null, '\0'),
             new(1, "M_SVOL", M_Sound, 's', "SOUND VOLUME"),
             new(1, "M_ISOSET", M_Setup, 'o', "MORE OPTIONS..."), // not vanilla (T7.3): the text pages; no such patch, the text shows
-        };
+        ];
         OptionsDef = new menu_t("options", opt_end, MainDef, OptionsMenu, M_DrawOptions, 60, 37, 0);
 
-        ReadMenu1 = new menuitem_t[] { new(1, "", M_ReadThis2, '\0') };
+        ReadMenu1 = [new(1, "", M_ReadThis2, '\0')];
         ReadDef1 = new menu_t("readthis1", 1, MainDef, ReadMenu1, M_DrawReadThis1, 280, 185, 0);
 
-        ReadMenu2 = new menuitem_t[] { new(1, "", M_FinishReadThis, '\0') };
+        ReadMenu2 = [new(1, "", M_FinishReadThis, '\0')];
         ReadDef2 = new menu_t("readthis2", 1, ReadDef1, ReadMenu2, M_DrawReadThis2, 330, 175, 0);
 
-        SoundMenu = new menuitem_t[]
-        {
+        SoundMenu =
+        [
             new(2, "M_SFXVOL", M_SfxVol, 's', "SFX VOLUME"),
             new(-1, "", null, '\0'),
             new(2, "M_MUSVOL", M_MusicVol, 'm', "MUSIC VOLUME"),
             new(-1, "", null, '\0'),
-        };
+        ];
         SoundDef = new menu_t("sound", sound_end, OptionsDef, SoundMenu, M_DrawSound, 80, 64, 0);
 
         LoadMenu = new menuitem_t[load_end];
@@ -335,7 +335,7 @@ public sealed partial class MMenu
     /// <summary>m_menu.c <c>skullAnimCounter</c> and <c>whichSkull</c>: the skull blinks every 8 tics.</summary>
     public short skullAnimCounter = 10, whichSkull;
 
-    private static readonly string[] skullName = { "M_SKULL1", "M_SKULL2" };
+    private static readonly string[] skullName = ["M_SKULL1", "M_SKULL2"];
 
     /// <summary>m_menu.c <c>inhelpscreens</c>: the last <see cref="M_Drawer"/> drew a read-this screen (a full-screen picture).</summary>
     public bool inhelpscreens;
@@ -769,8 +769,8 @@ public sealed partial class MMenu
 
     // ---- the options ----
 
-    private static readonly string[] detailNames = { "M_GDHIGH", "M_GDLOW" };
-    private static readonly string[] msgNames = { "M_MSGOFF", "M_MSGON" };
+    private static readonly string[] detailNames = ["M_GDHIGH", "M_GDLOW"];
+    private static readonly string[] msgNames = ["M_MSGOFF", "M_MSGON"];
 
     /// <summary>The thermometer cells of the screen size: the HUD's three modes (vanilla's nine view sizes; SPEC §12 T7.2).</summary>
     public const int ScreenSizes = 3;
@@ -868,8 +868,7 @@ public sealed partial class MMenu
         set
         {
             _screenSize = value;
-            if (Host is not null)
-                Host.ScreenSize = value;
+            Host?.ScreenSize = value;
         }
     }
 

@@ -230,7 +230,7 @@ public sealed class TiccmdBuilder
     /// super shotgun when they are owned).
     /// </summary>
     private static readonly (weapontype_t weapon, weapontype_t weapon_num)[] weapon_order_table =
-    {
+    [
         (weapontype_t.wp_fist, weapontype_t.wp_fist),
         (weapontype_t.wp_chainsaw, weapontype_t.wp_fist),
         (weapontype_t.wp_pistol, weapontype_t.wp_pistol),
@@ -240,7 +240,7 @@ public sealed class TiccmdBuilder
         (weapontype_t.wp_missile, weapontype_t.wp_missile),
         (weapontype_t.wp_plasma, weapontype_t.wp_plasma),
         (weapontype_t.wp_bfg, weapontype_t.wp_bfg),
-    };
+    ];
 
     /// <summary>Chocolate Doom's g_game.c <c>WeaponSelectable</c>: whether the next/previous weapon keys may stop at <paramref name="weapon"/>.</summary>
     public static bool WeaponSelectable(player_t player, GameMode gamemode, weapontype_t weapon)

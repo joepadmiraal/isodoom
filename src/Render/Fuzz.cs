@@ -27,7 +27,7 @@ public static class Fuzz
     /// below) or −1 (the row above). The shader's <c>FUZZ_OFFSETS</c>.
     /// </summary>
     public static readonly int[] fuzzoffset =
-    {
+    [
         1, -1, 1, -1, 1, 1, -1,
         1, 1, -1, 1, 1, 1, -1,
         1, 1, 1, -1, -1, -1, -1,
@@ -35,7 +35,7 @@ public static class Fuzz
         1, -1, 1, 1, -1, -1, 1,
         1, -1, -1, -1, -1, 1, 1,
         1, 1, -1, 1, 1, -1, 1,
-    };
+    ];
 
     /// <summary>
     /// The shader's <c>fuzz_phase</c> (vanilla's <c>fuzzpos</c> at a fuzzed

@@ -19,7 +19,7 @@ namespace IsoDoom.Render;
 /// </summary>
 public sealed class SpriteAtlas
 {
-    private readonly Dictionary<int, int> _slotOfLump = new();
+    private readonly Dictionary<int, int> _slotOfLump = [];
     private readonly Image _info;
 
     private SpriteAtlas(Sprites sprites, List<int> lumps, List<IndexedImage> images, TextureAtlas atlas)
@@ -103,8 +103,10 @@ public sealed class SpriteAtlas
             images.Add(new IndexedImage(1, 1, 0, 0, new byte[1], new byte[1]));
             lumps.Add(-1);
         }
-        var atlas = new SpriteAtlas(sprites, lumps, images, TextureAtlas.Build(images));
-        atlas.BuildMilliseconds = clock.Elapsed.TotalMilliseconds;
+        var atlas = new SpriteAtlas(sprites, lumps, images, TextureAtlas.Build(images))
+        {
+            BuildMilliseconds = clock.Elapsed.TotalMilliseconds
+        };
         return atlas;
     }
 }

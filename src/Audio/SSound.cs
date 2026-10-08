@@ -165,7 +165,7 @@ public sealed class SSound
     /// <summary>The last <see cref="LogLength"/> starts, oldest first.</summary>
     public IReadOnlyList<sound_start_t> Log => _log;
 
-    private readonly List<sound_start_t> _log = new();
+    private readonly List<sound_start_t> _log = [];
 
     /// <summary>How many starts <see cref="Log"/> keeps.</summary>
     public const int LogLength = 64;
@@ -246,7 +246,7 @@ public sealed class SSound
 
     /// <summary>Chocolate Doom's s_sound.c <c>spmus</c>: the fourth episode's songs (the Ultimate Doom), by map.</summary>
     private static readonly musicenum_t[] spmus =
-    {
+    [
         // Song - Who? - Where?
         musicenum_t.mus_e3m4, // American     e4m1
         musicenum_t.mus_e3m2, // Romero       e4m2
@@ -257,7 +257,7 @@ public sealed class SSound
         musicenum_t.mus_e2m6, // J.Anderson   e4m7 CHIRON.WAD
         musicenum_t.mus_e2m5, // Shawn        e4m8
         musicenum_t.mus_e1m9, // Tim          e4m9
-    };
+    ];
 
     /// <summary>
     /// s_sound.c <c>S_Start</c>'s song for a level: Doom II's
@@ -504,7 +504,7 @@ public sealed class SSound
     /// <summary>The last <see cref="LogLength"/> <see cref="S_ChangeMusic"/> calls, oldest first.</summary>
     public IReadOnlyList<music_change_t> MusicLog => _musicLog;
 
-    private readonly List<music_change_t> _musicLog = new();
+    private readonly List<music_change_t> _musicLog = [];
 
     /// <summary>How many <see cref="S_ChangeMusic"/> calls since this was made.</summary>
     public int MusicChanges { get; private set; }

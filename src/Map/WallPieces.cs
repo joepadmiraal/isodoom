@@ -45,7 +45,7 @@ public readonly record struct WallPiece(PolygonVertex A, PolygonVertex B, int Co
 /// </summary>
 public sealed class WallPieces
 {
-    private static readonly WallPiece[] NoPieces = Array.Empty<WallPiece>();
+    private static readonly WallPiece[] NoPieces = [];
     private readonly WallPiece[][] _pieces; // per line * 2 + side
 
     private WallPieces(WallPiece[][] pieces) => _pieces = pieces;
@@ -63,7 +63,7 @@ public sealed class WallPieces
             throw new ArgumentException("The floors were built for another level.", nameof(floors));
         var segs = new List<Seg>?[level.Lines.Length * 2];
         foreach (Seg seg in level.Segs)
-            (segs[seg.LineDef.Index * 2 + seg.Side] ??= new List<Seg>()).Add(seg);
+            (segs[seg.LineDef.Index * 2 + seg.Side] ??= []).Add(seg);
         var pieces = new WallPiece[segs.Length][];
         int connectors = 0;
         var list = new List<WallPiece>();
@@ -86,10 +86,10 @@ public sealed class WallPieces
                 {
                     if (seg.V1.X == seg.V2.X && seg.V1.Y == seg.V2.Y)
                         continue;
-                    chain = new[] { new PolygonVertex(seg.V1.X, seg.V1.Y), new PolygonVertex(seg.V2.X, seg.V2.Y) };
+                    chain = [new PolygonVertex(seg.V1.X, seg.V1.Y), new PolygonVertex(seg.V2.X, seg.V2.Y)];
                 }
                 int contrast = LightTables.FakeContrast(seg.V1.X, seg.V1.Y, seg.V2.X, seg.V2.Y);
-                var columns = new int[chain.Length];
+                int[] columns = new int[chain.Length];
                 for (int k = 0; k < chain.Length; k++)
                     columns[k] = Column(seg, chain[k]);
                 if (previous is PolygonVertex p && p != chain[0])
@@ -103,7 +103,7 @@ public sealed class WallPieces
                 previous = chain[^1];
                 previousColumn = columns[^1];
             }
-            pieces[i] = list.ToArray();
+            pieces[i] = [.. list];
         }
 
         // Where two sides with the same front sector meet at a vertex, the floor edges along
@@ -115,7 +115,7 @@ public sealed class WallPieces
             {
                 WallPiece[] p = pieces[line.Index * 2 + side];
                 if (p.Length > 0 && line.SideNum[side] >= 0)
-                    (starts[(side == 0 ? line.V1 : line.V2).Index] ??= new()).Add((level.Sides[line.SideNum[side]].Sector.Index, p[0].A));
+                    (starts[(side == 0 ? line.V1 : line.V2).Index] ??= []).Add((level.Sides[line.SideNum[side]].Sector.Index, p[0].A));
             }
         }
         foreach (Line line in level.Lines)
@@ -140,7 +140,7 @@ public sealed class WallPieces
                     connectors += 2;
                 }
                 if (list.Count != p.Length)
-                    pieces[line.Index * 2 + side] = list.ToArray();
+                    pieces[line.Index * 2 + side] = [.. list];
             }
         }
         return new WallPieces(pieces) { Connectors = connectors };

@@ -115,7 +115,7 @@ public sealed partial class World
     /// <summary>The thinker table and its lookups (by reference: no iteration over the dictionary).</summary>
     private sealed class SaveRefs
     {
-        public readonly List<(thinker_t Thinker, bool InList)> table = new();
+        public readonly List<(thinker_t Thinker, bool InList)> table = [];
         private readonly Dictionary<thinker_t, int> _index = new(ReferenceEqualityComparer.Instance);
 
         public SaveRefs(World world)
@@ -632,7 +632,7 @@ public sealed partial class World
     private static T ReadEnum<T>(BinaryReader r) where T : struct, Enum
     {
         int v = r.ReadInt32();
-        T e = (T)(object)v;
+        var e = (T)(object)v;
         if (!Enum.IsDefined(e))
             throw new SaveGameException($"bad {typeof(T).Name} {v}");
         return e;

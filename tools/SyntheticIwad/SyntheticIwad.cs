@@ -132,7 +132,7 @@ public static class SyntheticIwad
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
         if (info.GameMode != GameMode.shareware)
             problems.Add($"identifies as {info.GameMode}, expected shareware");
-        GraphicsCatalog catalog = GraphicsCatalog.Load(wad);
+        var catalog = GraphicsCatalog.Load(wad);
         foreach (GraphicCategory c in Enum.GetValues<GraphicCategory>())
         {
             if (catalog.Count(c) == 0)
@@ -161,10 +161,10 @@ public static class SyntheticIwad
             problems.Add($"D_E1M1 has {song.Events.Count} events over {song.LengthTics} tics, expected {SongEvents} over {SongTics}{(song.Mus2MidError is null ? "" : $"; mus2mid.c refuses it: {song.Mus2MidError}")}");
         try
         {
-            Level map = Level.Load(wad, "E1M1");
+            var map = Level.Load(wad, "E1M1");
             if (map.Nodes.Length < 2 || map.Sectors.Length < 2)
                 problems.Add($"E1M1 has {map.Nodes.Length} nodes and {map.Sectors.Length} sectors, expected a BSP tree over several sectors");
-            WallSections walls = WallSections.Build(map, catalog.Textures);
+            var walls = WallSections.Build(map, catalog.Textures);
             if (walls.Missing.Count > 0)
                 problems.Add($"E1M1 has missing wall textures: {string.Join(", ", walls.Missing)}");
             foreach (WallSectionKind k in Enum.GetValues<WallSectionKind>())
@@ -187,7 +187,7 @@ public static class SyntheticIwad
         }
         try
         {
-            Level specials = Level.Load(wad, "E1M2");
+            var specials = Level.Load(wad, "E1M2");
             if (specials.Sectors.Length != SpecialsSectors || specials.Sectors[0].Lines.Count != 3 + SpecialsAlcoves)
                 problems.Add($"E1M2 has {specials.Sectors.Length} sectors, its corridor {specials.Sectors[0].Lines.Count} lines; expected {SpecialsSectors} and {3 + SpecialsAlcoves}");
             if (specials.Sectors[DoorSector].Lines.Count != 4 || specials.R_PointInSubsector(144 << 16, 196 << 16).Sector.Index != DoorSector)
@@ -197,7 +197,7 @@ public static class SyntheticIwad
                 || specials.R_PointInSubsector(TeleportDestX << 16, TeleportDestY << 16).Sector.Tag != TeleportTag
                 || specials.Lines[TeleportLine].Special != 97 || specials.Lines[TeleportLine].FrontSector?.Index != TeleportRoom)
                 problems.Add("E1M2's teleporter is not set up (room T, the pad, line 86, the destination in room R)");
-            WallSections walls = WallSections.Build(specials, catalog.Textures);
+            var walls = WallSections.Build(specials, catalog.Textures);
             if (walls.Missing.Count > 0)
                 problems.Add($"E1M2 has missing wall textures: {string.Join(", ", walls.Missing)}");
             if (!Has(walls, s => s.Texture != 0 && catalog.Textures.TextureDefs[s.Texture].Name == "SW1BRCOM"))
@@ -410,9 +410,9 @@ public static class SyntheticIwad
         return img;
     }
 
-    private static readonly string[] GlyphA = { "..#..", ".#.#.", "#...#", "#####", "#...#", "#...#", "#...#" };
-    private static readonly string[] GlyphB = { "####.", "#...#", "####.", "#...#", "#...#", "#...#", "####." };
-    private static readonly string[] GlyphC = { ".###.", "#...#", "#....", "#....", "#....", "#...#", ".###." };
+    private static readonly string[] GlyphA = ["..#..", ".#.#.", "#...#", "#####", "#...#", "#...#", "#...#"];
+    private static readonly string[] GlyphB = ["####.", "#...#", "####.", "#...#", "#...#", "#...#", "####."];
+    private static readonly string[] GlyphC = [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."];
 
     private static Image Glyph(string[] rows)
     {
@@ -649,13 +649,13 @@ public static class SyntheticIwad
     // B's floor (64) is 80 above A's, more than the cutaway's cutoff (32), so
     // a centre in A just west of L15 has B's floor cut and capped (T3.4a).
     private static readonly short[] MapVertexes =
-    {
+    [
         -128, 128, 128, 128, 128, -128, -128, -128, // v0-v3: west room
         384, 128, 384, -128,                        // v4, v5: east room
         384, 0, 128, 0,                             // v6, v7: where node 0's partition splits L5 and L1
         512, 128, 640, 128, 656, 128, 912, 128, 1040, 128,      // v8-v12: the strip's north edge
         512, -128, 640, -128, 656, -128, 912, -128, 1040, -128, // v13-v17: its south edge
-    };
+    ];
 
     private const short TwoSided = Line.ML_TWOSIDED, PegTop = Line.ML_DONTPEGTOP, PegBottom = Line.ML_DONTPEGBOTTOM;
 
@@ -691,6 +691,7 @@ public static class SyntheticIwad
             0, 0, 90, 1, 7,           // player 1 start
             64, 64, 0, 2035, 7,       // barrel (BAR1)
             320, 64, 180, 3001, 7,    // imp (TROO), in the east room's north subsector
+
             // T3.5: imps facing the other seven directions (every rotation and mirror from any one
             // view), a full-bright lamp and a thing hanging from room C's ceiling.
             -80, 80, 0, 3001, 7,
@@ -708,7 +709,7 @@ public static class SyntheticIwad
             for (int j = 0; j < MapLinedefs.GetLength(1); j++)
                 linedefs.Add(MapLinedefs[i, j]);
         }
-        w.Lump("LINEDEFS", Shorts(linedefs.ToArray()));
+        w.Lump("LINEDEFS", Shorts([.. linedefs]));
         w.Lump("SIDEDEFS", Concat(
             Sidedef("-", "-", "BRICK1", 0),         // 0: L0
             Sidedef("PANEL", "PANEL", "-", 0),      // 1: L1 front (west room): upper and lower
@@ -900,8 +901,19 @@ public static class SyntheticIwad
     /// </summary>
     public static int AlcoveSpecial(int i) => i switch
     {
-        1 => 1, 2 => 2, 4 => 3, 5 => 8, 6 => 12, 8 => 13, 9 => 17,
-        10 => 5, 11 => 7, 13 => 16, 14 => 4, 15 => 9, 16 => 11,
+        1 => 1,
+        2 => 2,
+        4 => 3,
+        5 => 8,
+        6 => 12,
+        8 => 13,
+        9 => 17,
+        10 => 5,
+        11 => 7,
+        13 => 16,
+        14 => 4,
+        15 => 9,
+        16 => 11,
         _ => 0,
     };
 
@@ -936,9 +948,9 @@ public static class SyntheticIwad
         int Mid(int i) => 2 + i;            // (32 i, 0)
         int Top(int i) => 2 + (n + 1) + i;  // (32 i, 128)
         for (int i = 0; i <= n; i++)
-            vertexes.AddRange(new[] { (short)(i * width), (short)0 });
+            vertexes.AddRange([(short)(i * width), (short)0]);
         for (int i = 0; i <= n; i++)
-            vertexes.AddRange(new[] { (short)(i * width), (short)128 });
+            vertexes.AddRange([(short)(i * width), (short)128]);
 
         var lines = new List<short[]>(); // v1, v2, flags, special, tag, right, left
         var sides = new List<byte[]>();
@@ -948,10 +960,10 @@ public static class SyntheticIwad
             return sides.Count - 1;
         }
         void OneSided(int v1, int v2, int sector, string middle, int special = 0, int tag = 0) =>
-            lines.Add(new[] { (short)v1, (short)v2, (short)1, (short)special, (short)tag, (short)Side("-", "-", middle, sector), (short)-1 });
+            lines.Add([(short)v1, (short)v2, (short)1, (short)special, (short)tag, (short)Side("-", "-", middle, sector), (short)-1]);
         void TwoSided(int v1, int v2, int front, int back, int special = 0, int tag = 0) =>
-            lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)special, (short)tag,
-                (short)Side("BRICK1", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", back) });
+            lines.Add([ (short)v1, (short)v2, TwoSidedFlag, (short)special, (short)tag,
+                (short)Side("BRICK1", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", back) ]);
 
         OneSided(0, 1, 0, "SW1BRCOM", special: 63, tag: 5);  // L0: corridor south (westwards), SR raise door (a switch texture, T5.4)
         OneSided(1, Mid(0), 0, "SW1BRCOM", special: 103, tag: 5); // L1: corridor west, S1 open door (a switch texture, T5.4)
@@ -984,12 +996,12 @@ public static class SyntheticIwad
 
         // T5.3: a manual door (sector DoorSector) between rooms R (west) and S (east), apart from the rest.
         int doorV = vertexes.Count / 2;
-        vertexes.AddRange(new short[] { 0, 152, 128, 152, 160, 152, 288, 152, 0, 240, 128, 240, 160, 240, 288, 240 });
+        vertexes.AddRange([0, 152, 128, 152, 160, 152, 288, 152, 0, 240, 128, 240, 160, 240, 288, 240]);
         int a = doorV, b = doorV + 1, c = doorV + 2, e = doorV + 3, a2 = doorV + 4, b2 = doorV + 5, c2 = doorV + 6, e2 = doorV + 7;
         const int room = DoorSector - 1, door = DoorSector, room2 = DoorSector + 1;
         void DoorLine(int v1, int v2, int front) =>
-            lines.Add(new[] { (short)v1, (short)v2, TwoSidedFlag, (short)1, (short)0,
-                (short)Side("PANEL", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", door) });
+            lines.Add([ (short)v1, (short)v2, TwoSidedFlag, (short)1, (short)0,
+                (short)Side("PANEL", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", door) ]);
         DoorLine(b2, b, room);                 // L76: R | door (southwards: R in front), DR manual door (1)
         DoorLine(c, c2, room2);                // L77: S | door (northwards: S in front), DR manual door (1)
         OneSided(b, a, room, "BRICK1");        // L78-L80: R's south, west and north walls
@@ -1003,11 +1015,11 @@ public static class SyntheticIwad
 
         // T5.6: room T (west) and the teleporter pad P (east), apart from the rest.
         int teleV = vertexes.Count / 2;
-        vertexes.AddRange(new short[] { 320, 152, 384, 152, 448, 152, 320, 240, 384, 240, 448, 240 });
+        vertexes.AddRange([320, 152, 384, 152, 448, 152, 320, 240, 384, 240, 448, 240]);
         int f = teleV, g = teleV + 1, h = teleV + 2, f2 = teleV + 3, g2 = teleV + 4, h2 = teleV + 5;
         const int teleRoom = TeleportRoom, pad = TeleportPad;
-        lines.Add(new[] { (short)g2, (short)g, TwoSidedFlag, (short)97, TeleportTag,
-            (short)Side("BRICK1", "BRICK1", "-", teleRoom), (short)Side("BRICK1", "BRICK1", "-", pad) }); // L86: T | P (southwards: T in front), WR teleport
+        lines.Add([ (short)g2, (short)g, TwoSidedFlag, (short)97, TeleportTag,
+            (short)Side("BRICK1", "BRICK1", "-", teleRoom), (short)Side("BRICK1", "BRICK1", "-", pad) ]); // L86: T | P (southwards: T in front), WR teleport
         OneSided(g, f, teleRoom, "BRICK1");    // L87-L89: T's south, west and north walls
         OneSided(f, f2, teleRoom, "BRICK1");
         OneSided(f2, g2, teleRoom, "BRICK1");
@@ -1021,7 +1033,7 @@ public static class SyntheticIwad
         {
             int x1 = vertexes[2 * v1], y1 = vertexes[2 * v1 + 1], x2 = vertexes[2 * v2], y2 = vertexes[2 * v2 + 1];
             short angle = unchecked((short)((int)Math.Round(Math.Atan2(y2 - y1, x2 - x1) / (2 * Math.PI) * 65536) & 0xffff));
-            segs.AddRange(new[] { (short)v1, (short)v2, angle, (short)line, (short)side, (short)0 });
+            segs.AddRange([(short)v1, (short)v2, angle, (short)line, (short)side, (short)0]);
         }
         void Subsector(int first)
         {
@@ -1087,32 +1099,32 @@ public static class SyntheticIwad
         {
             int front = j == n - 1 ? 0x8000 | n : n - 2 - j;
             int back = 0x8000 | j;
-            nodes.AddRange(new[]
-            {
+            nodes.AddRange(
+            [
                 (short)(j * width), (short)0, (short)0, (short)128,
                 (short)128, (short)0, (short)(j * width), (short)(n * width), // right box: top, bottom, left, right
                 (short)128, (short)0, (short)((j - 1) * width), (short)(j * width), // left box
                 unchecked((short)front), unchecked((short)back),
-            });
+            ]);
         }
-        nodes.AddRange(new[]
-        {
+        nodes.AddRange(
+        [
             (short)0, (short)0, (short)(n * width), (short)0,
             (short)0, (short)-128, (short)0, (short)(n * width),
             (short)128, (short)0, (short)0, (short)(n * width),
             unchecked((short)0x8000), (short)(n - 2),
-        });
+        ]);
         // T5.3: the door area north of the row; node n along x = 160 (the door west, S east), n + 1 along
         // x = 128 (R west); the root (n + 2) along y = 144 eastwards, the corridor and alcoves (node n - 1) in front.
-        nodes.AddRange(new short[]
-        {
+        nodes.AddRange(
+        [
             160, 152, 0, 88, 240, 152, 160, 288, 240, 152, 128, 160, unchecked((short)(0x8000 | room2)), unchecked((short)(0x8000 | door)),
             128, 152, 0, 88, 240, 152, 128, 288, 240, 152, 0, 128, (short)n, unchecked((short)(0x8000 | room)),
             // T5.6: node n + 2 along x = 384 (T west, the pad east), n + 3 along x = 304 (the door area west, T east).
             384, 152, 0, 88, 240, 152, 384, 448, 240, 152, 320, 384, unchecked((short)(0x8000 | pad)), unchecked((short)(0x8000 | teleRoom)),
             304, 152, 0, 88, 240, 152, 320, 448, 240, 152, 0, 288, (short)(n + 2), (short)(n + 1),
             0, 144, (short)(n * width), 0, 128, -128, 0, (short)(n * width), 240, 152, 0, 448, (short)(n - 1), (short)(n + 3),
-        });
+        ]);
 
         var sectors = new List<byte[]> { Sector(0, 128, "FLOOR1", "FLOOR2", 160) };
         for (int i = 0; i < n; i++)
@@ -1124,7 +1136,7 @@ public static class SyntheticIwad
         sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 176));              // 28: room T (T5.6)
         sectors.Add(Sector(8, 128, "LAVA1", "FLOOR2", 208));               // 29: the teleporter pad
 
-        var linedefs = new short[lines.Count, 7];
+        short[,] linedefs = new short[lines.Count, 7];
         for (int i = 0; i < lines.Count; i++)
         {
             for (int k = 0; k < 7; k++)
@@ -1137,15 +1149,15 @@ public static class SyntheticIwad
         w.Markers("E1M2");
         w.Lump("THINGS", Shorts(64, -64, 90, 1, 7, TeleportDestX, TeleportDestY, 0, 14, 7, // player 1 start in the corridor; the teleport destination (T5.6)
             BlueCardX, KeysY, 0, 5, 7, YellowSkullX, KeysY, 0, 39, 7));                          // a blue keycard and a yellow skull key (T5.8)
-        w.Lump("LINEDEFS", Shorts(flat.ToArray()));
-        w.Lump("SIDEDEFS", Concat(sides.ToArray()));
-        w.Lump("VERTEXES", Shorts(vertexes.ToArray()));
-        w.Lump("SEGS", Shorts(segs.ToArray()));
-        w.Lump("SSECTORS", Shorts(subsectors.ToArray()));
-        w.Lump("NODES", Shorts(nodes.ToArray()));
-        w.Lump("SECTORS", Concat(sectors.ToArray()));
+        w.Lump("LINEDEFS", Shorts([.. flat]));
+        w.Lump("SIDEDEFS", Concat([.. sides]));
+        w.Lump("VERTEXES", Shorts([.. vertexes]));
+        w.Lump("SEGS", Shorts([.. segs]));
+        w.Lump("SSECTORS", Shorts([.. subsectors]));
+        w.Lump("NODES", Shorts([.. nodes]));
+        w.Lump("SECTORS", Concat([.. sectors]));
         w.Lump("REJECT", new byte[(sectors.Count * sectors.Count + 7) / 8]);
-        w.Lump("BLOCKMAP", BuildBlockmap(-8, -136, 7, 3, vertexes.ToArray(), linedefs));
+        w.Lump("BLOCKMAP", BuildBlockmap(-8, -136, 7, 3, [.. vertexes], linedefs));
     }
 
     private const short TwoSidedFlag = Line.ML_TWOSIDED;
@@ -1204,7 +1216,7 @@ public static class SyntheticIwad
             }
         }
         offsets.AddRange(lists);
-        return Shorts(offsets.ToArray());
+        return Shorts([.. offsets]);
     }
 
     private static byte[] Concat(params byte[][] parts)
@@ -1212,7 +1224,7 @@ public static class SyntheticIwad
         var all = new List<byte>();
         foreach (byte[] part in parts)
             all.AddRange(part);
-        return all.ToArray();
+        return [.. all];
     }
 
     private static byte[] Shorts(params short[] values)
@@ -1245,9 +1257,9 @@ public static class SyntheticIwad
         // v1.9 header: version, skill, episode, map, deathmatch, respawn, fast, nomonsters, consoleplayer, playeringame[4].
         var demo = new List<byte> { 109, 2, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0 };
         for (int tic = 0; tic < 35; tic++)
-            demo.AddRange(new byte[] { 25, 0, (byte)(tic < 17 ? 2 : 0), 0 }); // forwardmove, sidemove, angleturn, buttons
+            demo.AddRange([25, 0, (byte)(tic < 17 ? 2 : 0), 0]); // forwardmove, sidemove, angleturn, buttons
         demo.Add(0x80); // DEMOMARKER
-        return demo.ToArray();
+        return [.. demo];
     }
 
     private static byte[] BuildGenmidi()
@@ -1336,8 +1348,8 @@ public static class SyntheticIwad
         Event(Controller, 2, 0, 3);   // chords: instrument 3, a two-voice one
         Event(Controller, 2, 5, 90);  // expression
         Event(Controller, Drums, 3, 120);
-        int[] roots = { 36, 36, 41, 43 };
-        int[] arpeggio = { 0, 4, 7, 12 };
+        int[] roots = [36, 36, 41, 43];
+        int[] arpeggio = [0, 4, 7, 12];
         for (int step = 0; step < 16; step++)
         {
             int root = roots[step / 4];
@@ -1372,13 +1384,13 @@ public static class SyntheticIwad
         Wait(20);
         Event(Pitch, 1, 128);
         Wait(20);
-        Event(Release, 1, 72);
+        Event(Release, 1, "H"u8.ToArray());
         Wait(200); // two delay bytes
         Event(SystemEvent, 1, 11); // all notes off
         Wait(35);
         Event(ScoreEnd, 0);
 
-        ushort[] instruments = { 3, 33, 80, 135, 138, 142 }; // the programs, and the drums as percussion note + 100
+        ushort[] instruments = [3, 33, 80, 135, 138, 142]; // the programs, and the drums as percussion note + 100
         int start = MusSong.HeaderSize + 2 * instruments.Length;
         byte[] lump = new byte[start + score.Count];
         Encoding.ASCII.GetBytes("MUS\x1A", lump);
@@ -1426,7 +1438,7 @@ public static class SyntheticIwad
         Ev(melody, 0, 0x0A, 20);                 // pan (running status)
         Ev(melody, 0, 0xC1, 6);
         Ev(melody, 0, 0xB1, 0x0A, 110);
-        int[] scale = { 60, 62, 64, 65, 67, 69, 71, 72 };
+        int[] scale = [60, 62, 64, 65, 67, 69, 71, 72];
         for (int i = 0; i < scale.Length; i++)
         {
             Ev(melody, i == 0 ? 0 : 48, 0x90, (byte)scale[i], (byte)(70 + 7 * i));
@@ -1446,7 +1458,7 @@ public static class SyntheticIwad
         Ev(melody, 0, 0xFF, 0x2F, 0);
 
         var drums = new List<byte>();
-        byte[] kit = { 36, 42, 38, 42, 30, 42, 38, 81 };
+        byte[] kit = [36, 42, 38, 42, 30, 42, 38, 81];
         for (int i = 0; i < 16; i++)
         {
             Ev(drums, i == 0 ? 0 : 36, 0x99, kit[i % kit.Length], 110);
@@ -1456,14 +1468,14 @@ public static class SyntheticIwad
 
         var midi = new List<byte>();
         midi.AddRange(Encoding.ASCII.GetBytes("MThd"));
-        midi.AddRange(new byte[] { 0, 0, 0, 6, 0, 1, 0, 3, 0, 96 }); // format 1, 3 tracks, 96 ticks per quarter
+        midi.AddRange([0, 0, 0, 6, 0, 1, 0, 3, 0, 96]); // format 1, 3 tracks, 96 ticks per quarter
         foreach (List<byte> track in new[] { tempo, melody, drums })
         {
             midi.AddRange(Encoding.ASCII.GetBytes("MTrk"));
-            midi.AddRange(new byte[] { 0, 0, (byte)(track.Count >> 8), (byte)track.Count });
+            midi.AddRange([0, 0, (byte)(track.Count >> 8), (byte)track.Count]);
             midi.AddRange(track);
         }
-        return midi.ToArray();
+        return [.. midi];
     }
 
     private static byte[] BuildDmxSound()
@@ -1501,9 +1513,9 @@ public static class SyntheticIwad
 
     private sealed class Writer
     {
-        private readonly List<(string Name, byte[] Data)> _lumps = new();
+        private readonly List<(string Name, byte[] Data)> _lumps = [];
 
-        public void Lump(string name, byte[]? data = null) => _lumps.Add((name, data ?? Array.Empty<byte>()));
+        public void Lump(string name, byte[]? data = null) => _lumps.Add((name, data ?? []));
 
         public void Markers(params string[] names)
         {

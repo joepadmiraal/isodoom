@@ -9,7 +9,7 @@ namespace IsoDoom.Tests.Graphics;
 /// <summary>T1.5 sprite grouping on synthetic WADs (no DOOM1.WAD needed).</summary>
 public class SpriteIndexTests
 {
-    private static readonly string[] Names = { "TROO", "BAR1", "NONE" };
+    private static readonly string[] Names = ["TROO", "BAR1", "NONE"];
 
     private static WadFile SpriteWad(WadType type, params string[] lumps)
     {
@@ -28,9 +28,9 @@ public class SpriteIndexTests
     }
 
     private static string[] Slots(WadArchive wad, SpriteFrame f) =>
-        f.Lump.Select((l, r) => $"{wad.Lumps[l].File.Name[0]}:{wad.Lumps[l].Name}{(f.Flip[r] ? "*" : "")}").ToArray();
+        [.. f.Lump.Select((l, r) => $"{wad.Lumps[l].File.Name[0]}:{wad.Lumps[l].Name}{(f.Flip[r] ? "*" : "")}")];
 
-    private static readonly string[] FullRotations = { "TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5" };
+    private static readonly string[] FullRotations = ["TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5"];
 
     [Fact]
     public void GroupsFramesRotationsAndMirroredPairs()

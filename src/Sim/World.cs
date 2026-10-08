@@ -149,19 +149,19 @@ public sealed partial class World
     public Level level { get; private set; } = null!;
 
     /// <summary>The level's sectors, in <c>SECTORS</c> order.</summary>
-    public sector_t[] sectors { get; private set; } = Array.Empty<sector_t>();
+    public sector_t[] sectors { get; private set; } = [];
 
     /// <summary>The level's subsectors, in <c>SSECTORS</c> order.</summary>
-    public subsector_t[] subsectors { get; private set; } = Array.Empty<subsector_t>();
+    public subsector_t[] subsectors { get; private set; } = [];
 
     /// <summary>The level's lines, in <c>LINEDEFS</c> order.</summary>
-    public line_t[] lines { get; private set; } = Array.Empty<line_t>();
+    public line_t[] lines { get; private set; } = [];
 
     /// <summary>The level's sidedefs, in <c>SIDEDEFS</c> order.</summary>
-    public side_t[] sides { get; private set; } = Array.Empty<side_t>();
+    public side_t[] sides { get; private set; } = [];
 
     /// <summary>p_setup.c <c>blocklinks</c>: the first mobj of each block's list (through <see cref="mobj_t.bnext"/>), row by row from the bottom left.</summary>
-    public mobj_t?[] blocklinks { get; private set; } = Array.Empty<mobj_t?>();
+    public mobj_t?[] blocklinks { get; private set; } = [];
 
     public int bmapwidth => level.Blockmap.BmapWidth;
     public int bmapheight => level.Blockmap.BmapHeight;
@@ -172,7 +172,7 @@ public sealed partial class World
     public readonly MapThing?[] playerstarts = new MapThing?[MAXPLAYERS];
 
     /// <summary>p_setup.c <c>deathmatchstarts</c> up to <c>deathmatch_p</c> (at most <see cref="MapThingSpawning.MAX_DM_STARTS"/>).</summary>
-    public readonly List<MapThing> deathmatchstarts = new();
+    public readonly List<MapThing> deathmatchstarts = [];
 
     /// <summary>
     /// doomstat.h <c>gamemap</c>: the level's map number, from its name

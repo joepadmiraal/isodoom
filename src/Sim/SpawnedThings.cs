@@ -60,6 +60,6 @@ public static class SpawnedThings
             if (spawn.Kind == MapThingSpawnKind.Mobj)
                 things.Add(P_SpawnMobjPosition(level, spawn));
         }
-        return things.ToArray();
+        return [.. things];
     }
 }

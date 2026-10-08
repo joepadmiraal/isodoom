@@ -31,7 +31,7 @@ public class FinaleTests
 
     /// <summary>The DOOM1.WAD routes that end the episode (exit on ExM8).</summary>
     private static List<VanillaRoute> EndRoutes() =>
-        VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)).ToList();
+        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase))];
 
     public static TheoryData<string> Routes()
     {
@@ -49,7 +49,7 @@ public class FinaleTests
     [MemberData(nameof(Routes))]
     public void MatchesVanilla(string name)
     {
-        VanillaRoute route = VanillaRoute.Load(name);
+        var route = VanillaRoute.Load(name);
         TestWads.RequireDoom1();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
@@ -57,10 +57,10 @@ public class FinaleTests
         string path = Path.Combine(dir, $"{name}.fi");
         if (!File.Exists(path))
             Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/finales.sh (or set {VanillaRoute.DumpDirEnvVar}).");
-        string[] expected = File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+        string[] expected = [.. File.ReadAllLines(path).Where(l => l.Length > 0)];
         Assert.StartsWith("presses ", expected[0]);
         Assert.StartsWith("finale ", expected[1]);
-        HashSet<int> presses = expected[0]["presses ".Length..].Split(',').Select(int.Parse).ToHashSet();
+        HashSet<int> presses = [.. expected[0]["presses ".Length..].Split(',').Select(int.Parse)];
 
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
@@ -102,7 +102,7 @@ public class FinaleTests
 
     // ---- without a WAD ----
 
-    private static readonly WadArchive Synthetic = new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static readonly WadArchive Synthetic = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     /// <summary>A flow on the synthetic IWAD's E1M1 left as if it were map <paramref name="map"/> of episode <paramref name="episode"/>, at its finale.</summary>
     private static (GameFlow Flow, GameFlowTests.Host Host) AtFinale(GameMode mode, GameMission mission, int episode, int map, bool secret = false)
@@ -191,11 +191,11 @@ public class FinaleTests
     public void TheTextIsTypedOutAtVanillasSpeed()
     {
         // a font of 6×7 glyphs whose pixels are their character's code
-        var wad = Synthetic;
+        WadArchive wad = Synthetic;
         var hu = new HuStuff(null);
         for (int i = 0; i < HuStuff.HU_FONTSIZE; i++)
         {
-            hu.hu_font[i] = new IndexedImage(6, 7, 0, 0, Enumerable.Repeat((byte)(i + HuStuff.HU_FONTSTART), 6 * 7).ToArray(), Enumerable.Repeat((byte)1, 6 * 7).ToArray());
+            hu.hu_font[i] = new IndexedImage(6, 7, 0, 0, [.. Enumerable.Repeat((byte)(i + HuStuff.HU_FONTSTART), 6 * 7)], [.. Enumerable.Repeat((byte)1, 6 * 7)]);
         }
         var g = new ScreenGraphics(wad, hu);
         (GameFlow flow, _) = AtFinale(GameMode.shareware, GameMission.doom, 1, 8);

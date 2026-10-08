@@ -25,14 +25,14 @@ namespace IsoDoom.Tests.Sim;
 /// </summary>
 public class LightTests
 {
-    private static WadArchive Wad() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Wad() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static World Specials(Action<Level>? change = null)
     {
         WadArchive wad = Wad();
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla) { textures = Textures.R_InitTextures(wad) };
         world.P_InitPicAnims(world.textures, PicAnims.FlatNames(wad));
-        Level level = Level.Load(wad, "E1M2");
+        var level = Level.Load(wad, "E1M2");
         change?.Invoke(level);
         world.G_DoLoadLevel(level);
         return world;
@@ -69,10 +69,10 @@ public class LightTests
         Assert.Equal((104, 96, 64, 7), (flash.maxlight, flash.minlight, flash.maxtime, flash.mintime)); // the darkest neighbour: alcove 0
         Assert.InRange(flash.count, 1, 65);
 
-        var strobes = Thinkers<strobe_t>(world);
+        List<strobe_t> strobes = Thinkers<strobe_t>(world);
         // Alcove 14's strobe hurt (4, T5.8) strobes fast too.
-        Assert.Equal(new[] { S(2), S(4), S(6), S(8), S(14) }, strobes.Select(s => s.sector));
-        Assert.Equal(new[] { LightFlash.FASTDARK, LightFlash.SLOWDARK, LightFlash.SLOWDARK, LightFlash.FASTDARK, LightFlash.FASTDARK }, strobes.Select(s => s.darktime));
+        Assert.Equal([S(2), S(4), S(6), S(8), S(14)], strobes.Select(s => s.sector));
+        Assert.Equal([LightFlash.FASTDARK, LightFlash.SLOWDARK, LightFlash.SLOWDARK, LightFlash.FASTDARK, LightFlash.FASTDARK], strobes.Select(s => s.darktime));
         Assert.All(strobes, s => Assert.Equal(LightFlash.STROBEBRIGHT, s.brighttime));
         Assert.InRange(strobes[0].count, 1, 8); // not in sync: random
         Assert.Equal(1, strobes[2].count);      // in sync (12, 13)
@@ -140,11 +140,11 @@ public class LightTests
         // next tagged sectors instead of searching again (alcove 7's brightest neighbour is 144).
         World world = Specials(level => level.Sectors[0].LightLevel = 100);
         world.EV_LightTurnOn(Tagged(world, 5), 0);
-        Assert.All(new[] { 3, 7, 12 }, i => Assert.Equal(128, world.sectors[Alcove(i)].lightlevel));
+        Assert.All([3, 7, 12], i => Assert.Equal(128, world.sectors[Alcove(i)].lightlevel));
         Assert.Equal(SyntheticIwad.AlcoveLight(6), world.sectors[Alcove(6)].lightlevel);
 
         world.EV_LightTurnOn(Tagged(world, 5), 255);
-        Assert.All(new[] { 3, 7, 12 }, i => Assert.Equal(255, world.sectors[Alcove(i)].lightlevel));
+        Assert.All([3, 7, 12], i => Assert.Equal(255, world.sectors[Alcove(i)].lightlevel));
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class LightTests
         int before = Thinkers<strobe_t>(world).Count;
         world.EV_StartLightStrobing(Tagged(world, 5));
         var added = Thinkers<strobe_t>(world).Skip(before).ToList();
-        Assert.Equal(new[] { world.sectors[Alcove(3)], world.sectors[Alcove(12)] }, added.Select(s => s.sector));
+        Assert.Equal([world.sectors[Alcove(3)], world.sectors[Alcove(12)]], added.Select(s => s.sector));
         Assert.All(added, s => Assert.Equal(LightFlash.SLOWDARK, s.darktime));
         // A strobe sets no specialdata (vanilla): triggering again adds more.
         world.EV_StartLightStrobing(Tagged(world, 5));
@@ -177,10 +177,10 @@ public class LightTests
     public void PicAnimsFindTheSyntheticSequences()
     {
         WadArchive wad = Wad();
-        Textures textures = Textures.R_InitTextures(wad);
+        var textures = Textures.R_InitTextures(wad);
         (List<string[]> tex, List<string[]> flats) = PicAnims.Sequences(textures, PicAnims.FlatNames(wad));
         Assert.Equal(new[] { new[] { "SLADRIP1", "SLADRIP2", "SLADRIP3" } }, tex);
-        Assert.Equal(new[] { new[] { "NUKAGE1", "NUKAGE2", "NUKAGE3" }, new[] { "LAVA1", "LAVA2", "LAVA3", "LAVA4" } }, flats);
+        Assert.Equal(new[] { new[] { "NUKAGE1", "NUKAGE2", "NUKAGE3" }, ["LAVA1", "LAVA2", "LAVA3", "LAVA4"] }, flats);
         // No textures (a map without TEXTURE1): the flats only.
         Assert.All(PicAnims.Resolve(null, PicAnims.FlatNames(wad)), a => Assert.False(a.istexture));
     }
@@ -189,10 +189,10 @@ public class LightTests
     public void PicAnimsErrorsAsVanilla()
     {
         // A start without its end, and an end before its start.
-        Assert.Throws<WadFormatException>(() => PicAnims.Resolve(null, new[] { "NUKAGE1", "NUKAGE2" }));
-        Assert.Throws<WadFormatException>(() => PicAnims.Resolve(null, new[] { "NUKAGE3", "NUKAGE2", "NUKAGE1" }));
+        Assert.Throws<WadFormatException>(() => PicAnims.Resolve(null, ["NUKAGE1", "NUKAGE2"]));
+        Assert.Throws<WadFormatException>(() => PicAnims.Resolve(null, ["NUKAGE3", "NUKAGE2", "NUKAGE1"]));
         // A start the WAD lacks: another episode's, skipped.
-        Assert.Empty(PicAnims.Resolve(null, new[] { "NUKAGE3", "FLOOR1" }));
+        Assert.Empty(PicAnims.Resolve(null, ["NUKAGE3", "FLOOR1"]));
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class LightTests
     {
         World world = Specials();
         Assert.Equal(3, world.lastanim);
-        int[] identity = Enumerable.Range(0, world.texturetranslation.Length).ToArray();
+        int[] identity = [.. Enumerable.Range(0, world.texturetranslation.Length)];
         Assert.Equal(identity, world.texturetranslation); // before the first tic
         for (int tic = 0; tic < 40; tic++)
         {
@@ -226,9 +226,9 @@ public class LightTests
     [Fact]
     public void Doom1HasTheNukageSequence()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         (List<string[]> tex, List<string[]> flats) = PicAnims.Sequences(Textures.R_InitTextures(wad), PicAnims.FlatNames(wad));
-        Assert.Contains(flats, f => f.SequenceEqual(new[] { "NUKAGE1", "NUKAGE2", "NUKAGE3" }));
+        Assert.Contains(flats, f => f.SequenceEqual(["NUKAGE1", "NUKAGE2", "NUKAGE3"]));
         Assert.All(tex.Concat(flats), seq => Assert.InRange(seq.Length, 2, 8));
         // Vanilla's flat numbers (firstflat = F_START + 1, the inner markers counted): the animations'
         // phase depends on them. DOOM1.WAD: F_START is lump 1206, NUKAGE1 lump 1258.

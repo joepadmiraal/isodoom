@@ -21,7 +21,7 @@ public partial class HudView : CanvasLayer
     private readonly TextureRect _message = NewRect("MessageLine");
     private Image? _barImage, _messageImage;
     private ImageTexture? _barTexture, _messageTexture;
-    private byte[] _barRgba = Array.Empty<byte>(), _messageRgba = Array.Empty<byte>();
+    private byte[] _barRgba = [], _messageRgba = [];
 
     /// <summary>What shows (<c>--level-hud</c>; = and - keys).</summary>
     public HudMode Mode { get; set; } = HudMode.Bar;

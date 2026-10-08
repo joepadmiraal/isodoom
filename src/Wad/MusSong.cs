@@ -210,7 +210,7 @@ public sealed class MusSong
             error = $"score start {scoreStart}, beyond the lump's {lump.Length} bytes";
             return null;
         }
-        var instruments = new ushort[instrumentCount];
+        ushort[] instruments = new ushort[instrumentCount];
         for (int i = 0; i < instrumentCount; i++)
             instruments[i] = BinaryPrimitives.ReadUInt16LittleEndian(lump[(HeaderSize + 2 * i)..]);
 
@@ -279,7 +279,7 @@ public sealed class MusSong
                     // mus2mid.c stops here, flag or not: no delay read
                     events.Add(e);
                     return new MusSong(lump.ToArray(), scoreLength, scoreStart, primary, secondary, instruments,
-                        events.ToArray(), time, channels, offset, mus2midError);
+                        [.. events], time, channels, offset, mus2midError);
                 }
                 channels |= 1 << e.Channel;
                 if (e.Last)
@@ -337,7 +337,7 @@ public sealed class MusSong
     public string Describe()
     {
         int notes = 0, maxNote = -1, minNote = 128;
-        var counts = new int[8];
+        int[] counts = new int[8];
         foreach (MusEvent e in _events)
         {
             counts[(int)e.Type]++;

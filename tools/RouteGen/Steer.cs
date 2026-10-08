@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using IsoDoom.Game;
 using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Tests.Sim;
@@ -27,13 +28,13 @@ public sealed class Steer
     private const int Grid = 8;
 
     public readonly World w;
-    public readonly List<(int Forward, int Side, int Turn, int Buttons)> Cmds = new();
+    public readonly List<(int Forward, int Side, int Turn, int Buttons)> Cmds = [];
 
     /// <summary>Sector floor heights (units) the planner assumes (a lift that will be down when the player gets there).</summary>
-    public readonly Dictionary<int, int> Assume = new();
+    public readonly Dictionary<int, int> Assume = [];
 
     /// <summary>Sector ceiling heights (units) the planner assumes (doors <see cref="GoToDoors"/> opens).</summary>
-    public readonly Dictionary<int, int> AssumeCeil = new();
+    public readonly Dictionary<int, int> AssumeCeil = [];
 
     /// <summary>
     /// T5.9: a diagonal grid step whose orthogonal neighbours are blocked is
@@ -49,7 +50,7 @@ public sealed class Steer
     /// T6.4: the route's events (<see cref="IsoDoom.Game.RouteEvent"/>), each
     /// run before the tic of its index (<see cref="Damage"/>, <see cref="Alert"/>).
     /// </summary>
-    public readonly List<IsoDoom.Game.RouteEvent> Events = new();
+    public readonly List<IsoDoom.Game.RouteEvent> Events = [];
 
     /// <summary>T6.4: called after every tic (e.g. a <see cref="Gunner"/> adding the next tic's events).</summary>
     public Action? OnTic;
@@ -79,7 +80,7 @@ public sealed class Steer
     /// <summary>Runs one tic with this ticcmd (turn: the demo's angleturn byte) and records it.</summary>
     public void Tic(int forward, int side, int turn, int buttons)
     {
-        foreach (var e in Events)
+        foreach (RouteEvent e in Events)
         {
             if (e.Tic == Cmds.Count)
                 e.Run(w);
@@ -238,7 +239,7 @@ public sealed class Steer
         sb.Append("# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn\n");
         for (int k = 0; k < Cmds.Count;)
         {
-            foreach (var e in Events)
+            foreach (RouteEvent e in Events)
             {
                 if (e.Tic == k)
                     sb.Append(e).Append('\n');
@@ -246,7 +247,7 @@ public sealed class Steer
             int n = 1;
             while (k + n < Cmds.Count && Cmds[k + n] == Cmds[k] && !Events.Any(e => e.Tic == k + n))
                 n++;
-            var c = Cmds[k];
+            (int Forward, int Side, int Turn, int Buttons) c = Cmds[k];
             sb.Append($"{c.Forward} {c.Side} {c.Turn} {c.Buttons}");
             if (n > 1)
                 sb.Append($" x{n}");
@@ -264,7 +265,7 @@ public sealed class Steer
 
     private readonly record struct Cell(bool Ok, int Floor, int Ceil);
 
-    private readonly Dictionary<(int, int), Cell> _cache = new();
+    private readonly Dictionary<(int, int), Cell> _cache = [];
 
     /// <summary>T5.9 (<c>--probe</c>): whether the player fits at (x, y) (units), and the floor and ceiling there.</summary>
     public string ProbeText(double x, double y)
@@ -313,9 +314,9 @@ public sealed class Steer
     {
         var floors = Assume.Keys.ToDictionary(k => k, k => w.sectors[k].floorheight);
         var ceilings = AssumeCeil.Keys.ToDictionary(k => k, k => w.sectors[k].ceilingheight);
-        foreach (var (k, v) in Assume)
+        foreach ((int k, int v) in Assume)
             w.sectors[k].floorheight = v * FU;
-        foreach (var (k, v) in AssumeCeil)
+        foreach ((int k, int v) in AssumeCeil)
             w.sectors[k].ceilingheight = v * FU;
         // T6.4: plan through the monsters (they move; the steering pushes past them)
         var monsters = w.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)) == (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)).ToList();
@@ -329,9 +330,9 @@ public sealed class Steer
         {
             foreach (mobj_t m in monsters)
                 m.flags |= mobjflag_t.MF_SOLID;
-            foreach (var (k, v) in floors)
+            foreach ((int k, int v) in floors)
                 w.sectors[k].floorheight = v;
-            foreach (var (k, v) in ceilings)
+            foreach ((int k, int v) in ceilings)
                 w.sectors[k].ceilingheight = v;
         }
     }
@@ -345,21 +346,21 @@ public sealed class Steer
         var start = ((int)Math.Round(X / Grid), (int)Math.Round(Y / Grid));
         var end = ((int)Math.Round(tx / Grid), (int)Math.Round(ty / Grid));
         if (start == end)
-            return new List<(double, double)> { (tx, ty) };
+            return [(tx, ty)];
         var open = new PriorityQueue<(int, int), double>();
         var cost = new Dictionary<(int, int), double> { [start] = 0 };
         var from = new Dictionary<(int, int), (int, int)>();
         open.Enqueue(start, 0);
-        int[] dx = { 1, -1, 0, 0, 1, 1, -1, -1 }, dy = { 0, 0, 1, -1, 1, -1, 1, -1 };
+        int[] dx = [1, -1, 0, 0, 1, 1, -1, -1], dy = [0, 0, 1, -1, 1, -1, 1, -1];
         while (open.Count > 0)
         {
-            var cur = open.Dequeue();
+            (int, int) cur = open.Dequeue();
             if (cur == end)
                 break;
             Cell cc = cur == start ? new Cell(true, Mo.floorz, Mo.ceilingz) : Probe(cur.Item1, cur.Item2);
             for (int k = 0; k < 8; k++)
             {
-                var nb = (cur.Item1 + dx[k], cur.Item2 + dy[k]);
+                (int, int) nb = (cur.Item1 + dx[k], cur.Item2 + dy[k]);
                 if (!Step(cc, Probe(nb.Item1, nb.Item2)))
                     continue;
                 // diagonals: both orthogonal neighbours too
@@ -382,7 +383,7 @@ public sealed class Steer
                 $"No path from ({X:F0}, {Y:F0}) to ({tx}, {ty}) at tic {w.leveltime}; reachable sectors: {string.Join(",", reached)}");
         }
         var path = new List<(double, double)>();
-        for (var p = end; p != start; p = from[p])
+        for ((int, int) p = end; p != start; p = from[p])
             path.Add((p.Item1 * Grid, p.Item2 * Grid));
         path.Reverse();
         return path;
@@ -513,12 +514,12 @@ public sealed class Steer
     }
 
     /// <summary>T5.9: sectors the player's box must not touch (e.g. a teleporter on the way: E1M5's sector 56).</summary>
-    public readonly HashSet<int> Avoid = new();
+    public readonly HashSet<int> Avoid = [];
 
     /// <summary>T5.6: door sectors <see cref="GoToDoors"/> must not plan through (e.g. a door that opens from the other side only).</summary>
-    public readonly HashSet<int> ShutDoors = new();
+    public readonly HashSet<int> ShutDoors = [];
 
-    private static readonly int[] ManualDoors = { 1, 31, 117, 118 };
+    private static readonly int[] ManualDoors = [1, 31, 117, 118];
 
     /// <summary>
     /// T5.9: whether <see cref="GoToDoors"/> may open a door of line special
@@ -568,7 +569,7 @@ public sealed class Steer
                     GoTo(x, y, tol, speed);
                     return;
                 }
-                var before = path[Math.Max(0, hit - 5)];
+                (double X, double Y) before = path[Math.Max(0, hit - 5)];
                 if (Dist(before) > 4)
                     GoTo(before.X, before.Y, 6, speed);
             }

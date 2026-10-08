@@ -9,7 +9,7 @@ namespace IsoDoom.Tests.Wad;
 public class ModifiedGameTests
 {
     private static readonly string[] RegisteredLumps =
-        ModifiedGame.name.Select(n => n.ToUpperInvariant()).Distinct().ToArray();
+        [.. ModifiedGame.name.Select(n => n.ToUpperInvariant()).Distinct()];
 
     private static WadFile Iwad(params string[] lumps) =>
         new WadBuilder(WadType.Iwad).Lump("PLAYPAL", 0).Markers(lumps).ToWadFile("iwad.wad");
@@ -23,7 +23,7 @@ public class ModifiedGameTests
     }
 
     private static string[] Registered(params string[] except) =>
-        new[] { "E1M1" }.Concat(RegisteredLumps.Where(n => !except.Contains(n))).ToArray();
+        ["E1M1", .. RegisteredLumps.Where(n => !except.Contains(n))];
 
     [Fact]
     public void SharewareWithoutPwadsIsFine() => Check(Iwad("E1M1"));
@@ -31,7 +31,7 @@ public class ModifiedGameTests
     [Fact]
     public void SharewareRefusesPwads()
     {
-        var e = Assert.Throws<ModifiedGameException>(() => Check(Iwad("E1M1"), Pwad("E1M2")));
+        ModifiedGameException e = Assert.Throws<ModifiedGameException>(() => Check(Iwad("E1M1"), Pwad("E1M2")));
         Assert.Equal(ModifiedGame.SharewareMessage, e.Message);
     }
 
@@ -51,7 +51,7 @@ public class ModifiedGameTests
     [InlineData("SPIDA1D1")]
     public void FakeRegisteredRefusesPwads(string missing)
     {
-        var e = Assert.Throws<ModifiedGameException>(() => Check(Iwad(Registered(missing)), Pwad("E1M2")));
+        ModifiedGameException e = Assert.Throws<ModifiedGameException>(() => Check(Iwad(Registered(missing)), Pwad("E1M2")));
         Assert.Equal(ModifiedGame.NotRegisteredMessage, e.Message);
     }
 
@@ -92,7 +92,7 @@ public class ModifiedGameTests
     [Fact]
     public void RealSharewareRefusesPwads()
     {
-        WadFile doom1 = WadFile.Open(TestWads.RequireDoom1());
+        var doom1 = WadFile.Open(TestWads.RequireDoom1());
         Check(doom1);
         Assert.Throws<ModifiedGameException>(() => Check(doom1, Pwad("E1M1")));
     }

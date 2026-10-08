@@ -123,7 +123,7 @@ public sealed class StStuff
                 g.keys[i] = Get($"STKEYS{i}");
             g.armsbg = Get("STARMS");
             for (int i = 0; i < 6; i++)
-                g.arms[i] = new[] { Get($"STGNUM{i + 2}"), g.shortnum[i + 2] };
+                g.arms[i] = [Get($"STGNUM{i + 2}"), g.shortnum[i + 2]];
             g.faceback = Get($"STFB{consoleplayer}");
             g.sbar = Get("STBAR");
             int facenum = 0;
@@ -503,7 +503,7 @@ public sealed class StStuff
         public int x, y, width, oldnum;
         public Func<int> num = () => 0;
         public Func<bool> on = () => false;
-        public IndexedImage?[] p = Array.Empty<IndexedImage?>();
+        public IndexedImage?[] p = [];
     }
 
     /// <summary>st_lib.h <c>st_percent_t</c>: a number and a percent sign.</summary>
@@ -519,7 +519,7 @@ public sealed class StStuff
         public int x, y, oldinum;
         public Func<int> inum = () => -1;
         public Func<bool> on = () => false;
-        public IndexedImage?[] p = Array.Empty<IndexedImage?>();
+        public IndexedImage?[] p = [];
     }
 
     /// <summary>st_lib.h <c>st_binicon_t</c>: an icon shown or not, redrawn when that changes.</summary>
@@ -582,15 +582,15 @@ public sealed class StStuff
         // armor percentage - should be colored later
         w_armor = STlib_initPercent(ST_ARMORX, ST_ARMORY, G.tallnum, () => p.armorpoints, () => st_statusbaron, G.tallpercent);
         // keyboxes 0-2
-        (int X, int Y)[] keys = { (ST_KEY0X, ST_KEY0Y), (ST_KEY1X, ST_KEY1Y), (ST_KEY2X, ST_KEY2Y) };
+        (int X, int Y)[] keys = [(ST_KEY0X, ST_KEY0Y), (ST_KEY1X, ST_KEY1Y), (ST_KEY2X, ST_KEY2Y)];
         for (int i = 0; i < 3; i++)
         {
             int k = i;
             w_keyboxes[i] = STlib_initMultIcon(keys[i].X, keys[i].Y, G.keys, () => keyboxes[k], () => st_statusbaron);
         }
         // ammo count (all four kinds), max ammo count (all four kinds)
-        (int X, int Y)[] ammo = { (ST_AMMO0X, ST_AMMO0Y), (ST_AMMO1X, ST_AMMO1Y), (ST_AMMO2X, ST_AMMO2Y), (ST_AMMO3X, ST_AMMO3Y) };
-        (int X, int Y)[] max = { (ST_MAXAMMO0X, ST_MAXAMMO0Y), (ST_MAXAMMO1X, ST_MAXAMMO1Y), (ST_MAXAMMO2X, ST_MAXAMMO2Y), (ST_MAXAMMO3X, ST_MAXAMMO3Y) };
+        (int X, int Y)[] ammo = [(ST_AMMO0X, ST_AMMO0Y), (ST_AMMO1X, ST_AMMO1Y), (ST_AMMO2X, ST_AMMO2Y), (ST_AMMO3X, ST_AMMO3Y)];
+        (int X, int Y)[] max = [(ST_MAXAMMO0X, ST_MAXAMMO0Y), (ST_MAXAMMO1X, ST_MAXAMMO1Y), (ST_MAXAMMO2X, ST_MAXAMMO2Y), (ST_MAXAMMO3X, ST_MAXAMMO3Y)];
         for (int i = 0; i < 4; i++)
         {
             int a = i;

@@ -27,7 +27,7 @@ public class CeilingTests
 
     private static World Specials()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M2"));
         world.PlaceMobj(world.players[0].mo!, F(64), F(196)); // room R, out of the way
@@ -67,12 +67,12 @@ public class CeilingTests
     public void TheOneWayCeilingsGoWhereVanillaSendsAndAreDone()
     {
         (ceiling_e Type, int To, int Tics)[] cases =
-        {
+        [
             (ceiling_e.lowerToFloor, 136, 145),   // 144 steps, pastdest the tic after
             (ceiling_e.lowerAndCrush, 144, 137),
             (ceiling_e.raiseToHighest, 272, 1),   // the highest neighbouring ceiling (alcove 2) is below: at once
-        };
-        foreach (var c in cases)
+        ];
+        foreach ((ceiling_e Type, int To, int Tics) c in cases)
         {
             World world = Specials();
             line_t line = Tagged(world, 7, A3);
@@ -100,12 +100,12 @@ public class CeilingTests
     public void CrushersGoDownAndUpForEver()
     {
         (ceiling_e Type, int Speed)[] cases =
-        {
+        [
             (ceiling_e.crushAndRaise, 1),
             (ceiling_e.fastCrushAndRaise, 2),
             (ceiling_e.silentCrushAndRaise, 1),
-        };
-        foreach (var c in cases)
+        ];
+        foreach ((ceiling_e Type, int Speed) c in cases)
         {
             World world = Specials();
             line_t line = Tagged(world, 7, A3);
@@ -234,7 +234,7 @@ public class CeilingTests
         Assert.Equal(0, world.EV_CeilingCrushStop(line)); // cannot be stopped
 
         // A new level clears the list.
-        world.G_DoLoadLevel(Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M2"));
+        world.G_DoLoadLevel(Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M2"));
         Assert.All(world.activeceilings, c => Assert.Null(c));
     }
 

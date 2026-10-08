@@ -11,7 +11,7 @@ namespace IsoDoom.Tests.Sim;
 /// </summary>
 public class VanillaRouteTests
 {
-    public static TheoryData<string> Routes() => new(VanillaRoute.Names());
+    public static TheoryData<string> Routes() => [.. VanillaRoute.Names()];
 
     [Theory]
     [MemberData(nameof(Routes))]
@@ -99,7 +99,7 @@ public class VanillaRouteTests
     [Fact]
     public void TheSpechitRouteOverruns()
     {
-        VanillaRoute route = VanillaRoute.Load("testmap-spechit");
+        var route = VanillaRoute.Load("testmap-spechit");
         IsoDoom.Sim.World world = route.NewWorld();
         int most = 0;
         foreach (IsoDoom.Sim.ticcmd_t cmd in route.Cmds)
@@ -121,7 +121,7 @@ public class VanillaRouteTests
         System.IO.File.WriteAllText(path, "iwad synthetic\nskill 4 # hard\n25 -24 -1 0 x2\n0 0 127 1\n");
         try
         {
-            VanillaRoute r = VanillaRoute.Parse(path);
+            var r = VanillaRoute.Parse(path);
             Assert.Equal(IsoDoom.Sim.skill_t.sk_hard, r.Skill);
             Assert.Equal(new short[] { -256, -256, 127 << 8 }, r.Cmds.Select(c => c.angleturn));
             Assert.Equal(new sbyte[] { -24, -24, 0 }, r.Cmds.Select(c => c.sidemove));

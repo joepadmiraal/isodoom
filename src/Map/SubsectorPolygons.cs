@@ -87,7 +87,7 @@ public sealed class SubsectorPolygons
     {
         var polygons = new PolygonVertex[level.Subsectors.Length][];
         for (int i = 0; i < polygons.Length; i++)
-            polygons[i] = Array.Empty<PolygonVertex>();
+            polygons[i] = [];
 
         if (level.Subsectors.Length > 0)
         {
@@ -100,15 +100,15 @@ public sealed class SubsectorPolygons
 
         var bySector = new List<int>[level.Sectors.Length];
         for (int i = 0; i < bySector.Length; i++)
-            bySector[i] = new List<int>();
+            bySector[i] = [];
         foreach (Subsector ss in level.Subsectors)
         {
             if (polygons[ss.Index].Length > 0)
                 bySector[ss.Sector.Index].Add(ss.Index);
         }
-        var grouped = new int[bySector.Length][];
+        int[][] grouped = new int[bySector.Length][];
         for (int i = 0; i < grouped.Length; i++)
-            grouped[i] = bySector[i].ToArray();
+            grouped[i] = [.. bySector[i]];
         return new SubsectorPolygons(polygons, grouped);
     }
 
@@ -149,7 +149,7 @@ public sealed class SubsectorPolygons
         maxX = Math.Min(maxX + m, int.MaxValue);
         maxY = Math.Min(maxY + m, int.MaxValue);
         // Clockwise with y up: top-left, top-right, bottom-right, bottom-left.
-        return new List<P> { new(minX, maxY), new(maxX, maxY), new(maxX, minY), new(minX, minY) };
+        return [new(minX, maxY), new(maxX, maxY), new(maxX, minY), new(minX, minY)];
     }
 
     private static void Walk(Level level, int nodenum, List<P> cell, PolygonVertex[][] polygons)

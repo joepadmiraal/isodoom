@@ -25,7 +25,7 @@ public class KeysDamageExitTests
 
     private static uint Deg(int degrees) => (uint)((ulong)degrees * 0x100000000UL / 360);
 
-    private static WadArchive Wad() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Wad() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     /// <summary>
     /// A new game on <paramref name="map"/>; <paramref name="quiet"/> clears
@@ -35,7 +35,7 @@ public class KeysDamageExitTests
     private static World NewWorld(string map = "E1M2", skill_t skill = skill_t.sk_medium, GameMode mode = GameMode.shareware, bool netgame = false, bool quiet = false)
     {
         var world = new World(new SpawnSettings(mode, skill, netgame), Tweaks.Vanilla);
-        Level level = Level.Load(Wad(), map);
+        var level = Level.Load(Wad(), map);
         if (quiet)
             level.Sectors[Alcove(1)].Special = level.Sectors[Alcove(9)].Special = 0;
         world.G_DoLoadLevel(level);
@@ -46,7 +46,7 @@ public class KeysDamageExitTests
 
     /// <summary>The queued message events' texts (T6.10).</summary>
     private static string?[] Messages(World world) =>
-        world.events.Where(e => e.type == simevent_t.se_message).Select(e => e.message).ToArray();
+        [.. world.events.Where(e => e.type == simevent_t.se_message).Select(e => e.message)];
 
     private static mobj_t Mo(World world) => world.players[0].mo!;
 

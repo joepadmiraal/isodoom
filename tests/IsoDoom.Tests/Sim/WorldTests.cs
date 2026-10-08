@@ -16,7 +16,7 @@ public class WorldTests
     private const int FRACUNIT = 1 << 16;
     private static readonly SpawnSettings Medium = new(GameMode.shareware, skill_t.sk_medium);
 
-    private static WadArchive Synthetic() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static World Load(WadArchive wad, string map, SpawnSettings settings)
     {
@@ -65,7 +65,7 @@ public class WorldTests
     /// </summary>
     internal static void CheckLinks(World world)
     {
-        List<mobj_t> mobjs = world.Mobjs().ToList();
+        List<mobj_t> mobjs = [.. world.Mobjs()];
         var inSectors = world.sectors.SelectMany(SectorList).ToList();
         var inBlocks = Enumerable.Range(0, world.blocklinks.Length).SelectMany(b => BlockList(world, b)).ToList();
         Assert.Equal(inSectors.Count, inSectors.Distinct().Count());
@@ -91,7 +91,7 @@ public class WorldTests
     {
         WadArchive wad = Synthetic();
         World world = Load(wad, "E1M1", Medium);
-        List<mobj_t> mobjs = world.Mobjs().ToList();
+        List<mobj_t> mobjs = [.. world.Mobjs()];
         Assert.Equal(12, mobjs.Count); // T3.2/T3.5: 11 mobjs plus player 1, in THINGS order
 
         // The player.
@@ -149,10 +149,10 @@ public class WorldTests
     [InlineData(skill_t.sk_nightmare, 116)]
     public void Doom1E1M1Spawns(skill_t skill, int count)
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         var settings = new SpawnSettings(GameMode.shareware, skill);
         World world = Load(wad, "E1M1", settings);
-        List<mobj_t> mobjs = world.Mobjs().ToList();
+        List<mobj_t> mobjs = [.. world.Mobjs()];
         Assert.Equal(count, mobjs.Count); // vanilla's thinker list (T3.2)
         Assert.Single(mobjs, m => m.type == mobjtype_t.MT_PLAYER);
         CheckLinks(world);
@@ -168,7 +168,7 @@ public class WorldTests
     [Fact]
     public void Doom2EveryMapSpawnsAndRuns()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom2());
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
         var settings = new SpawnSettings(GameMode.commercial, skill_t.sk_hard);
         for (int m = 1; m <= 32; m++)
         {
@@ -185,7 +185,7 @@ public class WorldTests
     [Fact]
     public void Doom1E1M1RunsStably()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         World a = Load(wad, "E1M1", Medium);
         World b = Load(wad, "E1M1", Medium);
         for (int tic = 0; tic < 35; tic++)
@@ -205,7 +205,7 @@ public class WorldTests
         ulong[] Run()
         {
             World world = Load(wad, "E1M1", Medium);
-            var sums = new ulong[36];
+            ulong[] sums = new ulong[36];
             sums[0] = world.Checksum();
             for (int tic = 1; tic <= 35; tic++)
             {
@@ -273,7 +273,7 @@ public class WorldTests
     public void ThinkerList()
     {
         var world = new World(Medium, Tweaks.Vanilla);
-        var t = Enumerable.Range(0, 4).Select(_ => new thinker_t()).ToArray();
+        thinker_t[] t = [.. Enumerable.Range(0, 4).Select(_ => new thinker_t())];
         foreach (thinker_t th in t)
             world.P_AddThinker(th);
 
@@ -305,7 +305,7 @@ public class WorldTests
     {
         WadArchive wad = Synthetic();
         World world = Load(wad, "E1M1", Medium);
-        mobj_t[] mobjs = world.Mobjs().ToArray();
+        mobj_t[] mobjs = [.. world.Mobjs()];
         int block = 1 * 10 + 1; // player, barrel, imps 8 and 9
         world.P_RemoveMobj(mobjs[1]); // middle of its lists
         world.P_RemoveMobj(mobjs[9]); // head of its block list
@@ -486,7 +486,7 @@ public class WorldTests
     [Fact]
     public void TweakFlags()
     {
-        PropertyInfo[] flags = typeof(Tweaks).GetProperties().Where(p => p.PropertyType == typeof(bool)).ToArray();
+        PropertyInfo[] flags = [.. typeof(Tweaks).GetProperties().Where(p => p.PropertyType == typeof(bool))];
         Assert.NotEmpty(flags);
         Assert.All(flags, f => Assert.False((bool)f.GetValue(Tweaks.Vanilla)!, f.Name));
         Assert.All(flags, f => Assert.True((bool)f.GetValue(Tweaks.TopDown)!, f.Name));

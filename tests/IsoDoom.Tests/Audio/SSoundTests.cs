@@ -13,8 +13,8 @@ namespace IsoDoom.Tests.Audio;
 /// <summary>A sound driver that records what <see cref="SSound"/> asks of it (T7.7).</summary>
 internal sealed class RecordingDevice : ISoundDevice
 {
-    public readonly List<string> Calls = new();
-    public readonly Dictionary<int, (sfxenum_t Sfx, int Vol, int Sep)> Playing = new();
+    public readonly List<string> Calls = [];
+    public readonly Dictionary<int, (sfxenum_t Sfx, int Vol, int Sep)> Playing = [];
     public Func<sfxenum_t, double> Seconds = _ => 1.0;
     public bool Paused;
 
@@ -71,7 +71,7 @@ public class SSoundTests
     [Fact]
     public void DecodesADmxSoundWithoutItsPads()
     {
-        DmxSound s = DmxSound.Decode(Dmx(22050, 100));
+        var s = DmxSound.Decode(Dmx(22050, 100));
         Assert.Equal(22050, s.SampleRate);
         Assert.Equal(100, s.Samples.Length);
         Assert.Equal(Enumerable.Range(0, 100).Select(i => (byte)(i * 7)), s.Samples);
@@ -88,7 +88,7 @@ public class SSoundTests
     [InlineData(100, null, 0, false)] // a PC speaker sound's format
     public void RejectsWhatDmxWouldNotPlay(int samples, int? count, int format, bool plays = true)
     {
-        DmxSound? s = DmxSound.TryDecode(Dmx(11025, samples, count, format), out string? error);
+        var s = DmxSound.TryDecode(Dmx(11025, samples, count, format), out string? error);
         Assert.Equal(plays, s is not null);
         Assert.Equal(plays, error is null);
         if (!plays)
@@ -113,7 +113,7 @@ public class SSoundTests
     [Fact]
     public void EverySharewareSoundHasALumpDmxPlays()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         int found = 0;
         for (int i = 1; i < (int)sfxenum_t.NUMSFX; i++)
         {

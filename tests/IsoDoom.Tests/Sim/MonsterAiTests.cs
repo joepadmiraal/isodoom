@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using IsoDoom.Game;
 using IsoDoom.Map;
@@ -44,7 +43,7 @@ public class MonsterAiTests
     /// <summary>Loads <paramref name="map"/> with other game settings (mode, -fast, -respawn).</summary>
     private static World Load(TestMap map, SpawnSettings settings)
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(map.Build(), "testmap.wad") });
+        var wad = new WadArchive([WadFile.FromBytes(map.Build(), "testmap.wad")]);
         var world = new World(settings, Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         return world;
@@ -556,7 +555,7 @@ public class MonsterAiTests
         var wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M8"));
-        mobj_t[] barons = world.Mobjs().Where(m => m.type == mobjtype_t.MT_BRUISER).ToArray();
+        mobj_t[] barons = [.. world.Mobjs().Where(m => m.type == mobjtype_t.MT_BRUISER)];
         Assert.Equal(2, barons.Length);
         foreach (mobj_t baron in barons)
         {
@@ -576,15 +575,15 @@ public class MonsterAiTests
     public void RoutesParseTheMonstersHeaderAndTheEvents()
     {
         string text = "iwad synthetic\nmonsters\n0 0 0 0 x2\nalert\ndamage 320 64 15\n25 0 0 0\n";
-        RouteFile route = RouteFile.Parse(text.Split('\n'), "test.route");
+        var route = RouteFile.Parse(text.Split('\n'), "test.route");
         Assert.True(route.Monsters);
         Assert.Equal(3, route.Cmds.Count);
-        Assert.Equal(new[] { new RouteEvent(2, RouteEventKind.Alert, 0, 0, 0), new RouteEvent(2, RouteEventKind.Damage, 320, 64, 15) }, route.Events);
+        Assert.Equal([new RouteEvent(2, RouteEventKind.Alert, 0, 0, 0), new RouteEvent(2, RouteEventKind.Damage, 320, 64, 15)], route.Events);
         Assert.Equal("damage 320 64 15", route.Events[1].ToString());
-        Assert.False(RouteFile.Parse(new[] { "iwad synthetic", "0 0 0 0" }, "x").Monsters);
-        Assert.Throws<FormatException>(() => RouteFile.Parse(new[] { "iwad synthetic", "0 0 0 0", "alert" }, "x")); // after the last tic
-        Assert.Throws<FormatException>(() => RouteFile.Parse(new[] { "iwad synthetic", "damage 1 2", "0 0 0 0" }, "x"));
-        Assert.Throws<FormatException>(() => RouteFile.Parse(new[] { "iwad synthetic", "damage 1 2 0", "0 0 0 0" }, "x"));
+        Assert.False(RouteFile.Parse(["iwad synthetic", "0 0 0 0"], "x").Monsters);
+        Assert.Throws<FormatException>(() => RouteFile.Parse(["iwad synthetic", "0 0 0 0", "alert"], "x")); // after the last tic
+        Assert.Throws<FormatException>(() => RouteFile.Parse(["iwad synthetic", "damage 1 2", "0 0 0 0"], "x"));
+        Assert.Throws<FormatException>(() => RouteFile.Parse(["iwad synthetic", "damage 1 2 0", "0 0 0 0"], "x"));
     }
 
     [Fact]

@@ -28,19 +28,19 @@ public class FloorTriangleTests
     public static TheoryData<string> Doom2Maps() => SubsectorPolygonTests.Doom2Maps();
 
     private static Level LoadSynthetic() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1");
 
     private static PolygonVertex V(int x, int y) => new(x << FRACBITS, y << FRACBITS);
 
     private static (PolygonVertex, PolygonVertex, PolygonVertex)[] Triangles(SectorFloor f) =>
-        Enumerable.Range(0, f.TriangleCount).Select(t => (f.Corner(t, 0), f.Corner(t, 1), f.Corner(t, 2))).ToArray();
+        [.. Enumerable.Range(0, f.TriangleCount).Select(t => (f.Corner(t, 0), f.Corner(t, 1), f.Corner(t, 2)))];
 
     /// <summary>T3.4: <see cref="SectorFloor.InteriorPoint"/> lies on its sector's floor, and is the west room's largest triangle's centroid.</summary>
     [Fact]
     public void InteriorPointsLieOnTheirFloors()
     {
         Level map = LoadSynthetic();
-        FloorTriangles floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
+        var floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
         foreach (SectorFloor f in floors.BySector.Where(f => f.TriangleCount > 0))
         {
             (int x, int y) = f.InteriorPoint();
@@ -54,8 +54,8 @@ public class FloorTriangleTests
     public void SyntheticMapTrianglesAreExact()
     {
         Level map = LoadSynthetic();
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
-        FloorTriangles floors = FloorTriangles.Build(map, polys);
+        var polys = SubsectorPolygons.Build(map);
+        var floors = FloorTriangles.Build(map, polys);
         FloorChecks.Stats stats = FloorChecks.Check(map, polys, floors);
         Assert.Equal(15, stats.Triangles);
         Assert.Equal(1, stats.Inserted);
@@ -64,17 +64,17 @@ public class FloorTriangleTests
         // The west room's east edge has the east room's split corner (128, 0) on it (a T-junction):
         // it is inserted, and the room becomes a fan of three triangles from its first corner.
         Assert.Equal(new[] { V(-128, -128), V(-128, 128), V(128, 128), V(128, 0), V(128, -128) }, floors.Rings[0]);
-        var expected = new[]
-        {
-            new[] { (V(-128, -128), V(-128, 128), V(128, 128)), (V(-128, -128), V(128, 128), V(128, 0)), (V(-128, -128), V(128, 0), V(128, -128)) },
+        (PolygonVertex, PolygonVertex, PolygonVertex)[][] expected =
+        [
+            [(V(-128, -128), V(-128, 128), V(128, 128)), (V(-128, -128), V(128, 128), V(128, 0)), (V(-128, -128), V(128, 0), V(128, -128))],
             // East room: the two halves either side of the partition at y = 0.
-            new[] { (V(128, -128), V(128, 0), V(384, 0)), (V(128, -128), V(384, 0), V(384, -128)), (V(384, 0), V(128, 0), V(128, 128)), (V(384, 0), V(128, 128), V(384, 128)) },
+            [(V(128, -128), V(128, 0), V(384, 0)), (V(128, -128), V(384, 0), V(384, -128)), (V(384, 0), V(128, 0), V(128, 128)), (V(384, 0), V(128, 128), V(384, 128))],
             // The strip: room C, closed door D, courtyard A, ledge B, each a rectangle fanned from its first corner.
-            new[] { (V(512, -128), V(512, 128), V(640, 128)), (V(512, -128), V(640, 128), V(640, -128)) },
-            new[] { (V(640, -128), V(640, 128), V(656, 128)), (V(640, -128), V(656, 128), V(656, -128)) },
-            new[] { (V(656, -128), V(656, 128), V(912, 128)), (V(656, -128), V(912, 128), V(912, -128)) },
-            new[] { (V(912, -128), V(912, 128), V(1040, 128)), (V(912, -128), V(1040, 128), V(1040, -128)) },
-        };
+            [(V(512, -128), V(512, 128), V(640, 128)), (V(512, -128), V(640, 128), V(640, -128))],
+            [(V(640, -128), V(640, 128), V(656, 128)), (V(640, -128), V(656, 128), V(656, -128))],
+            [(V(656, -128), V(656, 128), V(912, 128)), (V(656, -128), V(912, 128), V(912, -128))],
+            [(V(912, -128), V(912, 128), V(1040, 128)), (V(912, -128), V(1040, 128), V(1040, -128))],
+        ];
         Assert.Equal(expected.Length, floors.BySector.Count);
         for (int s = 0; s < expected.Length; s++)
         {
@@ -83,7 +83,7 @@ public class FloorTriangleTests
             // Shared corners appear once per sector.
             Assert.Equal(floors.BySector[s].Vertices.Count, floors.BySector[s].Vertices.Distinct().Count());
         }
-        Assert.Equal(new[] { 0, 1, 1, 2, 3, 4, 5 }, floors.FloorSectorOf);
+        Assert.Equal([0, 1, 1, 2, 3, 4, 5], floors.FloorSectorOf);
 
         // Triangle area per sector equals the polygon area (and the linedef area) exactly.
         double[] fromLines = PolygonChecks.SectorAreasFromLines(map);
@@ -123,25 +123,25 @@ public class FloorTriangleTests
     public void FloorSectorHookHidesOrMovesASubsectorsFloor()
     {
         Level map = LoadSynthetic();
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
+        var polys = SubsectorPolygons.Build(map);
 
         // Hide the lower half of the east room: its corners still go into the
         // west room's ring, and the east room keeps only its upper half.
         int lower = polys.BySector[1].First(ss => polys.Polygons[ss].All(v => v.Y <= 0));
         int upper = polys.BySector[1].Single(ss => ss != lower);
-        FloorTriangles hidden = FloorTriangles.Build(map, polys, ss => ss.Index == lower ? null : ss.Sector);
+        var hidden = FloorTriangles.Build(map, polys, ss => ss.Index == lower ? null : ss.Sector);
         Assert.Empty(hidden.Rings[lower]);
         Assert.Equal(-1, hidden.FloorSectorOf[lower]);
-        Assert.Equal(new[] { upper }, hidden.BySector[1].Subsectors);
+        Assert.Equal([upper], hidden.BySector[1].Subsectors);
         Assert.Equal(2, hidden.BySector[1].TriangleCount);
         Assert.Contains(V(128, 0), hidden.Rings[0]);
         Assert.Equal(3, hidden.BySector[0].TriangleCount);
         FloorChecks.CheckNoTJunctions(hidden);
 
         // Draw the west room's floor as sector 2's.
-        FloorTriangles moved = FloorTriangles.Build(map, polys, ss => ss.Index == 0 ? map.Sectors[2] : ss.Sector);
+        var moved = FloorTriangles.Build(map, polys, ss => ss.Index == 0 ? map.Sectors[2] : ss.Sector);
         Assert.Equal(0, moved.BySector[0].TriangleCount);
-        Assert.Equal(new[] { 0, polys.BySector[2][0] }, moved.BySector[2].Subsectors);
+        Assert.Equal([0, polys.BySector[2][0]], moved.BySector[2].Subsectors);
         Assert.Equal(5, moved.BySector[2].TriangleCount);
         Assert.Equal(2, moved.FloorSectorOf[0]);
 
@@ -154,9 +154,9 @@ public class FloorTriangleTests
     [MemberData(nameof(E1Maps))]
     public void Doom1FloorsHaveNoDegenerateTrianglesOrTJunctions(string name)
     {
-        Level map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), name);
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
-        FloorTriangles floors = FloorTriangles.Build(map, polys);
+        var map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), name);
+        var polys = SubsectorPolygons.Build(map);
+        var floors = FloorTriangles.Build(map, polys);
         FloorChecks.Stats stats = FloorChecks.Check(map, polys, floors);
         Assert.True(stats.Inserted > 0, stats.ToString());
         // No polygon collapses when welded.
@@ -170,7 +170,7 @@ public class FloorTriangleTests
         }
 
         // Deterministic: a second build is identical.
-        FloorTriangles again = FloorTriangles.Build(map, polys);
+        var again = FloorTriangles.Build(map, polys);
         for (int s = 0; s < map.Sectors.Length; s++)
         {
             Assert.Equal(floors.BySector[s].Vertices, again.BySector[s].Vertices);
@@ -182,9 +182,9 @@ public class FloorTriangleTests
     [MemberData(nameof(Doom2Maps))]
     public void Doom2FloorsHaveNoDegenerateTrianglesOrTJunctions(string name)
     {
-        Level map = Level.Load(WadArchive.Open(TestWads.RequireDoom2()), name);
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
-        FloorTriangles floors = FloorTriangles.Build(map, polys);
+        var map = Level.Load(WadArchive.Open(TestWads.RequireDoom2()), name);
+        var polys = SubsectorPolygons.Build(map);
+        var floors = FloorTriangles.Build(map, polys);
         FloorChecks.Check(map, polys, floors);
         Assert.All(Enumerable.Range(0, map.Subsectors.Length), i => Assert.Equal(polys.Polygons[i].Length == 0, floors.FloorSectorOf[i] < 0));
     }
@@ -195,7 +195,7 @@ public class FloorTriangleTests
     public void SyntheticSectorAtMatchesTheBsp()
     {
         Level map = LoadSynthetic();
-        FloorTriangles floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
+        var floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
         Assert.Equal(map.R_PointInSubsector(0, 0).Sector.Index, floors.SectorAt(0, 0)); // player 1 start
         Assert.Equal(-1, floors.SectorAt(5000 << FRACBITS, 5000 << FRACBITS));
         Assert.True(CheckSectorAtGrid(map, floors, 4) > 1000);
@@ -204,8 +204,8 @@ public class FloorTriangleTests
     [Fact]
     public void Doom1E1M1SectorAtMatchesTheBsp()
     {
-        Level map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
-        FloorTriangles floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
+        var map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
+        var floors = FloorTriangles.Build(map, SubsectorPolygons.Build(map));
         Assert.Equal(38, floors.SectorAt(1056 << FRACBITS, -3616 << FRACBITS)); // player 1 start
         // Inside the zig-zag corridor's bend: void, though the BSP's leaf there belongs to sector 16.
         Assert.Equal(-1, floors.SectorAt(2336 << FRACBITS, -3957 << FRACBITS));
@@ -224,7 +224,7 @@ public class FloorTriangleTests
     {
         int minX = map.Vertexes.Min(v => v.X >> FRACBITS), maxX = map.Vertexes.Max(v => v.X >> FRACBITS);
         int minY = map.Vertexes.Min(v => v.Y >> FRACBITS), maxY = map.Vertexes.Max(v => v.Y >> FRACBITS);
-        var lines = map.Lines.Select(l => (X1: l.V1.X / 65536.0, Y1: l.V1.Y / 65536.0, X2: l.V2.X / 65536.0, Y2: l.V2.Y / 65536.0)).ToArray();
+        (double X1, double Y1, double X2, double Y2)[] lines = [.. map.Lines.Select(l => (X1: l.V1.X / 65536.0, Y1: l.V1.Y / 65536.0, X2: l.V2.X / 65536.0, Y2: l.V2.Y / 65536.0))];
         int compared = 0;
         var wrong = new System.Collections.Generic.List<string>();
         for (int y = minY + step / 2; y < maxY; y += step)

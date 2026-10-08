@@ -13,7 +13,7 @@ public class GraphicsDecoderTests
     /// <summary>Builds a patch lump: header, column offsets, then each column's posts (topdelta, pixels).</summary>
     internal static byte[] BuildPatch(int width, int height, int left, int top, params (int TopDelta, byte[] Pixels)[][] columns)
     {
-        List<byte> body = new();
+        List<byte> body = [];
         int[] offsets = new int[width];
         int dataStart = 8 + 4 * width;
         for (int x = 0; x < width; x++)
@@ -115,15 +115,15 @@ public class GraphicsDecoderTests
     {
         byte[] pal = new byte[Playpal.PaletteSize * 2];
         pal[Playpal.PaletteSize + 3 * 7 + 1] = 99; // palette 1, index 7, green
-        Playpal playpal = Playpal.Decode(pal);
+        var playpal = Playpal.Decode(pal);
         Assert.Equal(2, playpal.Count);
         Assert.Equal(((byte)0, (byte)99, (byte)0), playpal.GetColor(1, 7));
         Assert.Throws<WadFormatException>(() => Playpal.Decode(new byte[Playpal.PaletteSize + 1]));
-        Assert.Throws<WadFormatException>(() => Playpal.Decode(Array.Empty<byte>()));
+        Assert.Throws<WadFormatException>(() => Playpal.Decode([]));
 
         byte[] cm = new byte[Colormap.MapSize * Colormap.NumMaps];
         cm[Colormap.MapSize * Colormap.INVERSECOLORMAP + 5] = 42;
-        Colormap colormap = Colormap.Decode(cm);
+        var colormap = Colormap.Decode(cm);
         Assert.Equal(34, colormap.Count);
         Assert.Equal(42, colormap.GetMap(Colormap.INVERSECOLORMAP)[5]);
         Assert.Throws<WadFormatException>(() => Colormap.Decode(new byte[Colormap.MapSize * Colormap.INVERSECOLORMAP]));

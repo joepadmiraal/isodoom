@@ -30,7 +30,7 @@ public class FloorTests
 
     private static World Specials()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla)
         {
             textures = Textures.R_InitTextures(wad),
@@ -77,7 +77,7 @@ public class FloorTests
     {
         // (type, sector, its floor before, destination, speed in units, crush)
         (floor_e Type, int Sector, int From, int To, int Speed, bool Crush)[] cases =
-        {
+        [
             (floor_e.lowerFloor, 1 + 4, 176, 136, 1, false),         // to the highest neighbour (alcove 3)
             (floor_e.lowerFloorToLowest, A3, 136, 0, 1, false),      // to the lowest (the corridor)
             (floor_e.turboLower, 1 + 4, 176, 144, 4, false),         // highest neighbour + 8, 4 a tic
@@ -88,8 +88,8 @@ public class FloorTests
             (floor_e.raiseFloor24, A3, 136, 160, 1, false),
             (floor_e.raiseFloor512, A3, 136, 648, 1, false),
             (floor_e.raiseFloor24AndChange, A3, 136, 160, 1, false),
-        };
-        foreach (var c in cases)
+        ];
+        foreach ((floor_e Type, int Sector, int From, int To, int Speed, bool Crush) c in cases)
         {
             World world = Specials();
             line_t line = Tagged(world, 7, c.Sector);
@@ -133,7 +133,7 @@ public class FloorTests
     {
         World world = Specials();
         line_t line = world.lines[0]; // tag 5: alcoves 3, 7 and 12
-        int[] tagged = { 1 + 3, 1 + 7, 1 + 12 };
+        int[] tagged = [1 + 3, 1 + 7, 1 + 12];
         world.EV_DoFloor(line, floor_e.raiseFloor24);
         Assert.All(tagged, s => Assert.IsType<floormove_t>(world.sectors[s].specialdata));
         Assert.Equal(0, world.EV_DoFloor(line, floor_e.lowerFloorToLowest));
@@ -326,7 +326,7 @@ public class FloorTests
         // line 6) has the corridor behind: the outer sector, floor 0, flat FLOOR1.
         World world = Specials();
         sector_t hole = world.sectors[1 + 4], ring = world.sectors[A3];
-        hole.lines = hole.lines.OrderBy(l => l.Index == 56 ? 0 : 1).ToArray();
+        hole.lines = [.. hole.lines.OrderBy(l => l.Index == 56 ? 0 : 1)];
         ring.floorheight = F(-16);
         ring.special = 7;
         line_t line = Tagged(world, 7, 1 + 4);
@@ -362,7 +362,7 @@ public class FloorTests
         // A hole whose first line is one-sided: Chocolate Doom stops (vanilla reads garbage).
         world = Specials();
         sector_t a5 = world.sectors[1 + 5];
-        a5.lines = a5.lines.OrderBy(l => (l.flags & Line.ML_TWOSIDED) != 0 ? 1 : 0).ToArray();
+        a5.lines = [.. a5.lines.OrderBy(l => (l.flags & Line.ML_TWOSIDED) != 0 ? 1 : 0)];
         Assert.Equal(1, world.EV_DoDonut(Tagged(world, 7, 1 + 5)));
         Assert.Null(a5.specialdata);
     }

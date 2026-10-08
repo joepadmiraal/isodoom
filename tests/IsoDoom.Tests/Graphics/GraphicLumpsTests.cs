@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
@@ -58,19 +59,19 @@ public class GraphicLumpsTests
     public void FindGlobalPatchesSkipsNamespacesNonGraphicsAndMergesByName()
     {
         byte[] other = BuildPatch(1, 1, 0, 0, [(0, [7])]);
-        WadFile iwad = new WadBuilder(WadType.Iwad)
+        var iwad = new WadBuilder(WadType.Iwad)
             .Lump("PLAYPAL", new byte[768])
             .Lump("M_FOO", GoodPatch)
             .Lump("DSBOOM", GoodPatch)     // a sound name, even if it parses as a patch
             .Markers("S_START").Lump("TROOA1", GoodPatch).Markers("S_END")
             .Lump("M_BAR", GoodPatch)
             .ToWadFile("iwad.wad");
-        WadFile pwad = new WadBuilder()
+        var pwad = new WadBuilder()
             .Lump("M_FOO", other)
             .Lump("M_NEW", other)
             .ToWadFile("pwad.wad");
 
-        var found = GraphicLumps.FindGlobalPatches(new WadArchive([iwad, pwad]));
+        IReadOnlyList<WadLump> found = GraphicLumps.FindGlobalPatches(new WadArchive([iwad, pwad]));
         Assert.Equal(["M_FOO", "M_BAR", "M_NEW"], found.Select(l => l.Name));
         Assert.Equal("pwad.wad", found[0].File.Name); // replaced in place
     }

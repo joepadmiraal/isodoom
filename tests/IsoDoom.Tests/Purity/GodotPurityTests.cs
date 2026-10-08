@@ -26,7 +26,7 @@ namespace IsoDoom.Tests.Purity;
 public class GodotPurityTests
 {
     /// <summary>The libraries checked; <see cref="AnchorType"/> names a type each defines.</summary>
-    public static TheoryData<string> Libraries => new() { "IsoDoom.Wad", "IsoDoom.Map", "IsoDoom.Sim" };
+    public static TheoryData<string> Libraries => ["IsoDoom.Wad", "IsoDoom.Map", "IsoDoom.Sim"];
 
     /// <summary>Non-BCL assemblies the sim may reference. Adding one is a conscious decision (SPEC §12 Q2).</summary>
     private static readonly HashSet<string> SimAllowedReferences = new(StringComparer.Ordinal)
@@ -50,7 +50,7 @@ public class GodotPurityTests
     public void AssemblyReferencesNoGodot(string library)
     {
         Type anchor = AnchorType(library);
-        using ModuleDefinition module = ModuleDefinition.ReadModule(anchor.Assembly.Location);
+        using var module = ModuleDefinition.ReadModule(anchor.Assembly.Location);
         Assert.Equal(library, module.Assembly.Name.Name);
         Assert.Contains(module.Types, t => t.FullName == anchor.FullName);
 
@@ -91,7 +91,7 @@ public class GodotPurityTests
     public void DependenciesIncludeNoGodot(string library)
     {
         IReadOnlyList<string> closure = DependencyClosure(library);
-        string[] godot = closure.Where(IsGodot).ToArray();
+        string[] godot = [.. closure.Where(IsGodot)];
         Assert.True(godot.Length == 0,
             $"{library} depends on Godot packages (SPEC §4): {string.Join(", ", godot)}");
     }
@@ -99,21 +99,18 @@ public class GodotPurityTests
     [Fact]
     public void SimReferencesOnlyBclMapAndWad()
     {
-        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(SimInfo).Assembly.Location);
+        using var module = ModuleDefinition.ReadModule(typeof(SimInfo).Assembly.Location);
         string bcl = RuntimeEnvironment.GetRuntimeDirectory();
-        string[] unexpected = module.AssemblyReferences
+        string[] unexpected = [.. module.AssemblyReferences
             .Select(r => r.Name)
             .Where(name => !SimAllowedReferences.Contains(name) && !File.Exists(Path.Combine(bcl, name + ".dll")))
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToArray();
+            .OrderBy(name => name, StringComparer.Ordinal)];
         Assert.True(unexpected.Length == 0,
             "IsoDoom.Sim references assemblies outside the BCL and its allow-list " +
             $"({string.Join(", ", SimAllowedReferences)}): {string.Join(", ", unexpected)}. " +
             "Add a new dependency to the allow-list in GodotPurityTests only as a conscious decision.");
 
-        string[] unexpectedDependencies = DependencyClosure("IsoDoom.Sim")
-            .Where(name => !SimAllowedReferences.Contains(name))
-            .ToArray();
+        string[] unexpectedDependencies = [.. DependencyClosure("IsoDoom.Sim").Where(name => !SimAllowedReferences.Contains(name))];
         Assert.True(unexpectedDependencies.Length == 0,
             "IsoDoom.Sim has package or project dependencies outside its allow-list " +
             $"({string.Join(", ", SimAllowedReferences)}): {string.Join(", ", unexpectedDependencies)}.");
@@ -126,7 +123,7 @@ public class GodotPurityTests
     private static IReadOnlyList<string> DependencyClosure(string library)
     {
         string path = Path.Combine(AppContext.BaseDirectory, "IsoDoom.Tests.deps.json");
-        using JsonDocument deps = JsonDocument.Parse(File.ReadAllText(path));
+        using var deps = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement target = deps.RootElement.GetProperty("targets").EnumerateObject().First().Value;
 
         // "Name/Version" -> dependency names
@@ -154,6 +151,6 @@ public class GodotPurityTests
                     pending.Push(dependency);
             }
         }
-        return closure.ToList();
+        return [.. closure];
     }
 }

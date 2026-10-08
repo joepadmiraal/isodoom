@@ -26,7 +26,7 @@ public static class PolygonChecks
     /// </summary>
     public static double[] SectorAreasFromLines(Level map)
     {
-        var twice = new double[map.Sectors.Length];
+        double[] twice = new double[map.Sectors.Length];
         foreach (Line l in map.Lines)
         {
             double x1 = l.V1.X / Unit, y1 = l.V1.Y / Unit, x2 = l.V2.X / Unit, y2 = l.V2.Y / Unit;
@@ -37,12 +37,12 @@ public static class PolygonChecks
             if (l.BackSector is not null)
                 twice[l.BackSector.Index] += cross;
         }
-        return twice.Select(t => t / 2).ToArray();
+        return [.. twice.Select(t => t / 2)];
     }
 
     /// <summary>Area of each sector's polygons (square map units).</summary>
     public static double[] SectorAreasFromPolygons(Level map, SubsectorPolygons polys) =>
-        polys.BySector.Select(ss => ss.Sum(i => PolygonArea(polys.Polygons[i]))).ToArray();
+        [.. polys.BySector.Select(ss => ss.Sum(i => PolygonArea(polys.Polygons[i])))];
 
     public static double PolygonArea(PolygonVertex[] p) => (double)SubsectorPolygons.TwiceArea(p) / 2 / Unit / Unit;
 
@@ -137,7 +137,7 @@ public static class PolygonChecks
     /// </summary>
     public static double[] SectorBoundaryLengths(Level map)
     {
-        var len = new double[map.Sectors.Length];
+        double[] len = new double[map.Sectors.Length];
         foreach (Line l in map.Lines)
         {
             if (l.FrontSector == l.BackSector)
@@ -173,8 +173,8 @@ public static class PolygonChecks
             if (l.BackSector is not null)
                 Edge(l.BackSector, l.V2, l.V1);
         }
-        var closed = Enumerable.Repeat(true, map.Sectors.Length).ToArray();
-        foreach (var ((sector, _), b) in balance)
+        bool[] closed = [.. Enumerable.Repeat(true, map.Sectors.Length)];
+        foreach (((int sector, int _), int b) in balance)
         {
             if (b != 0)
                 closed[sector] = false;
@@ -272,14 +272,14 @@ public static class PolygonChecks
             (minX, minY, maxX, maxY) = win;
         int w = (int)Math.Ceiling((maxX - minX) / step), h = (int)Math.Ceiling((maxY - minY) / step);
 
-        var lines = map.Lines.Select(l => (l, x1: l.V1.X / Unit, y1: l.V1.Y / Unit, x2: l.V2.X / Unit, y2: l.V2.Y / Unit)).ToArray();
+        (Line l, double x1, double y1, double x2, double y2)[] lines = [.. map.Lines.Select(l => (l, x1: l.V1.X / Unit, y1: l.V1.Y / Unit, x2: l.V2.X / Unit, y2: l.V2.Y / Unit))];
         var shapes = new List<(int ss, double[] xs, double[] ys, double y0, double y1)>();
         foreach (int[] group in polys.BySector)
         {
             foreach (int i in group)
             {
                 PolygonVertex[] p = polys.Polygons[i];
-                double[] xs = p.Select(v => v.X / Unit).ToArray(), ys = p.Select(v => v.Y / Unit).ToArray();
+                double[] xs = [.. p.Select(v => v.X / Unit)], ys = [.. p.Select(v => v.Y / Unit)];
                 shapes.Add((i, xs, ys, ys.Min(), ys.Max()));
             }
         }
@@ -315,15 +315,15 @@ public static class PolygonChecks
         bool[] closed = SectorsClosed(map);
         var artefactSectors = new HashSet<int>();
         var artefactSubsectors = new HashSet<int>();
-        var count = new int[w];
-        var ssAt = new int[w];
+        int[] count = new int[w];
+        int[] ssAt = new int[w];
         var crossings = new List<(double x, int sector)>();
         for (int j = 0; j < h; j++)
         {
             // Odd offsets keep sample rows off vertexes and axis-aligned lines.
             double y = maxY - (j + 0.5) * step + 0.0137;
             crossings.Clear();
-            foreach (var (l, x1, y1, x2, y2) in lines)
+            foreach ((Line? l, double x1, double y1, double x2, double y2) in lines)
             {
                 if ((y1 <= y) == (y2 <= y))
                     continue;
@@ -336,7 +336,7 @@ public static class PolygonChecks
 
             Array.Clear(count);
             Array.Fill(ssAt, -1);
-            foreach (var (ss, xs, ys, y0, y1) in shapes)
+            foreach ((int ss, double[]? xs, double[]? ys, double y0, double y1) in shapes)
             {
                 if (y < y0 || y >= y1)
                     continue;
@@ -429,7 +429,7 @@ public static class PolygonChecks
 
         if (drawLines)
         {
-            foreach (var (_, x1, y1, x2, y2) in lines)
+            foreach ((Line _, double x1, double y1, double x2, double y2) in lines)
             {
                 int n = (int)(Math.Max(Math.Abs(x2 - x1), Math.Abs(y2 - y1)) / step * 2) + 1;
                 for (int k = 0; k <= n; k++)
@@ -451,7 +451,7 @@ public static class PolygonChecks
 
     private static bool IsNearLine((Line l, double x1, double y1, double x2, double y2)[] lines, double x, double y)
     {
-        foreach (var (_, x1, y1, x2, y2) in lines)
+        foreach ((Line _, double x1, double y1, double x2, double y2) in lines)
         {
             double dx = x2 - x1, dy = y2 - y1;
             double t = Math.Clamp(((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy), 0, 1);

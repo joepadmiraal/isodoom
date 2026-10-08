@@ -36,10 +36,10 @@ public sealed class Level
     public const int ML_BLOCKMAP = 10;
 
     private static readonly string[] LumpNames =
-    {
+    [
         "", "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS",
         "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP",
-    };
+    ];
 
     /// <summary>p_local.h <c>MAXRADIUS</c>: the largest thing radius, for the sector block boxes.</summary>
     public const int MAXRADIUS = 32 * Fixed.FRACUNIT;
@@ -49,16 +49,16 @@ public sealed class Level
     /// <summary>The map header lump name, e.g. <c>E1M1</c> or <c>MAP01</c>.</summary>
     public string Name { get; }
 
-    public MapThing[] Things { get; private set; } = Array.Empty<MapThing>();
-    public Vertex[] Vertexes { get; private set; } = Array.Empty<Vertex>();
-    public Sector[] Sectors { get; private set; } = Array.Empty<Sector>();
-    public Side[] Sides { get; private set; } = Array.Empty<Side>();
-    public Line[] Lines { get; private set; } = Array.Empty<Line>();
-    public Seg[] Segs { get; private set; } = Array.Empty<Seg>();
-    public Subsector[] Subsectors { get; private set; } = Array.Empty<Subsector>();
+    public MapThing[] Things { get; private set; } = [];
+    public Vertex[] Vertexes { get; private set; } = [];
+    public Sector[] Sectors { get; private set; } = [];
+    public Side[] Sides { get; private set; } = [];
+    public Line[] Lines { get; private set; } = [];
+    public Seg[] Segs { get; private set; } = [];
+    public Subsector[] Subsectors { get; private set; } = [];
 
     /// <summary>The BSP nodes; the root is the last one. Empty for a map that is a single subsector.</summary>
-    public Node[] Nodes { get; private set; } = Array.Empty<Node>();
+    public Node[] Nodes { get; private set; } = [];
 
     public Blockmap Blockmap { get; private set; } = null!;
     public Reject Reject { get; private set; } = null!;
@@ -405,7 +405,7 @@ public sealed class Level
         // count number of lines in each sector
         var sectorLines = new List<Line>[Sectors.Length];
         for (int i = 0; i < sectorLines.Length; i++)
-            sectorLines[i] = new List<Line>();
+            sectorLines[i] = [];
         TotalLines = 0;
         foreach (Line li in Lines)
         {
@@ -430,7 +430,7 @@ public sealed class Level
                 BBox.M_AddToBox(bbox, li.V1.X, li.V1.Y);
                 BBox.M_AddToBox(bbox, li.V2.X, li.V2.Y);
             }
-            sector.Lines = sectorLines[sector.Index].ToArray();
+            sector.Lines = [.. sectorLines[sector.Index]];
 
             unchecked
             {
@@ -472,12 +472,12 @@ public sealed class Level
     {
         // Values to pad the REJECT array with:
         uint[] rejectpad =
-        {
+        [
             (uint)(((totallines * 4 + 3) & ~3) + 24), // Size
             0,                                        // Part of z_zone block header
             50,                                       // PU_LEVEL
             0x1d4a11,                                 // DOOM_CONST_ZONEID
-        };
+        ];
         for (int i = 0; i < array.Length && i < rejectpad.Length * 4; i++)
             array[i] = (byte)(rejectpad[i / 4] >> (i % 4 * 8));
         // The rest stays 0.

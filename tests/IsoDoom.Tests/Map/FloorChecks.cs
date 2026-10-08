@@ -115,9 +115,9 @@ public static class FloorChecks
             {
                 if (!all.Add(v))
                     continue;
-                var key = (v.X >> shift, v.Y >> shift);
+                (int, int) key = (v.X >> shift, v.Y >> shift);
                 if (!cells.TryGetValue(key, out List<PolygonVertex>? list))
-                    cells[key] = list = new List<PolygonVertex>();
+                    cells[key] = list = [];
                 list.Add(v);
             }
         }

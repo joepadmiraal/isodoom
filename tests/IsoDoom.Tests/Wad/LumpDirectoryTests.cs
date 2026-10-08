@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Tests.Graphics;
 using IsoDoom.Tests.Support;
@@ -30,7 +31,7 @@ public class LumpDirectoryTests
 
     private static WadFile Iwad()
     {
-        var b = new WadBuilder(WadType.Iwad)
+        WadBuilder b = new WadBuilder(WadType.Iwad)
             .Lump("PLAYPAL", new byte[768 * 2])
             .Lump("COLORMAP", new byte[256 * 34])
             .Lump("ENDOOM", new byte[4000])
@@ -60,7 +61,7 @@ public class LumpDirectoryTests
 
     private static WadFile Pwad()
     {
-        var b = new WadBuilder().Markers("E1M1");
+        WadBuilder b = new WadBuilder().Markers("E1M1");
         return MapLumps(b)
             .Lump("TITLEPIC", OtherPatch)
             .Markers("FF_START").Lump("FLAT1", new byte[4096]).Markers("FF_END")
@@ -74,7 +75,7 @@ public class LumpDirectoryTests
     [Fact]
     public void ClassifiesEveryKind()
     {
-        var list = LumpDirectory.Build(new WadArchive([Iwad()]));
+        IReadOnlyList<LumpEntry> list = LumpDirectory.Build(new WadArchive([Iwad()]));
         LumpKind Kind(string name, int nth = 0) => Entry(list, "iwad.wad", name, nth).Kind;
         string Detail(string name, int nth = 0) => Entry(list, "iwad.wad", name, nth).Detail;
 
@@ -119,7 +120,7 @@ public class LumpDirectoryTests
     public void ListsEveryLumpInArchiveOrder()
     {
         var wad = new WadArchive([Iwad(), Pwad()]);
-        var list = LumpDirectory.Build(wad);
+        IReadOnlyList<LumpEntry> list = LumpDirectory.Build(wad);
         Assert.Equal(wad.NumLumps, list.Count);
         for (int i = 0; i < list.Count; i++)
         {
@@ -131,7 +132,7 @@ public class LumpDirectoryTests
     [Fact]
     public void MarksOverriddenLumps()
     {
-        var list = LumpDirectory.Build(new WadArchive([Iwad(), Pwad()]));
+        IReadOnlyList<LumpEntry> list = LumpDirectory.Build(new WadArchive([Iwad(), Pwad()]));
 
         // Global graphic, flat (FF_ namespace merges with F_), sprite.
         foreach (string name in new[] { "TITLEPIC", "FLAT1", "TROOA0" })
@@ -158,7 +159,7 @@ public class LumpDirectoryTests
     public void GraphicKindMatchesTheViewerGraphicsList()
     {
         var wad = new WadArchive([Iwad(), Pwad()]);
-        var winners = LumpDirectory.Build(wad).Where(e => e.Kind == LumpKind.Graphic && !e.IsOverridden).Select(e => e.Lump);
+        IEnumerable<WadLump> winners = LumpDirectory.Build(wad).Where(e => e.Kind == LumpKind.Graphic && !e.IsOverridden).Select(e => e.Lump);
         Assert.Equal(GraphicLumps.FindGlobalPatches(wad), winners);
     }
 
@@ -166,7 +167,7 @@ public class LumpDirectoryTests
     public void CatalogLocatesTheLumpsItLists()
     {
         var wad = new WadArchive([Iwad(), Pwad()]);
-        var list = LumpDirectory.Build(wad);
+        IReadOnlyList<LumpEntry> list = LumpDirectory.Build(wad);
         var catalog = GraphicsCatalog.Load(wad);
         GraphicLocation? Locate(string file, string name) => catalog.Locate(Entry(list, file, name).Index);
 

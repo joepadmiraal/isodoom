@@ -23,7 +23,7 @@ public static class Switches
     /// episodes 2 and 3, 3 Doom II's (vanilla's terminating empty entry left out).
     /// </summary>
     public static readonly switchlist_t[] alphSwitchList =
-    {
+    [
         // Doom shareware episode 1 switches
         new("SW1BRCOM", "SW2BRCOM", 1),
         new("SW1BRN1", "SW2BRN1", 1),
@@ -69,7 +69,7 @@ public static class Switches
         new("SW1TEK", "SW2TEK", 3),
         new("SW1MARB", "SW2MARB", 3),
         new("SW1SKULL", "SW2SKULL", 3),
-    };
+    ];
 
     /// <summary>
     /// <c>P_InitSwitchList</c>'s episode set for <paramref name="mode"/>: 1

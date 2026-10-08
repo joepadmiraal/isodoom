@@ -28,21 +28,21 @@ public sealed class TestMap
     /// <summary>A strip room: <paramref name="Width"/> units wide, with its floor and ceiling heights.</summary>
     public readonly record struct Room(int Width, int Floor, int Ceiling);
 
-    private readonly List<(int X, int Y)> _vertexes = new();
-    private readonly List<(int V1, int V2, int Flags, int Special, int Front, int Back, int Tag)> _lines = new();
-    private readonly List<(int Floor, int Ceiling, string CeilingPic, string FloorPic, int Tag, int Special)> _sectors = new();
-    private readonly List<(int V1, int V2, int Line, int Side)> _segs = new();
-    private readonly List<(int Count, int First)> _subsectors = new();
-    private readonly List<short> _nodes = new();
-    private readonly List<short> _things = new();
-    private readonly List<(int S1, int S2)> _rejects = new();
+    private readonly List<(int X, int Y)> _vertexes = [];
+    private readonly List<(int V1, int V2, int Flags, int Special, int Front, int Back, int Tag)> _lines = [];
+    private readonly List<(int Floor, int Ceiling, string CeilingPic, string FloorPic, int Tag, int Special)> _sectors = [];
+    private readonly List<(int V1, int V2, int Line, int Side)> _segs = [];
+    private readonly List<(int Count, int First)> _subsectors = [];
+    private readonly List<short> _nodes = [];
+    private readonly List<short> _things = [];
+    private readonly List<(int S1, int S2)> _rejects = [];
 
     private TestMap()
     {
     }
 
     /// <summary>The line number of the boundary between room <c>i - 1</c> and room <c>i</c> of a strip.</summary>
-    public int[] Boundaries { get; private set; } = Array.Empty<int>();
+    public int[] Boundaries { get; private set; } = [];
 
     /// <summary>
     /// Rooms from x = <paramref name="x0"/> eastwards, all from
@@ -70,8 +70,8 @@ public sealed class TestMap
         foreach (Room r in rooms)
             map._sectors.Add((r.Floor, r.Ceiling, Flat, Flat, 0, 0));
 
-        var south = new int[n];
-        var north = new int[n];
+        int[] south = new int[n];
+        int[] north = new int[n];
         for (int i = 0; i < n; i++)
         {
             south[i] = map.AddLine(Bottom(i + 1), Bottom(i), Line.ML_BLOCKING, i, -1);
@@ -107,13 +107,13 @@ public sealed class TestMap
         {
             int front = i == n - 1 ? 0x8000 | (n - 1) : n - 2 - i;
             int back = 0x8000 | (i - 1);
-            map._nodes.AddRange(new short[]
-            {
+            map._nodes.AddRange(
+            [
                 (short)xs[i], (short)y0, 0, (short)(y1 - y0),
                 (short)y1, (short)y0, (short)xs[i], (short)xs[n], // right box: top, bottom, left, right
                 (short)y1, (short)y0, (short)xs[0], (short)xs[i], // left box
                 unchecked((short)front), unchecked((short)back),
-            });
+            ]);
         }
         return map;
     }
@@ -127,7 +127,7 @@ public sealed class TestMap
     {
         var map = new TestMap();
         map._sectors.Add((floor, ceiling, Flat, Flat, 0, 0));
-        foreach (var c in corners)
+        foreach ((int X, int Y) c in corners)
             map._vertexes.Add(c);
         for (int i = 0; i < corners.Length; i++)
         {
@@ -147,7 +147,7 @@ public sealed class TestMap
     /// <summary>Sets a line's special.</summary>
     public TestMap Special(int line, int special)
     {
-        var l = _lines[line];
+        (int V1, int V2, int Flags, int Special, int Front, int Back, int Tag) l = _lines[line];
         _lines[line] = l with { Special = special };
         return this;
     }
@@ -155,7 +155,7 @@ public sealed class TestMap
     /// <summary>Sets a line's special and tag (T5.5).</summary>
     public TestMap Special(int line, int special, int tag)
     {
-        var l = _lines[line];
+        (int V1, int V2, int Flags, int Special, int Front, int Back, int Tag) l = _lines[line];
         _lines[line] = l with { Special = special, Tag = tag };
         return this;
     }
@@ -184,7 +184,7 @@ public sealed class TestMap
     /// <summary>Sets a line's flags.</summary>
     public TestMap Flags(int line, int flags)
     {
-        var l = _lines[line];
+        (int V1, int V2, int Flags, int Special, int Front, int Back, int Tag) l = _lines[line];
         _lines[line] = l with { Flags = flags };
         return this;
     }
@@ -206,7 +206,7 @@ public sealed class TestMap
     /// <summary>Adds a map thing (doomednum <paramref name="type"/>, all skills).</summary>
     public TestMap Thing(int x, int y, int type, int angle = 0, int flags = 7)
     {
-        _things.AddRange(new[] { (short)x, (short)y, (short)angle, (short)type, (short)flags });
+        _things.AddRange([(short)x, (short)y, (short)angle, (short)type, (short)flags]);
         return this;
     }
 
@@ -218,7 +218,7 @@ public sealed class TestMap
     {
         var linedefs = new List<short>();
         var sides = new List<(int Sector, int Line)>();
-        foreach (var l in _lines)
+        foreach ((int V1, int V2, int Flags, int Special, int Front, int Back, int Tag) l in _lines)
         {
             int right = sides.Count;
             sides.Add((l.Front, 0));
@@ -228,7 +228,7 @@ public sealed class TestMap
                 left = sides.Count;
                 sides.Add((l.Back, 0));
             }
-            linedefs.AddRange(new[] { (short)l.V1, (short)l.V2, (short)l.Flags, (short)l.Special, (short)l.Tag, (short)right, (short)left });
+            linedefs.AddRange([(short)l.V1, (short)l.V2, (short)l.Flags, (short)l.Special, (short)l.Tag, (short)right, (short)left]);
         }
 
         byte[] sidedefs = new byte[30 * sides.Count];
@@ -254,24 +254,24 @@ public sealed class TestMap
         }
 
         var vertexes = new List<short>();
-        foreach (var v in _vertexes)
+        foreach ((int X, int Y) v in _vertexes)
         {
             vertexes.Add((short)v.X);
             vertexes.Add((short)v.Y);
         }
 
         var segs = new List<short>();
-        foreach (var s in _segs)
+        foreach ((int V1, int V2, int Line, int Side) s in _segs)
         {
-            var (x1, y1) = _vertexes[s.V1];
-            var (x2, y2) = _vertexes[s.V2];
+            (int x1, int y1) = _vertexes[s.V1];
+            (int x2, int y2) = _vertexes[s.V2];
             // BAM >> 16 of the seg's direction (only used for drawing)
             int angle = (int)(Math.Atan2(y2 - y1, x2 - x1) / (2 * Math.PI) * 65536) & 0xffff;
-            segs.AddRange(new[] { (short)s.V1, (short)s.V2, unchecked((short)angle), (short)s.Line, (short)s.Side, (short)0 });
+            segs.AddRange([(short)s.V1, (short)s.V2, unchecked((short)angle), (short)s.Line, (short)s.Side, (short)0]);
         }
 
         var ssectors = new List<short>();
-        foreach (var ss in _subsectors)
+        foreach ((int Count, int First) ss in _subsectors)
         {
             ssectors.Add((short)ss.Count);
             ssectors.Add((short)ss.First);
@@ -295,7 +295,7 @@ public sealed class TestMap
     /// <summary>Loads the map in a new world (vanilla, no tweaks, unless <paramref name="tweaks"/> says otherwise) and spawns its things.</summary>
     public World Load(skill_t skill = skill_t.sk_medium, Tweaks? tweaks = null)
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(Build(), "testmap.wad") });
+        var wad = new WadArchive([WadFile.FromBytes(Build(), "testmap.wad")]);
         var world = new World(new SpawnSettings(GameMode.shareware, skill), tweaks ?? Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         return world;
@@ -304,7 +304,7 @@ public sealed class TestMap
     private byte[] RejectLump()
     {
         byte[] reject = new byte[(_sectors.Count * _sectors.Count + 7) / 8];
-        foreach (var (s1, s2) in _rejects)
+        foreach ((int s1, int s2) in _rejects)
         {
             int pnum = s1 * _sectors.Count + s2;
             reject[pnum >> 3] |= (byte)(1 << (pnum & 7));
@@ -315,7 +315,7 @@ public sealed class TestMap
     private byte[] BlockmapLump()
     {
         int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
-        foreach (var v in _vertexes)
+        foreach ((int X, int Y) v in _vertexes)
         {
             minX = Math.Min(minX, v.X);
             minY = Math.Min(minY, v.Y);
@@ -337,8 +337,8 @@ public sealed class TestMap
                 lists.Add(0);
                 for (int i = 0; i < _lines.Count; i++)
                 {
-                    var (x1, y1) = _vertexes[_lines[i].V1];
-                    var (x2, y2) = _vertexes[_lines[i].V2];
+                    (int x1, int y1) = _vertexes[_lines[i].V1];
+                    (int x2, int y2) = _vertexes[_lines[i].V2];
                     if (Math.Max(x1, x2) >= left && Math.Min(x1, x2) <= left + 128 && Math.Max(y1, y2) >= bottom && Math.Min(y1, y2) <= bottom + 128)
                         lists.Add((short)i);
                 }

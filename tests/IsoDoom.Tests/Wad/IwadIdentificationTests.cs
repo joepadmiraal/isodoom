@@ -45,11 +45,11 @@ public class IwadIdentificationTests
     [Fact]
     public void PwadsDoNotChangeTheVariant()
     {
-        WadArchive archive = new(new[]
-        {
+        WadArchive archive = new(
+        [
             Iwad("MAP01").ToWadFile("doom2.wad"),
             new WadBuilder().Markers("FREEDOOM", "DMENUPIC").ToWadFile("mod.wad"),
-        });
+        ]);
         Assert.Equal(GameVariant.vanilla, IwadIdentification.D_IdentifyVersion(archive).GameVariant);
     }
 
@@ -105,18 +105,18 @@ public class IwadIdentificationTests
     public void PwadsDoNotChangeTheGameMode()
     {
         // A PWAD adding E4M1 or MAP01 leaves shareware as shareware.
-        WadArchive archive = new(new[]
-        {
+        WadArchive archive = new(
+        [
             Iwad("E1M1").ToWadFile("doom1.wad"),
             new WadBuilder().Markers("MAP01", "E3M1", "E4M1").ToWadFile("mod.wad"),
-        });
+        ]);
         Assert.Equal(new IwadInfo(GameMode.shareware, GameMission.doom), IwadIdentification.D_IdentifyVersion(archive));
     }
 
     [Fact]
     public void RejectsPwadAsIwad()
     {
-        WadArchive archive = new(new[] { new WadBuilder(WadType.Pwad).Markers("E1M1").ToWadFile() });
+        WadArchive archive = new([new WadBuilder(WadType.Pwad).Markers("E1M1").ToWadFile()]);
         Assert.Throws<WadFormatException>(() => IwadIdentification.D_IdentifyVersion(archive));
     }
 

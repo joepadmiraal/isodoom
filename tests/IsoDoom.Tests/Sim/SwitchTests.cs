@@ -28,7 +28,7 @@ public class SwitchTests
     private static uint Deg(int degrees) => (uint)((ulong)degrees * 0x100000000UL / 360);
 
     private static Level SpecialsLevel() =>
-        Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M2");
+        Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M2");
 
     private static World Specials(Level? level = null, GameMode mode = GameMode.shareware)
     {
@@ -62,7 +62,7 @@ public class SwitchTests
     }
 
     private static sound_event_t[] SwitchSounds(World world) =>
-        world.StartedSounds().Where(s => s.sfx is sfxenum_t.sfx_swtchn or sfxenum_t.sfx_swtchx).ToArray();
+        [.. world.StartedSounds().Where(s => s.sfx is sfxenum_t.sfx_swtchn or sfxenum_t.sfx_swtchx)];
 
     private static int ActiveButtons(World world) => world.buttonlist.Count(b => b.btimer != 0);
 
@@ -178,7 +178,7 @@ public class SwitchTests
         World world = Specials();
         UseLine27(world);
         Assert.Equal("SW2BRCOM", Front(world, 27).midtexture);
-        var door = Assert.IsType<vldoor_t>(world.sectors[SyntheticIwad.DoorSector].specialdata);
+        vldoor_t door = Assert.IsType<vldoor_t>(world.sectors[SyntheticIwad.DoorSector].specialdata);
         Assert.Equal(vldoor_e.vld_normal, door.type);
         Run(world, World.BUTTONTIME);
         Assert.Equal("SW1BRCOM", Front(world, 27).midtexture);
@@ -336,7 +336,7 @@ public class SwitchTests
     [Fact]
     public void Doom1E1M1sExitSwitchTurnsAndExits()
     {
-        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         const int exit = 330;

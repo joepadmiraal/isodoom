@@ -78,7 +78,7 @@ public class PlayerTests
         mobj_t mo = Player(w);
         Assert.Equal(Tables.ANG90, mo.angle);
         uint angle = Tables.ANG90;
-        short[] turns = { 640, 640, 1280, -320, -32768, 32767, 0 };
+        short[] turns = [640, 640, 1280, -320, -32768, 32767, 0];
         foreach (short turn in turns)
         {
             w.G_Ticker(new ticcmd_t { angleturn = turn });
@@ -320,7 +320,7 @@ public class PlayerTests
         while (mo.z > 0)
             w.G_Ticker(new ticcmd_t());
         Assert.Equal(-90112, p.deltaviewheight);
-        int[] heights = { 2596864, 2523136, 2465792, 2424832, 2400256, 2392064, 2400256, 2424832, 2465792, 2523136, 2596864, F(41), F(41) };
+        int[] heights = [2596864, 2523136, 2465792, 2424832, 2400256, 2392064, 2400256, 2424832, 2465792, 2523136, 2596864, F(41), F(41)];
         for (int t = 0; t < heights.Length; t++)
         {
             w.G_Ticker(new ticcmd_t());
@@ -449,7 +449,7 @@ public class PlayerTests
         World w = BigRoom(90, TwinStick);
         mobj_t mo = Player(w);
         // angleturn is the angle's upper 16 bits: each tic sets it, a repeated command does not turn further.
-        uint[] angles = { 0, Tables.ANG90, Tables.ANG180 + 12345678, Tables.ANG270, 0xffffffffu, 0x7fff8000u, Tables.ANG45 * 3 };
+        uint[] angles = [0, Tables.ANG90, Tables.ANG180 + 12345678, Tables.ANG270, 0xffffffffu, 0x7fff8000u, Tables.ANG45 * 3];
         foreach (uint a in angles)
         {
             var cmd = new ticcmd_t { angleturn = Ticcmds.AbsoluteAngle(a) };
@@ -508,7 +508,7 @@ public class PlayerTests
                     cmd.angleturn = Ticcmds.AbsoluteAngle(Tables.ANG45 * (uint)(facing / 45));
                     WalkAndCheck(w, cmd, cmd.sidemove * 2048, cmd.forwardmove * 2048, 10);
                     mobj_t mo = Player(w);
-                    var state = (mo.x, mo.y, mo.momx, mo.momy);
+                    (int x, int y, int momx, int momy) state = (mo.x, mo.y, mo.momx, mo.momy);
                     first ??= state;
                     Assert.Equal(first, state);
                 }

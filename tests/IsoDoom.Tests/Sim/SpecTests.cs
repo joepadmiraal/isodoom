@@ -23,7 +23,7 @@ public class SpecTests
     private const int FRACUNIT = 1 << 16;
     private const int Alcoves = SyntheticIwad.SpecialsAlcoves;
 
-    private static WadArchive Wad() => new(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+    private static WadArchive Wad() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     private static World Specials()
     {
@@ -40,12 +40,12 @@ public class SpecTests
     public void TheSpecialsMapIsSound()
     {
         WadArchive wad = Wad();
-        Level map = Level.Load(wad, "E1M2");
+        var map = Level.Load(wad, "E1M2");
         Assert.Equal(SyntheticIwad.SpecialsSectors, map.Sectors.Length);
         Assert.Equal(SyntheticIwad.SpecialsSectors, map.Subsectors.Length);
-        SubsectorPolygons polys = SubsectorPolygons.Build(map);
+        var polys = SubsectorPolygons.Build(map);
         PolygonChecks.CheckShapes(map, polys);
-        FloorTriangles floors = FloorTriangles.Build(map, polys);
+        var floors = FloorTriangles.Build(map, polys);
         FloorChecks.Check(map, polys, floors);
         double[] fromLines = PolygonChecks.SectorAreasFromLines(map);
         double[] fromPolygons = PolygonChecks.SectorAreasFromPolygons(map, polys);
@@ -64,7 +64,7 @@ public class SpecTests
         Assert.Equal(SyntheticIwad.DoorSector + 1, map.R_PointInSubsector(F(224), F(196)).Sector.Index);
         Assert.Equal(32.0 * 88, fromLines[SyntheticIwad.DoorSector]);
 
-        WallSections walls = WallSections.Build(map, GraphicsCatalog.Load(wad).Textures);
+        var walls = WallSections.Build(map, GraphicsCatalog.Load(wad).Textures);
         Assert.Empty(walls.Missing);
         Assert.Equal(3 + Alcoves, map.Sectors[0].Lines.Count);
         Assert.Contains(walls.Sections, s => s.Line.Index == 27 && s.SideDef.MidTexture == "SW1BRCOM");
@@ -99,7 +99,7 @@ public class SpecTests
             Assert.All(sector.lines, l => Assert.True(l.frontsector == sector || l.backsector == sector));
         }
         Assert.Equal(new[] { 0, 1, 2 }.Concat(Enumerable.Range(3, Alcoves)), world.sectors[0].lines.Select(l => l.Index));
-        Assert.Equal(new[] { 3 + 5, 27 + 5, 52 + 5, 52 + 6 }, Alcove(world, 5).lines.Select(l => l.Index)); // opening, north wall, boundaries
+        Assert.Equal([3 + 5, 27 + 5, 52 + 5, 52 + 6], Alcove(world, 5).lines.Select(l => l.Index)); // opening, north wall, boundaries
         Assert.Equal(Enumerable.Range(0, world.level.Sides.Length), world.sides.Select(s => s.Index));
         Assert.All(world.sides, s => Assert.Same(world.sectors[s.map.Sector.Index], s.sector));
     }

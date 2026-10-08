@@ -136,7 +136,7 @@ public partial class IsoCamera : Camera3D
     {
         if (cursorGround is not Vector3 c)
             return Vector3.Zero;
-        var offset = new Vector3(c.X - target.X, 0, c.Z - target.Z) * LookAheadFraction;
+        Vector3 offset = new Vector3(c.X - target.X, 0, c.Z - target.Z) * LookAheadFraction;
         float max = MaxLookAheadUnits / LevelMesh.MapUnitsPerMetre;
         return offset.Length() > max ? offset.Normalized() * max : offset;
     }

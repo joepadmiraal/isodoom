@@ -47,7 +47,7 @@ public class ProjectileTests
     /// </summary>
     private static TestMap SkyWalls(int x, int angle)
     {
-        TestMap map = TestMap.Strip(0, 0, 512,
+        var map = TestMap.Strip(0, 0, 512,
             new TestMap.Room(64, 0, 36), new TestMap.Room(512, 0, 128), new TestMap.Room(64, 0, 36));
         return map.CeilingPic(0, "F_SKY1").CeilingPic(2, "F_SKY1").Player(x, 256, angle);
     }
@@ -283,10 +283,10 @@ public class ProjectileTests
     [Fact]
     public void RoutesParseAndRunTheRocketEvent()
     {
-        RouteFile route = RouteFile.Parse("iwad synthetic\nrocket\n0 0 0 0\n".Split('\n'), "test.route");
-        Assert.Equal(new[] { new RouteEvent(0, RouteEventKind.Rocket, 0, 0, 0) }, route.Events);
+        var route = RouteFile.Parse("iwad synthetic\nrocket\n0 0 0 0\n".Split('\n'), "test.route");
+        Assert.Equal([new RouteEvent(0, RouteEventKind.Rocket, 0, 0, 0)], route.Events);
         Assert.Equal("rocket", route.Events[0].ToString());
-        Assert.Throws<FormatException>(() => RouteFile.Parse(new[] { "iwad synthetic", "rocket 1", "0 0 0 0" }, "x"));
+        Assert.Throws<FormatException>(() => RouteFile.Parse(["iwad synthetic", "rocket 1", "0 0 0 0"], "x"));
 
         World world = OneRoomMap().Load();
         route.RunEvents(world, 0);

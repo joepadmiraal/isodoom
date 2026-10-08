@@ -26,7 +26,7 @@ public partial class IwadMenu : Control
     private readonly IReadOnlyList<string> _pwads;
     private Label _error = null!;
     private FileDialog _picker = null!;
-    private readonly List<Button> _buttons = new();
+    private readonly List<Button> _buttons = [];
 
     /// <summary>The game should open: the chosen IWAD is <see cref="WadLocator.ChosenIwad"/>.</summary>
     public event Action? Chosen;
@@ -161,7 +161,7 @@ public partial class IwadMenu : Control
     {
         try
         {
-            WadArchive wad = WadArchive.Open(path, [.. _pwads]);
+            var wad = WadArchive.Open(path, [.. _pwads]);
             IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
             ModifiedGame.D_CheckModifiedGame(wad, info);
         }

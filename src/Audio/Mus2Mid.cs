@@ -55,7 +55,7 @@ public sealed class Mus2Mid
 
     // Standard MIDI type 0 header + track header
     private static readonly byte[] midiheader =
-    {
+    [
         (byte)'M', (byte)'T', (byte)'h', (byte)'d', // Main header
         0x00, 0x00, 0x00, 0x06, // Header size
         0x00, 0x00,             // MIDI type (0)
@@ -63,14 +63,14 @@ public sealed class Mus2Mid
         0x00, 0x46,             // Resolution
         (byte)'M', (byte)'T', (byte)'r', (byte)'k', // Start of track
         0x00, 0x00, 0x00, 0x00  // Placeholder for track length
-    };
+    ];
 
     // Cached channel velocities (static in the C: kept between songs)
     private readonly byte[] channelvelocities =
-    {
+    [
         127, 127, 127, 127, 127, 127, 127, 127,
         127, 127, 127, 127, 127, 127, 127, 127
-    };
+    ];
 
     // Timestamps between sequences of MUS events (static in the C)
     private uint queuedtime;
@@ -79,10 +79,10 @@ public sealed class Mus2Mid
     private uint tracksize;
 
     private static readonly byte[] controller_map =
-    {
+    [
         0x00, 0x20, 0x01, 0x07, 0x0A, 0x0B, 0x5B, 0x5D,
         0x40, 0x43, 0x78, 0x7B, 0x7E, 0x7F, 0x79
-    };
+    ];
 
     private readonly int[] channel_map = new int[NUM_CHANNELS];
 
@@ -145,7 +145,7 @@ public sealed class Mus2Mid
             buffer |= (time & 0x7F) | 0x80;
         }
 
-        for (;;)
+        for (; ; )
         {
             writeval = (byte)(buffer & 0xFF);
             midioutput.Write(writeval);
@@ -320,13 +320,12 @@ public sealed class Mus2Mid
         // Now, process the MUS file:
         while (hitscoreend == 0)
         {
-            byte eventdescriptor;
 
             // Handle a block of events:
             while (hitscoreend == 0)
             {
                 // Fetch channel number and event code:
-                if (!input.ReadByte(out eventdescriptor))
+                if (!input.ReadByte(out byte eventdescriptor))
                     return null;
 
                 byte channel = (byte)GetMIDIChannel(eventdescriptor & 0x0F, midioutput);
@@ -403,7 +402,7 @@ public sealed class Mus2Mid
             if (hitscoreend == 0)
             {
                 uint timedelay = 0;
-                for (;;)
+                for (; ; )
                 {
                     if (!input.ReadByte(out byte working))
                         return null;

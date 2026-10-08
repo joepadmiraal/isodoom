@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using IsoDoom.Map;
 using IsoDoom.Sim;
@@ -27,10 +28,10 @@ public class MapThingSpawnTests
     /// </summary>
     private static string Summary(MapThingSpawn[] list)
     {
-        var kinds = list.GroupBy(s => s.Kind).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}");
-        var types = list.Where(s => s.Kind == MapThingSpawnKind.Mobj)
+        IEnumerable<string> kinds = list.GroupBy(s => s.Kind).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}");
+        IEnumerable<string> types = list.Where(s => s.Kind == MapThingSpawnKind.Mobj)
             .GroupBy(s => s.Type).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}");
-        var players = list.Where(s => s.Kind == MapThingSpawnKind.PlayerStart && s.SpawnsPlayer).Select(s => $"player {s.PlayerNum + 1}");
+        IEnumerable<string> players = list.Where(s => s.Kind == MapThingSpawnKind.PlayerStart && s.SpawnsPlayer).Select(s => $"player {s.PlayerNum + 1}");
         return string.Join("; ", kinds.Concat(types).Concat(players));
     }
 
@@ -87,7 +88,7 @@ public class MapThingSpawnTests
         Assert.Equal(MapThingSpawnKind.Ignored, One(-1, 7, Medium).Kind);
 
         // Only the first 10 deathmatch starts are kept, whatever the mode.
-        MapThing[] starts = Enumerable.Range(0, 12).Select(i => new MapThing((short)i, 0, 0, 11, 0)).ToArray();
+        MapThing[] starts = [.. Enumerable.Range(0, 12).Select(i => new MapThing((short)i, 0, 0, 11, 0))];
         MapThingSpawn[] list = MapThingSpawning.SpawnList(starts, Medium);
         Assert.All(list.Take(10), s => Assert.Equal(MapThingSpawnKind.DeathmatchStart, s.Kind));
         Assert.All(list.Skip(10), s => Assert.Equal(MapThingSpawnKind.Ignored, s.Kind));
@@ -132,18 +133,18 @@ public class MapThingSpawnTests
     public void Doom2MonstersStopLoadingOutsideCommercial()
     {
         MapThing[] things =
-        {
+        [
             new(0, 0, 0, 1, 7),
             new(0, 0, 0, 3001, 7),
             new(0, 0, 0, 66, 7),   // revenant
             new(0, 0, 0, 2035, 7), // never reached outside commercial
-        };
+        ];
         MapThingSpawn[] doom1 = MapThingSpawning.SpawnList(things, Medium);
         Assert.Equal(
-            new[] { MapThingSpawnKind.PlayerStart, MapThingSpawnKind.Mobj, MapThingSpawnKind.NotLoaded, MapThingSpawnKind.NotLoaded },
+            [MapThingSpawnKind.PlayerStart, MapThingSpawnKind.Mobj, MapThingSpawnKind.NotLoaded, MapThingSpawnKind.NotLoaded],
             doom1.Select(s => s.Kind));
         // Even on a skill the revenant isn't on.
-        MapThing[] offSkill = things.Select(t => t.Type == 66 ? t with { Options = 1 } : t).ToArray();
+        MapThing[] offSkill = [.. things.Select(t => t.Type == 66 ? t with { Options = 1 } : t)];
         Assert.Equal(MapThingSpawnKind.NotLoaded, MapThingSpawning.SpawnList(offSkill, Medium)[3].Kind);
 
         MapThingSpawn[] doom2 = MapThingSpawning.SpawnList(things, Medium with { gamemode = GameMode.commercial });
@@ -157,15 +158,15 @@ public class MapThingSpawnTests
     [InlineData(skill_t.sk_nightmare)]
     public void SyntheticE1M1(skill_t skill)
     {
-        Level map = Level.Load(new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) }), "E1M1");
+        var map = Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1");
         MapThingSpawn[] list = MapThingSpawning.SpawnList(map.Things, new SpawnSettings(GameMode.shareware, skill));
         Assert.Equal(
-            new[] { (MapThingSpawnKind.PlayerStart, mobjtype_t.NUMMOBJTYPES), (MapThingSpawnKind.Mobj, mobjtype_t.MT_BARREL), (MapThingSpawnKind.Mobj, mobjtype_t.MT_TROOP) },
+            [(MapThingSpawnKind.PlayerStart, mobjtype_t.NUMMOBJTYPES), (MapThingSpawnKind.Mobj, mobjtype_t.MT_BARREL), (MapThingSpawnKind.Mobj, mobjtype_t.MT_TROOP)],
             list.Take(3).Select(s => (s.Kind, s.Type)));
         Assert.Equal(0x80000000u, list[2].Angle);
         // T3.5's imps facing the other seven directions, the lamp and the hanging body.
         Assert.Equal(new uint[] { 0, 0x20000000, 0x40000000, 0x60000000, 0xA0000000, 0xC0000000, 0xE0000000 }, list.Skip(3).Take(7).Select(s => s.Angle));
-        Assert.Equal(new[] { mobjtype_t.MT_MISC31, mobjtype_t.MT_MISC56 }, list.Skip(10).Select(s => s.Type));
+        Assert.Equal([mobjtype_t.MT_MISC31, mobjtype_t.MT_MISC56], list.Skip(10).Select(s => s.Type));
         Assert.Equal("Mobj 11; PlayerStart 1; MT_TROOP 8; MT_BARREL 1; MT_MISC31 1; MT_MISC56 1; player 1", Summary(list));
     }
 
@@ -184,11 +185,11 @@ public class MapThingSpawnTests
     [InlineData(skill_t.sk_nightmare, E1M1Hard, 29, 38)]
     public void Doom1E1M1(skill_t skill, string expected, int totalkills, int totalitems)
     {
-        Level map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
+        var map = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
         MapThingSpawn[] list = MapThingSpawning.SpawnList(map.Things, new SpawnSettings(GameMode.shareware, skill));
         Assert.Equal(map.Things.Length, list.Length);
         Assert.Equal(expected, Summary(list));
-        mobjflag_t[] flags = list.Where(s => s.Kind == MapThingSpawnKind.Mobj).Select(s => Info.mobjinfo[(int)s.Type].flags).ToArray();
+        mobjflag_t[] flags = [.. list.Where(s => s.Kind == MapThingSpawnKind.Mobj).Select(s => Info.mobjinfo[(int)s.Type].flags)];
         Assert.Equal(totalkills, flags.Count(f => (f & mobjflag_t.MF_COUNTKILL) != 0));
         Assert.Equal(totalitems, flags.Count(f => (f & mobjflag_t.MF_COUNTITEM) != 0));
 
@@ -203,14 +204,14 @@ public class MapThingSpawnTests
     [InlineData(true)]
     public void EveryMapSelects(bool doom2)
     {
-        WadArchive wad = WadArchive.Open(doom2 ? TestWads.RequireDoom2() : TestWads.RequireDoom1());
+        var wad = WadArchive.Open(doom2 ? TestWads.RequireDoom2() : TestWads.RequireDoom1());
         GameMode mode = doom2 ? GameMode.commercial : GameMode.shareware;
         string[] maps = doom2
-            ? Enumerable.Range(1, 32).Select(i => $"MAP{i:00}").ToArray()
-            : Enumerable.Range(1, 9).Select(i => $"E1M{i}").ToArray();
+            ? [.. Enumerable.Range(1, 32).Select(i => $"MAP{i:00}")]
+            : [.. Enumerable.Range(1, 9).Select(i => $"E1M{i}")];
         foreach (string name in maps.Where(m => wad.Find(m) is not null))
         {
-            Level map = Level.Load(wad, name);
+            var map = Level.Load(wad, name);
             foreach (skill_t skill in Enum.GetValues<skill_t>())
             {
                 foreach (bool netgame in new[] { false, true })

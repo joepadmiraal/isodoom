@@ -27,7 +27,7 @@ public class DeathTests
     private static (World World, WadArchive Wad) Load(bool netgame = false)
     {
         TestMap map = TestMap.Strip(0, 0, 512, new TestMap.Room(512, 0, 128)).Player(64, 128);
-        var wad = new WadArchive(new[] { WadFile.FromBytes(map.Build(), "testmap.wad") });
+        var wad = new WadArchive([WadFile.FromBytes(map.Build(), "testmap.wad")]);
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, netgame: netgame), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         return (world, wad);

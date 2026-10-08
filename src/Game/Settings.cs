@@ -79,62 +79,62 @@ public static class Settings
         var list = new List<string>();
         for (int v = from; v <= to; v += step)
             list.Add(v.ToString(CultureInfo.InvariantCulture));
-        return list.ToArray();
+        return [.. list];
     }
 
-    private static readonly string[] OnOff = { "on", "off" };
+    private static readonly string[] OnOff = ["on", "off"];
 
     /// <summary>Every setting, in the menu's order within each page.</summary>
     public static readonly SettingDef[] Defs =
-    {
+    [
         // video
         new("video/resolution", "WINDOW SIZE", SettingPage.Video, "1280x800",
-            new[] { "960x600", "1024x640", "1280x720", "1280x800", "1366x768", "1440x900", "1600x900", "1680x1050", "1920x1080", "1920x1200", "2560x1440", "2560x1600", "3840x2160" }),
-        new("video/fullscreen", "FULLSCREEN", SettingPage.Video, "on", new[] { "off", "on", "exclusive" }, "--level-fullscreen"),
-        new("video/vsync", "VSYNC", SettingPage.Video, "on", new[] { "on", "off", "adaptive" }),
-        new("video/frame_cap", "FRAME CAP", SettingPage.Video, "off", new[] { "off", "30", "35", "60", "75", "90", "120", "144", "165", "240" }),
+            ["960x600", "1024x640", "1280x720", "1280x800", "1366x768", "1440x900", "1600x900", "1680x1050", "1920x1080", "1920x1200", "2560x1440", "2560x1600", "3840x2160"]),
+        new("video/fullscreen", "FULLSCREEN", SettingPage.Video, "on", ["off", "on", "exclusive"], "--level-fullscreen"),
+        new("video/vsync", "VSYNC", SettingPage.Video, "on", ["on", "off", "adaptive"]),
+        new("video/frame_cap", "FRAME CAP", SettingPage.Video, "off", ["off", "30", "35", "60", "75", "90", "120", "144", "165", "240"]),
         new("video/zoom", "ZOOM (VIEW HEIGHT)", SettingPage.Video, "640", Range(320, 1600, 80), "--level-zoom"),
         new("video/pitch", "CAMERA PITCH", SettingPage.Video, "55", Range(45, 60, 1), "--level-pitch"),
-        new("video/projection", "PROJECTION", SettingPage.Video, "ortho", new[] { "ortho", "perspective" }, "--level-projection"),
-        new("video/wipe", "SCREEN WIPE", SettingPage.Video, "melt", new[] { "melt", "off" }, "--level-wipe"),
+        new("video/projection", "PROJECTION", SettingPage.Video, "ortho", ["ortho", "perspective"], "--level-projection"),
+        new("video/wipe", "SCREEN WIPE", SettingPage.Video, "melt", ["melt", "off"], "--level-wipe"),
 
         // gameplay
         new("gameplay/aim_assist", "AIM ASSIST (DEGREES)", SettingPage.Gameplay, "5",
-            new[] { "off", "1", "2", "3", "4", "5", "6", "8", "10", "12", "15", "20", "25", "30", "45" }, "--level-aim-assist", "--level-tweaks"),
-        new("gameplay/cutaway", "CUTAWAY", SettingPage.Gameplay, "cut", new[] { "cut", "dither", "off" }, "--level-cutaway"),
-        new("gameplay/cutaway_things", "CUTAWAY THINGS", SettingPage.Gameplay, "decor", new[] { "decor", "all", "off" }, "--level-cutaway-things"),
-        new("gameplay/cutaway_cap", "CUTAWAY CAP", SettingPage.Gameplay, "dark", new[] { "dark", "flat", "off" }, "--level-cutaway-cap"),
+            ["off", "1", "2", "3", "4", "5", "6", "8", "10", "12", "15", "20", "25", "30", "45"], "--level-aim-assist", "--level-tweaks"),
+        new("gameplay/cutaway", "CUTAWAY", SettingPage.Gameplay, "cut", ["cut", "dither", "off"], "--level-cutaway"),
+        new("gameplay/cutaway_things", "CUTAWAY THINGS", SettingPage.Gameplay, "decor", ["decor", "all", "off"], "--level-cutaway-things"),
+        new("gameplay/cutaway_cap", "CUTAWAY CAP", SettingPage.Gameplay, "dark", ["dark", "flat", "off"], "--level-cutaway-cap"),
         new("gameplay/cutaway_radius", "CUTAWAY RADIUS", SettingPage.Gameplay, "80", Range(48, 160, 16), "--level-cutaway-radius"),
         new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", OnOff, "--level-cutaway-cursor"),
-        new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", new[] { "player", "none", "camera" }, "--level-light"),
+        new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", ["player", "none", "camera"], "--level-light"),
         new("gameplay/door_lids", "DOOR LIDS", SettingPage.Gameplay, "on", OnOff, "--level-door-lids"),
-        new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Gameplay, "mirror", new[] { "mirror", "off" }, "--level-masked-back"),
+        new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Gameplay, "mirror", ["mirror", "off"], "--level-masked-back"),
         new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", OnOff, "--level-weapon-light"),
         new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", OnOff, "--level-palette-effects"),
 
         // sprites (readability)
-        new("sprites/tilt", "TILT", SettingPage.Sprites, "full", new[] { "full", "half", "off" }, "--level-sprite-tilt"),
-        new("sprites/tilt_depth", "TILT DEPTH", SettingPage.Sprites, "upright", new[] { "upright", "tilted" }, "--level-sprite-tilt-depth"),
-        new("sprites/shadow", "SHADOWS", SettingPage.Sprites, "off", new[] { "off", "blend", "dither" }, "--level-sprite-shadow"),
-        new("sprites/outline", "OUTLINE", SettingPage.Sprites, "0", new[] { "0", "off" }, "--level-sprite-outline"),
-        new("sprites/wall_pull", "WALL PULL", SettingPage.Sprites, "16", new[] { "off", "8", "16", "24", "32", "48", "64" }, "--level-sprite-wall-pull"),
-        new("sprites/hidden", "HIDE BEHIND WALLS", SettingPage.Sprites, "depth", new[] { "depth", "upright" }, "--level-sprite-hidden"),
-        new("sprites/player_light", "PLAYER MIN LIGHT", SettingPage.Sprites, "128", new[] { "off", "64", "96", "128", "160", "192", "255" }, "--level-player-light"),
+        new("sprites/tilt", "TILT", SettingPage.Sprites, "full", ["full", "half", "off"], "--level-sprite-tilt"),
+        new("sprites/tilt_depth", "TILT DEPTH", SettingPage.Sprites, "upright", ["upright", "tilted"], "--level-sprite-tilt-depth"),
+        new("sprites/shadow", "SHADOWS", SettingPage.Sprites, "off", ["off", "blend", "dither"], "--level-sprite-shadow"),
+        new("sprites/outline", "OUTLINE", SettingPage.Sprites, "0", ["0", "off"], "--level-sprite-outline"),
+        new("sprites/wall_pull", "WALL PULL", SettingPage.Sprites, "16", ["off", "8", "16", "24", "32", "48", "64"], "--level-sprite-wall-pull"),
+        new("sprites/hidden", "HIDE BEHIND WALLS", SettingPage.Sprites, "depth", ["depth", "upright"], "--level-sprite-hidden"),
+        new("sprites/player_light", "PLAYER MIN LIGHT", SettingPage.Sprites, "128", ["off", "64", "96", "128", "160", "192", "255"], "--level-player-light"),
         new("sprites/fuzz", "FUZZ", SettingPage.Sprites, "on", OnOff, "--level-fuzz"),
 
         // HUD (vanilla's screen size, messages and detail too)
-        new("hud/mode", "SCREEN", SettingPage.Hud, "bar", new[] { "bar", "full", "off" }, "--level-hud"),
-        new("hud/scale", "SCALE", SettingPage.Hud, "auto", new[] { "auto", "1", "2", "3", "4", "5", "6", "7", "8" }, "--level-hud-scale"),
+        new("hud/mode", "SCREEN", SettingPage.Hud, "bar", ["bar", "full", "off"], "--level-hud"),
+        new("hud/scale", "SCALE", SettingPage.Hud, "auto", ["auto", "1", "2", "3", "4", "5", "6", "7", "8"], "--level-hud-scale"),
         new("hud/messages", "MESSAGES", SettingPage.Hud, "on", OnOff),
-        new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", new[] { "high", "low" }),
+        new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", ["high", "low"]),
 
         // controls and sound (vanilla's options)
         new("controls/mouse_sensitivity", "MOUSE SENSITIVITY", SettingPage.Controls, "5", Range(0, 9, 1)),
         new("sound/sfx_volume", "SFX VOLUME", SettingPage.Sound, "8", Range(0, 15, 1)),
         new("sound/music_volume", "MUSIC VOLUME", SettingPage.Sound, "8", Range(0, 15, 1)),
         // T7.8g: the music's chip (More Options → Sound, with the volumes)
-        new("sound/opl", "MUSIC CHIP", SettingPage.Sound, "opl3", new[] { "opl3", "opl2" }, "--level-opl"),
-    };
+        new("sound/opl", "MUSIC CHIP", SettingPage.Sound, "opl3", ["opl3", "opl2"], "--level-opl"),
+    ];
 
     /// <summary>The setting with key <paramref name="key"/>, or null.</summary>
     public static SettingDef? Find(string key) => Array.Find(Defs, d => d.Key == key);
@@ -157,7 +157,7 @@ public static class Settings
 
     /// <summary>The input actions the controls pages rebind, each with its label (the actions of <c>project.godot</c>, T4.6, and the menus').</summary>
     public static readonly (string Title, (string Action, string Label)[] Actions)[] ControlPages =
-    {
+    [
         ("MOVEMENT", new[]
         {
             ("move_up", "MOVE UP"), ("move_down", "MOVE DOWN"), ("move_left", "MOVE LEFT"), ("move_right", "MOVE RIGHT"),
@@ -177,13 +177,13 @@ public static class Settings
             ("menu_open", "OPEN/CLOSE MENU"), ("menu_up", "UP"), ("menu_down", "DOWN"), ("menu_left", "LEFT"), ("menu_right", "RIGHT"),
             ("menu_select", "SELECT"), ("menu_back", "BACK"), ("menu_yes", "YES"), ("menu_no", "NO"),
         }),
-    };
+    ];
 
     /// <summary>The menus' input actions (Chocolate Doom's <c>key_menu_*</c>, rebindable since T7.3).</summary>
-    public static readonly string[] MenuActions = ControlPages[2].Actions.Select(a => a.Action).ToArray();
+    public static readonly string[] MenuActions = [.. ControlPages[2].Actions.Select(a => a.Action)];
 
     /// <summary>The game's input actions on the controls pages.</summary>
-    public static readonly string[] GameActions = ControlPages.Take(2).SelectMany(p => p.Actions).Select(a => a.Action).ToArray();
+    public static readonly string[] GameActions = [.. ControlPages.Take(2).SelectMany(p => p.Actions).Select(a => a.Action)];
 
     /// <summary>The settings key of action <paramref name="action"/>'s bindings.</summary>
     public static string BindingKey(string action) => "controls/" + action;
@@ -202,7 +202,7 @@ public sealed class SettingValues
     private readonly Dictionary<string, string> _saved = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _defaults = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _pinned = new(StringComparer.Ordinal);
-    private readonly List<string> _order = new();
+    private readonly List<string> _order = [];
 
     /// <summary>The values read from the file (key <c>section/name</c>, value), any order.</summary>
     public SettingValues(IEnumerable<KeyValuePair<string, string>>? loaded = null)
@@ -424,7 +424,7 @@ public readonly record struct Binding(BindingKind Kind, long Code, int Sign = 0)
                 lost.Add(other);
         }
         if (!table.TryGetValue(action, out List<Binding>? mine))
-            table[action] = mine = new List<Binding>();
+            table[action] = mine = [];
         mine.RemoveAll(b => b.IsPad == input.IsPad);
         mine.Add(input);
         return lost;

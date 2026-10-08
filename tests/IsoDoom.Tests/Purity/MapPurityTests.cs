@@ -15,7 +15,7 @@ public class MapPurityTests
     [Fact]
     public void MapAssemblyIsDeterministic()
     {
-        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(Level).Assembly.Location);
+        using var module = ModuleDefinition.ReadModule(typeof(Level).Assembly.Location);
         Assert.Contains(module.Types, t => t.FullName == typeof(Level).FullName);
 
         IReadOnlyList<string> violations = DeterminismScanner.Scan(module);

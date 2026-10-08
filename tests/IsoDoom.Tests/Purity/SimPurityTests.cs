@@ -12,7 +12,7 @@ public class SimPurityTests
     [Fact]
     public void SimAssemblyIsDeterministic()
     {
-        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(SimInfo).Assembly.Location);
+        using var module = ModuleDefinition.ReadModule(typeof(SimInfo).Assembly.Location);
         Assert.Contains(module.Types, t => t.FullName == typeof(SimInfo).FullName); // not scanning the wrong file
 
         IReadOnlyList<string> violations = DeterminismScanner.Scan(module);

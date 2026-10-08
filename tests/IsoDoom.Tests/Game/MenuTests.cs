@@ -22,8 +22,8 @@ public class MenuTests
     private sealed class MenuHost : IMenuHost
     {
         public int ScreenSize { get; set; }
-        public List<(string Text, bool DontFuckWithMe)> Messages { get; } = new();
-        public List<sfxenum_t> Sounds { get; } = new();
+        public List<(string Text, bool DontFuckWithMe)> Messages { get; } = [];
+        public List<sfxenum_t> Sounds { get; } = [];
         public int Quits;
         public string?[] Saves = new string?[6];
 
@@ -408,7 +408,7 @@ public class MenuTests
     [Fact]
     public void TheDrawerDrawsTheMenuAndMessagesWithTheWadsGraphics()
     {
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         var hu = new HuStuff(wad);
         var g = new ScreenGraphics(wad, hu);
         (_, _, MMenu menu, _) = New();
@@ -457,8 +457,10 @@ public class MenuTests
     [Fact]
     public void MessagesOffHidesAllButTheMenusOwn()
     {
-        var hu = new HuStuff(null);
-        hu.showMessages = false;
+        var hu = new HuStuff(null)
+        {
+            showMessages = false
+        };
         hu.HU_Ticker("Picked up a clip.");
         Assert.Null(hu.Message);
         hu.message_dontfuckwithme = true;

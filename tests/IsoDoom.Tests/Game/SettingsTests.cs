@@ -81,7 +81,7 @@ public class SettingsTests
         Assert.False(values.Observe("sprites/tilt", "full"));
         Assert.True(values.Observe("sprites/tilt", "half"));
         Assert.False(values.Observe("sprites/tilt", "half"));
-        (var keep, var drop) = values.ToSave();
+        (List<(string Key, string Value)>? keep, List<string>? drop) = values.ToSave();
         Assert.Equal(new[] { ("gameplay/cutaway", "dither"), ("future/thing", "x"), ("sprites/tilt", "half") }, keep);
         Assert.Equal(new[] { "hud/mode" }, drop); // equal to its default: dropped
         Assert.True(values.Observe("sprites/tilt", "full"));
@@ -136,11 +136,11 @@ public class SettingsTests
         var f = new Binding(BindingKind.Key, 'F');
         var table = new Dictionary<string, List<Binding>>
         {
-            ["use"] = new() { e, space, a },
-            ["attack"] = new() { new Binding(BindingKind.Mouse, 1), new Binding(BindingKind.PadAxis, 5, 1) },
-            ["menu_select"] = new() { new Binding(BindingKind.Key, 13), a },
+            ["use"] = [e, space, a],
+            ["attack"] = [new Binding(BindingKind.Mouse, 1), new Binding(BindingKind.PadAxis, 5, 1)],
+            ["menu_select"] = [new Binding(BindingKind.Key, 13), a],
         };
-        string[] game = { "use", "attack" };
+        string[] game = ["use", "attack"];
 
         Assert.Empty(Binding.Rebind(table, game, "use", f));
         Assert.Equal(new[] { a, f }, table["use"]); // E and Space replaced, the pad's A kept
@@ -160,7 +160,7 @@ public class SettingsTests
     private sealed class SetupHost : ISetupHost
     {
         public readonly Dictionary<string, string> Values = Settings.Defs.ToDictionary(d => d.Key, d => d.Default);
-        public readonly List<(string Action, bool Pad)> Cleared = new();
+        public readonly List<(string Action, bool Pad)> Cleared = [];
         public int ControlResets, Resets;
 
         public string GetSetting(string key) => Values[key];
@@ -201,7 +201,7 @@ public class SettingsTests
         (MMenu menu, SetupHost host) = NewMenu();
         Keys(menu, Esc, 'o', Enter, 'o', Enter, 'u', Enter);
         Assert.Equal("soundsetup", menu.StateName);
-        Assert.Equal(new[] { "SFX VOLUME", "MUSIC VOLUME", "MUSIC CHIP" }, menu.currentMenu.menuitems.Select(i => i.text));
+        Assert.Equal(["SFX VOLUME", "MUSIC VOLUME", "MUSIC CHIP"], menu.currentMenu.menuitems.Select(i => i.text));
         menu.itemOn = 2;
         Assert.Contains("MUSIC CHIP: OPL3", menu.StateText());
         Keys(menu, Right);
@@ -321,7 +321,7 @@ public class SettingsTests
         (GameFlow flow, _) = GameFlowTests.New(GameMode.shareware);
         flow.Menu.SetupHost = new SetupHost();
         MMenu menu = flow.Menu;
-        var wad = new WadArchive(new[] { WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName) });
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
         menu.Graphics = new ScreenGraphics(wad, new HuStuff(wad));
         Keys(menu, Esc, 'o', Enter, 'o', Enter, 'g', Enter); // the synthetic font has A, B and C: CUTAWAY, CUT
         var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
