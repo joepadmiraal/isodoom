@@ -72,8 +72,11 @@
 //     and anything else up to that height are never cut);
 //   - c is behind the surface's plane, seen from the camera, by more than
 //     CUT_PLANE_MARGIN (the surface can hide it; walls behind the centre, or
-//     in line with it, keep their full height). A floor above the cutoff,
-//     the top of a block whose walls are cut, is always in front;
+//     in line with it, keep their full height). For a floor above the
+//     cutoff (the top of a block whose walls are cut, a lid) that always
+//     holds, so instead p must be on the camera's side of the anchor,
+//     horizontally, by more than CUT_PLANE_MARGIN: a floor or lid behind the
+//     centre (a door the player stands in front of) cannot hide it and stays;
 //   - p is within `cut_radius` of the line from the anchor a = c + `cut_anchor`
 //     up towards the camera (the view direction in orthographic, the camera
 //     position in perspective): a disc around the centre on screen.
@@ -296,6 +299,13 @@ bool cut_hides(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
 	vec3 a = vec3(c.xy, c.z + cut_anchor);
 	if (dot(a - p, n) > -CUT_PLANE_MARGIN) {
 		return false;
+	}
+	if (n.z > 0.5) {
+		// A floor or lid: only on the camera's side of the anchor, horizontally.
+		vec2 toward = ortho ? to_camera.xy : cam.xy - a.xy;
+		if (dot(toward, toward) < 1e-6 || dot(p.xy - a.xy, normalize(toward)) <= CUT_PLANE_MARGIN) {
+			return false;
+		}
 	}
 	vec3 axis = ortho ? to_camera : normalize(cam - a);
 	vec3 d = p - a;

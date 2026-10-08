@@ -591,6 +591,8 @@ public partial class LevelCheck
         Vector3 a = centre + new Vector3(0, 0, Cutaway.Anchor);
         float above = p.Z - (centre.Z + settings.Height);
         float behind = -((a - p).Dot(normal) + Cutaway.PlaneMargin); // > 0: the centre is behind the plane by more than the margin
+        if (normal.Z > 0.5f)
+            behind = Math.Min(behind, Cutaway.FloorAhead(p, a, toCamera) - Cutaway.PlaneMargin); // a floor: ahead of the anchor
         float inside = settings.Radius - Cutaway.Distance(p, a, toCamera);
         if (above < -CutMargin || behind < -CutMargin || inside < -CutMargin)
             return 0;

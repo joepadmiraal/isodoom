@@ -82,8 +82,9 @@ public sealed record CutawaySettings
 /// more than <see cref="CutawaySettings.Height"/> above <c>c</c>'s floor,
 /// <c>c</c> is behind the surface's plane as seen from the camera, by more
 /// than <see cref="PlaneMargin"/> (so walls
-/// behind the player keep their height; a floor that high is always in
-/// front of the anchor), and <c>p</c> is within
+/// behind the player keep their height; for a floor that high, which is
+/// always above the anchor, the point must instead be on the camera's side of
+/// the anchor horizontally, <see cref="FloorAhead"/>), and <c>p</c> is within
 /// <see cref="CutawaySettings.Radius"/> of the line from the anchor
 /// (<c>c</c> + <see cref="Anchor"/> up: the middle of a standing player)
 /// towards the camera. The centre's own floor, and any floor or wall up to
@@ -153,8 +154,25 @@ public static class Cutaway
         var a = new Vector3(centre.X, centre.Y, centre.Z + Anchor);
         if ((a - p).Dot(normal) > -PlaneMargin)
             return false;
+        if (normal.Z > 0.5f && FloorAhead(p, a, toCamera, camera) <= PlaneMargin)
+            return false;
         Vector3 axis = camera is Vector3 c ? (c - a).Normalized() : toCamera;
         return Distance(p, a, axis) < settings.Radius;
+    }
+
+    /// <summary>
+    /// How far floor point <paramref name="p"/> lies on the camera's side of
+    /// anchor <paramref name="a"/>, horizontally (map units; negative behind
+    /// it). A floor above the cutoff is cut only more than
+    /// <see cref="PlaneMargin"/> ahead: one behind the anchor (a door's lid
+    /// the player stands in front of) cannot hide it.
+    /// </summary>
+    public static float FloorAhead(Vector3 p, Vector3 a, Vector3 toCamera, Vector3? camera = null)
+    {
+        var toward = camera is Vector3 c ? new Vector2(c.X - a.X, c.Y - a.Y) : new Vector2(toCamera.X, toCamera.Y);
+        if (toward.LengthSquared() < 1e-6f)
+            return 0f;
+        return new Vector2(p.X - a.X, p.Y - a.Y).Dot(toward.Normalized());
     }
 
     /// <summary>

@@ -14,7 +14,9 @@ namespace IsoDoom.Game;
 /// lid seen along the game camera's direction at 1 unit per pixel, from a
 /// centre 24 units behind the door (on the side away from the camera), whole
 /// and cut with its cap, then the same door half open (its ceiling moved
-/// above the cutoff, as the sim moves it).
+/// above the cutoff, as the sim moves it), and last the closed door from a
+/// centre 24 units in front of it, whose lid behind the centre the cutaway
+/// keeps whole.
 /// <para>
 /// Each pixel of the cut disc's screen box is classified as in the cutaway
 /// check (<see cref="ClassifyCut"/>), with the lid planes as surfaces: with
@@ -127,6 +129,7 @@ public partial class LevelCheck
                     await CompareLidView(m, centre, o, settings, basis, toCamera, opened);
                 door.CeilingHeight = old;
                 m.UpdateSectors();
+                await LidInFrontView(m, door, lids, settings, basis, toCamera, toCameraFlat);
                 _lidMaps++;
                 return;
             }
@@ -218,6 +221,62 @@ public partial class LevelCheck
         if (lidPixels < 50)
             Fail($"{what}, top-down: only {lidPixels} lid pixels compared (at least 50 expected)");
         GD.Print($"Level check: {what}, top-down: {compared} pixels compared, {lidPixels} of them on a lid, the rest as with the lids off");
+    }
+
+    /// <summary>
+    /// The same door seen from a centre 24 units in front of it, on the
+    /// camera's side: its lid lies behind the centre and cannot hide it, so
+    /// the cutaway must keep it whole, though it is above the cutoff inside
+    /// the disc (a floor behind the anchor is not cut).
+    /// </summary>
+    private async Task LidInFrontView(LevelMesh m, Sector door, float[] lids, CutawaySettings settings, Basis basis, Vector3 toCamera, Vector2 toCameraFlat)
+    {
+        string map = m.Level.Name;
+        Vector2I size = ViewSize();
+        foreach (Line line in door.Lines)
+        {
+            if (line.FrontSector is not Sector front || line.BackSector is not Sector back || front == back)
+                continue;
+            Sector other = front == door ? back : front;
+            var v1 = new Vector2(line.V1.X / 65536f, line.V1.Y / 65536f);
+            var v2 = new Vector2(line.V2.X / 65536f, line.V2.Y / 65536f);
+            float len = v1.DistanceTo(v2);
+            if (len < 32)
+                continue;
+            Vector2 dir = (v2 - v1) / len, n = new(dir.Y, -dir.X); // towards the front sector
+            if (front == door)
+                n = -n;
+            if (n.Dot(toCameraFlat) < 0.5f)
+                continue; // the centre must be between the door and the camera
+            Vector2 mid = (v1 + v2) / 2;
+            var centre = new Vector3(mid.X + n.X * 24, mid.Y + n.Y * 24, other.FloorHeight / 65536f);
+            if (CursorGround.DrawnSectorAt(m, (int)(centre.X * 65536), (int)(centre.Y * 65536)) != other.Index || door.FloorHeight > other.FloorHeight)
+                continue;
+            CutView(centre, basis, toCamera);
+            CutClasses c = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings, toCamera, size.X, size.Y, lids);
+            // Lid pixels above the cutoff inside the disc, which the cutaway keeps only because the lid is behind the centre.
+            var anchor = new Vector3(centre.X, centre.Y, centre.Z + Cutaway.Anchor);
+            int behind = 0;
+            for (int i = 0; i < c.LidStates.Length; i++)
+            {
+                if (c.LidStates[i] != 1)
+                    continue;
+                CapPoint p = c.LidPoints[i];
+                var q = new Vector3((float)p.X, (float)p.Y, lids[p.Sector]);
+                if (q.Z > centre.Z + settings.Height && Cutaway.Distance(q, anchor, toCamera) < settings.Radius - CutMargin)
+                    behind++;
+            }
+            string what = $"{map}: lid of sector {door.Index} (lid at {lids[door.Index]:F0}), centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0}) in front of line {line.Index}";
+            if (behind < 50)
+            {
+                GD.Print($"Level check: {what}: only {behind} lid pixels in the disc, skipped");
+                continue;
+            }
+            GD.Print($"Level check: {what}: {behind} lid pixels in the disc behind the centre, kept");
+            await CompareLidView(m, centre, c, settings, basis, toCamera, what);
+            return;
+        }
+        GD.Print($"Level check: {map}: lid of sector {door.Index}: no view from in front of it");
     }
 
     /// <summary>
