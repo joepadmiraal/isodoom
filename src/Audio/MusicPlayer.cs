@@ -127,6 +127,7 @@ public partial class MusicPlayer : Node, IMusicDevice
 #if DEBUG
     public bool SlowBuild => RenderLoad > 0.5;
 #else
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "An instance member in Debug builds")]
     public bool SlowBuild => false;
 #endif
 
