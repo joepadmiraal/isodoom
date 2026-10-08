@@ -1,8 +1,10 @@
 # CI: lint this workflow (actionlint + shellcheck), build + test the .NET
-# solution, then export the Godot project for Linux x86_64 headlessly, run
-# the WAD viewer check (T1.6b) and the level check (T2.6) against a generated
-# synthetic IWAD (tools/SyntheticIwad: no id data, no download) in the editor
-# and in the exported build, and upload the build. Toolchain versions are
+# solution, then export the Godot project for Linux x86_64 and Windows x86_64
+# headlessly (both from Linux), run the WAD viewer check (T1.6b) and the level
+# check (T2.6) against a generated synthetic IWAD (tools/SyntheticIwad: no id
+# data, no download) in the editor and in the exported Linux build, upload
+# both builds, and smoke-test and check the Windows build on a Windows runner
+# (T8.4). Toolchain versions are
 # pinned in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
 # IsoDoom.csproj; the .NET SDK comes from global.json). The actions' versions
 # are bumped by Dependabot (.github/dependabot.yml). CONTRIBUTING.md lists
@@ -99,8 +101,8 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Debug
 
-  export-linux:
-    name: Export Linux x86_64
+  export:
+    name: Export Linux and Windows x86_64
     needs: build-test
     runs-on: ubuntu-24.04
     steps:
@@ -117,7 +119,8 @@ jobs:
           key: nuget-export-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
           restore-keys: nuget-export-${{ runner.os }}-
 
-      # Editor + Linux x86_64 export templates for the pinned Godot .NET build.
+      # Editor + Linux and Windows x86_64 export templates for the pinned
+      # Godot .NET build.
       - name: Cache Godot
         id: cache-godot
         uses: actions/cache@v6
@@ -125,7 +128,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}.mono
-          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-x86_64
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-windows-x86_64
 
       - name: Download Godot and export templates
         if: steps.cache-godot.outputs.cache-hit != 'true'
@@ -148,9 +151,13 @@ jobs:
           mv "${name}" ~/godot
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}.mono
           mkdir -p "$dest"
-          # Keep only what a Linux x86_64 export needs (the full set is ~1.2 GB).
+          # Keep only what the Linux and Windows x86_64 exports need (the full
+          # set is ~1.2 GB). The Windows preset always exports the console
+          # wrapper, through which the Windows job reads the game's output.
           unzip -q "$tpz" -d templates
-          for f in version.txt linux_release.x86_64 linux_debug.x86_64; do
+          for f in version.txt linux_release.x86_64 linux_debug.x86_64 \
+              windows_release_x86_64.exe windows_release_x86_64_console.exe \
+              windows_debug_x86_64.exe windows_debug_x86_64_console.exe; do
             mv "templates/templates/$f" "$dest/"
           done
           cd /
@@ -259,3 +266,75 @@ jobs:
           path: export/linux/
           if-no-files-found: error
           retention-days: 14
+
+      # T8.4: the Windows build, exported here (Godot cross-exports it, and
+      # `dotnet publish` takes the win-x64 runtime from NuGet; the exe's icon
+      # and version info are edited by Godot itself, no rcedit or Wine) and
+      # tested on a Windows runner by test-windows below.
+      - name: Export Windows
+        run: |
+          mkdir -p export/windows
+          godot --headless --export-release "Windows" export/windows/IsoDoom.exe
+          test -f export/windows/IsoDoom.exe
+          test -f export/windows/IsoDoom.console.exe
+          test -f export/windows/data_IsoDoom_windows_x86_64/IsoDoom.dll
+          ls -la export/windows
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: IsoDoom-windows-x86_64
+          path: export/windows/
+          if-no-files-found: error
+          retention-days: 14
+
+  # T8.4: the exported Windows build on Windows, headless (no GPU on the
+  # runner): the smoke test, both checks and the route play, as the editor's
+  # runs above. IsoDoom.console.exe runs IsoDoom.exe with its output on the
+  # console (the game itself is a GUI program, whose output a pipe never sees).
+  test-windows:
+    name: Test Windows x86_64
+    needs: export
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: IsoDoom-windows-x86_64
+          path: export/windows
+
+      - name: Generate the synthetic IWAD
+        run: |
+          iwad="$RUNNER_TEMP/isodoom-synthetic.wad"
+          dotnet run --project tools/SyntheticIwad --configuration Debug -- "$iwad"
+          echo "ISODOOM_CI_IWAD=$iwad" >> "$GITHUB_ENV"
+
+      - name: Smoke-test the exported build
+        timeout-minutes: 5
+        run: |
+          export/windows/IsoDoom.console.exe --headless --quit-after 60 2>&1 | tee smoke.log
+          grep -q "IsoDoom started" smoke.log
+
+      - name: Viewer check (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          export/windows/IsoDoom.console.exe --headless -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check.log
+          grep -q "WAD viewer check: OK" viewer-check.log
+
+      - name: Level check (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          export/windows/IsoDoom.console.exe --headless -- --level-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee level-check.log
+          grep -q "Level check: OK" level-check.log
+
+      - name: Route play (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          r=tests/IsoDoom.Tests/Sim/Routes
+          export/windows/IsoDoom.console.exe --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
+            --level-tweaks=vanilla --level-monsters=off \
+            --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"

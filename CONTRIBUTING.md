@@ -52,7 +52,7 @@ godot --headless --fixed-fps 35 -- -iwad /tmp/isodoom-synthetic.wad --level E1M1
 
 Each command exits non-zero on a failure.
 
-CI then exports the Linux build and smoke-tests it. It also runs both checks again on the exported build with a real renderer (Xvfb and lavapipe), which compares the drawn pixels. To run the same checks locally without exporting, use the editor:
+CI then exports the Linux build and smoke-tests it, and exports the Windows build and runs its smoke test, both checks and the route play headless on a Windows runner (through `IsoDoom.console.exe`). It also runs both checks again on the exported build with a real renderer (Xvfb and lavapipe), which compares the drawn pixels. To run the same checks locally without exporting, use the editor:
 
 ```bash
 WAYLAND_DISPLAY= VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json \

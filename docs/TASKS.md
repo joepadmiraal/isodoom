@@ -581,6 +581,9 @@ Legend: `[ ]` todo, `[x]` done.
   *Note (from T6.9):* the fuzz pass (`shaders/sprite.gdshaderinc`, `FUZZ`) matches each fuzzed pixel's background to the palette by a 256-entry search; if it shows in a profile (many spectres up close), replace it with an inverse-palette lookup texture (RGB → index, one per palette, rebuilt with `SetPalette`).
 - [ ] **T8.4 Windows and macOS builds.** Add a Windows export (and macOS, best-effort, SPEC §3) to `ci.yml` with smoke tests, and check the IWAD search there (T1.1c).
   *Done when:* CI produces and smoke-tests the Windows build.
+  *Progress (2026-10-08):* the `Windows` preset and CI's Windows export (on Linux, `IsoDoom-windows-x86_64`) and `test-windows` job (smoke test, viewer and level checks, route play, headless on `windows-2025`; SPEC §12 T8.4). Tick once that job is green on GitHub. The IWAD search on a real Windows install stays T1.1c's (a person's).
+- [ ] **T8.4a macOS build (best-effort).** T8.4's macOS half: a macOS export preset (universal, unsigned; Godot's .NET macOS export from Linux, or a `macos` runner) in `ci.yml`, smoke-tested on a macOS runner as `test-windows` does.
+  *Done when:* CI produces and smoke-tests a macOS build, or the reason it can't is logged in SPEC §12.
 - [ ] **T8.5 Readability and polish.** Look at the open presentation items with the whole game in place: tall rooms and the cutaway (SPEC §13 Q4: E1M8), camera smoothing and look-ahead feel, sprite readability (T3.6), muzzle flash, the optional enhanced lighting mode (SPEC §7.4: real Godot lights for flashes and projectiles, if cheap). Log the decisions and close Q4.
   *Done when:* each item is decided and logged.
   *Note (from T6.13b):* highlight the line the use action would trigger (SPEC §12 T5.2's fallback), tinted by key colour for locked doors, as a presentation option; T6.13b's lids made doors read as blocks, but which wall opens is still a guess from above.
