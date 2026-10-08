@@ -42,6 +42,9 @@ public sealed partial class World
     /// <summary>p_map.c <c>bombdamage</c>: the radius attack's damage at its centre, and its reach in units.</summary>
     public int bombdamage;
 
+    // Not vanilla: where the current P_LineAttack stopped (fixed_t), for its se_shot event.
+    private int _shotx, _shoty, _shotz;
+
     private traverser_t? _ptrAimTraverse;
     private traverser_t? _ptrShootTraverse;
     private System.Func<mobj_t, bool>? _pitRadiusAttack;
@@ -201,6 +204,10 @@ public sealed partial class World
             y = trace.y + Fixed.FixedMul(trace.dy, frac);
             z = shootz + Fixed.FixedMul(aimslope, Fixed.FixedMul(frac, attackrange));
 
+            _shotx = x;
+            _shoty = y;
+            _shotz = z;
+
             if (li.frontsector!.ceilingpic == SKYFLATNAME)
             {
                 // don't shoot the sky!
@@ -246,6 +253,10 @@ public sealed partial class World
         x = trace.x + Fixed.FixedMul(trace.dx, frac);
         y = trace.y + Fixed.FixedMul(trace.dy, frac);
         z = shootz + Fixed.FixedMul(aimslope, Fixed.FixedMul(frac, attackrange));
+
+        _shotx = x;
+        _shoty = y;
+        _shotz = z;
 
         // Spawn bullet puffs or blod spots,
         // depending on target type.
@@ -300,7 +311,8 @@ public sealed partial class World
     /// <paramref name="slope"/> (from <see cref="P_AimLineAttack"/>), dealing
     /// <paramref name="damage"/> to the first thing it hits
     /// (<see cref="PTR_ShootTraverse"/>; with damage 0 it still spawns the
-    /// puff or blood and triggers gun lines).
+    /// puff or blood and triggers gun lines). Not vanilla: queues an
+    /// <see cref="simevent_t.se_shot"/> event with the shot's line (output only).
     /// </summary>
     public void P_LineAttack(mobj_t t1, uint angle, int distance, int slope, int damage)
     {
@@ -315,7 +327,15 @@ public sealed partial class World
         attackrange = distance;
         aimslope = slope;
 
+        _shotx = x2;
+        _shoty = y2;
+        _shotz = shootz + Fixed.FixedMul(slope, distance);
+
         P_PathTraverse(t1.x, t1.y, x2, y2, PT_ADDLINES | PT_ADDTHINGS, _ptrShootTraverse);
+
+        // Not vanilla: the shot's line as an event, for the presentation's tracers.
+        events.Add(new sim_event_t(simevent_t.se_shot, leveltime, default, t1.x, t1.y, -1, null,
+            new shot_event_t(t1, distance, t1.x, t1.y, t1.z + (t1.height >> 1) + 8 * Fixed.FRACUNIT, _shotx, _shoty, _shotz)));
     }
 
     /// <summary>

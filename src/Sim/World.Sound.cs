@@ -13,6 +13,9 @@ public enum simevent_t
 
     /// <summary>A player's message (<see cref="player_t.message"/>, taken after the tic as hu_stuff.c <c>HU_Ticker</c> does).</summary>
     se_message,
+
+    /// <summary>A hitscan (p_map.c <c>P_LineAttack</c>): <see cref="sim_event_t.shot"/> is its line, for the shot tracers.</summary>
+    se_shot,
 }
 
 /// <summary>
@@ -26,6 +29,15 @@ public enum simevent_t
 public readonly record struct sound_event_t(sfxenum_t sfx, mobj_t? origin, sector_t? sector);
 
 /// <summary>
+/// Not vanilla: the hitscan part of a <see cref="sim_event_t"/>. A shot of
+/// <see cref="shooter"/> (<see cref="range"/> long, fixed_t: <c>MISSILERANGE</c>
+/// or a melee's) from (<see cref="x1"/>, <see cref="y1"/>, <see cref="z1"/>)
+/// to where it stopped (<see cref="x2"/>, <see cref="y2"/>, <see cref="z2"/>):
+/// its puff or blood, the sky, or the end of its range (all fixed_t).
+/// </summary>
+public readonly record struct shot_event_t(mobj_t shooter, int range, int x1, int y1, int z1, int x2, int y2, int z2);
+
+/// <summary>
 /// Not vanilla (T6.10, SPEC §12): an event from the sim to the presentation,
 /// where vanilla's game code calls the sound and HUD code directly. Output
 /// only: the sim never reads them, so whether anything listens changes
@@ -35,9 +47,10 @@ public readonly record struct sound_event_t(sfxenum_t sfx, mobj_t? origin, secto
 /// tic). <see cref="x"/>/<see cref="y"/> (fixed_t) are the sound origin's
 /// position when it started (the mobj's, or the sector's <c>soundorg</c>;
 /// 0 for none), so a sound keeps a place after its mobj is gone.
-/// <see cref="player"/> is the message's player (−1 otherwise).
+/// <see cref="player"/> is the message's player (−1 otherwise), <see cref="shot"/>
+/// a hitscan's line (<see cref="simevent_t.se_shot"/> only).
 /// </summary>
-public readonly record struct sim_event_t(simevent_t type, int tic, sound_event_t sound, int x, int y, int player, string? message);
+public readonly record struct sim_event_t(simevent_t type, int tic, sound_event_t sound, int x, int y, int player, string? message, shot_event_t shot = default);
 
 // s_sound.c's calls from the game code, and the HUD's messages, as events (T6.10).
 public sealed partial class World

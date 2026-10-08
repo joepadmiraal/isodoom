@@ -108,6 +108,30 @@ public class SimEventTests
     }
 
     [Fact]
+    public void AHitscanQueuesItsLine()
+    {
+        // The synthetic E1M1's west room: facing its south wall (y -128) from 28 units away.
+        var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
+        world.G_DoLoadLevel(Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1"));
+        mobj_t mo = Player(world);
+        world.PlaceMobj(mo, 0, F(-100), Deg(270));
+        world.events.Clear();
+        ulong checksum = world.Checksum();
+        world.P_LineAttack(mo, mo.angle, World.MISSILERANGE, 0, 0);
+
+        // From the shooter's middle, 8 units up, to its puff 4 units before the wall, level.
+        shot_event_t shot = Assert.Single(world.events, e => e.type == simevent_t.se_shot).shot;
+        Assert.Same(mo, shot.shooter);
+        Assert.Equal(World.MISSILERANGE, shot.range);
+        Assert.Equal((0, F(-100)), (shot.x1, shot.y1));
+        Assert.Equal(mo.z + mo.height / 2 + F(8), shot.z1);
+        Assert.InRange(shot.x2, -FRACUNIT, FRACUNIT);
+        Assert.InRange(shot.y2, F(-125), F(-123));
+        Assert.Equal(shot.z1, shot.z2);
+        Assert.NotEqual(checksum, world.Checksum()); // the puff, not the event
+    }
+
+    [Fact]
     public void TheUseGruntWaitsForTheFallback()
     {
         // The synthetic E1M1's west room (x and y -128..128): its north wall (line 0) is an S1

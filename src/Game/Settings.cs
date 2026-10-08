@@ -114,6 +114,7 @@ public static class Settings
         new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Gameplay, "mirror", ["mirror", "off"], "--level-masked-back"),
         new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", _onOff, "--level-weapon-light"),
         new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", _onOff, "--level-palette-effects"),
+        new("gameplay/tracers", "SHOT TRACERS", SettingPage.Gameplay, "player", ["player", "all", "off"], "--level-tracers"),
 
         // sprites (readability)
         new("sprites/tilt", "TILT", SettingPage.Sprites, "full", ["full", "half", "off"], "--level-sprite-tilt"),

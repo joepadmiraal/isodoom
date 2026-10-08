@@ -87,6 +87,9 @@ namespace IsoDoom.Game;
 /// <c>--level-weapon-light=on|off</c> (T6.6, <see cref="WeaponLight"/>: the
 /// player's weapon flash, <c>player_t.extralight</c>, lights the level as
 /// vanilla's lights the view; default on);
+/// <c>--level-tracers=player|all|off</c> (<see cref="Tracers"/>: a short-lived
+/// line along each of the player's hitscans, or everyone's, to where it
+/// stopped; default player);
 /// <c>--level-hud=bar|full|off</c> (T6.11, <see cref="HudView"/>: under the
 /// game camera, vanilla's status bar at the bottom, the minimal fullscreen
 /// HUD, or neither; the message line shows with all; default bar) and
@@ -196,6 +199,15 @@ public partial class LevelScene : Node3D, IGameHost
     /// SPEC §12 T6.8).
     /// </summary>
     public bool PaletteEffects { get; set; } = true;
+
+    /// <summary>
+    /// Which hitscans draw a tracer from the shooter to where the shot stopped
+    /// (<see cref="ShotTracers"/>, <c>--level-tracers</c>; not vanilla, SPEC §12):
+    /// the player's by default, so a twin-stick player sees where it shoots.
+    /// </summary>
+    public TracerMode Tracers { get; set; } = TracerMode.Player;
+
+    private readonly ShotTracers _shotTracers = new() { Name = "ShotTracers" };
 
     /// <summary>
     /// T6.11: m_random.c's <c>M_Random</c> index of the presentation (the
@@ -608,6 +620,8 @@ public partial class LevelScene : Node3D, IGameHost
                     "off" => false,
                     _ => throw new ArgumentException($"--level-palette-effects: \"{paletteEffects}\" (on or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-tracers") is string tracers)
+                Tracers = ParseTracers(tracers, "--level-tracers");
             if (WadLocator.GetUserArg("--level-hud") is string hud)
                 Hud.Mode = hud switch
                 {
@@ -737,6 +751,7 @@ public partial class LevelScene : Node3D, IGameHost
         };
         _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_cursorMarker);
+        AddChild(_shotTracers);
     }
 
     /// <summary>The cutaway options from <c>--level-cutaway</c>, <c>--level-cutaway-radius</c>, <c>--level-cutaway-height</c>, <c>--level-cutaway-cursor</c>, <c>--level-cutaway-cap</c>, <c>--level-cutaway-things</c> and <c>--level-cutaway-doors</c>.</summary>
@@ -1113,6 +1128,7 @@ public partial class LevelScene : Node3D, IGameHost
                 UpdateExtraLight();
                 UpdatePaletteEffects();
                 FollowPlayer(delta);
+                _shotTracers.Update(delta, GetViewport().GetCamera3D());
                 if (GetViewport().GetCamera3D() is Camera3D current)
                     Things?.UpdateRotations(current);
                 Mesh.SetLightOrigin(LightOrigin());
@@ -1536,6 +1552,9 @@ public partial class LevelScene : Node3D, IGameHost
                     _soundLog.Add((e.tic, e.sound));
                     StartSoundEvent(e); // T7.7
                     break;
+                case simevent_t.se_shot:
+                    AddTracer(e.shot);
+                    break;
                 case simevent_t.se_stopsound when e.sound.origin is { } removed:
                     Sound?.S_StopSound(removed); // T7.7: p_mobj.c P_RemoveMobj's S_StopSound
                     break;
@@ -1554,6 +1573,33 @@ public partial class LevelScene : Node3D, IGameHost
             hu.HU_Ticker(message);
         }
     }
+
+    /// <summary>
+    /// A hitscan's tracer (<see cref="Tracers"/>): a gun's shot (not a melee's)
+    /// of the console player, or with <see cref="TracerMode.All"/> anyone's,
+    /// from the shooter's edge to where it stopped.
+    /// </summary>
+    private void AddTracer(shot_event_t shot)
+    {
+        bool own = shot.shooter.player is { } p && World is { } world && p == world.players[world.consoleplayer];
+        if (Tracers == TracerMode.Off || (Tracers == TracerMode.Player && !own) || shot.range < World.MISSILERANGE)
+            return;
+        var from = new Vector3((float)(shot.x1 / 65536.0), (float)(shot.y1 / 65536.0), (float)(shot.z1 / 65536.0));
+        var to = new Vector3((float)(shot.x2 / 65536.0), (float)(shot.y2 / 65536.0), (float)(shot.z2 / 65536.0));
+        float length = (to - from).Length(), edge = shot.shooter.radius / 65536f;
+        if (length <= edge)
+            return;
+        from += (to - from) * (edge / length);
+        _shotTracers.Add(from, to, own ? ShotTracers.PlayerColor : ShotTracers.MonsterColor);
+    }
+
+    private static TracerMode ParseTracers(string value, string name) => value switch
+    {
+        "player" or "on" => TracerMode.Player,
+        "all" => TracerMode.All,
+        "off" or "vanilla" => TracerMode.Off,
+        _ => throw new ArgumentException($"{name}: \"{value}\" (player, all or off)"),
+    };
 
     /// <summary>A started sound as the overlay lists it: the name without <c>sfx_</c> and its origin (none, a sector, the player or a mobj type).</summary>
     public string SoundText(sound_event_t s)
@@ -2343,6 +2389,7 @@ public partial class LevelScene : Node3D, IGameHost
         Cursor = null;
         _cursorMarker?.Visible = false;
         _soundLog.Clear();
+        _shotTracers.Clear();
         _planeMoves.Clear();
     }
 

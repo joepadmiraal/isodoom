@@ -621,6 +621,7 @@ public partial class LevelScene : ISetupHost
         });
         Add("gameplay/weapon_light", () => OnOff(WeaponLight), s => WeaponLight = ParseOnOff(s, "gameplay/weapon_light"));
         Add("gameplay/palette_effects", () => OnOff(PaletteEffects), s => PaletteEffects = ParseOnOff(s, "gameplay/palette_effects"));
+        Add("gameplay/tracers", () => Tracers.ToString().ToLowerInvariant(), s => Tracers = ParseTracers(s, "gameplay/tracers"));
 
         // sprites
         Add("sprites/tilt", () => SpriteOptions.Tilt switch
