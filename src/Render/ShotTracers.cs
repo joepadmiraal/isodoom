@@ -31,7 +31,7 @@ public partial class ShotTracers : MeshInstance3D
     public const float Lifetime = 0.25f;
 
     /// <summary>A tracer's half width (map units).</summary>
-    public const float HalfWidth = 1.75f;
+    public const float HalfWidth = 0.75f;
 
     /// <summary>The colour of the player's tracers.</summary>
     public static readonly Color PlayerColor = new(1f, 0.95f, 0.6f);
