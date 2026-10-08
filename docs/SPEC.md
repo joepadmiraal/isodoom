@@ -37,7 +37,7 @@ The game identifies the IWAD from its lumps (`E1M1` without `E2M1` means sharewa
 - **Language:** C# (.NET 10, LTS) is the recommendation. Porting C game logic, doing fixed-point maths and parsing binary WADs are much more comfortable and faster in C# than in GDScript. GDScript stays available for UI and glue code. *Trade-off:* Godot 4 C# projects cannot currently export to the web (see §12).
 - **Targets:** desktop only, with **Linux x86_64 as a first-class target, including the Steam Deck**. Windows is also supported, and macOS is best-effort. There is no web export.
   - Steam Deck: runs as a native Linux build (no Proton needed). Designed for 1280×800 (16:10). The UI and HUD are fully gamepad-navigable, and text and HUD are readable on a 7" screen.
-  - The CI builds and smoke-tests the Linux export on every change, and the Windows export (T8.4).
+  - The CI builds and smoke-tests the Linux export on every change, and the Windows export (T8.4) and the macOS export (T8.4a) on their own runners.
 - **License:** the gameplay simulation is ported from the id Software Doom source (GPL-2.0), so the project is **GPL-2.0-or-later**. Only code is distributed, never WAD data.
 - **Shareware download:** if no IWAD is found, the game offers to download the shareware `DOOM1.WAD` v1.9 (the shareware license allows unmodified redistribution), as Isowulf does. It is verified by hash before use. This is low priority: if it turns out to be costly (for example, the official `doom19s.zip` holds a DOS self-extracting archive that has to be unpacked), it moves to after M8, and a "browse for WAD" dialog is used in the meantime.
 

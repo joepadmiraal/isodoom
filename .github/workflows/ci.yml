@@ -435,3 +435,12 @@ jobs:
           "$GAME" --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
             --level-tweaks=vanilla --level-monsters=off \
             --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
+
+      # The checks' failure lines as annotations, readable on the run's page.
+      - name: Annotate failures
+        if: failure()
+        run: |
+          for f in *.log; do
+            [ -f "$f" ] || continue
+            grep -E "check: |ERROR|Unhandled|Exception" "$f" | grep -v ": OK$" | head -30 | sed "s/^/::error title=$f::/" || true
+          done
