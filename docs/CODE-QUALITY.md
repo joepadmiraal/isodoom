@@ -94,13 +94,21 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
 
   *Done when:* `actionlint` passes locally, the CI job runs it and fails on a deliberately broken workflow (try it locally, then revert), a CI run shows no Node.js deprecation annotation, Dependabot is configured, and `CLAUDE.md`'s CI paragraph mentions both.
 
-- [ ] **Q6a Confirm Q6 on GitHub.** Q6 could not run CI, so it checked the Node.js runtime only from each action's `action.yml` (`runs.using: node24` at `checkout@v7`, `setup-dotnet@v6`, `cache@v6` and `upload-artifact@v7`).
+- [x] **Q6a Confirm Q6 on GitHub.** Q6 could not run CI, so it checked the Node.js runtime only from each action's `action.yml` (`runs.using: node24` at `checkout@v7`, `setup-dotnet@v6`, `cache@v6` and `upload-artifact@v7`).
   1. On the first CI run of the Q6 branch, check that the *Lint workflows* job passes, that it printed the runner's `shellcheck` version, and that the run's summary shows no Node.js deprecation annotation.
   2. Push a commit with a deliberately broken workflow (e.g. `${{ github.nonexistent }}` in a `run:`) and check that the job fails, then drop it.
   3. Check that Dependabot is enabled for the repository (Insights → Dependency graph → Dependabot) and that it reads `.github/dependabot.yml` without errors.
   4. When an actionlint release knows the inputs of `checkout@v7`, `cache@v6` and `setup-dotnet@v6` (1.7.12 doesn't: SPEC §12, Q6), bump `ACTIONLINT_VERSION`/`ACTIONLINT_SHA256` in `.devcontainer/Dockerfile`.
 
   *Done when:* items 1–3 have been checked on GitHub.
+
+  *Done:* items 1–3 checked on GitHub: the *Lint workflows* job passes with the runner's `shellcheck` version printed and no Node.js deprecation annotation, Dependabot reads `.github/dependabot.yml`, and a branch with `${{ github.nonexistent }}` in a `run:` failed the job (branch dropped). Item 4 moved to Q6b: as of 2026-10-08, 1.7.12 is still actionlint's latest release.
+
+- [ ] **Q6b Bump actionlint when it knows the current actions.** Dependabot doesn't cover `actionlint`: it is pinned in `.devcontainer/Dockerfile`, which CI reads.
+  1. When an actionlint release knows the inputs of `checkout@v7`, `cache@v6` and `setup-dotnet@v6` (1.7.12 doesn't: SPEC §12, Q6), bump `ACTIONLINT_VERSION`/`ACTIONLINT_SHA256` in `.devcontainer/Dockerfile` (the SHA-256 of `actionlint_VERSION_linux_amd64.tar.gz` from the release's checksums file).
+  2. Rebuild the dev container and fix anything the new version reports.
+
+  *Done when:* `actionlint` at the new version passes locally and in CI.
 
 - [x] **Q7 Contributor docs.** Once Q1–Q6 are done, make the checks discoverable for outside contributors.
   1. Add `CONTRIBUTING.md` covering the toolchain (dev container or `global.json`'s SDK plus Godot 4.7.2 .NET), the checks a PR must pass and the commands to run them locally (`dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`, `actionlint`, the level check), the style (Godot C# guide, with the vanilla-names exception and why), the Sim invariants (pointing to `CLAUDE.md` and SPEC §6.1), and that WAD data never goes in the repo.
