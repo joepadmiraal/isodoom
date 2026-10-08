@@ -462,7 +462,10 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>The scene's environment (black background; checks change it).</summary>
     public Godot.Environment Environment { get; private set; } = null!;
 
-    /// <summary>The overlay with the status line (checks hide it so it doesn't cover pixels).</summary>
+    /// <summary>
+    /// The overlay with the status line (checks hide it so it doesn't cover pixels);
+    /// hidden at the start in a release export, shown in the editor and debug exports.
+    /// </summary>
     public CanvasLayer Overlay { get; private set; } = null!;
 
     /// <summary>The node of each sector's chunk (null where <see cref="LevelMesh.SectorMeshes"/> has none).</summary>
@@ -502,7 +505,8 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(new WorldEnvironment { Environment = Environment });
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
-        Overlay = new CanvasLayer();
+        // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
+        Overlay = new CanvasLayer { Visible = OS.IsDebugBuild() };
         _message = new Label
         {
             Position = new Vector2(8, 8),
