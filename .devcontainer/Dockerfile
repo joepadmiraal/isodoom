@@ -36,7 +36,9 @@ RUN set -eux; \
     rm /tmp/godot.zip
 
 # actionlint (MIT, dev tool only) for linting .github/workflows/ci.yml; it runs
-# shellcheck on the run: scripts. Pinned with the release's SHA-256.
+# shellcheck on the run: scripts. Pinned with the release's SHA-256. CI's
+# actionlint job (.github/workflows/ci.yml) reads both ARG lines below, so
+# keep them in this `ARG NAME=value` form.
 ARG ACTIONLINT_VERSION=1.7.12
 ARG ACTIONLINT_SHA256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
 RUN set -eux; \

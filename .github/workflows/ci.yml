@@ -1,11 +1,11 @@
-# CI: build + test the .NET solution, then export the Godot project for
-# Linux x86_64 headlessly, run the WAD viewer check (T1.6b) and the level
-# check (T2.6) against a generated synthetic IWAD (tools/SyntheticIwad: no id
-# data, no download) in the editor and in the exported build, and upload the
-# build. Toolchain
-# versions are pinned
-# in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
-# IsoDoom.csproj; the .NET SDK comes from global.json).
+# CI: lint this workflow (actionlint + shellcheck), build + test the .NET
+# solution, then export the Godot project for Linux x86_64 headlessly, run
+# the WAD viewer check (T1.6b) and the level check (T2.6) against a generated
+# synthetic IWAD (tools/SyntheticIwad: no id data, no download) in the editor
+# and in the exported build, and upload the build. Toolchain versions are
+# pinned in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
+# IsoDoom.csproj; the .NET SDK comes from global.json). The actions' versions
+# are bumped by Dependabot (.github/dependabot.yml).
 name: CI
 
 on:
@@ -31,18 +31,53 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
+  # Q6: lint this workflow with the dev container's actionlint, which also runs
+  # shellcheck on the run: scripts (preinstalled on ubuntu-24.04; the step
+  # below fails if it is missing, since actionlint would silently skip it).
+  # The version and SHA-256 are read from .devcontainer/Dockerfile's ARGs, so
+  # they live in one place.
+  actionlint:
+    name: Lint workflows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install actionlint
+        run: |
+          set -eux
+          version="$(sed -n 's/^ARG ACTIONLINT_VERSION=//p' .devcontainer/Dockerfile)"
+          sha256="$(sed -n 's/^ARG ACTIONLINT_SHA256=//p' .devcontainer/Dockerfile)"
+          test -n "$version"
+          test -n "$sha256"
+          name="actionlint_${version}_linux_amd64.tar.gz"
+          dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$name" \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/${name}"
+          echo "${sha256}  $dir/$name" | sha256sum -c -
+          tar -xzf "$dir/$name" -C "$dir" actionlint
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Tool versions
+        run: |
+          actionlint -version
+          shellcheck --version
+
+      - name: actionlint
+        run: actionlint
+
   build-test:
     name: Build and test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
@@ -63,14 +98,14 @@ jobs:
     needs: build-test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-export-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
@@ -79,7 +114,7 @@ jobs:
       # Editor + Linux x86_64 export templates for the pinned Godot .NET build.
       - name: Cache Godot
         id: cache-godot
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/godot
@@ -212,7 +247,7 @@ jobs:
           grep -q "drawn pixels compared" level-check-export.log
           grep -q "Level check: OK" level-check-export.log
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: IsoDoom-linux-x86_64
           path: export/linux/

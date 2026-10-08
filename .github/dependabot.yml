@@ -1,0 +1,13 @@
+# Dependabot (Q6): opens a pull request when an action used in
+# .github/workflows/ has a new version, so the workflow's actions don't age
+# unnoticed (e.g. onto a deprecated Node.js runtime). Only GitHub Actions:
+# NuGet packages, the .NET SDK (global.json), Godot and actionlint stay pinned
+# by hand (SPEC §12).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: CI

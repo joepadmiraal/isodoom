@@ -73,7 +73,7 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
 
   *Done when:* every project builds with zero warnings at the chosen analysis level and warnings as errors, each disabled rule has a reason in `.editorconfig`, and all tests (checksums unchanged), the level check and the Linux export pass.
 
-- [ ] **Q6 `actionlint` and up-to-date actions in CI.** The dev container pins `actionlint`, but nothing runs it on pull requests. The workflow's actions also age unnoticed: as of 2026-10-08, GitHub warns that `actions/upload-artifact@v5` targets the deprecated Node.js 20 runtime.
+- [x] **Q6 `actionlint` and up-to-date actions in CI.** The dev container pins `actionlint`, but nothing runs it on pull requests. The workflow's actions also age unnoticed: as of 2026-10-08, GitHub warns that `actions/upload-artifact@v5` targets the deprecated Node.js 20 runtime.
   1. Bump every action in `ci.yml` to its current major version that runs on Node.js 24: `upload-artifact`, and check `checkout`, `setup-dotnet` and `cache` too. Read each action's release notes for breaking changes (`upload-artifact` and `cache` have changed behaviour across majors).
   2. Add `.github/dependabot.yml` with the `github-actions` ecosystem (weekly), so future bumps arrive as pull requests. Dependabot is part of GitHub, so it is not a new dependency.
   3. Add a small job (or an early step in the build job) to `ci.yml` that installs the same `actionlint` version as `.devcontainer/Dockerfile`, checks its SHA-256 the same way, and runs it. It needs `shellcheck` on the runner (preinstalled on `ubuntu-latest`; verify).
@@ -81,6 +81,14 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
   5. Fix anything it reports.
 
   *Done when:* `actionlint` passes locally, the CI job runs it and fails on a deliberately broken workflow (try it locally, then revert), a CI run shows no Node.js deprecation annotation, Dependabot is configured, and `CLAUDE.md`'s CI paragraph mentions both.
+
+- [ ] **Q6a Confirm Q6 on GitHub.** Q6 could not run CI, so it checked the Node.js runtime only from each action's `action.yml` (`runs.using: node24` at `checkout@v7`, `setup-dotnet@v6`, `cache@v6` and `upload-artifact@v7`).
+  1. On the first CI run of the Q6 branch, check that the *Lint workflows* job passes, that it printed the runner's `shellcheck` version, and that the run's summary shows no Node.js deprecation annotation.
+  2. Push a commit with a deliberately broken workflow (e.g. `${{ github.nonexistent }}` in a `run:`) and check that the job fails, then drop it.
+  3. Check that Dependabot is enabled for the repository (Insights → Dependency graph → Dependabot) and that it reads `.github/dependabot.yml` without errors.
+  4. When an actionlint release knows the inputs of `checkout@v7`, `cache@v6` and `setup-dotnet@v6` (1.7.12 doesn't: SPEC §12, Q6), bump `ACTIONLINT_VERSION`/`ACTIONLINT_SHA256` in `.devcontainer/Dockerfile`.
+
+  *Done when:* items 1–3 have been checked on GitHub.
 
 - [ ] **Q7 Contributor docs.** Once Q1–Q6 are done, make the checks discoverable for outside contributors.
   1. Add `CONTRIBUTING.md` covering the toolchain (dev container or `global.json`'s SDK plus Godot 4.7.2 .NET), the checks a PR must pass and the commands to run them locally (`dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`, `actionlint`, the level check), the style (Godot C# guide, with the vanilla-names exception and why), the Sim invariants (pointing to `CLAUDE.md` and SPEC §6.1), and that WAD data never goes in the repo.
