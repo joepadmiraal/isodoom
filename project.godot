@@ -12,6 +12,7 @@ config_version=5
 
 config/name="IsoDoom"
 run/main_scene="res://scenes/Main.tscn"
+config/icon="res://icon.png"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 
 [display]
