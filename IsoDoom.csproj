@@ -8,6 +8,7 @@
     <RootNamespace>IsoDoom</RootNamespace>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <!-- The SDK globs every .cs file below the project root; the plain

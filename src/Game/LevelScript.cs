@@ -536,7 +536,7 @@ public partial class LevelScript : Node
                         Input.ParseInputEvent(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
                         break;
                     case "joybutton":
-                        Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = Enum.Parse<JoyButton>(w[1], true), Pressed = w[2] == "down", Pressure = w[2] == "down" ? 1 : 0 });
+                        Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = Enum.Parse<JoyButton>(w[1], true), Pressed = w[2] == "down" });
                         break;
                     case "setting":
                         // T7.3: prints setting KEY, or sets it to VALUE as the options menu does (applied at once, saved to --settings's file)

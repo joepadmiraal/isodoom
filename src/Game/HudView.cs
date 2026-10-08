@@ -30,13 +30,13 @@ public partial class HudView : CanvasLayer
     public int FixedScale { get; set; }
 
     /// <summary>The scale in use (screen pixels per HUD pixel).</summary>
-    public int Scale { get; private set; } = 1;
+    public int PixelScale { get; private set; } = 1;
 
     /// <summary>The viewport pixels the status bar covers at the bottom (0 unless <see cref="HudMode.Bar"/> shows).</summary>
-    public float BottomInset => Visible && Mode == HudMode.Bar ? StStuff.ST_HEIGHT * Scale : 0;
+    public float BottomInset => Visible && Mode == HudMode.Bar ? StStuff.ST_HEIGHT * PixelScale : 0;
 
     /// <summary>The viewport pixels the message line's rows take at the top (where the debug overlay starts below).</summary>
-    public float TopInset => Visible ? HuStuff.ScreenRows * Scale / 2 + 8 : 0;
+    public float TopInset => Visible ? HuStuff.ScreenRows * PixelScale / 2 + 8 : 0;
 
     /// <summary>
     /// The largest whole scale at which vanilla's 320×200 screen fits the
@@ -71,24 +71,24 @@ public partial class HudView : CanvasLayer
     public void Show(StStuff? st, HuStuff? hu, Playpal playpal, int palette)
     {
         Vector2 size = GetViewport().GetVisibleRect().Size;
-        Scale = FixedScale > 0 ? FixedScale : ScaleFor(size);
+        PixelScale = FixedScale > 0 ? FixedScale : ScaleFor(size);
         ReadOnlySpan<byte> pal = playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1));
-        float left = MathF.Floor((size.X - HudScreen.SCREENWIDTH * Scale) / 2);
+        float left = MathF.Floor((size.X - HudScreen.SCREENWIDTH * PixelScale) / 2);
 
         HudScreen? strip = st is null || Mode == HudMode.Off ? null : Mode == HudMode.Bar ? st.Screen : st.FullScreen;
         _bar.Visible = strip is not null;
         if (strip is not null)
         {
             Upload(strip, pal, ref _barImage, ref _barTexture, ref _barRgba, _bar);
-            _bar.Position = new Vector2(left, size.Y - StStuff.ST_HEIGHT * Scale);
-            _bar.Size = new Vector2(HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT) * Scale;
+            _bar.Position = new Vector2(left, size.Y - StStuff.ST_HEIGHT * PixelScale);
+            _bar.Size = new Vector2(HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT) * PixelScale;
         }
         _message.Visible = hu is { message_on: true };
         if (hu is { message_on: true })
         {
             Upload(hu.Screen, pal, ref _messageImage, ref _messageTexture, ref _messageRgba, _message);
-            _message.Position = new Vector2(Math.Max(left, 0), hu.Screen.Top * Scale);
-            _message.Size = new Vector2(HudScreen.SCREENWIDTH, hu.Screen.Height) * Scale;
+            _message.Position = new Vector2(Math.Max(left, 0), hu.Screen.Top * PixelScale);
+            _message.Size = new Vector2(HudScreen.SCREENWIDTH, hu.Screen.Height) * PixelScale;
         }
     }
 

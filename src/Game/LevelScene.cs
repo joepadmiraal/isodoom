@@ -1983,7 +1983,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (World is { } w && w.players[w.consoleplayer] is { mo: not null } pl)
             text.Append(StatusText(w, pl) + "\n");
         if (StatusBar is { plyr: not null } st)
-            text.Append($"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", scale {Hud.Scale}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
+            text.Append($"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", scale {Hud.PixelScale}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
                 + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
         if (HudMessage is not null)
             text.Append($"message: {HudMessage}\n");

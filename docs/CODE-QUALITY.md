@@ -20,7 +20,7 @@ Facts as of 2026-10-08: the repo has about 252 C# files and 87k lines. All files
 
 ---
 
-- [ ] **Q1 Warnings as errors in the Godot project.** `IsoDoom.csproj` is the only project without `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`, so its warnings pile up unseen.
+- [x] **Q1 Warnings as errors in the Godot project.** `IsoDoom.csproj` is the only project without `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`, so its warnings pile up unseen.
   1. Build with `dotnet build IsoDoom.csproj` and list the warnings it has today. As of 2026-10-08, CI's build and export jobs report two:
      - `src/Game/LevelScript.cs` (`joybutton`): `InputEventJoypadButton.Pressure` is obsolete, because the engine never sets it. Drop the assignment.
      - `src/Game/HudView.cs`: `HudView.Scale` hides `CanvasLayer.Scale`. Rename it (e.g. `HudScale`, or `PixelScale`) rather than adding `new`, because a node property that shadows Godot's is a trap for anyone reading it as the layer's transform. Update its users and the level check.

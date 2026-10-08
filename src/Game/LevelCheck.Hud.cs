@@ -112,7 +112,7 @@ public partial class LevelCheck
             if (await Capture(what) is not byte[] frame)
                 continue;
             Vector2I size = ViewSize();
-            int scale = view.Scale, left = (int)MathF.Floor((size.X - HudScreen.SCREENWIDTH * scale) / 2f);
+            int scale = view.PixelScale, left = (int)MathF.Floor((size.X - HudScreen.SCREENWIDTH * scale) / 2f);
             byte[] pal = Playpal.GetPalette(palette).ToArray();
             int bad = 0;
             string first = "";
@@ -141,7 +141,7 @@ public partial class LevelCheck
                 Fail($"{what}: {bad} pixels differ; first: {first}");
         }
         _pixels += compared;
-        GD.Print($"Level check: {map}: HUD (T6.11): status bar, fullscreen HUD and message line at scale {view.Scale}, {compared} pixels compared");
+        GD.Print($"Level check: {map}: HUD (T6.11): status bar, fullscreen HUD and message line at scale {view.PixelScale}, {compared} pixels compared");
         view.Mode = mode;
         view.Visible = false;
         _scene.Overlay.Visible = overlay;
