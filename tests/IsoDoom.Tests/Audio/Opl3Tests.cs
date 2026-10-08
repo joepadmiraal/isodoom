@@ -259,7 +259,7 @@ public class Opl3Tests
 #if DEBUG
         const string Config = "Debug";
 #else
-        const string config = "Release";
+        const string Config = "Release";
 #endif
         _output.WriteLine($"{Config}: {Seconds} s of OPL3 output at {Rate} Hz in {s:F3} s = {100 * s / Seconds:F2}% of a core (checksum {sum})");
         Assert.True(s < Seconds, $"slower than real time: {s:F1} s for {Seconds} s");

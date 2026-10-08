@@ -148,8 +148,9 @@ public partial class LevelCheck
         double elapsed = (Time.GetTicksUsec() - t0) / 1e6;
         double rendered = (player.FramesPushed - pushed0) / (double)player.MixRate;
         int peak = player.TakePeak();
-        // short of the wall clock with the buffer full: the driver drains slowly (T8.4a)
-        string slowDriver = rendered < elapsed - 0.25 && player.KeepsUp ? " (the audio driver drained slower than real time, the buffer full)" : "";
+        // short of the wall clock with the buffer full: the driver drains slowly (T8.4a); or a Debug build over half a core
+        string slowDriver = rendered >= elapsed - 0.25 ? "" : player.KeepsUp ? " (the audio driver drained slower than real time, the buffer full)"
+            : player.SlowBuild ? " (behind in a Debug build over half a core: not failed)" : "";
         if ((rendered < elapsed - 0.25 && slowDriver.Length == 0) || rendered > elapsed + 0.25)
             Fail($"music playback: {rendered:0.00} s rendered in {elapsed:0.00} s of wall time ({player})");
         if (peak < 256)
@@ -179,11 +180,13 @@ public partial class LevelCheck
             sw += ", " + await CheckOplSwitch(player, sound, chip);
         }
 
-        if (player.Underruns != 0)
+        // a Debug build over half a core: underruns reported, not failed (the export's check fails on them)
+        string slowBuild = player.Underruns != 0 && player.SlowBuild ? $" ({player.Underruns} underrun(s) in a Debug build over half a core: not failed)" : "";
+        if (player.Underruns != 0 && slowBuild.Length == 0)
             Fail($"music playback: {player.Underruns} buffer underrun(s) ({player})");
         _scene.Menu.musicVolume = volume;
         _scene.UpdateSound(0);
-        GD.Print($"Level check: music playback (T7.8e): {title} for {elapsed:0.0} s, {rendered:0.00} s rendered{slowDriver}, peak {peak}; switched (T7.8g): {sw}; {player}");
+        GD.Print($"Level check: music playback (T7.8e): {title} for {elapsed:0.0} s, {rendered:0.00} s rendered{slowDriver}, peak {peak}; switched (T7.8g): {sw}{slowBuild}; {player}");
     }
 
     /// <summary>

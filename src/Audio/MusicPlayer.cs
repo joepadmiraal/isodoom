@@ -116,6 +116,20 @@ public partial class MusicPlayer : Node, IMusicDevice
     /// </summary>
     public long Underruns => _playback is { } p && Interlocked.Read(ref _skipsBase) is long b and >= 0 ? p.GetSkips() - b : 0;
 
+    /// <summary>
+    /// Whether underruns are the build's rather than the player's: a Debug
+    /// build (the editor's) renders the OPL about 5 times slower than the
+    /// export's Release one, and above half a core it has no headroom left
+    /// against a busy machine (CI's runners: 80% of a core there, 28
+    /// underruns once). The checks then report underruns instead of failing
+    /// on them; the exported build's checks still fail.
+    /// </summary>
+#if DEBUG
+    public bool SlowBuild => RenderLoad > 0.5;
+#else
+    public bool SlowBuild => false;
+#endif
+
     /// <summary>The share of a core the thread spent rendering, over the frames pushed (their time at the mix rate).</summary>
     public double RenderLoad
     {
