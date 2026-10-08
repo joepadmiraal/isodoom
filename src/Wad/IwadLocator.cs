@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -110,6 +111,7 @@ public sealed class IwadLocator
     /// game before the shareware one, because DOOM 1 is the content supported
     /// first (SPEC §2). Revisit when DOOM II is playable (SPEC §12).
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (d_iwad.c)")]
     public static readonly IReadOnlyList<IwadName> iwads =
     [
         new("doom.wad", "Doom"),
@@ -158,6 +160,7 @@ public sealed class IwadLocator
     public IwadLocator(IwadSearchContext ctx) => _ctx = ctx;
 
     /// <summary>The directories searched for IWADs, in order (d_iwad.c: <c>iwad_dirs</c>).</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (d_iwad.c)")]
     public IReadOnlyList<string> iwad_dirs => _iwadDirs ??= BuildIWADDirList();
 
     /// <summary>Finds the IWAD and resolves the <c>-file</c> PWADs (d_iwad.c: <c>D_FindIWAD</c>).</summary>
@@ -287,6 +290,7 @@ public sealed class IwadLocator
     /// lower case, upper case or capitalised; null if none exists
     /// (m_misc.c: <c>M_FileCaseExists</c>).
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_misc.c)")]
     public static string? M_FileCaseExists(string path)
     {
         if (File.Exists(path))

@@ -18,13 +18,13 @@ namespace IsoDoom.Tests.Game;
 /// </summary>
 public class GameFlowTests
 {
-    private static readonly WadArchive Wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+    private static readonly WadArchive _wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     internal sealed class Host : IGameHost
     {
-        private readonly GameMode mode;
+        private readonly GameMode _mode;
 
-        public Host(GameMode mode) => this.mode = mode;
+        public Host(GameMode mode) => this._mode = mode;
 
         public World? World { get; private set; }
 
@@ -35,30 +35,30 @@ public class GameFlowTests
         public int Completed, LevelTics, PausedTics;
         public string? Ended;
 
-        public bool HasLump(string name) => Extra.Contains(name) || Wad.W_CheckNumForName(name) >= 0;
+        public bool HasLump(string name) => Extra.Contains(name) || _wad.W_CheckNumForName(name) >= 0;
 
         public bool G_InitNew(skill_t skill, string map)
         {
             Loads.Add("new " + map);
-            if (Wad.W_CheckNumForName(map) < 0)
+            if (_wad.W_CheckNumForName(map) < 0)
                 return false;
-            World = new World(new SpawnSettings(mode, skill), Tweaks.Vanilla);
-            World.P_InitPicAnims(null, PicAnims.FlatNames(Wad)); // P_Init's, as the game scene's (T7.6: a save loads into the same)
-            World.G_DoLoadLevel(Level.Load(Wad, map));
+            World = new World(new SpawnSettings(_mode, skill), Tweaks.Vanilla);
+            World.P_InitPicAnims(null, PicAnims.FlatNames(_wad)); // P_Init's, as the game scene's (T7.6: a save loads into the same)
+            World.G_DoLoadLevel(Level.Load(_wad, map));
             return true;
         }
 
         public bool G_DoWorldDone(string map)
         {
             Loads.Add("next " + map);
-            World!.G_DoWorldDone(Level.Load(Wad, map));
+            World!.G_DoWorldDone(Level.Load(_wad, map));
             return true;
         }
 
         public bool G_DoLoadLevel()
         {
             Loads.Add("reborn " + World!.level.Name);
-            World.G_DoLoadLevel(Level.Load(Wad, World.level.Name));
+            World.G_DoLoadLevel(Level.Load(_wad, World.level.Name));
             return true;
         }
 
@@ -76,15 +76,15 @@ public class GameFlowTests
         // T7.6: as the game scene, a trial load first, then the load
         public void G_CheckLoadGame(SaveGameFile save)
         {
-            if (Wad.W_CheckNumForName(save.Map) < 0)
+            if (_wad.W_CheckNumForName(save.Map) < 0)
                 throw new SaveGameException(SaveGameFile.OTHERGAME);
-            save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
+            save.LoadWorld(Level.Load(_wad, save.Map), null, PicAnims.FlatNames(_wad));
         }
 
         public bool G_LoadGame(SaveGameFile save)
         {
             Loads.Add("load " + save.Map);
-            World = save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
+            World = save.LoadWorld(Level.Load(_wad, save.Map), null, PicAnims.FlatNames(_wad));
             return true;
         }
 
@@ -103,9 +103,9 @@ public class GameFlowTests
         return (new GameFlow(host, mode, new DoomRandom()), host);
     }
 
-    private static readonly ticcmd_t None = default;
-    private static readonly ticcmd_t Use = new() { buttons = buttoncode_t.BT_USE };
-    private static readonly ticcmd_t Pause = new() { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE };
+    private static readonly ticcmd_t _none = default;
+    private static readonly ticcmd_t _use = new() { buttons = buttoncode_t.BT_USE };
+    private static readonly ticcmd_t _pause = new() { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE };
 
     private static void Tics(GameFlow flow, int n, ticcmd_t cmd = default)
     {
@@ -136,7 +136,7 @@ public class GameFlowTests
             Tics(flow, tics + 1);
             Assert.Equal(page, flow.pagename);
             Assert.True(flow.advancedemo);
-            flow.G_Ticker(None);
+            flow.G_Ticker(_none);
             Assert.False(flow.advancedemo);
             Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
             flow.pagetic++; // as D_DoAdvanceDemo set it (the tic's D_PageTicker took one)
@@ -169,7 +169,7 @@ public class GameFlowTests
         flow.D_StartTitle(null);
         Tics(flow, 5);
         flow.G_DeferedInitNew(skill_t.sk_hard, 1, 1);
-        flow.G_Ticker(None); // G_DoNewGame at the tic's start, then the level's first tic
+        flow.G_Ticker(_none); // G_DoNewGame at the tic's start, then the level's first tic
         Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
         Assert.Equal(new[] { "new E1M1" }, host.Loads);
         Assert.Equal(("E1M1", skill_t.sk_hard, 1), (host.World!.level.Name, host.World.gameskill, host.World.leveltime));
@@ -206,31 +206,31 @@ public class GameFlowTests
         world.G_ExitLevel();
         p.usedown = true; // the exit switch's use, still held
 
-        flow.G_Ticker(Use); // G_DoCompleted, then the intermission's first tic
+        flow.G_Ticker(_use); // G_DoCompleted, then the intermission's first tic
         Assert.Equal((gamestate_t.GS_INTERMISSION, WiStuff.stateenum_t.StatCount, 1), (flow.gamestate, flow.Wi.state, host.Completed));
         Assert.Equal((0, 0, 1), (world.wminfo.epsd, world.wminfo.last, world.wminfo.next));
         Assert.Equal(5, world.wminfo.plyr[0].stime);
-        Tics(flow, 100, Use); // held: no skip
+        Tics(flow, 100, _use); // held: no skip
         Assert.Equal(WiStuff.stateenum_t.StatCount, flow.Wi.state);
         Assert.NotEqual(10, flow.Wi.sp_state);
         Tics(flow, 200);
         Assert.Equal((WiStuff.stateenum_t.StatCount, 10), (flow.Wi.state, flow.Wi.sp_state)); // counted out
         Assert.Equal(5, host.LevelTics); // the level holds still
 
-        flow.G_Ticker(Use); // a press: the next location
+        flow.G_Ticker(_use); // a press: the next location
         Assert.Equal((WiStuff.stateenum_t.ShowNextLoc, WiStuff.SHOWNEXTLOCDELAY * SimInfo.TICRATE), (flow.Wi.state, flow.Wi.cnt));
         Tics(flow, WiStuff.SHOWNEXTLOCDELAY * SimInfo.TICRATE - 1);
         Assert.Equal(WiStuff.stateenum_t.ShowNextLoc, flow.Wi.state);
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         Assert.Equal((WiStuff.stateenum_t.NoState, 10), (flow.Wi.state, flow.Wi.cnt));
         Tics(flow, 9);
         Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
-        flow.G_Ticker(None); // WI_End, G_WorldDone: the next map at the tic's end
+        flow.G_Ticker(_none); // WI_End, G_WorldDone: the next map at the tic's end
         Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
         Assert.Equal(new[] { "new E1M1", "next E1M2" }, host.Loads);
         Assert.Same(world, host.World);
         Assert.Equal(("E1M2", 0, 77), (world.level.Name, world.leveltime, p.health));
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         Assert.Equal(1, world.leveltime);
     }
 
@@ -241,7 +241,7 @@ public class GameFlowTests
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         host.World!.G_ExitLevel();
         int tics = 0;
-        ticcmd_t[] cmds = [None, new() { buttons = buttoncode_t.BT_ATTACK }];
+        ticcmd_t[] cmds = [_none, new() { buttons = buttoncode_t.BT_ATTACK }];
         while (flow.gamestate != gamestate_t.GS_LEVEL || host.World.level.Name != "E1M2")
         {
             flow.G_Ticker(cmds[tics % 2]);
@@ -256,10 +256,10 @@ public class GameFlowTests
         (GameFlow flow, Host host) = New();
         flow.G_InitNewMap(skill_t.sk_medium, "E1M2");
         host.World!.G_SecretExitLevel();
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         Assert.Equal(8, host.World.wminfo.next); // E1M9
         for (int i = 0; i < 40 && flow.gamestate == gamestate_t.GS_INTERMISSION; i++)
-            flow.G_Ticker(i % 2 == 0 ? None : Use);
+            flow.G_Ticker(i % 2 == 0 ? _none : _use);
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
         Assert.Null(host.World);
         Assert.Contains("E1M9", host.Ended);
@@ -275,17 +275,17 @@ public class GameFlowTests
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         host.World!.gamemap = 8;
         host.World.G_ExitLevel();
-        flow.G_Ticker(Use);
+        flow.G_Ticker(_use);
         Assert.Equal((gamestate_t.GS_FINALE, 0, 1), (flow.gamestate, flow.Finale.finalestage, host.Completed)); // no intermission
         Assert.Equal("FLOOR4_8", flow.Finale.finaleflat);
         int textTics = flow.Finale.finaletext.Length * FFinale.TEXTSPEED + FFinale.TEXTWAIT;
-        Tics(flow, textTics - 1, Use); // no skipping before Doom II
+        Tics(flow, textTics - 1, _use); // no skipping before Doom II
         Assert.Equal(0, flow.Finale.finalestage);
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         Assert.Equal((1, 0), (flow.Finale.finalestage, flow.Finale.finalecount));
         Tics(flow, 200);
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // vanilla stays on the end picture
-        Tics(flow, 10, Use);
+        Tics(flow, 10, _use);
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // fire and use too (T7.2)
         // the menu's End Game goes back to the title loop
         MMenu menu = flow.Menu;
@@ -314,11 +314,11 @@ public class GameFlowTests
             world.G_SecretExitLevel();
         else
             world.G_ExitLevel();
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
-        flow.G_Ticker(Use); // all the stats at once
-        flow.G_Ticker(None);
-        flow.G_Ticker(Use); // Doom II: straight to NoState
+        flow.G_Ticker(_use); // all the stats at once
+        flow.G_Ticker(_none);
+        flow.G_Ticker(_use); // Doom II: straight to NoState
         Assert.Equal(WiStuff.stateenum_t.NoState, flow.Wi.state);
         Tics(flow, 10);
         if (!text)
@@ -327,9 +327,9 @@ public class GameFlowTests
             return;
         }
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
-        Tics(flow, 51, Use); // no skip before 50 tics
+        Tics(flow, 51, _use); // no skip before 50 tics
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
-        flow.G_Ticker(Use); // any button: the next level
+        flow.G_Ticker(_use); // any button: the next level
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
         Assert.Contains(secret ? "MAP31" : "MAP07", host.Ended);
     }
@@ -342,14 +342,14 @@ public class GameFlowTests
         (GameFlow flow, Host host) = New();
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         Tics(flow, 3);
-        flow.G_Ticker(Pause);
+        flow.G_Ticker(_pause);
         Tics(flow, 10);
         Assert.True(flow.paused);
         Assert.Equal((3, 11), (host.World!.leveltime, host.PausedTics));
-        flow.G_Ticker(Pause);
+        flow.G_Ticker(_pause);
         Assert.False(flow.paused);
         Assert.Equal(4, host.World.leveltime);
-        flow.G_Ticker(Pause);
+        flow.G_Ticker(_pause);
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         Assert.False(flow.paused); // G_InitNew unpauses
     }
@@ -362,7 +362,7 @@ public class GameFlowTests
         World world = host.World!;
         world.P_DamageMobj(world.players[0].mo!, null, null, 10000);
         Tics(flow, 2);
-        flow.G_Ticker(Use); // P_DeathThink: PST_REBORN, G_DoReborn: ga_loadlevel, run at the tic's end
+        flow.G_Ticker(_use); // P_DeathThink: PST_REBORN, G_DoReborn: ga_loadlevel, run at the tic's end
         Assert.Equal(new[] { "new E1M2", "reborn E1M2" }, host.Loads);
         Assert.Equal((gamestate_t.GS_LEVEL, gameaction_t.ga_nothing, 0, 100), (flow.gamestate, flow.gameaction, world.leveltime, world.players[0].health));
     }

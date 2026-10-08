@@ -146,8 +146,8 @@ public partial class ThingSprites : MultiMeshInstance3D
         arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 0, 2, 3 };
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-        const float reach = 128f / LevelMesh.MapUnitsPerMetre;
-        mesh.CustomAabb = new Aabb(new Vector3(-reach, -reach, -reach), new Vector3(2 * reach, 2 * reach, 2 * reach));
+        const float Reach = 128f / LevelMesh.MapUnitsPerMetre;
+        mesh.CustomAabb = new Aabb(new Vector3(-Reach, -Reach, -Reach), new Vector3(2 * Reach, 2 * Reach, 2 * Reach));
         return mesh;
     }
 
@@ -171,8 +171,8 @@ public partial class ThingSprites : MultiMeshInstance3D
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         // The shader sizes and moves the quads (sprites up to 256 units, the lower part pulled up to 128 units).
-        const float reach = 512f / LevelMesh.MapUnitsPerMetre;
-        mesh.CustomAabb = new Aabb(new Vector3(-reach, -reach, -reach), new Vector3(2 * reach, 2 * reach, 2 * reach));
+        const float Reach = 512f / LevelMesh.MapUnitsPerMetre;
+        mesh.CustomAabb = new Aabb(new Vector3(-Reach, -Reach, -Reach), new Vector3(2 * Reach, 2 * Reach, 2 * Reach));
         return mesh;
     }
 

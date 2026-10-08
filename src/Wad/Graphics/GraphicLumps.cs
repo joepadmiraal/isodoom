@@ -15,14 +15,14 @@ namespace IsoDoom.Wad.Graphics;
 public static class GraphicLumps
 {
     // Map data lumps that follow an ExMy/MAPxx marker (doomdata.h ML_*).
-    private static readonly string[] MapLumps =
+    private static readonly string[] _mapLumps =
     [
         "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS",
         "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP",
     ];
 
     // Whole lumps known not to be patches.
-    private static readonly string[] NonGraphicLumps =
+    private static readonly string[] _nonGraphicLumps =
     [
         "PLAYPAL", "COLORMAP", "ENDOOM", "GENMIDI", "PNAMES", "TEXTURE1", "TEXTURE2",
         "DMXGUS", "DMXGUSC",
@@ -35,7 +35,7 @@ public static class GraphicLumps
     /// </summary>
     public static bool IsNonGraphicName(string name)
     {
-        if (Array.IndexOf(MapLumps, name) >= 0 || Array.IndexOf(NonGraphicLumps, name) >= 0)
+        if (Array.IndexOf(_mapLumps, name) >= 0 || Array.IndexOf(_nonGraphicLumps, name) >= 0)
             return true;
         if (name.StartsWith("DEMO", StringComparison.Ordinal) || name.StartsWith("D_", StringComparison.Ordinal)
             || name.StartsWith("DS", StringComparison.Ordinal) || name.StartsWith("DP", StringComparison.Ordinal))

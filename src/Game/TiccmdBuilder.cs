@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
@@ -100,6 +101,7 @@ public sealed class TiccmdBuilder
     public const int WeaponSlots = 8;
 
     /// <summary>g_game.c <c>turnheld</c>: tics the turning keys have been held.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (g_game.c)")]
     private int turnheld;
 
     /// <summary>The run toggle's state (flipped by <see cref="TiccmdInput.RunToggle"/>); run = held XOR toggled.</summary>
@@ -229,6 +231,7 @@ public sealed class TiccmdBuilder
     /// (p_user.c turns the fist into the chainsaw and the shotgun into the
     /// super shotgun when they are owned).
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (g_game.c)")]
     private static readonly (weapontype_t weapon, weapontype_t weapon_num)[] weapon_order_table =
     [
         (weapontype_t.wp_fist, weapontype_t.wp_fist),
@@ -310,8 +313,8 @@ public sealed class TiccmdBuilder
         double length = Math.Sqrt(x * x + y * y);
         if (!(length > 0))
             return 0;
-        const double scale = 1 << 24; // the unit vector in fixed_t × 256: well inside R_PointToAngle2's precision
-        return Tables.R_PointToAngle2(0, 0, (int)Math.Round(x / length * scale), (int)Math.Round(y / length * scale));
+        const double Scale = 1 << 24; // the unit vector in fixed_t × 256: well inside R_PointToAngle2's precision
+        return Tables.R_PointToAngle2(0, 0, (int)Math.Round(x / length * Scale), (int)Math.Round(y / length * Scale));
     }
 
     private static int ToFixed(float units) => (int)Math.Clamp(Math.Round(units * (double)Fixed.FRACUNIT), int.MinValue, int.MaxValue);

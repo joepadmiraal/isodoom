@@ -44,39 +44,39 @@ public class WipeTests
     /// <summary>A route's game, as <see cref="IntermissionTests.RouteHost"/>, with reborns (the map afresh, the route's start again).</summary>
     private sealed class RouteHost : IGameHost
     {
-        private readonly WadArchive wad;
-        private readonly VanillaRoute route;
-        private readonly StStuff st;
+        private readonly WadArchive _wad;
+        private readonly VanillaRoute _route;
+        private readonly StStuff _st;
 
         public RouteHost(VanillaRoute route, World world, WadArchive wad, DoomRandom mrandom)
         {
-            this.route = route;
+            this._route = route;
             World = world;
-            this.wad = wad;
-            st = new StStuff(new StStuff.Graphics(), mrandom);
-            st.ST_Start(world.players[world.consoleplayer]);
+            this._wad = wad;
+            _st = new StStuff(new StStuff.Graphics(), mrandom);
+            _st.ST_Start(world.players[world.consoleplayer]);
         }
 
         public World? World { get; private set; }
-        public bool HasLump(string name) => wad.W_CheckNumForName(name) >= 0;
+        public bool HasLump(string name) => _wad.W_CheckNumForName(name) >= 0;
         public bool G_InitNew(skill_t skill, string map) => throw new InvalidOperationException();
 
         public bool G_DoLoadLevel()
         {
             World!.gameaction = gameaction_t.ga_loadlevel;
-            return route.Reborn(World, wad);
+            return _route.Reborn(World, _wad);
         }
 
         public bool G_DoWorldDone(string map)
         {
-            World!.G_DoWorldDone(Level.Load(wad, map));
+            World!.G_DoWorldDone(Level.Load(_wad, map));
             return true;
         }
 
         public void G_LevelTicker(in ticcmd_t cmd, bool paused)
         {
             World!.G_Ticker(cmd);
-            st.ST_Ticker(); // the status bar's M_Random, once a tic
+            _st.ST_Ticker(); // the status bar's M_Random, once a tic
         }
 
         public void LevelCompleted()
@@ -238,11 +238,11 @@ public class WipeTests
     [Fact]
     public void TheFrameSlidesTheOldScreenOverTheNew()
     {
-        const int w = HudScreen.SCREENWIDTH, h = HudScreen.SCREENHEIGHT;
-        byte[] start = new byte[w * h], end = new byte[w * h], frame = new byte[w * h];
+        const int W = HudScreen.SCREENWIDTH, H = HudScreen.SCREENHEIGHT;
+        byte[] start = new byte[W * H], end = new byte[W * H], frame = new byte[W * H];
         for (int i = 0; i < start.Length; i++)
         {
-            start[i] = (byte)(i / w); // its row
+            start[i] = (byte)(i / W); // its row
             end[i] = 255;
         }
         var wipe = new FWipe();
@@ -253,10 +253,10 @@ public class WipeTests
             wipe.wipe_ScreenWipe(1);
         wipe.Draw(start, end, frame);
         int off = wipe.y[0];
-        for (int row = 0; row < h; row++)
+        for (int row = 0; row < H; row++)
         {
             byte want = row < off ? (byte)255 : (byte)(row - off);
-            Assert.Equal((want, want), (frame[row * w], frame[row * w + 1]));
+            Assert.Equal((want, want), (frame[row * W], frame[row * W + 1]));
         }
         while (!wipe.wipe_ScreenWipe(1))
         {

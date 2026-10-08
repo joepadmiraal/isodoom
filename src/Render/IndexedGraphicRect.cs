@@ -11,7 +11,7 @@ namespace IsoDoom.Render;
 /// </summary>
 public partial class IndexedGraphicRect : Control
 {
-    private static ImageTexture? s_checker;
+    private static ImageTexture? _checker;
 
     private readonly TextureRect _background;
     private readonly ColorRect _solid;
@@ -27,7 +27,7 @@ public partial class IndexedGraphicRect : Control
 
         _background = new TextureRect
         {
-            Texture = s_checker ??= CreateChecker(),
+            Texture = _checker ??= CreateChecker(),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.Tile,
         };

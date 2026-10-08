@@ -339,16 +339,16 @@ public class SwitchTests
         var wad = WadArchive.Open(TestWads.RequireDoom1());
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
-        const int exit = 330;
-        Assert.Equal(11, world.lines[exit].special);
-        Assert.Equal("SW1STRTN", Front(world, exit).midtexture);
+        const int Exit = 330;
+        Assert.Equal(11, world.lines[Exit].special);
+        Assert.Equal("SW1STRTN", Front(world, Exit).midtexture);
         Use(world, 2940, -4768, 180);
-        Assert.Equal("SW2STRTN", Front(world, exit).midtexture);
-        Assert.Equal(0, world.lines[exit].special);
+        Assert.Equal("SW2STRTN", Front(world, Exit).midtexture);
+        Assert.Equal(0, world.lines[Exit].special);
         Assert.Equal(gameaction_t.ga_completed, world.gameaction); // G_ExitLevel (T5.8)
         Assert.False(world.secretexit);
         Assert.Equal(sfxenum_t.sfx_swtchn, Assert.Single(SwitchSounds(world)).sfx);
         Run(world, 100);
-        Assert.Equal("SW2STRTN", Front(world, exit).midtexture);
+        Assert.Equal("SW2STRTN", Front(world, Exit).midtexture);
     }
 }

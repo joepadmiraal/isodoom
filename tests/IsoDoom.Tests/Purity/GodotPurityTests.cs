@@ -29,7 +29,7 @@ public class GodotPurityTests
     public static TheoryData<string> Libraries => ["IsoDoom.Wad", "IsoDoom.Map", "IsoDoom.Sim"];
 
     /// <summary>Non-BCL assemblies the sim may reference. Adding one is a conscious decision (SPEC §12 Q2).</summary>
-    private static readonly HashSet<string> SimAllowedReferences = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> _simAllowedReferences = new(StringComparer.Ordinal)
     {
         "IsoDoom.Map",
         "IsoDoom.Wad",
@@ -103,17 +103,17 @@ public class GodotPurityTests
         string bcl = RuntimeEnvironment.GetRuntimeDirectory();
         string[] unexpected = [.. module.AssemblyReferences
             .Select(r => r.Name)
-            .Where(name => !SimAllowedReferences.Contains(name) && !File.Exists(Path.Combine(bcl, name + ".dll")))
+            .Where(name => !_simAllowedReferences.Contains(name) && !File.Exists(Path.Combine(bcl, name + ".dll")))
             .OrderBy(name => name, StringComparer.Ordinal)];
         Assert.True(unexpected.Length == 0,
             "IsoDoom.Sim references assemblies outside the BCL and its allow-list " +
-            $"({string.Join(", ", SimAllowedReferences)}): {string.Join(", ", unexpected)}. " +
+            $"({string.Join(", ", _simAllowedReferences)}): {string.Join(", ", unexpected)}. " +
             "Add a new dependency to the allow-list in GodotPurityTests only as a conscious decision.");
 
-        string[] unexpectedDependencies = [.. DependencyClosure("IsoDoom.Sim").Where(name => !SimAllowedReferences.Contains(name))];
+        string[] unexpectedDependencies = [.. DependencyClosure("IsoDoom.Sim").Where(name => !_simAllowedReferences.Contains(name))];
         Assert.True(unexpectedDependencies.Length == 0,
             "IsoDoom.Sim has package or project dependencies outside its allow-list " +
-            $"({string.Join(", ", SimAllowedReferences)}): {string.Join(", ", unexpectedDependencies)}.");
+            $"({string.Join(", ", _simAllowedReferences)}): {string.Join(", ", unexpectedDependencies)}.");
     }
 
     /// <summary>

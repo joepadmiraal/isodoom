@@ -347,7 +347,7 @@ public partial class LevelScene : ISetupHost
             case InputEventKey { Pressed: true, Echo: false } key:
                 if ((key.Keycode != Key.None ? key.Keycode : key.PhysicalKeycode) == Key.Escape)
                 {
-                    menu.M_CancelBinding();
+                    menu.CancelBinding();
                     return true;
                 }
                 input = BindingOf(key);
@@ -366,7 +366,7 @@ public partial class LevelScene : ISetupHost
         if (input is Binding b)
         {
             BindAction(action, b);
-            menu.M_BindingDone();
+            menu.BindingDone();
             _menuButtonsHeld = true; // the input bound is no shot or use
         }
         return true;
@@ -383,7 +383,7 @@ public partial class LevelScene : ISetupHost
         _bindingWait += delta;
         if (_bindingWait >= BindingWaitSeconds)
         {
-            menu.M_CancelBinding();
+            menu.CancelBinding();
             _bindingWait = 0;
         }
     }

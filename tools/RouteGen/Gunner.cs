@@ -84,7 +84,7 @@ public sealed class Gunner
 
     private void Tic()
     {
-        World w = _g.w;
+        World w = _g.World;
         mobj_t me = _g.Mo;
         foreach (mobj_t m in w.Mobjs().Where(Monster))
         {
@@ -106,7 +106,7 @@ public sealed class Gunner
 
     private void Shoot()
     {
-        World w = _g.w;
+        World w = _g.World;
         mobj_t me = _g.Mo;
         var awake = w.Mobjs().Where(m => Monster(m) && m.health > 0 && Awake(m)).ToList();
         mobj_t? barrel = w.Mobjs().FirstOrDefault(b => b.type == mobjtype_t.MT_BARREL && b.health > 0
@@ -149,7 +149,7 @@ public sealed class Gunner
             if (Guns)
             {
                 mobj_t me = _g.Mo;
-                mobj_t? target = _attacked.Where(m => m.health > 0 && m.function != think_t.REMOVED && _g.w.P_CheckSight(me, m))
+                mobj_t? target = _attacked.Where(m => m.health > 0 && m.function != think_t.REMOVED && _g.World.P_CheckSight(me, m))
                     .OrderBy(m => Dist(m, me)).FirstOrDefault();
                 if (Firing && me.health > 0 && target != null)
                 {

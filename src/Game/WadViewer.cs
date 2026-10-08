@@ -32,11 +32,11 @@ namespace IsoDoom.Game;
 /// </summary>
 public partial class WadViewer : Control
 {
-    private static readonly string[] CategoryNames = ["Wall textures", "Flats", "Sprites", "Wall patches", "Other graphics", "Palette"];
+    private static readonly string[] _categoryNames = ["Wall textures", "Flats", "Sprites", "Wall patches", "Other graphics", "Palette"];
 
     /// <summary>Lump list columns.</summary>
     public const int LumpColumnIndex = 0, LumpColumnName = 1, LumpColumnSize = 2, LumpColumnFile = 3, LumpColumnNamespace = 4, LumpColumnKind = 5;
-    private static readonly string[] LumpColumnTitles = ["#", "Name", "Size", "File", "Namespace", "Kind"];
+    private static readonly string[] _lumpColumnTitles = ["#", "Name", "Size", "File", "Namespace", "Kind"];
     private const int GraphicsTab = 0, LumpsTab = 1;
     private const float GraphicsTabWidth = 240, LumpsTabWidth = 700;
 
@@ -331,7 +331,7 @@ public partial class WadViewer : Control
         var left = new VBoxContainer { Name = "Graphics" };
         _tabs.AddChild(left);
         _category = new OptionButton();
-        foreach (string name in CategoryNames)
+        foreach (string name in _categoryNames)
             _category.AddItem(name);
         _category.ItemSelected += _ => { _filter.Text = ""; RebuildList(); };
         left.AddChild(_category);
@@ -357,7 +357,7 @@ public partial class WadViewer : Control
         lumpFilters.AddChild(_lumpKind);
         _lumpTree = new Tree
         {
-            Columns = LumpColumnTitles.Length,
+            Columns = _lumpColumnTitles.Length,
             ColumnTitlesVisible = true,
             HideRoot = true,
             SelectMode = Tree.SelectModeEnum.Row,
@@ -365,9 +365,9 @@ public partial class WadViewer : Control
             TooltipText = "Select a graphic to show it; double-click to open it in the Graphics tab",
         };
         int[] widths = [60, 104, 64, 120, 84, 0];
-        for (int c = 0; c < LumpColumnTitles.Length; c++)
+        for (int c = 0; c < _lumpColumnTitles.Length; c++)
         {
-            _lumpTree.SetColumnTitle(c, LumpColumnTitles[c]);
+            _lumpTree.SetColumnTitle(c, _lumpColumnTitles[c]);
             _lumpTree.SetColumnExpand(c, widths[c] == 0);
             _lumpTree.SetColumnClipContent(c, true);
             if (widths[c] > 0)
@@ -613,7 +613,7 @@ public partial class WadViewer : Control
             item.SetText(LumpColumnKind, KindText(e));
             if (e.IsOverridden)
             {
-                for (int c = 0; c < LumpColumnTitles.Length; c++)
+                for (int c = 0; c < _lumpColumnTitles.Length; c++)
                     item.SetCustomColor(c, dim);
                 item.SetTooltipText(LumpColumnKind, $"Not used: overridden by {e.OverriddenBy!.Name} in {e.OverriddenBy.File.Name}");
             }

@@ -56,7 +56,7 @@ public class DoomRandomTests
     }
 
     [Fact]
-    public void M_Random_has_its_own_index_and_M_ClearRandom_resets_both()
+    public void The_M_Random_index_is_its_own_and_M_ClearRandom_resets_both()
     {
         var r = new DoomRandom();
         Assert.Equal(8, r.M_Random());

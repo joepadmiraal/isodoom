@@ -21,7 +21,7 @@ namespace IsoDoom.Tests.Sim;
 public class MapUtlTests
 {
     private const int FRACUNIT = 1 << 16;
-    private static readonly SpawnSettings Medium = new(GameMode.shareware, skill_t.sk_medium);
+    private static readonly SpawnSettings _medium = new(GameMode.shareware, skill_t.sk_medium);
 
     private static World Synthetic()
     {
@@ -31,7 +31,7 @@ public class MapUtlTests
 
     private static World Load(WadArchive wad, string map)
     {
-        var world = new World(Medium, Tweaks.Vanilla);
+        var world = new World(_medium, Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, map));
         return world;
     }
@@ -76,7 +76,7 @@ public class MapUtlTests
     // touches at the corner.
     private const int GridOrg = -64, GridBlocks = 5;
 
-    private static readonly short[] GridVertexes =
+    private static readonly short[] _gridVertexes =
     [
         0, 0, 0, 512, 512, 512, 512, 0, // v0-v3: the room
         448, 64, 448, 320,              // v4, v5: L4
@@ -85,7 +85,7 @@ public class MapUtlTests
     ];
 
     // v1, v2, flags, special, tag, right side, left side
-    private static readonly short[,] GridLinedefs =
+    private static readonly short[,] _gridLinedefs =
     {
         { 0, 1, 1, 0, 0, 0, -1 },
         { 1, 2, 1, 0, 0, 1, -1 },
@@ -116,10 +116,10 @@ public class MapUtlTests
                 offsets.Add((short)(listStart + lists.Count));
                 int left = GridOrg + bx * 128, bottom = GridOrg + by * 128;
                 lists.Add(0);
-                for (int i = 0; i < GridLinedefs.GetLength(0); i++)
+                for (int i = 0; i < _gridLinedefs.GetLength(0); i++)
                 {
-                    int v1 = GridLinedefs[i, 0], v2 = GridLinedefs[i, 1];
-                    int x1 = GridVertexes[2 * v1], y1 = GridVertexes[2 * v1 + 1], x2 = GridVertexes[2 * v2], y2 = GridVertexes[2 * v2 + 1];
+                    int v1 = _gridLinedefs[i, 0], v2 = _gridLinedefs[i, 1];
+                    int x1 = _gridVertexes[2 * v1], y1 = _gridVertexes[2 * v1 + 1], x2 = _gridVertexes[2 * v2], y2 = _gridVertexes[2 * v2 + 1];
                     if (Math.Max(x1, x2) >= left && Math.Min(x1, x2) <= left + 128 && Math.Max(y1, y2) >= bottom && Math.Min(y1, y2) <= bottom + 128)
                         lists.Add((short)i);
                 }
@@ -133,10 +133,10 @@ public class MapUtlTests
     private static World Grid()
     {
         var linedefs = new List<short>();
-        for (int i = 0; i < GridLinedefs.GetLength(0); i++)
+        for (int i = 0; i < _gridLinedefs.GetLength(0); i++)
         {
-            for (int j = 0; j < GridLinedefs.GetLength(1); j++)
-                linedefs.Add(GridLinedefs[i, j]);
+            for (int j = 0; j < _gridLinedefs.GetLength(1); j++)
+                linedefs.Add(_gridLinedefs[i, j]);
         }
         byte[] sides = new byte[30 * 10];
         for (int s = 0; s < 10; s++)
@@ -156,7 +156,7 @@ public class MapUtlTests
             .Lump("THINGS", [])
             .Lump("LINEDEFS", Shorts([.. linedefs]))
             .Lump("SIDEDEFS", sides)
-            .Lump("VERTEXES", Shorts(GridVertexes))
+            .Lump("VERTEXES", Shorts(_gridVertexes))
             .Lump("SEGS", Shorts(0, 1, 0x4000, 0, 0, 0, 1, 2, 0, 1, 0, 0, 2, 3, unchecked((short)0xC000), 2, 0, 0, 3, 0, unchecked((short)0x8000), 3, 0, 0))
             .Lump("SSECTORS", Shorts(4, 0))
             .Lump("NODES", [])

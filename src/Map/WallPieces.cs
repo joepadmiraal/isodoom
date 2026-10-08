@@ -45,7 +45,7 @@ public readonly record struct WallPiece(PolygonVertex A, PolygonVertex B, int Co
 /// </summary>
 public sealed class WallPieces
 {
-    private static readonly WallPiece[] NoPieces = [];
+    private static readonly WallPiece[] _noPieces = [];
     private readonly WallPiece[][] _pieces; // per line * 2 + side
 
     private WallPieces(WallPiece[][] pieces) => _pieces = pieces;
@@ -72,7 +72,7 @@ public sealed class WallPieces
             List<Seg>? side = segs[i];
             if (side is null)
             {
-                pieces[i] = NoPieces;
+                pieces[i] = _noPieces;
                 continue;
             }
             side.Sort((a, b) => a.Offset != b.Offset ? a.Offset.CompareTo(b.Offset) : a.Index.CompareTo(b.Index));

@@ -367,9 +367,9 @@ public partial class LevelCheck
     /// <summary>The scene camera looking along the game camera's direction at the cut centre's anchor, 1 map unit per pixel.</summary>
     private void CutView(Vector3 centre, Basis basis, Vector3 toCamera)
     {
-        const float back = 4096;
+        const float Back = 4096;
         Vector3 anchor = centre + new Vector3(0, 0, Cutaway.Anchor);
-        Ortho(basis, anchor + toCamera * back, 1, 2 * back);
+        Ortho(basis, anchor + toCamera * Back, 1, 2 * Back);
     }
 
     /// <summary>

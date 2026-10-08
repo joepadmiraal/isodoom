@@ -670,7 +670,7 @@ public sealed class FloorTriangles
     /// <summary>The distinct (welded) corners of all polygons, bucketed in 64-unit cells.</summary>
     private sealed class CornerGrid
     {
-        private readonly Dictionary<(int, int), List<PolygonVertex>> cells = [];
+        private readonly Dictionary<(int, int), List<PolygonVertex>> _cells = [];
 
         /// <summary>
         /// The corner already in the grid within <see cref="WeldEpsilon"/> of
@@ -687,7 +687,7 @@ public sealed class FloorTriangles
             {
                 for (int dy = -1; dy <= 1; dy++)
                 {
-                    if (!cells.TryGetValue((cx + dx, cy + dy), out List<PolygonVertex>? near))
+                    if (!_cells.TryGetValue((cx + dx, cy + dy), out List<PolygonVertex>? near))
                         continue;
                     foreach (PolygonVertex w in near)
                     {
@@ -696,8 +696,8 @@ public sealed class FloorTriangles
                     }
                 }
             }
-            if (!cells.TryGetValue((cx, cy), out List<PolygonVertex>? list))
-                cells.Add((cx, cy), list = []);
+            if (!_cells.TryGetValue((cx, cy), out List<PolygonVertex>? list))
+                _cells.Add((cx, cy), list = []);
             list.Add(v);
             return v;
         }
@@ -713,7 +713,7 @@ public sealed class FloorTriangles
             {
                 for (int cy = y0; cy <= y1; cy++)
                 {
-                    if (cells.TryGetValue((cx, cy), out List<PolygonVertex>? list))
+                    if (_cells.TryGetValue((cx, cy), out List<PolygonVertex>? list))
                     {
                         foreach (PolygonVertex v in list)
                             visit(v);

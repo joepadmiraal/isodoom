@@ -23,10 +23,10 @@ public class TiccmdBuilderTests
     /// <summary>The iso camera's screen up (IsoCamera.Yaw 45°): map north-west.</summary>
     private const uint IsoUp = Tables.ANG90 + Tables.ANG45;
 
-    private static readonly Tweaks TwinStick = Tweaks.TopDown;
+    private static readonly Tweaks _twinStick = Tweaks.TopDown;
 
     private static ticcmd_t Build(TiccmdInput input, Tweaks? tweaks = null, uint screenUp = IsoUp, uint playerAngle = Tables.ANG90, TiccmdBuilder? builder = null) =>
-        (builder ?? new TiccmdBuilder()).G_BuildTiccmd(input, tweaks ?? TwinStick, screenUp, 0, 0, playerAngle);
+        (builder ?? new TiccmdBuilder()).G_BuildTiccmd(input, tweaks ?? _twinStick, screenUp, 0, 0, playerAngle);
 
     private static TiccmdInput Keys(bool w = false, bool a = false, bool s = false, bool d = false, bool run = false) => new()
     {
@@ -141,7 +141,7 @@ public class TiccmdBuilderTests
     public void CursorAimsFromThePlayer(int dx, int dy, int expected)
     {
         var b = new TiccmdBuilder();
-        ticcmd_t cmd = b.G_BuildTiccmd(new TiccmdInput { CursorMoved = true, Cursor = (64 + dx, -32 + dy) }, TwinStick, IsoUp, 64 * FRACUNIT, -32 * FRACUNIT, Tables.ANG90);
+        ticcmd_t cmd = b.G_BuildTiccmd(new TiccmdInput { CursorMoved = true, Cursor = (64 + dx, -32 + dy) }, _twinStick, IsoUp, 64 * FRACUNIT, -32 * FRACUNIT, Tables.ANG90);
         Assert.InRange((ushort)cmd.angleturn, expected - 3, expected + 3); // R_PointToAngle2's precision
         Assert.Equal(AimSource.Cursor, b.Aim);
     }
@@ -155,7 +155,7 @@ public class TiccmdBuilderTests
         Assert.Equal(Ticcmds.AbsoluteAngle(facing), Build(new TiccmdInput { Cursor = (100, 0) }, playerAngle: facing, builder: b).angleturn);
         // The mouse moves: aim at the cursor, and keep tracking it on later tics as the player moves.
         Assert.Equal(0, Build(new TiccmdInput { CursorMoved = true, Cursor = (100, 0) }, playerAngle: facing, builder: b).angleturn);
-        Assert.Equal(0x4000, b.G_BuildTiccmd(new TiccmdInput { Cursor = (100, 0) }, TwinStick, IsoUp, 100 * FRACUNIT, -50 * FRACUNIT, 0).angleturn);
+        Assert.Equal(0x4000, b.G_BuildTiccmd(new TiccmdInput { Cursor = (100, 0) }, _twinStick, IsoUp, 100 * FRACUNIT, -50 * FRACUNIT, 0).angleturn);
         // Off the level, or on the player: the player's angle.
         Assert.Equal(Ticcmds.AbsoluteAngle(facing), Build(new TiccmdInput { Cursor = null }, playerAngle: facing, builder: b).angleturn);
         Assert.Equal(Ticcmds.AbsoluteAngle(facing), Build(new TiccmdInput { Cursor = (0.5f, 0.5f) }, playerAngle: facing, builder: b).angleturn);
@@ -208,7 +208,7 @@ public class TiccmdBuilderTests
         p.weaponowned[(int)weapontype_t.wp_fist] = p.weaponowned[(int)weapontype_t.wp_pistol] = true;
         weapontype_t Step(int direction, GameMode mode = GameMode.shareware, int slot = 0)
         {
-            byte b = new TiccmdBuilder().G_BuildTiccmd(new TiccmdInput { WeaponStep = direction, Weapon = slot }, TwinStick, IsoUp, 0, 0, 0, p, mode).buttons;
+            byte b = new TiccmdBuilder().G_BuildTiccmd(new TiccmdInput { WeaponStep = direction, Weapon = slot }, _twinStick, IsoUp, 0, 0, 0, p, mode).buttons;
             Assert.Equal(buttoncode_t.BT_CHANGE, b & buttoncode_t.BT_CHANGE);
             return (weapontype_t)((b & buttoncode_t.BT_WEAPONMASK) >> buttoncode_t.BT_WEAPONSHIFT);
         }
@@ -239,7 +239,7 @@ public class TiccmdBuilderTests
         Assert.Equal(weapontype_t.wp_missile, Step(1));
         Assert.Equal(weapontype_t.wp_shotgun, Step(1, GameMode.commercial)); // the super shotgun's number
         // without a player the step is ignored
-        Assert.Equal(0, new TiccmdBuilder().G_BuildTiccmd(new TiccmdInput { WeaponStep = 1 }, TwinStick, IsoUp, 0, 0, 0).buttons);
+        Assert.Equal(0, new TiccmdBuilder().G_BuildTiccmd(new TiccmdInput { WeaponStep = 1 }, _twinStick, IsoUp, 0, 0, 0).buttons);
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public class TiccmdBuilderTests
     [InlineData(false)]
     public void CommandsDriveThePlayerTheWayTheScreenPoints(bool aimOnly)
     {
-        Tweaks tweaks = aimOnly ? Tweaks.Vanilla with { AbsoluteAiming = true } : TwinStick;
+        Tweaks tweaks = aimOnly ? Tweaks.Vanilla with { AbsoluteAiming = true } : _twinStick;
         World w = TestMap.Strip(-1024, -1024, 1024, new TestMap.Room(2048, 0, 128)).Player(0, 0, 0).Load(tweaks: tweaks);
         mobj_t mo = w.players[0].mo!;
         var b = new TiccmdBuilder();

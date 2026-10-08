@@ -152,33 +152,37 @@ csharp_style_prefer_primary_constructors = false:suggestion
 
 #### Naming (IDE1006) ####
 # Godot: PascalCase types, methods, properties, events, constants and
-# non-private fields; _camelCase private fields; camelCase locals and
-# parameters; I-prefixed interfaces. At suggestion until Q4 renames the
-# non-ported code; ported vanilla names (mobj_t, P_Random, mobjinfo,
-# mobj_t.momx) stay as they are.
+# non-private fields; _camelCase private fields (static ones too: Godot's
+# guide has no s_ prefix); camelCase locals and parameters; I-prefixed
+# interfaces. .NET's conventions add PascalCase local constants and local
+# functions. Enforced (warning) everywhere but in ported code, which keeps
+# vanilla names (mobj_t, P_Random, mobjinfo, mobj_t.momx): see the ported
+# files' section below (Q4, SPEC §12).
+dotnet_diagnostic.IDE1006.severity = warning
+
 dotnet_naming_rule.interfaces_begin_with_i.symbols = interfaces
 dotnet_naming_rule.interfaces_begin_with_i.style = i_pascal_case
-dotnet_naming_rule.interfaces_begin_with_i.severity = suggestion
+dotnet_naming_rule.interfaces_begin_with_i.severity = warning
 
 dotnet_naming_rule.types_are_pascal_case.symbols = types
 dotnet_naming_rule.types_are_pascal_case.style = pascal_case
-dotnet_naming_rule.types_are_pascal_case.severity = suggestion
+dotnet_naming_rule.types_are_pascal_case.severity = warning
 
 dotnet_naming_rule.constants_are_pascal_case.symbols = constants
 dotnet_naming_rule.constants_are_pascal_case.style = pascal_case
-dotnet_naming_rule.constants_are_pascal_case.severity = suggestion
+dotnet_naming_rule.constants_are_pascal_case.severity = warning
 
 dotnet_naming_rule.private_fields_are_underscore_camel_case.symbols = private_fields
 dotnet_naming_rule.private_fields_are_underscore_camel_case.style = underscore_camel_case
-dotnet_naming_rule.private_fields_are_underscore_camel_case.severity = suggestion
+dotnet_naming_rule.private_fields_are_underscore_camel_case.severity = warning
 
 dotnet_naming_rule.members_are_pascal_case.symbols = members
 dotnet_naming_rule.members_are_pascal_case.style = pascal_case
-dotnet_naming_rule.members_are_pascal_case.severity = suggestion
+dotnet_naming_rule.members_are_pascal_case.severity = warning
 
 dotnet_naming_rule.locals_are_camel_case.symbols = locals_and_parameters
 dotnet_naming_rule.locals_are_camel_case.style = camel_case
-dotnet_naming_rule.locals_are_camel_case.severity = suggestion
+dotnet_naming_rule.locals_are_camel_case.severity = warning
 
 dotnet_naming_symbols.interfaces.applicable_kinds = interface
 dotnet_naming_symbols.interfaces.applicable_accessibilities = *
@@ -221,3 +225,23 @@ dotnet_diagnostic.IDE0130.severity = none
 [tests/IsoDoom.Tests/Purity/ScannerFixtures.cs]
 dotnet_analyzer_diagnostic.category-Style.severity = none
 dotnet_diagnostic.IDE0130.severity = none
+
+# Ported code (Q4, SPEC §12): files that port vanilla or Chocolate Doom code
+# under its own names keep them, so diffs against linuxdoom and Chocolate
+# Doom stay easy; the naming rules skip them whole, our additions in them
+# included (they follow the vanilla style around them). All of Sim is ported
+# but its files that hold only our own code, which the next section enforces
+# again. A file that ports logic under .NET names (Level, Blockmap, MusSong,
+# LevelScene, ...) is not listed; a non-ported file that keeps a few vanilla
+# names marks each with [SuppressMessage("Style", "IDE1006")] and its source.
+[src/Sim/**.cs]
+dotnet_diagnostic.IDE1006.severity = none
+
+[src/Sim/{Tweaks,SimInfo,World.AimAssist,World.Checksum,World.Unported}.cs]
+dotnet_diagnostic.IDE1006.severity = warning
+
+[src/Audio/{MidiFile,Mus2Mid,Opl3,OplMusic,SSound}.cs]
+dotnet_diagnostic.IDE1006.severity = none
+
+[src/Game/{FFinale,FFinale.Texts,FWipe,GameFlow,HuStuff,MMenu,StStuff,WiStuff}.cs]
+dotnet_diagnostic.IDE1006.severity = none

@@ -11,12 +11,12 @@ namespace IsoDoom.Tests.Graphics;
 /// <summary>T1.6 patch detection among global lumps, on synthetic data.</summary>
 public class GraphicLumpsTests
 {
-    private static readonly byte[] GoodPatch = BuildPatch(2, 3, 0, 0, [(0, [1, 2])], [(1, [3, 4])]);
+    private static readonly byte[] _goodPatch = BuildPatch(2, 3, 0, 0, [(0, [1, 2])], [(1, [3, 4])]);
 
     [Fact]
     public void IsPatchAcceptsAWellFormedPatch()
     {
-        Assert.True(Patch.IsPatch(GoodPatch));
+        Assert.True(Patch.IsPatch(_goodPatch));
         Assert.True(Patch.IsPatch(BuildPatch(1, 1, 0, 0, [[]]))); // an empty column
     }
 
@@ -27,14 +27,14 @@ public class GraphicLumpsTests
         Assert.False(Patch.IsPatch(new byte[768])); // all zeros: width 0 (e.g. a palette)
         Assert.False(Patch.IsPatch(BuildPatch(1, 2, 0, 0, [(2, [9])]))); // post starts below the height
 
-        byte[] intoTable = (byte[])GoodPatch.Clone();
+        byte[] intoTable = (byte[])_goodPatch.Clone();
         intoTable[8] = 9; // column 0 offset points into the offset table
         Assert.False(Patch.IsPatch(intoTable));
 
-        byte[] unterminated = GoodPatch[..^1]; // drop column 1's 0xFF
+        byte[] unterminated = _goodPatch[..^1]; // drop column 1's 0xFF
         Assert.False(Patch.IsPatch(unterminated));
 
-        byte[] pastEnd = (byte[])GoodPatch.Clone();
+        byte[] pastEnd = (byte[])_goodPatch.Clone();
         pastEnd[8 + 4] = 200; // column 1 offset past the end
         Assert.False(Patch.IsPatch(pastEnd));
     }
@@ -61,10 +61,10 @@ public class GraphicLumpsTests
         byte[] other = BuildPatch(1, 1, 0, 0, [(0, [7])]);
         var iwad = new WadBuilder(WadType.Iwad)
             .Lump("PLAYPAL", new byte[768])
-            .Lump("M_FOO", GoodPatch)
-            .Lump("DSBOOM", GoodPatch)     // a sound name, even if it parses as a patch
-            .Markers("S_START").Lump("TROOA1", GoodPatch).Markers("S_END")
-            .Lump("M_BAR", GoodPatch)
+            .Lump("M_FOO", _goodPatch)
+            .Lump("DSBOOM", _goodPatch)     // a sound name, even if it parses as a patch
+            .Markers("S_START").Lump("TROOA1", _goodPatch).Markers("S_END")
+            .Lump("M_BAR", _goodPatch)
             .ToWadFile("iwad.wad");
         var pwad = new WadBuilder()
             .Lump("M_FOO", other)

@@ -733,13 +733,13 @@ public partial class LevelCheck
     /// </summary>
     private async Task<int> CompareSprite(LevelMesh m, ThingSprites things, SpriteAtlas atlas, int i, Basis basis, string what)
     {
-        const float back = 1024;
+        const float Back = 1024;
         ThingSprites.Entry e = things.Entries[i];
         ThingSprites.Shown shown = things.ShownFrames[i];
         IndexedImage patch = atlas.Images[shown.Slot];
         things.Isolate(i);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        Ortho(basis, e.MapPosition + toCamera * back, 1, 2 * back);
+        Ortho(basis, e.MapPosition + toCamera * Back, 1, 2 * Back);
         Vector2 foot = _scene.Camera.UnprojectPosition(LevelMesh.ToGodot((int)(e.MapPosition.X * 65536), (int)(e.MapPosition.Y * 65536), e.MapPosition.Z));
         int fx = (int)MathF.Round(foot.X), fy = (int)MathF.Round(foot.Y);
         if (MathF.Abs(foot.X - fx) > 0.01f || MathF.Abs(foot.Y - fy) > 0.01f)
@@ -753,7 +753,7 @@ public partial class LevelCheck
 
         int colormap = m.ColormapOverride >= 0 ? m.ColormapOverride
             : e.FullBright ? 0
-            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, back, sprite: true);
+            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, Back, sprite: true);
         Vector2I size = ViewSize();
         int left = fx - patch.LeftOffset, top = fy - patch.TopOffset;
         // T3.6: the outline (in the sprite light) on transparent texels next to an opaque one, one texel around the rectangle too.
@@ -866,12 +866,12 @@ public partial class LevelCheck
 
     private async Task<int> CompareFuzz(LevelMesh m, ThingSprites things, SpriteAtlas atlas, int i, int j, Basis basis, string what)
     {
-        const float back = 1024;
+        const float Back = 1024;
         ThingSprites.Entry e = things.Entries[i];
         ThingSprites.Shown shown = things.ShownFrames[i];
         IndexedImage patch = atlas.Images[shown.Slot];
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        Ortho(basis, e.MapPosition + toCamera * back, 1, 2 * back);
+        Ortho(basis, e.MapPosition + toCamera * Back, 1, 2 * Back);
         things.IsolateSet([j]);
         byte[]? before = await Capture($"{what}: thing {j} alone");
         things.IsolateSet([i, j]);
@@ -886,7 +886,7 @@ public partial class LevelCheck
         int outline = m.Sprites.Outline, grow = e.Own && outline >= 0 ? 1 : 0;
         int ownMap = m.ColormapOverride >= 0 ? m.ColormapOverride
             : e.FullBright ? 0
-            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, back, sprite: true);
+            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, Back, sprite: true);
         byte[] fuzzMap = Colormap.GetMap(Fuzz.FuzzColormap).ToArray();
         bool Opaque(int col, int row) => col >= 0 && col < patch.Width && row >= 0 && row < patch.Height && patch.IsOpaque(shown.Flip ? patch.Width - 1 - col : col, row);
         (int R, int G, int B) At(byte[] img, int x, int y)
@@ -1007,10 +1007,10 @@ public partial class LevelCheck
             Fail($"{map}: no thing on open floor with rows below its origin to look at from the game camera");
             return;
         }
-        const float back = 4096;
+        const float Back = 4096;
         ThingSprites.Entry t = things.Entries[chosen];
         things.Isolate(chosen);
-        Ortho(basis, t.MapPosition + toCamera * back, 1, 2 * back);
+        Ortho(basis, t.MapPosition + toCamera * Back, 1, 2 * Back);
         string what = $"{map}: thing {chosen} ({SpriteName(t)}) over the floor from the game camera";
         byte[]? withLevel = await Capture(what);
         foreach (MeshInstance3D? chunk in _scene.Chunks)
@@ -1115,8 +1115,8 @@ public partial class LevelCheck
         SpriteSettings settings = m.Sprites;
         things.SetEntry(thing, moved);
         things.Isolate(thing);
-        const float back = 4096;
-        Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
+        const float Back = 4096;
+        Ortho(basis, moved.MapPosition + toCamera * Back, 1, 2 * Back);
         string what = $"{map}: thing {thing} ({SpriteName(original)}) at ({where.X:F0}, {where.Y:F0}), {along:F0} units in front of a wall, full tilt";
         // Without the wall pull (T3.5a), which would move both quads nearer: the tilt depth alone.
         m.SetSprites(settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = 0 });
@@ -1310,8 +1310,8 @@ public partial class LevelCheck
                     ThingSprites.Entry moved = original with { MapPosition = new Vector3(at.X, at.Y, wall.Sector.FloorHeight / 65536f), Sector = wall.Sector.Index };
                     things.SetEntry(thing, moved);
                     things.Isolate(thing);
-                    const float back = 4096;
-                    Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
+                    const float Back = 4096;
+                    Ortho(basis, moved.MapPosition + toCamera * Back, 1, 2 * Back);
                     string what = $"{map}: thing {thing} ({SpriteName(original)}, {patch.TopOffset} rows) at ({at.X:F0}, {at.Y:F0}), {label} (line {wall.Line.Index}, {height:F0} high), full tilt";
                     m.SetSprites(With(SpriteHidden.Depth));
                     byte[]? depth = await Capture(what);
@@ -1406,7 +1406,7 @@ public partial class LevelCheck
         Vector3 screenRight = Cutaway.ToMapAxes(basis.X);
         Vector2 right = new Vector2(screenRight.X, screenRight.Y).Normalized();
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
-        const float pull = SpriteSettings.DefaultWallPull;
+        const float Pull = SpriteSettings.DefaultWallPull;
 
         // The widest thing standing on its floor, with a radius over the pull (+ 4) and at most 140 rows above its origin.
         int thing = -1;
@@ -1415,7 +1415,7 @@ public partial class LevelCheck
         {
             ThingSprites.Entry e = things.Entries[i];
             ThingSprites.Shown s = things.ShownFrames[i];
-            if (s.Slot < 0 || e.Radius < pull + 4 || e.MapPosition.Z != m.Level.Sectors[e.Sector].FloorHeight / 65536f)
+            if (s.Slot < 0 || e.Radius < Pull + 4 || e.MapPosition.Z != m.Level.Sectors[e.Sector].FloorHeight / 65536f)
                 continue;
             IndexedImage image = atlas.Images[s.Slot];
             float span = Math.Max(image.LeftOffset, image.Width - image.LeftOffset);
@@ -1427,7 +1427,7 @@ public partial class LevelCheck
         }
         if (thing < 0)
         {
-            Fail($"{map}: no thing on a floor with a radius over {pull + 4} for the wall pull view");
+            Fail($"{map}: no thing on a floor with a radius over {Pull + 4} for the wall pull view");
             return;
         }
         ThingSprites.Entry original = things.Entries[thing];
@@ -1439,7 +1439,7 @@ public partial class LevelCheck
         // The columns towards the wall reach `reach` (along the billboard) × |right · normal| behind the foot;
         // the pull moves the billboard pull × facing nearer: 2 units short of that.
         float Reach(Vector2 normal) => (right.Dot(normal) < 0 ? rightReach : leftReach) * MathF.Abs(right.Dot(normal));
-        if (FacingWall(m, ground, right, halfSpan, normal => Reach(normal) - pull * normal.Dot(ground) + 2) is not { } wall)
+        if (FacingWall(m, ground, right, halfSpan, normal => Reach(normal) - Pull * normal.Dot(ground) + 2) is not { } wall)
         {
             Fail($"{map}: no one-sided wall facing the game camera with open floor in front for the wall pull view");
             return;
@@ -1454,22 +1454,22 @@ public partial class LevelCheck
         SpriteSettings Pulled(float units) => settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = units };
         float forward = (right.Dot(wall.Normal) > 0 ? rightReach : leftReach) * MathF.Abs(right.Dot(wall.Normal));
         // Behind: the columns towards the camera end 2 units behind the wall after the pull.
-        Vector2 behindSpot = wall.Spot - wall.Normal * (wall.Distance + forward + pull * wall.Facing + 2);
+        Vector2 behindSpot = wall.Spot - wall.Normal * (wall.Distance + forward + Pull * wall.Facing + 2);
         // Other settings and radii: whether each must give the same pixels as the default pull (else some must differ).
         var views = new (string Label, Vector2 At, bool Behind, (string Name, SpriteSettings Sprites, float Radius, bool Same)[] Others)[]
         {
-            ("against a wall behind it", wall.Spot, false, new[] { ("no pull", Pulled(0), original.Radius, false), ("radius 0", Pulled(pull), 0f, false) }),
-            ("behind a wall", behindSpot, true, new[] { ("radius 64", Pulled(pull), 64f, true), ("a 64-unit pull and radius", Pulled(64), 64f, false) }),
+            ("against a wall behind it", wall.Spot, false, new[] { ("no pull", Pulled(0), original.Radius, false), ("radius 0", Pulled(Pull), 0f, false) }),
+            ("behind a wall", behindSpot, true, new[] { ("radius 64", Pulled(Pull), 64f, true), ("a 64-unit pull and radius", Pulled(64), 64f, false) }),
         };
         foreach ((string label, Vector2 at, bool behind, (string Name, SpriteSettings Sprites, float Radius, bool Same)[]? others) in views)
         {
             ThingSprites.Entry moved = original with { MapPosition = new Vector3(at.X, at.Y, wall.Sector.FloorHeight / 65536f), Sector = wall.Sector.Index };
             things.SetEntry(thing, moved);
             things.Isolate(thing);
-            const float back = 4096;
-            Ortho(basis, moved.MapPosition + toCamera * back, 1, 2 * back);
+            const float Back = 4096;
+            Ortho(basis, moved.MapPosition + toCamera * Back, 1, 2 * Back);
             string what = $"{map}: thing {thing} ({SpriteName(original)}, radius {original.Radius:F0}) at ({at.X:F0}, {at.Y:F0}), {label} (line {wall.Line.Index}), full tilt";
-            m.SetSprites(Pulled(pull));
+            m.SetSprites(Pulled(Pull));
             byte[]? pulled = await Capture(what);
             var otherFrames = new List<byte[]?>();
             foreach ((string name, SpriteSettings sprites, float radius, bool _) in others)
@@ -1479,7 +1479,7 @@ public partial class LevelCheck
                 otherFrames.Add(await Capture($"{what}, {name}"));
             }
             things.SetEntry(thing, moved);
-            m.SetSprites(Pulled(pull));
+            m.SetSprites(Pulled(Pull));
             things.Visible = false;
             byte[]? level = await Capture($"{what}, no things");
             things.Visible = true;
@@ -1546,12 +1546,12 @@ public partial class LevelCheck
                 if (others[k].Same && badOthers[k] > 0)
                     Fail($"{what}: with {others[k].Name}, {badOthers[k]} of {drawn} pixels {(behind ? "covered (the pull is not capped)" : "hidden")}");
                 else if (!others[k].Same && badOthers[k] == 0)
-                    Fail($"{what}: with {others[k].Name} too every pixel is as with the {pull:F0}-unit pull (the view does not test it)");
+                    Fail($"{what}: with {others[k].Name} too every pixel is as with the {Pull:F0}-unit pull (the view does not test it)");
             }
             string counts = string.Join(", ", others.Select((o, k) => $"{badOthers[k]} {(behind ? "covered" : "hidden")} with {o.Name}"));
             GD.Print(behind
-                ? $"Level check: {what}: with a {pull:F0}-unit pull the wall in front still hides it on all {drawn} pixels it overlaps ({counts})"
-                : $"Level check: {what}: all {drawn} sprite pixels drawn with a {pull:F0}-unit pull ({counts})");
+                ? $"Level check: {what}: with a {Pull:F0}-unit pull the wall in front still hides it on all {drawn} pixels it overlaps ({counts})"
+                : $"Level check: {what}: all {drawn} sprite pixels drawn with a {Pull:F0}-unit pull ({counts})");
         }
         things.SetEntry(thing, original);
     }

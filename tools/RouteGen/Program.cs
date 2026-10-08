@@ -10,7 +10,7 @@ namespace IsoDoom.Tools.RouteGen;
 
 /// <summary>
 /// <c>dotnet run --project tools/RouteGen -- NAME [OUT.route]</c>: plays the
-/// steering script NAME (<see cref="Scripts"/>) in the sim and writes its
+/// steering script NAME (<see cref="_scripts"/>) in the sim and writes its
 /// ticcmds as a route (default <c>tests/IsoDoom.Tests/Sim/Routes/NAME.route</c>),
 /// after replaying them in a fresh world to check that the planning changed
 /// nothing; then run <c>tools/VanillaRef/routes.sh</c> on it. The steps are
@@ -47,7 +47,7 @@ public static class Program
         IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false);
 
     /// <summary>The steering scripts by route name.</summary>
-    private static readonly SortedDictionary<string, Script> Scripts = new(StringComparer.Ordinal)
+    private static readonly SortedDictionary<string, Script> _scripts = new(StringComparer.Ordinal)
     {
         ["e1m1-exit"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 (T5.5): from the start to the exit switch, through every
@@ -63,65 +63,65 @@ public static class Program
 iwad doom1
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             // Door 4 (lines 151/152, x 1536..1552, y -2560..-2432), from the west.
             g.GoTo(1500, -2496);
-            Log("at door 4");
+            log("at door 4");
             g.Door(4, 1544, -2496);
             // Into the nukage room; across line 195 (2752,-3048)->(3048,-2880): the lift (sector 70) lowers.
             g.GoTo(1600, -2496);
-            Log("through door 4");
+            log("through door 4");
             g.GoTo(2900, -2900, 12);
-            Log("near line 195 " + g.Heights(70));
+            log("near line 195 " + g.Heights(70));
             g.GoTo(2900, -3100, 12);
-            Log("across line 195 " + g.Heights(70));
+            log("across line 195 " + g.Heights(70));
             // Door 68 (lines 247/248, x 2912..2944, y -3904..-3776): from the east side (front 56 of line 247).
             g.GoTo(2980, -3840, 6);
-            Log("at door 68 " + g.Heights(70, 68));
+            log("at door 68 " + g.Heights(70, 68));
             g.Door(68, 2944, -3840);
             g.GoTo(2890, -3840);
-            Log("through door 68");
+            log("through door 68");
             g.GoTo(3008, -3990);
-            Log("at door 76 " + g.Heights(76));
+            log("at door 76 " + g.Heights(76));
             g.Door(76, 3008, -4024);
             g.GoTo(3008, -4100);
-            Log("through door 76");
+            log("through door 76");
             g.GoTo(3008, -4250);
-            Log("across line 308 " + g.Heights(59));
+            log("across line 308 " + g.Heights(59));
             // Back north to the lift: door 76 from the south, door 68 from the west.
             g.GoTo(3008, -4060, 6);
-            Log("at door 76 again " + g.Heights(76));
+            log("at door 76 again " + g.Heights(76));
             g.Door(76, 3008, -4024);
             g.GoTo(3008, -3960);
             g.GoTo(2980, -2870, 12);
-            Log("north of line 195 again " + g.Heights(70, 59));
+            log("north of line 195 again " + g.Heights(70, 59));
             g.WaitIdle(70);
-            Log("lift idle " + g.Heights(70, 59));
+            log("lift idle " + g.Heights(70, 59));
             g.Assume[70] = -48;
             g.GoTo(3552, -3872, 12, 50);
             g.Assume.Clear();
-            Log("on the lift " + g.Heights(70));
+            log("on the lift " + g.Heights(70));
             g.WaitIdle(70);
-            Log("lift up " + g.Heights(70));
+            log("lift up " + g.Heights(70));
             g.GoTo(3650, -3700, 12);
-            Log("on the ledge");
+            log("on the ledge");
             g.GoTo(3150, -3300, 12);
-            Log("in the nukage");
+            log("in the nukage");
             g.GoTo(3008, -3990, 6);
-            Log("at door 76 (3) " + g.Heights(76));
+            log("at door 76 (3) " + g.Heights(76));
             g.Door(76, 3008, -4024);
             g.GoTo(3008, -4100);
             g.GoTo(3008, -4600, 6);
-            Log("at door 81 " + g.Heights(59, 81));
+            log("at door 81 " + g.Heights(59, 81));
             g.Door(81, 3008, -4640);
             g.GoTo(3008, -4700);
             g.GoTo(2960, -4768);
-            Log("at the exit switch");
+            log("at the exit switch");
             g.Face(2900, -4768);
-            Log("before press");
+            log("before press");
             g.Tic(0, 0, 0, 2); // the last tic: vanilla's G_ExitLevel ends the level (and the dump) here
-            Log("textures " + g.w.sides[g.w.lines[330].sidenum[0]].midtexture + " " + string.Join(",", g.w.unported));
+            log("textures " + g.World.sides[g.World.lines[330].sidenum[0]].midtexture + " " + string.Join(",", g.World.Unported));
         }),
         ["e1m2-exit"] = new(Doom1, "E1M2", """
 # DOOM1.WAD E1M2 (T5.9): from the start to the exit switch. East for the
@@ -134,20 +134,20 @@ iwad doom1
 map E1M2
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.GoToDoors(1136, 352, 8, 50);
-            Log("red key " + string.Join(",", g.w.players[0].cards));
+            log("red key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-1536, 2070, 8, 50);
-            Log("at line 777 " + g.Heights(124, 129));
+            log("at line 777 " + g.Heights(124, 129));
             g.Use(-1536, 2112);
             g.WaitIdle(124);
-            Log("doors open " + g.Heights(124, 129));
+            log("doors open " + g.Heights(124, 129));
             g.GoToDoors(-440, 2336, 8, 50);
-            Log("at the exit lift " + g.Heights(49));
+            log("at the exit lift " + g.Heights(49));
             g.GoTo(-352, 2336);
-            g.WaitUntil(() => g.w.sectors[49].floorheight == -232 * (1 << 16));
-            Log("lift down " + g.Heights(49));
+            g.WaitUntil(() => g.World.sectors[49].floorheight == -232 * (1 << 16));
+            log("lift down " + g.Heights(49));
             g.Assume[49] = -232;
             g.GoTo(-280, 2336);
             g.Assume.Clear();
@@ -166,22 +166,22 @@ iwad doom1
 map E1M4
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
-            bool Open(int sec) => g.w.sectors[sec].ceilingheight - g.w.sectors[sec].floorheight >= 64 * (1 << 16) && g.w.sectors[sec].specialdata is not IsoDoom.Sim.vldoor_t { direction: -1 };
+            bool Open(int sec) => g.World.sectors[sec].ceilingheight - g.World.sectors[sec].floorheight >= 64 * (1 << 16) && g.World.sectors[sec].specialdata is not IsoDoom.Sim.vldoor_t { direction: -1 };
             g.GoToDoors(32, 390, 8, 50);
-            Log("in sector 104 " + g.Heights(106));
+            log("in sector 104 " + g.Heights(106));
             g.WaitUntil(() => Open(106));
             g.GoTo(152, 792, 8, 50);
-            Log("blue key " + string.Join(",", g.w.players[0].cards) + " " + g.Heights(106));
+            log("blue key " + string.Join(",", g.World.players[0].cards) + " " + g.Heights(106));
             g.GoToDoors(-1248, 1280, 8, 50);
-            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            log("yellow key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-1088, 1500, 8, 50);
-            Log("at line 592 " + g.Heights(52));
+            log("at line 592 " + g.Heights(52));
             g.Use(-1088, 1560);
             g.WaitIdle(52);
-            Log("sector 52 raised " + g.Heights(52));
+            log("sector 52 raised " + g.Heights(52));
             g.GoToDoors(-1560, 1888, 8, 50);
             g.Exit(-1620, 1888);
         }),
@@ -201,38 +201,38 @@ iwad doom1
 map E1M5
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
             g.ShutDoors.UnionWith([52, 58]); // open from the other side only (58 is blue from this one)
             g.Avoid.UnionWith([55, 56]); // the teleporter (lines 787-796) in room 54
             g.GoToDoors(888, 300, 8, 50);
-            Log("across line 271 " + g.Heights(91));
+            log("across line 271 " + g.Heights(91));
             g.WaitIdle(91);
-            Log("sector 91 raised " + g.Heights(91));
+            log("sector 91 raised " + g.Heights(91));
             g.GoToDoors(688, 800, 8, 50);
-            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            log("yellow key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-1130, 832, 8, 50);
-            Log("on sector 21 " + g.Heights(20, 35, 82));
+            log("on sector 21 " + g.Heights(20, 35, 82));
             g.Use(-1060, 832);
             g.WaitIdle(82);
-            Log("door 82 open " + g.Heights(20, 35, 82));
+            log("door 82 open " + g.Heights(20, 35, 82));
             g.GoToDoors(-980, 730, 8, 50);
-            Log("south of line 478 " + g.Heights(12));
+            log("south of line 478 " + g.Heights(12));
             g.Assume[12] = -104;
             g.GoTo(-980, 832, 8, 50);
-            Log("across line 478 " + g.Heights(12));
+            log("across line 478 " + g.Heights(12));
             g.GoTo(-800, 832);
             g.Assume.Clear();
-            Log("on lift 12 " + g.Heights(12));
+            log("on lift 12 " + g.Heights(12));
             g.WaitIdle(12);
-            Log("lift 12 up " + g.Heights(12));
+            log("lift 12 up " + g.Heights(12));
             g.GoToDoors(192, 1040, 8, 50);
-            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            log("blue key " + string.Join(",", g.World.players[0].cards));
             g.GoTo(200, 950, 8, 50);
             g.Use(200, 890);
             g.WaitIdle(141);
-            Log("door 141 open " + g.Heights(141));
+            log("door 141 open " + g.Heights(141));
             g.GoToDoors(-288, 2460, 8, 50);
             g.Exit(-288, 2520);
         }),
@@ -251,34 +251,34 @@ iwad doom1
 map E1M6
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
             g.GoToDoors(1680, -1344, 8, 50);
-            Log("red key " + string.Join(",", g.w.players[0].cards));
-            g.WaitUntil(() => g.w.sectors.Where(s => s.tag == 10).All(s => s.specialdata == null));
-            Log("tag 10 doors open " + g.Heights(195, 199, 201, 203, 241));
-            g.WaitUntil(() => g.w.sectors[187].specialdata == null && g.w.sectors[187].ceilingheight > g.w.sectors[187].floorheight);
-            Log("door 187 open " + g.Heights(187));
+            log("red key " + string.Join(",", g.World.players[0].cards));
+            g.WaitUntil(() => g.World.sectors.Where(s => s.tag == 10).All(s => s.specialdata == null));
+            log("tag 10 doors open " + g.Heights(195, 199, 201, 203, 241));
+            g.WaitUntil(() => g.World.sectors[187].specialdata == null && g.World.sectors[187].ceilingheight > g.World.sectors[187].floorheight);
+            log("door 187 open " + g.Heights(187));
             g.GoToDoors(-1536, -1728, 8, 50);
-            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            log("blue key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(2624, -2260, 8, 50);
-            Log("at line 438 " + g.Heights(242));
+            log("at line 438 " + g.Heights(242));
             g.Use(2624, -2320);
             g.WaitIdle(242);
-            Log("door 242 open " + g.Heights(242));
+            log("door 242 open " + g.Heights(242));
             g.GoToDoors(1088, -608, 8, 50);
-            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            log("yellow key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-64, 2330, 8, 50);
-            Log("at line 822 " + g.Heights(37));
+            log("at line 822 " + g.Heights(37));
             g.Use(-64, 2400);
-            g.WaitUntil(() => g.w.sectors[37].specialdata == null);
-            Log("door 37 open " + g.Heights(37));
+            g.WaitUntil(() => g.World.sectors[37].specialdata == null);
+            log("door 37 open " + g.Heights(37));
             g.GoToDoors(-1488, 1384, 8, 50);
-            Log("at line 599 " + g.Heights(28));
+            log("at line 599 " + g.Heights(28));
             g.Use(-1440, 1384);
-            g.WaitUntil(() => g.w.sectors[28].specialdata == null);
-            Log("door 28 open " + g.Heights(28));
+            g.WaitUntil(() => g.World.sectors[28].specialdata == null);
+            log("door 28 open " + g.Heights(28));
             g.GoToDoors(-1920, 2016, 8, 50);
             g.Exit(-1860, 2016);
         }),
@@ -295,46 +295,46 @@ iwad doom1
 map E1M7
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
             g.GoToDoors(1344, -700, 8, 50);
-            Log("in sector 22 " + g.Heights(23));
+            log("in sector 22 " + g.Heights(23));
             g.Assume[23] = 32;
             g.GoTo(1440, -704, 8, 50);
             g.Assume.Clear();
-            Log("on lift 23 " + g.Heights(23));
+            log("on lift 23 " + g.Heights(23));
             g.WaitIdle(23);
-            Log("lift 23 up " + g.Heights(23));
+            log("lift 23 up " + g.Heights(23));
             g.GoTo(1344, -192, 8, 50);
-            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            log("yellow key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-1120, -120, 8, 50);
-            Log("east of line 248 " + g.Heights(70));
+            log("east of line 248 " + g.Heights(70));
             g.Assume[70] = 48;
             g.GoTo(-1240, -60, 8, 50);
-            Log("across line 248 " + g.Heights(70));
+            log("across line 248 " + g.Heights(70));
             g.GoTo(-1376, -64, 8, 50);
             g.Assume.Clear();
-            Log("on lift 70 " + g.Heights(70));
+            log("on lift 70 " + g.Heights(70));
             g.WaitIdle(70);
-            Log("lift 70 up " + g.Heights(70));
+            log("lift 70 up " + g.Heights(70));
             g.GoTo(-1424, 384, 8, 50);
-            Log("red key " + string.Join(",", g.w.players[0].cards));
+            log("red key " + string.Join(",", g.World.players[0].cards));
             g.GoTo(-1376, 40, 8, 50);
             g.GoTo(-1376, -64);
-            Log("across line 644 " + g.Heights(70));
-            g.WaitUntil(() => g.w.sectors[70].floorheight == 48 * (1 << 16));
+            log("across line 644 " + g.Heights(70));
+            g.WaitUntil(() => g.World.sectors[70].floorheight == 48 * (1 << 16));
             g.Assume[70] = 48;
             g.GoTo(-1220, -80, 8, 50);
             g.Assume.Clear();
-            Log("off lift 70 " + g.Heights(70));
+            log("off lift 70 " + g.Heights(70));
             g.GoToDoors(-990, 272, 8, 50);
-            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            log("blue key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(352, -1760, 8, 50);
-            Log("at line 762 " + g.Heights(104));
+            log("at line 762 " + g.Heights(104));
             g.Use(352, -1700);
             g.WaitIdle(104);
-            Log("door 104 open " + g.Heights(104));
+            log("door 104 open " + g.Heights(104));
             g.GoToDoors(1920, -2304, 8, 50);
             g.Exit(1980, -2304);
         }),
@@ -349,25 +349,25 @@ exit normal
 iwad doom1
 map E1M8
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
             g.GoTo(-88, -224);
             g.Use(-40, -224);
             g.WaitIdle(10);
-            Log("sector 10 lowered " + g.Heights(10));
+            log("sector 10 lowered " + g.Heights(10));
             g.GoToDoors(416, 2390, 8, 50);
-            Log("at line 231 " + g.Heights(28));
+            log("at line 231 " + g.Heights(28));
             g.Use(416, 2450);
-            g.WaitUntil(() => g.w.sectors[28].floorheight == -96 * (1 << 16));
+            g.WaitUntil(() => g.World.sectors[28].floorheight == -96 * (1 << 16));
             g.Assume[28] = -96;
             g.GoTo(416, 2464);
             g.Assume.Clear();
-            Log("on lift 28 " + g.Heights(28));
+            log("on lift 28 " + g.Heights(28));
             g.WaitIdle(28);
-            Log("lift 28 up " + g.Heights(28));
+            log("lift 28 up " + g.Heights(28));
             g.GoToDoors(416, 3300, 8, 50);
-            Log("at the wall");
+            log("at the wall");
         }),
         ["e1m8-exit"] = new(Doom1, "E1M8", """
 # DOOM1.WAD E1M8 (T5.9): the way to the exit opens when the barons die
@@ -382,19 +382,19 @@ map E1M8
 iwad doom1
 map E1M8
 exit normal
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
             g.Wait(1); // G_PlayerReborn's usedown: use needs a tic without it first
             g.Use(320, 4440);
-            g.WaitUntil(() => g.w.sectors.All(s => s.specialdata is not IsoDoom.Sim.floormove_t));
-            Log("stairs built " + g.Heights(53, 54, 60, 67));
+            g.WaitUntil(() => g.World.sectors.All(s => s.specialdata is not IsoDoom.Sim.floormove_t));
+            log("stairs built " + g.Heights(53, 54, 60, 67));
             g.GoTo(448, 4980, 8, 50);
-            Log("on sector 52");
+            log("on sector 52");
             g.Teleport(448, 5120);
-            Log("teleported, health " + g.w.players[0].health);
+            log("teleported, health " + g.World.players[0].health);
             g.WaitExit();
-            Log("health " + g.w.players[0].health);
+            log("health " + g.World.players[0].health);
         }, (320, 4384, 90)),
         ["e1m9-exit"] = new(Doom1, "E1M9", """
 # DOOM1.WAD E1M9 (T5.9): from the start to the exit switch (line 551,
@@ -411,39 +411,39 @@ iwad doom1
 map E1M9
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
             g.GoToDoors(-576, 64, 8, 50);
-            Log("yellow key " + string.Join(",", g.w.players[0].cards));
+            log("yellow key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(1856, -1088, 8, 50);
-            Log("red key " + string.Join(",", g.w.players[0].cards));
+            log("red key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-576, -1344, 4, 50); // barrels (y -1376) in front of the switch: use over them
             g.Walk(-576, -1400, 4);
-            Log("at line 362 " + g.Heights(107, 126, 130));
+            log("at line 362 " + g.Heights(107, 126, 130));
             g.Use(-576, -1430);
-            g.WaitUntil(() => g.w.sectors[130].specialdata == null);
-            Log("tag 1 doors open " + g.Heights(107, 126, 130));
+            g.WaitUntil(() => g.World.sectors[130].specialdata == null);
+            log("tag 1 doors open " + g.Heights(107, 126, 130));
             g.GoToDoors(704, -1024, 8, 50);
-            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            log("blue key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(384, 1444, 8, 50);
-            Log("at line 567 " + g.Heights(17));
+            log("at line 567 " + g.Heights(17));
             g.Use(384, 1380);
             g.WaitIdle(17);
-            Log("sector 17 raised " + g.Heights(17));
+            log("sector 17 raised " + g.Heights(17));
             g.GoTo(200, 1450, 8, 50);
-            Log("across lines 570/571 " + g.Heights(48));
-            g.WaitUntil(() => g.w.sectors[48].specialdata is IsoDoom.Sim.vldoor_t { direction: 0 });
+            log("across lines 570/571 " + g.Heights(48));
+            g.WaitUntil(() => g.World.sectors[48].specialdata is IsoDoom.Sim.vldoor_t { direction: 0 });
             g.GoTo(224, 960, 8, 50);
-            Log("at line 587 " + g.Heights(49));
+            log("at line 587 " + g.Heights(49));
             g.Use(300, 960);
-            g.WaitUntil(() => g.w.sectors[49].floorheight == 0);
+            g.WaitUntil(() => g.World.sectors[49].floorheight == 0);
             g.Assume[49] = 0;
             g.GoTo(288, 960);
             g.Assume.Clear();
-            Log("on lift 49 " + g.Heights(49));
+            log("on lift 49 " + g.Heights(49));
             g.WaitIdle(49);
-            Log("lift 49 up " + g.Heights(49));
+            log("lift 49 up " + g.Heights(49));
             g.GoToDoors(456, 1328, 8, 50);
             g.Exit(400, 1384);
         }),
@@ -460,53 +460,53 @@ exit normal
 iwad doom1
 map E1M2
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             // Lift 1 (sector 89, tag 1): into sector 85 across line 315 (WR 88).
             g.GoTo(-640, 100);
-            Log("north of line 315 " + g.Heights(89));
+            log("north of line 315 " + g.Heights(89));
             g.Assume[89] = 24;
             g.GoTo(-640, -64, 8, 25);
             g.Assume.Clear();
-            Log("on lift 1 " + g.Heights(89));
+            log("on lift 1 " + g.Heights(89));
             g.WaitIdle(89);
-            Log("lift 1 up " + g.Heights(89));
+            log("lift 1 up " + g.Heights(89));
             g.GoTo(-540, -64);
-            Log("on sector 90 " + g.Heights(89));
+            log("on sector 90 " + g.Heights(89));
             g.WaitIdle(89);
-            Log("lift 1 idle " + g.Heights(89));
+            log("lift 1 idle " + g.Heights(89));
             g.GoTo(-640, 32);
-            Log("in sector 85 " + g.Heights(89));
+            log("in sector 85 " + g.Heights(89));
             g.WaitIdle(89);
             g.Use(-640, -10);
-            Log("used line 313 " + g.Heights(89));
+            log("used line 313 " + g.Heights(89));
             g.Wait(10);
-            Log("lift 1 lowering " + g.Heights(89));
+            log("lift 1 lowering " + g.Heights(89));
             // Lift 4 (sector 109, tag 4): across line 289 (WR 88) into sector 107.
             g.GoTo(-100, 288, 8, 50);
-            Log("east of line 289 " + g.Heights(109));
+            log("east of line 289 " + g.Heights(109));
             g.GoTo(-220, 300);
-            Log("in sector 107 " + g.Heights(109));
+            log("in sector 107 " + g.Heights(109));
             g.Assume[109] = 64;
             g.GoTo(-192, 416);
             g.Assume.Clear();
-            Log("on lift 4 " + g.Heights(109));
+            log("on lift 4 " + g.Heights(109));
             g.WaitIdle(109);
-            Log("lift 4 up " + g.Heights(109));
+            log("lift 4 up " + g.Heights(109));
             g.GoTo(-160, 500);
-            Log("in sector 34 " + g.Heights(109));
+            log("in sector 34 " + g.Heights(109));
             g.WaitIdle(109);
             g.Assume[109] = 64;
             g.GoTo(-200, 350);
             g.Assume.Clear();
-            Log("in sector 108 " + g.Heights(109));
+            log("in sector 108 " + g.Heights(109));
             g.WaitIdle(109);
             g.Use(-200, 390);
-            Log("used line 360 " + g.Heights(109));
+            log("used line 360 " + g.Heights(109));
             g.Wait(10);
-            Log("lift 4 lowering " + g.Heights(109));
+            log("lift 4 lowering " + g.Heights(109));
             g.WaitIdle(109);
-            Log("lift 4 idle " + g.Heights(109));
+            log("lift 4 idle " + g.Heights(109));
         }),
         ["e1m3-exit"] = new(Doom1, "E1M3", """
 # DOOM1.WAD E1M3 (T5.9): from the start to the exit switch (line 982,
@@ -519,15 +519,15 @@ iwad doom1
 map E1M3
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.GoToDoors(-160, -864, 8, 50);
-            Log("blue key " + string.Join(",", g.w.players[0].cards));
+            log("blue key " + string.Join(",", g.World.players[0].cards));
             g.GoToDoors(-290, -1600, 8, 50);
             g.GoTo(-240, -1600);
-            Log("across line 967 " + g.Heights(16, 17, 18, 13));
-            g.WaitUntil(() => g.w.sectors.All(s => s.specialdata == null || s.specialdata is not IsoDoom.Sim.floormove_t));
-            Log("stairs built " + g.Heights(16, 17, 18, 13));
+            log("across line 967 " + g.Heights(16, 17, 18, 13));
+            g.WaitUntil(() => g.World.sectors.All(s => s.specialdata == null || s.specialdata is not IsoDoom.Sim.floormove_t));
+            log("stairs built " + g.Heights(16, 17, 18, 13));
             g.GoToDoors(704, -1720, 8, 50);
             g.Exit(704, -1770);
         }),
@@ -552,61 +552,61 @@ iwad doom1
 map E1M3
 exit secret
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.TightCorners = true;
-            bool Open(int sec) => g.w.sectors[sec].ceilingheight - g.w.sectors[sec].floorheight >= 64 * (1 << 16) && g.w.sectors[sec].specialdata == null;
+            bool Open(int sec) => g.World.sectors[sec].ceilingheight - g.World.sectors[sec].floorheight >= 64 * (1 << 16) && g.World.sectors[sec].specialdata == null;
             g.GoToDoors(-1936, -2120, 8, 50);
-            Log("south of line 535 " + g.Heights(121));
+            log("south of line 535 " + g.Heights(121));
             g.Use(-1936, -2060);
             g.WaitUntil(() => Open(121));
-            Log("door 121 open " + g.Heights(121));
+            log("door 121 open " + g.Heights(121));
             g.GoToDoors(-2220, -2190, 8, 50);
-            Log("in sector 120 " + g.Heights(165));
+            log("in sector 120 " + g.Heights(165));
             g.Assume[165] = 128;
             g.GoTo(-2664, -1360, 6, 50);
             g.Assume.Clear();
-            Log("at lift 165 " + g.Heights(165));
+            log("at lift 165 " + g.Heights(165));
             g.Walk(-2700, -1324, 3, 25);
-            Log("on lift 165 " + g.Heights(165, 167));
+            log("on lift 165 " + g.Heights(165, 167));
             g.WaitIdle(165);
             g.WaitUntil(() => Open(167));
-            Log("lift up, door 167 open " + g.Heights(165, 167));
+            log("lift up, door 167 open " + g.Heights(165, 167));
             g.GoToDoors(-2416, -944, 4, 50);
-            Log("in sector 173 " + g.Heights(66));
+            log("in sector 173 " + g.Heights(66));
             g.Use(-2380, -910);
             g.WaitIdle(66);
-            Log("nukage raised " + g.Heights(66));
+            log("nukage raised " + g.Heights(66));
             g.GoToDoors(-2080, -1250, 8, 50);
             g.GoTo(-2080, -1350, 8, 50);
-            Log("across line 462 " + g.Heights(171));
+            log("across line 462 " + g.Heights(171));
             g.Assume[171] = 112;
             g.GoTo(-2080, -1436);
             g.Assume.Clear();
-            Log("on lift 171 " + g.Heights(171));
+            log("on lift 171 " + g.Heights(171));
             g.WaitIdle(171);
-            Log("lift 171 up " + g.Heights(171));
+            log("lift 171 up " + g.Heights(171));
             g.Door(172, -2064, -1470);
             g.GoTo(-2144, -1700, 8, 50);
-            Log("in sector 169 " + g.Heights(168));
+            log("in sector 169 " + g.Heights(168));
             g.Assume[168] = 32;
             g.GoTo(-2144, -1760);
             g.Assume.Clear();
-            Log("on lift 168 " + g.Heights(168));
-            g.WaitUntil(() => g.w.sectors[168].floorheight == 32 * (1 << 16));
+            log("on lift 168 " + g.Heights(168));
+            g.WaitUntil(() => g.World.sectors[168].floorheight == 32 * (1 << 16));
             g.Assume[168] = 32;
             g.GoToDoors(-1450, -2680, 8, 50);
             g.Assume.Clear();
-            Log("in sector 66 " + g.Heights(51));
+            log("in sector 66 " + g.Heights(51));
             g.GoTo(-1580, -2760, 8, 50);
-            Log("across line 988 " + g.Heights(51));
+            log("across line 988 " + g.Heights(51));
             g.WaitUntil(() => Open(51));
             g.GoTo(-1504, -2300, 8, 50);
             g.GoTo(-1504, -2080, 8, 50);
-            Log("across line 54 " + g.Heights(53));
+            log("across line 54 " + g.Heights(53));
             g.WaitUntil(() => Open(53));
             g.GoTo(-1504, -1880, 8, 50);
-            Log("across line 88 " + g.Heights(33, 34));
+            log("across line 88 " + g.Heights(33, 34));
             g.WaitUntil(() => Open(33));
             g.GoToDoors(-1088, -1500, 8, 50);
             g.Exit(-1088, -1560);
@@ -625,38 +625,38 @@ exit secret
 iwad doom1
 map E1M3
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             // The nukage bridge: S1 raise to nearest and change (line 1020, 20, tag 16: sectors 48 and 49).
             g.GoToDoors(-1260, -768, 8, 50);
-            Log("east of line 1020 " + g.Heights(48, 49) + " " + g.w.sectors[48].floorpic);
+            log("east of line 1020 " + g.Heights(48, 49) + " " + g.World.sectors[48].floorpic);
             g.Use(-1330, -768);
-            Log("used line 1020 " + g.Heights(48, 49) + " " + g.w.sectors[48].floorpic + " special " + g.w.sectors[48].special);
-            g.WaitUntil(() => g.w.sectors[48].specialdata == null && g.w.sectors[49].specialdata == null);
-            Log("bridge up " + g.Heights(48, 49));
+            log("used line 1020 " + g.Heights(48, 49) + " " + g.World.sectors[48].floorpic + " special " + g.World.sectors[48].special);
+            g.WaitUntil(() => g.World.sectors[48].specialdata == null && g.World.sectors[49].specialdata == null);
+            log("bridge up " + g.Heights(48, 49));
             // Lift 4 (sector 168, tag 4): across line 179 (WR 88) into sector 122.
             g.GoToDoors(-2144, -1930, 8, 50);
-            Log("south of line 179 " + g.Heights(168));
+            log("south of line 179 " + g.Heights(168));
             g.GoTo(-2144, -1850);
-            Log("in sector 122 " + g.Heights(168));
+            log("in sector 122 " + g.Heights(168));
             g.Assume[168] = 32;
             g.GoTo(-2144, -1760);
             g.Assume.Clear();
-            Log("on lift 4 " + g.Heights(168));
+            log("on lift 4 " + g.Heights(168));
             g.WaitIdle(168);
-            Log("lift 4 up " + g.Heights(168));
+            log("lift 4 up " + g.Heights(168));
             g.GoTo(-2144, -1650);
-            Log("in sector 169 " + g.Heights(168));
+            log("in sector 169 " + g.Heights(168));
             g.WaitIdle(168);
             g.Assume[168] = 32;
             g.GoTo(-2144, -1840);
             g.Assume.Clear();
-            Log("back in sector 122 " + g.Heights(168));
+            log("back in sector 122 " + g.Heights(168));
             g.WaitIdle(168);
             g.Use(-2144, -1780);
-            Log("used line 178 " + g.Heights(168));
+            log("used line 178 " + g.Heights(168));
             g.Wait(20);
-            Log("lift 4 lowering " + g.Heights(168));
+            log("lift 4 lowering " + g.Heights(168));
         }),
         ["e1m5-teleport"] = new(Doom1, "E1M5", """
 # DOOM1.WAD E1M5 (T5.6): its teleporter (sector 56, the star of WR
@@ -669,12 +669,12 @@ map E1M3
 # (e1m5-teleport).
 iwad doom1
 map E1M5
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.Teleport(-800, 1510, 50, hold: 24);
-            Log("teleported");
+            log("teleported");
             g.Wait(80);
-            Log("fog gone: " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
+            log("fog gone: " + g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
         }, (-800, 1400, 90)),
         ["e1m8-teleport"] = new(Doom1, "E1M8", """
 # DOOM1.WAD E1M8 (T5.6): the exit teleporter (the square of WR teleport
@@ -685,12 +685,12 @@ map E1M5
 # the fog to fade. Written by tools/RouteGen (e1m8-teleport).
 iwad doom1
 map E1M8
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.Teleport(448, 5120);
-            Log("teleported");
+            log("teleported");
             g.Wait(80);
-            Log("fog gone: " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
+            log("fog gone: " + g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
         }, (448, 4980, 90)),
         ["synthetic-exit"] = new(Synthetic, "E1M1", """
 # The synthetic E1M1 (T5.9): from the start north to its S1 exit switch
@@ -699,7 +699,7 @@ map E1M8
 iwad synthetic
 exit normal
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.GoTo(0, 80);
             g.Exit(0, 140);
@@ -712,7 +712,7 @@ exit normal
 iwad synthetic
 map E1M2
 exit secret
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.Wait(1);
             g.Exit(224, 260);
@@ -725,12 +725,12 @@ exit secret
 iwad synthetic
 map E1M2
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.GoTo(480, -96);
-            Log("cards " + string.Join(",", g.w.players[0].cards));
+            log("cards " + string.Join(",", g.World.players[0].cards));
             g.GoTo(690, -96);
-            Log("cards " + string.Join(",", g.w.players[0].cards));
+            log("cards " + string.Join(",", g.World.players[0].cards));
             g.Settle();
         }),
         ["e1m1-monsters"] = new(Doom1, "E1M1", """
@@ -745,46 +745,46 @@ iwad doom1
 skill 4
 monsters
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Every = 6 };
             g.GoTo(1500, -2496);
-            Log("at door 4 " + g.Monsters());
+            log("at door 4 " + g.Monsters());
             g.Door(4, 1544, -2496);
             gun.Clear(400);
-            Log("door 4 clear " + g.Monsters());
+            log("door 4 clear " + g.Monsters());
             g.GoTo(1600, -2496);
             gun.Clear(400);
-            Log("through door 4 " + g.Monsters());
+            log("through door 4 " + g.Monsters());
             g.GoTo(2900, -2900, 12);
             gun.Clear(400);
-            Log("nukage room " + g.Monsters());
+            log("nukage room " + g.Monsters());
             g.GoTo(2900, -3100, 12);
             gun.Clear(400);
-            Log("across line 195 " + g.Monsters());
+            log("across line 195 " + g.Monsters());
             g.GoTo(2980, -3840, 6);
             g.Door(68, 2944, -3840);
             gun.Clear(400);
             g.GoTo(2890, -3840);
             gun.Clear(400);
-            Log("through door 68 " + g.Monsters());
+            log("through door 68 " + g.Monsters());
             g.GoTo(3008, -3990);
             g.Door(76, 3008, -4024);
             gun.Clear(400);
-            Log("door 76 " + g.Monsters());
+            log("door 76 " + g.Monsters());
             g.GoTo(3008, -4100);
             gun.Clear(400);
-            Log("through door 76 " + g.Monsters());
+            log("through door 76 " + g.Monsters());
             g.Wait(100);
             gun.Clear(400);
             g.GoTo(3008, -4600, 6);
             gun.Clear(400);
-            Log("at door 81 " + g.Monsters());
+            log("at door 81 " + g.Monsters());
             g.Door(81, 3008, -4640);
             g.Wait(60);
             gun.Clear(400);
-            Log("door 81 " + g.Monsters());
-            Log(gun.ToString());
+            log("door 81 " + g.Monsters());
+            log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
         ["e1m1-weapons"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 on skill 4 with monsters (T6.6): e1m1-monsters' way
@@ -797,33 +797,33 @@ iwad doom1
 skill 4
 monsters
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Guns = true };
-            IsoDoom.Sim.player_t p = g.w.players[0];
+            IsoDoom.Sim.player_t p = g.World.players[0];
             string State() => $"weapon {p.readyweapon} ammo {string.Join(",", p.ammo)} " + g.Monsters();
             g.GoTo(1500, -2496);
-            Log("at door 4 " + State());
+            log("at door 4 " + State());
             g.Door(4, 1544, -2496);
             gun.Clear(400);
-            Log("door 4 clear " + State());
+            log("door 4 clear " + State());
             g.GoTo(1600, -2496);
             gun.Clear(400);
-            Log("through door 4 " + State());
+            log("through door 4 " + State());
             g.Wait(60);
             gun.Clear(400);
-            Log("waited " + State());
+            log("waited " + State());
             // the shotgun a shotgun guy dropped: walk over it (the pickup switches to it)
-            if (g.w.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_SHOTGUN).OrderBy(m => System.Math.Abs(m.x - g.Mo.x) + System.Math.Abs(m.y - g.Mo.y)).FirstOrDefault() is { } sg)
+            if (g.World.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_SHOTGUN).OrderBy(m => System.Math.Abs(m.x - g.Mo.x) + System.Math.Abs(m.y - g.Mo.y)).FirstOrDefault() is { } sg)
             {
                 g.GoTo(sg.x / 65536.0, sg.y / 65536.0, 4);
                 g.Wait(30);
-                Log("shotgun " + State());
+                log("shotgun " + State());
             }
             g.Wait(100);
             gun.Clear(400);
-            Log("waited " + State());
-            Log(gun.ToString());
+            log("waited " + State());
+            log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
         ["e1m1-rockets"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 on skill 4 with monsters (T6.5): e1m1-monsters' way
@@ -837,21 +837,21 @@ iwad doom1
 skill 4
 monsters
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Every = 8, Rockets = true };
             g.GoTo(1500, -2496);
-            Log("at door 4 " + g.Monsters());
+            log("at door 4 " + g.Monsters());
             g.Door(4, 1544, -2496);
             gun.Clear(400);
-            Log("door 4 clear " + g.Monsters());
+            log("door 4 clear " + g.Monsters());
             g.GoTo(1600, -2496);
             gun.Clear(400);
-            Log("through door 4 " + g.Monsters());
+            log("through door 4 " + g.Monsters());
             g.Wait(60);
             gun.Clear(400);
-            Log("waited " + g.Monsters());
-            Log(gun.ToString());
+            log("waited " + g.Monsters());
+            log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
         ["e1m2-monsters"] = new(Doom1, "E1M2", """
 # DOOM1.WAD E1M2 on skill 4 with monsters (T6.4): a shot's noise at the
@@ -863,31 +863,31 @@ iwad doom1
 map E1M2
 skill 4
 monsters
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Every = 6 };
             g.Wait(1);
             g.Alert();
             g.Wait(60);
             gun.Clear(400);
-            Log("start " + g.Monsters());
+            log("start " + g.Monsters());
             g.GoToDoors(300, 300, 8, 25);
             gun.Clear(400);
-            Log("north " + g.Monsters());
+            log("north " + g.Monsters());
             g.GoToDoors(1136, 352, 8, 25);
             gun.Clear(400);
-            Log("red key " + g.Monsters());
+            log("red key " + g.Monsters());
             g.Wait(150);
             gun.Clear(600);
-            Log("red key, waited " + g.Monsters());
+            log("red key, waited " + g.Monsters());
             g.GoToDoors(300, 300, 8, 25);
             gun.Clear(400);
-            Log("north again " + g.Monsters());
+            log("north again " + g.Monsters());
             g.GoToDoors(-32, -240, 8, 25);
             g.Wait(100);
             gun.Clear(400);
-            Log("start again " + g.Monsters());
-            Log(gun.ToString());
+            log("start again " + g.Monsters());
+            log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
         ["e1m8-demons"] = new(Doom1, "E1M8", """
 # DOOM1.WAD E1M8 on skill 2 with monsters (T6.4): the start closet's
@@ -899,20 +899,20 @@ iwad doom1
 map E1M8
 skill 2
 monsters
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Amount = m => 75, Every = 6 };
             g.GoTo(-88, -224);
             g.Use(-40, -224);
             g.WaitIdle(10);
-            Log("sector 10 lowered " + g.Heights(10) + " " + g.Monsters());
+            log("sector 10 lowered " + g.Heights(10) + " " + g.Monsters());
             g.GoTo(250, -224);
             g.Wait(150);
             gun.Clear(600);
             g.Wait(100);
             gun.Clear(600);
-            Log("demons " + g.Monsters());
-            Log(gun.ToString());
+            log("demons " + g.Monsters());
+            log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_easy, Monsters: true),
         ["e1m8-nightmare"] = new(Doom1, "E1M8", """
 # DOOM1.WAD E1M8 on Nightmare (skill 5) with monsters (T6.4): as
@@ -924,26 +924,26 @@ iwad doom1
 map E1M8
 skill 5
 monsters
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Amount = m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER ? 200 : 75, Every = 4 };
             g.TightCorners = true;
             g.Wait(1); // (G_PlayerReborn's usedown)
             g.Use(416, 2450);
-            g.WaitUntil(() => g.w.sectors[28].floorheight == -96 * (1 << 16));
+            g.WaitUntil(() => g.World.sectors[28].floorheight == -96 * (1 << 16));
             g.Assume[28] = -96;
             g.GoTo(416, 2464);
             g.Assume.Clear();
             g.WaitIdle(28);
-            Log("lift 28 up " + g.Monsters());
+            log("lift 28 up " + g.Monsters());
             g.GoToDoors(416, 2600, 8, 25);
-            Log("hall " + g.Monsters());
+            log("hall " + g.Monsters());
             for (int i = 0; i < 20; i++)
             {
                 g.Wait(40);
-                Log(g.Monsters() + " " + g.Heights(30) + " fogs " + g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
+                log(g.Monsters() + " " + g.Heights(30) + " fogs " + g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG));
             }
-            Log(gun.ToString());
+            log(gun.ToString());
         }, (416, 2390, 90), IsoDoom.Sim.skill_t.sk_nightmare, true),
         ["synthetic-monsters"] = new(Synthetic, "E1M1", """
 # The synthetic E1M1 on skill 1 with monsters (T6.4): the eight imps
@@ -954,22 +954,22 @@ monsters
 iwad synthetic
 skill 1
 monsters
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Every = 8, Amount = m => 30 };
             for (int i = 0; i < 8; i++)
             {
                 g.Wait(30);
-                Log(g.Monsters());
+                log(g.Monsters());
             }
             gun.Clear(600);
-            Log(g.Monsters());
+            log(g.Monsters());
             // the barrel (64, 64): shot, it explodes (A_Explode) and hurts the player
             g.Alert();
             g.Damage(64, 64, 20);
             g.Wait(40);
-            Log("barrel " + g.Monsters());
-            Log(gun.ToString());
+            log("barrel " + g.Monsters());
+            log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
         ["e1m8-barons"] = new(Doom1, "E1M8", """
 # DOOM1.WAD E1M8 on skill 4 with monsters (T6.4): starts in the tunnel
@@ -982,27 +982,27 @@ iwad doom1
 map E1M8
 skill 4
 monsters
-""", (g, Log) =>
+""", (g, log) =>
         {
             var gun = new Gunner(g) { Amount = m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER ? 100 : 50, Every = 6 };
             g.TightCorners = true;
             g.Wait(1); // (G_PlayerReborn's usedown)
             g.Use(416, 2450);
-            g.WaitUntil(() => g.w.sectors[28].floorheight == -96 * (1 << 16));
+            g.WaitUntil(() => g.World.sectors[28].floorheight == -96 * (1 << 16));
             g.Assume[28] = -96;
             g.GoTo(416, 2464);
             g.Assume.Clear();
-            Log("on lift 28 " + g.Heights(28));
+            log("on lift 28 " + g.Heights(28));
             g.WaitIdle(28);
-            Log("lift 28 up " + g.Monsters());
+            log("lift 28 up " + g.Monsters());
             g.GoToDoors(416, 2600, 8, 25);
-            Log("hall " + g.Monsters());
-            g.WaitUntil(() => g.w.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER && m.health > 0) == 0, 1000);
-            Log("barons dead " + g.Monsters() + " " + g.Heights(30));
-            g.WaitUntil(() => g.w.sectors[30].specialdata != null, 50);
+            log("hall " + g.Monsters());
+            g.WaitUntil(() => g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BRUISER && m.health > 0) == 0, 1000);
+            log("barons dead " + g.Monsters() + " " + g.Heights(30));
+            g.WaitUntil(() => g.World.sectors[30].specialdata != null, 50);
             g.WaitIdle(30);
-            Log("wall down " + g.Heights(30));
-            Log(gun.ToString());
+            log("wall down " + g.Heights(30));
+            log(gun.ToString());
         }, (416, 2390, 90), IsoDoom.Sim.skill_t.sk_hard, true),
         ["testmap-lifts"] = new(() => TestMapWad("lifts"), "E1M1", """
 # The lifts test map (T5.5, RouteTestMaps): east into the perpetual lift P
@@ -1017,35 +1017,35 @@ monsters
 iwad testmap
 map lifts
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.GoTo(530, 128);
-            Log("in P " + g.Heights(1, 3));
+            log("in P " + g.Heights(1, 3));
             g.GoTo(440, 128);
             g.GoTo(290, 128);
-            Log("at the switch " + g.Heights(1, 3));
+            log("at the switch " + g.Heights(1, 3));
             g.Use(250, 128);
-            Log("used " + g.Heights(1, 3));
+            log("used " + g.Heights(1, 3));
             g.Assume[1] = 0;
             g.GoTo(224, 128);
             g.Assume.Clear();
-            Log("on the lift " + g.Heights(1, 3));
+            log("on the lift " + g.Heights(1, 3));
             g.WaitIdle(1);
-            Log("lift up " + g.Heights(1, 3));
+            log("lift up " + g.Heights(1, 3));
             g.GoTo(120, 128);
-            Log("on the ledge " + g.Heights(1, 3));
-            g.WaitUntil(() => g.w.sectors[1].floorheight == 0);
+            log("on the ledge " + g.Heights(1, 3));
+            g.WaitUntil(() => g.World.sectors[1].floorheight == 0);
             g.Assume[1] = 0;
             g.GoTo(224, 128);
             g.Assume.Clear();
-            Log("on the lift again " + g.Heights(1, 3));
+            log("on the lift again " + g.Heights(1, 3));
             g.WaitIdle(1);
-            Log("lift up again " + g.Heights(1, 3));
+            log("lift up again " + g.Heights(1, 3));
             g.GoTo(300, 128);
-            Log("in S " + g.Heights(1, 3));
+            log("in S " + g.Heights(1, 3));
             g.Use(250, 128);
             g.WaitIdle(1);
-            Log("lift idle " + g.Heights(1, 3));
+            log("lift idle " + g.Heights(1, 3));
             g.Wait(50);
         }),
         ["testmap-teleport"] = new(() => TestMapWad("teleport"), "E1M1", """
@@ -1061,22 +1061,22 @@ map lifts
 iwad testmap
 map teleport
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.Teleport(250, 128, 50, hold: 20);
-            Log("in B");
+            log("in B");
             g.Teleport(500, 128);
-            Log("in A");
+            log("in A");
             g.GoTo(450, 128);
-            Log("in S");
+            log("in S");
             g.GoTo(608, 128);
-            Log("in P2");
+            log("in P2");
             g.Teleport(500, 128);
-            Log("in B again");
+            log("in B again");
             g.Teleport(500, 128, 50);
-            Log("in B (3)");
+            log("in B (3)");
             g.Wait(80);
-            Log("fog " + string.Join(",", g.w.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG).Select(m => $"{m.x >> 16}:{m.y >> 16}")));
+            log("fog " + string.Join(",", g.World.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG).Select(m => $"{m.x >> 16}:{m.y >> 16}")));
         }),
         ["testmap-missiles"] = new(() => TestMapWad("missiles"), "E1M1", """
 # The missiles test map (T6.5, RouteTestMaps) with monsters: rocket
@@ -1097,55 +1097,55 @@ iwad testmap
 map missiles
 monsters
 
-""", (g, Log) =>
+""", (g, log) =>
         {
-            string Missiles() => string.Join(" ", g.w.Mobjs()
+            string Missiles() => string.Join(" ", g.World.Mobjs()
                 .Where(m => m.type is IsoDoom.Sim.mobjtype_t.MT_ROCKET or IsoDoom.Sim.mobjtype_t.MT_TROOPSHOT or IsoDoom.Sim.mobjtype_t.MT_BARREL or IsoDoom.Sim.mobjtype_t.MT_TROOP)
-                .Select(m => $"{m.type.ToString()[3..]}({m.x >> 16},{m.y >> 16},{m.z >> 16}) {m.state.ToString()[2..]} h{m.health}")) + $"; health {g.w.players[0].health}";
+                .Select(m => $"{m.type.ToString()[3..]}({m.x >> 16},{m.y >> 16},{m.z >> 16}) {m.state.ToString()[2..]} h{m.health}")) + $"; health {g.World.players[0].health}";
             g.Rocket();
             g.Wait(3);
-            Log("rocket west " + Missiles());
+            log("rocket west " + Missiles());
             g.Wait(1);
-            Log("rocket west, a tic later " + Missiles());
+            log("rocket west, a tic later " + Missiles());
             g.Face(136, 600);
             g.Rocket();
             g.Wait(40);
-            Log("rocket north (barrel) " + Missiles());
+            log("rocket north (barrel) " + Missiles());
             g.Rocket();
             g.Wait(40);
-            Log("rocket north (wall) " + Missiles());
+            log("rocket north (wall) " + Missiles());
             g.Face(600, 256);
             g.Alert();
-            bool Ball() => g.w.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOPSHOT && (m.flags & IsoDoom.Sim.mobjflag_t.MF_MISSILE) != 0);
+            bool Ball() => g.World.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOPSHOT && (m.flags & IsoDoom.Sim.mobjflag_t.MF_MISSILE) != 0);
             for (int i = 0; i < 3; i++)
             {
                 // a fireball comes: strafe out of its way (facing east: + is south)
                 g.WaitUntil(Ball, 300);
                 for (int k = 0; k < 22; k++)
                     g.Tic(0, i % 2 == 0 ? -40 : 40, 0, 0);
-                Log("strafed, the imp awake " + Missiles());
+                log("strafed, the imp awake " + Missiles());
                 g.Settle();
             }
-            mobj_t imp = g.w.Mobjs().First(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP);
+            mobj_t imp = g.World.Mobjs().First(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP);
             for (int i = 0; i < 8 && imp.health > 0; i++)
             {
                 g.Face(imp.x / 65536.0, imp.y / 65536.0);
                 g.Rocket();
                 for (int k = 0; k < 12; k++)
                     g.Tic(0, i % 2 == 0 ? 40 : -40, 0, 0);
-                Log("rocket at the imp " + Missiles());
+                log("rocket at the imp " + Missiles());
             }
             g.Wait(30);
             g.GoTo(136, 256);
             g.Face(600, 256);
             g.Rocket();
             g.Wait(40);
-            Log("rocket east (wall) " + Missiles());
+            log("rocket east (wall) " + Missiles());
             g.GoTo(290, 256, 3);
             g.Face(0, g.Y);
             g.Rocket();
             g.Wait(20);
-            Log("rocket west from x 290 " + Missiles());
+            log("rocket west from x 290 " + Missiles());
         }, Monsters: true),
         ["testmap-weapons"] = new(() => TestMapWad("weapons"), "E1M1", """
 # The weapons test map (T6.6, RouteTestMaps) with monsters: every shareware
@@ -1168,103 +1168,103 @@ iwad testmap
 map weapons
 monsters
 
-""", (g, Log) =>
+""", (g, log) =>
         {
-            IsoDoom.Sim.player_t p = g.w.players[0];
+            IsoDoom.Sim.player_t p = g.World.players[0];
             string State() => $"health {p.health} armor {p.armorpoints} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}; "
-                + string.Join(" ", g.w.Mobjs().Where(m => ((m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 || m.type == IsoDoom.Sim.mobjtype_t.MT_BARREL) && m.health > 0)
+                + string.Join(" ", g.World.Mobjs().Where(m => ((m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 || m.type == IsoDoom.Sim.mobjtype_t.MT_BARREL) && m.health > 0)
                     .Select(m => $"{m.type.ToString()[3..]}({m.x >> 16},{m.y >> 16}) h{m.health}"));
             void Ready(IsoDoom.Sim.weapontype_t wp) => g.WaitUntil(() => p.readyweapon == wp && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange
                 && p.psprites[0].state == IsoDoom.Sim.Info.weaponinfo[(int)wp].readystate, 200);
             double Dist(IsoDoom.Sim.mobj_t m) => System.Math.Sqrt(System.Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + System.Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
-            IsoDoom.Sim.mobj_t? Nearest(double min = 0) => g.w.Mobjs()
-                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.w.P_CheckSight(g.Mo, m) && Dist(m) >= min)
+            IsoDoom.Sim.mobj_t? Nearest(double min = 0) => g.World.Mobjs()
+                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.World.P_CheckSight(g.Mo, m) && Dist(m) >= min)
                 .OrderBy(Dist).FirstOrDefault();
             void KillAll(int max = 6)
             {
                 for (int i = 0; i < max && Nearest() is { } m; i++)
                 {
                     g.FireAt(m, 250);
-                    Log("shot " + State());
+                    log("shot " + State());
                 }
             }
-            void Door(int sector) => g.WaitUntil(() => g.w.sectors[sector].ceilingheight >= 100 * 65536, 200);
+            void Door(int sector) => g.WaitUntil(() => g.World.sectors[sector].ceilingheight >= 100 * 65536, 200);
 
             // room A
             Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
-            Log("pistol up " + State());
+            log("pistol up " + State());
             g.Change(IsoDoom.Sim.weapontype_t.wp_fist);
             Ready(IsoDoom.Sim.weapontype_t.wp_fist);
-            Log("fist up " + State());
+            log("fist up " + State());
             g.GoTo(122, 256, 3);
             g.FireAt(g.Spawned(160, 256)!, 400);
-            Log("punched " + State());
+            log("punched " + State());
             g.Change(IsoDoom.Sim.weapontype_t.wp_pistol);
             Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
             while (Nearest() is { } m && Dist(m) < 300)
             {
                 g.FireAt(m, 250);
-                Log("pistol " + State());
+                log("pistol " + State());
             }
             g.GoTo(400, 256);
             Ready(IsoDoom.Sim.weapontype_t.wp_shotgun);
-            Log("shotgun up " + State());
+            log("shotgun up " + State());
             KillAll();
             if (g.Spawned(410, 64) is { } barrel)
             {
                 g.FireAt(barrel, 100);
                 g.Wait(30);
-                Log("barrel " + State());
+                log("barrel " + State());
             }
 
             // room B
             g.GoTo(544, 256);
             Door(2);
-            Log("door 1 open " + State());
+            log("door 1 open " + State());
             g.GoTo(680, 256);
             Ready(IsoDoom.Sim.weapontype_t.wp_missile);
-            Log("launcher up " + State());
+            log("launcher up " + State());
             if (Nearest(200) is { } far)
             {
                 for (int i = 0; i < 120 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_missile; i++)
                     g.Fire(far.x / 65536.0, far.y / 65536.0);
                 g.Tic(0, 0, 0, 0);
             }
-            Log("rockets " + State());
+            log("rockets " + State());
             g.GoTo(840, 256);
             Ready(IsoDoom.Sim.weapontype_t.wp_chaingun);
-            Log("chaingun up " + State());
+            log("chaingun up " + State());
             KillAll();
 
             // room C
             g.GoTo(1008, 256);
             Door(5);
-            Log("door 2 open " + State());
+            log("door 2 open " + State());
             g.GoTo(1100, 256);
             Ready(IsoDoom.Sim.weapontype_t.wp_chainsaw);
-            Log("chainsaw up " + State());
+            log("chainsaw up " + State());
             for (int i = 0; i < 3 && Nearest() is { } m; i++)
             {
                 if (Dist(m) > 60)
                     g.GoTo(m.x / 65536.0 - 44, m.y / 65536.0, 12);
                 g.FireAt(m, 200);
-                Log("sawed " + State());
+                log("sawed " + State());
             }
             g.Change(IsoDoom.Sim.weapontype_t.wp_fist);
             g.Wait(10);
-            Log("key 1 " + State());
+            log("key 1 " + State());
             for (int i = 0; i < 6; i++)
                 g.Fire(1400, 256);
             g.Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_ATTACK | IsoDoom.Sim.buttoncode_t.BT_CHANGE | ((int)IsoDoom.Sim.weapontype_t.wp_chaingun << IsoDoom.Sim.buttoncode_t.BT_WEAPONSHIFT));
             for (int i = 0; i < 12; i++)
                 g.Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_ATTACK);
-            Log("key 4 while sawing " + State());
+            log("key 4 while sawing " + State());
             g.Tic(0, 0, 0, 0);
             Ready(IsoDoom.Sim.weapontype_t.wp_chaingun);
             for (int i = 0; i < 600 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_chaingun; i++)
                 g.Fire(1400, 256);
             g.Wait(40);
-            Log("emptied " + State());
+            log("emptied " + State());
         }, Monsters: true),
         ["testmap-pickups"] = new(() => TestMapWad("pickups"), "E1M1", """
 # The pickups test map (T6.8, RouteTestMaps) on skill 1 (ammo doubled,
@@ -1279,18 +1279,18 @@ iwad testmap
 map pickups
 skill 1
 
-""", (g, Log) =>
+""", (g, log) =>
         {
-            IsoDoom.Sim.player_t p = g.w.players[0];
+            IsoDoom.Sim.player_t p = g.World.players[0];
             string Status() => $"health {p.health} armor {p.armorpoints}/{p.armortype} items {p.itemcount} damage {p.damagecount} bonus {p.bonuscount} colormap {p.fixedcolormap}";
             g.Wait(70);
-            Log("hurt " + Status());
+            log("hurt " + Status());
             g.GoTo(1560, 128);
-            Log("at the suit " + Status());
+            log("at the suit " + Status());
             g.GoTo(96, 128);
-            Log("back in N " + Status());
+            log("back in N " + Status());
             g.Wait(100);
-            Log("suited " + Status());
+            log("suited " + Status());
         }, Skill: IsoDoom.Sim.skill_t.sk_baby),
         ["testmap-stairs"] = new(() => TestMapWad("stairs"), "E1M1", """
 # The stairs test map (T5.5, RouteTestMaps): west across the W1 stairs
@@ -1303,16 +1303,16 @@ skill 1
 iwad testmap
 map stairs
 
-""", (g, Log) =>
+""", (g, log) =>
         {
             g.GoTo(540, 128);
-            Log("in B " + g.Heights(2, 3, 4, 5));
-            g.WaitUntil(() => Enumerable.Range(2, 4).All(k => g.w.sectors[k].specialdata == null));
-            Log("stairs built " + g.Heights(2, 3, 4, 5));
+            log("in B " + g.Heights(2, 3, 4, 5));
+            g.WaitUntil(() => Enumerable.Range(2, 4).All(k => g.World.sectors[k].specialdata == null));
+            log("stairs built " + g.Heights(2, 3, 4, 5));
             g.GoTo(190, 128);
-            Log("in E " + g.Heights(0, 2));
+            log("in E " + g.Heights(0, 2));
             g.Wait(150);
-            Log("crusher " + g.Heights(0));
+            log("crusher " + g.Heights(0));
         }),
     };
 
@@ -1329,15 +1329,15 @@ map stairs
             return MapInfo.PrintMonsters(Doom1(), args[1], args.Length == 3 ? int.Parse(args[2]) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
             return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? [.. args[2].Split(',').Select(int.Parse)] : null);
-        if (args.Length is < 1 or > 2 || !Scripts.TryGetValue(args[0], out Script? script))
+        if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))
         {
-            Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", Scripts.Keys)}");
+            Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", _scripts.Keys)}");
             return 2;
         }
         string name = args[0];
         string path = args.Length > 1 ? args[1] : Path.Combine(RepoRoot(), "tests", "IsoDoom.Tests", "Sim", "Routes", name + ".route");
         var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
-        void Log(string s) => Console.Error.WriteLine($"[{g.w.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
+        void Log(string s) => Console.Error.WriteLine($"[{g.World.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
         script.Run(g, Log);
         Log($"done, {g.Cmds.Count} tics");
 
@@ -1346,7 +1346,7 @@ map stairs
         replay.Events.AddRange(g.Events);
         foreach ((int Forward, int Side, int Turn, int Buttons) c in g.Cmds)
             replay.Tic(c.Forward, c.Side, c.Turn, c.Buttons); // (with the events)
-        if (replay.w.Checksum() != g.w.Checksum())
+        if (replay.World.Checksum() != g.World.Checksum())
         {
             Console.Error.WriteLine("The replayed ticcmds end in another state: the planning changed the play.");
             return 1;

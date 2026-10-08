@@ -74,9 +74,9 @@ public static class SyntheticIwad
         w.Lump("TITLEPIC", EncodePatch(TitlePic()));
         w.Lump("STBAR", EncodePatch(StatusBar()));
         w.Lump("M_DOOM", EncodePatch(MenuLogo()));
-        w.Lump("STCFN065", EncodePatch(Glyph(GlyphA)));
-        w.Lump("STCFN066", EncodePatch(Glyph(GlyphB)));
-        w.Lump("STCFN067", EncodePatch(Glyph(GlyphC)));
+        w.Lump("STCFN065", EncodePatch(Glyph(_glyphA)));
+        w.Lump("STCFN066", EncodePatch(Glyph(_glyphB)));
+        w.Lump("STCFN067", EncodePatch(Glyph(_glyphC)));
 
         w.Markers("S_START");
         Image troo = Arrow();
@@ -410,9 +410,9 @@ public static class SyntheticIwad
         return img;
     }
 
-    private static readonly string[] GlyphA = ["..#..", ".#.#.", "#...#", "#####", "#...#", "#...#", "#...#"];
-    private static readonly string[] GlyphB = ["####.", "#...#", "####.", "#...#", "#...#", "#...#", "####."];
-    private static readonly string[] GlyphC = [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."];
+    private static readonly string[] _glyphA = ["..#..", ".#.#.", "#...#", "#####", "#...#", "#...#", "#...#"];
+    private static readonly string[] _glyphB = ["####.", "#...#", "####.", "#...#", "#...#", "#...#", "####."];
+    private static readonly string[] _glyphC = [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."];
 
     private static Image Glyph(string[] rows)
     {
@@ -648,7 +648,7 @@ public static class SyntheticIwad
     // ceiling by the sky rule) and a masked GRATE (unpegged) on both sides.
     // B's floor (64) is 80 above A's, more than the cutaway's cutoff (32), so
     // a centre in A just west of L15 has B's floor cut and capped (T3.4a).
-    private static readonly short[] MapVertexes =
+    private static readonly short[] _mapVertexes =
     [
         -128, 128, 128, 128, 128, -128, -128, -128, // v0-v3: west room
         384, 128, 384, -128,                        // v4, v5: east room
@@ -660,7 +660,7 @@ public static class SyntheticIwad
     private const short TwoSided = Line.ML_TWOSIDED, PegTop = Line.ML_DONTPEGTOP, PegBottom = Line.ML_DONTPEGBOTTOM;
 
     // v1, v2, flags, special, tag, right side, left side (-1: none)
-    private static readonly short[,] MapLinedefs =
+    private static readonly short[,] _mapLinedefs =
     {
         { 0, 1, 1, 11, 0, 0, -1 }, // L0: west room north, an S1 exit (11, T5.8: player 1 faces it from its start)
         { 1, 2, 4, 0, 0, 1, 2 },  // L1: two-sided, west room in front, east room behind
@@ -704,10 +704,10 @@ public static class SyntheticIwad
             784, 0, 0, 2028, 7,       // floor lamp (COLU, full bright) in courtyard A
             576, 0, 0, 59, 7));       // hanging body (GOR2, MF_SPAWNCEILING) in room C
         var linedefs = new List<short>();
-        for (int i = 0; i < MapLinedefs.GetLength(0); i++)
+        for (int i = 0; i < _mapLinedefs.GetLength(0); i++)
         {
-            for (int j = 0; j < MapLinedefs.GetLength(1); j++)
-                linedefs.Add(MapLinedefs[i, j]);
+            for (int j = 0; j < _mapLinedefs.GetLength(1); j++)
+                linedefs.Add(_mapLinedefs[i, j]);
         }
         w.Lump("LINEDEFS", Shorts([.. linedefs]));
         w.Lump("SIDEDEFS", Concat(
@@ -735,7 +735,7 @@ public static class SyntheticIwad
             Sidedef("-", "-", "BRICK1", 5),         // 21: L17
             Sidedef("-", "-", "BRICK1", 5),         // 22: L18
             Sidedef("-", "-", "BRICK1", 5)));       // 23: L19
-        w.Lump("VERTEXES", Shorts(MapVertexes));
+        w.Lump("VERTEXES", Shorts(_mapVertexes));
         const short East = 0, North = 0x4000, West = unchecked((short)0x8000), South = unchecked((short)0xC000);
         w.Lump("SEGS", Shorts( // v1, v2, angle (BAM >> 16), linedef, side (0 front, 1 back), offset along the linedef side
             0, 1, East, 0, 0, 0,     // seg 0-3: subsector 0, the west room
@@ -781,7 +781,7 @@ public static class SyntheticIwad
             Sector(-16, 256, "FLOOR2", "F_SKY1", 255),  // 4: courtyard A
             Sector(64, 192, "FLOOR1", "F_SKY1", 192))); // 5: ledge B, raised 80 over A (T3.4a)
         w.Lump("REJECT", new byte[(6 * 6 + 7) / 8]); // all clear: every sector sees every other
-        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 10, 3, MapVertexes, MapLinedefs));
+        w.Lump("BLOCKMAP", BuildBlockmap(-136, -136, 10, 3, _mapVertexes, _mapLinedefs));
     }
 
     // ---- E1M2: the specials map (M5) ----
@@ -943,14 +943,14 @@ public static class SyntheticIwad
 
     private static void BuildSpecialsMap(Writer w)
     {
-        const int n = SpecialsAlcoves, width = 32;
-        var vertexes = new List<short> { n * width, -128, 0, -128 }; // v0 corridor south-east, v1 south-west
+        const int N = SpecialsAlcoves, Width = 32;
+        var vertexes = new List<short> { N * Width, -128, 0, -128 }; // v0 corridor south-east, v1 south-west
         int Mid(int i) => 2 + i;            // (32 i, 0)
-        int Top(int i) => 2 + (n + 1) + i;  // (32 i, 128)
-        for (int i = 0; i <= n; i++)
-            vertexes.AddRange([(short)(i * width), (short)0]);
-        for (int i = 0; i <= n; i++)
-            vertexes.AddRange([(short)(i * width), (short)128]);
+        int Top(int i) => 2 + (N + 1) + i;  // (32 i, 128)
+        for (int i = 0; i <= N; i++)
+            vertexes.AddRange([(short)(i * Width), (short)0]);
+        for (int i = 0; i <= N; i++)
+            vertexes.AddRange([(short)(i * Width), (short)128]);
 
         var lines = new List<short[]>(); // v1, v2, flags, special, tag, right, left
         var sides = new List<byte[]>();
@@ -967,8 +967,8 @@ public static class SyntheticIwad
 
         OneSided(0, 1, 0, "SW1BRCOM", special: 63, tag: 5);  // L0: corridor south (westwards), SR raise door (a switch texture, T5.4)
         OneSided(1, Mid(0), 0, "SW1BRCOM", special: 103, tag: 5); // L1: corridor west, S1 open door (a switch texture, T5.4)
-        OneSided(Mid(n), 0, 0, "BRICK1", special: 103, tag: 9); // L2: corridor east, S1 open door of no sector
-        for (int i = 0; i < n; i++)
+        OneSided(Mid(N), 0, 0, "BRICK1", special: 103, tag: 9); // L2: corridor east, S1 open door of no sector
+        for (int i = 0; i < N; i++)
         {
             // L3 + i: alcove i's opening (westwards: the alcove in front); alcove 0's a WR lift
             // (monsters too), alcove 22's a W1 floor (players only).
@@ -976,7 +976,7 @@ public static class SyntheticIwad
             (int special, int tag) = i switch { 0 => (88, 5), 22 => (38, 5), 23 => (52, 0), _ => (0, 0) };
             TwoSided(Mid(i + 1), Mid(i), 1 + i, 0, special, tag);
         }
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < N; i++)
         {
             // L27 + i: alcove north walls; alcove 0's an SR raise-door button (63) of the door sector (T5.4),
             // alcove 1's a scrolling wall (48), alcove 2's an animated texture (T5.7).
@@ -990,42 +990,42 @@ public static class SyntheticIwad
                 OneSided(Top(i), Top(i + 1), 1 + i, "BRICK1");
         }
         OneSided(Mid(0), Top(0), 1, "BRICK1");       // L51: the row's west end
-        OneSided(Top(n), Mid(n), n, "BRICK1");       // L52: its east end
-        for (int j = 1; j < n; j++)
-            TwoSided(Mid(j), Top(j), 1 + j, j, special: j == n - 1 ? 124 : 0); // L52 + j: alcoves j - 1 | j (northwards: alcove j in front); L75 a secret exit (T5.8)
+        OneSided(Top(N), Mid(N), N, "BRICK1");       // L52: its east end
+        for (int j = 1; j < N; j++)
+            TwoSided(Mid(j), Top(j), 1 + j, j, special: j == N - 1 ? 124 : 0); // L52 + j: alcoves j - 1 | j (northwards: alcove j in front); L75 a secret exit (T5.8)
 
         // T5.3: a manual door (sector DoorSector) between rooms R (west) and S (east), apart from the rest.
         int doorV = vertexes.Count / 2;
         vertexes.AddRange([0, 152, 128, 152, 160, 152, 288, 152, 0, 240, 128, 240, 160, 240, 288, 240]);
         int a = doorV, b = doorV + 1, c = doorV + 2, e = doorV + 3, a2 = doorV + 4, b2 = doorV + 5, c2 = doorV + 6, e2 = doorV + 7;
-        const int room = DoorSector - 1, door = DoorSector, room2 = DoorSector + 1;
+        const int Room = DoorSector - 1, Door = DoorSector, Room2 = DoorSector + 1;
         void DoorLine(int v1, int v2, int front) =>
             lines.Add([ (short)v1, (short)v2, TwoSidedFlag, (short)1, (short)0,
-                (short)Side("PANEL", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", door) ]);
-        DoorLine(b2, b, room);                 // L76: R | door (southwards: R in front), DR manual door (1)
-        DoorLine(c, c2, room2);                // L77: S | door (northwards: S in front), DR manual door (1)
-        OneSided(b, a, room, "BRICK1");        // L78-L80: R's south, west and north walls
-        OneSided(a, a2, room, "BRICK1");
-        OneSided(a2, b2, room, "BRICK1");
-        OneSided(c, b, door, "BRICK1");        // L81, L82: the door's tracks (south, north)
-        OneSided(b2, c2, door, "BRICK1");
-        OneSided(e, c, room2, "BRICK1");       // L83-L85: S's south, north and east walls
-        OneSided(c2, e2, room2, "SW1BRCOM", special: 51); // T5.8: an S1 secret exit
-        OneSided(e2, e, room2, "SW1BRCOM", special: 11);  // T5.8: an S1 exit
+                (short)Side("PANEL", "BRICK1", "-", front), (short)Side("BRICK1", "BRICK1", "-", Door) ]);
+        DoorLine(b2, b, Room);                 // L76: R | door (southwards: R in front), DR manual door (1)
+        DoorLine(c, c2, Room2);                // L77: S | door (northwards: S in front), DR manual door (1)
+        OneSided(b, a, Room, "BRICK1");        // L78-L80: R's south, west and north walls
+        OneSided(a, a2, Room, "BRICK1");
+        OneSided(a2, b2, Room, "BRICK1");
+        OneSided(c, b, Door, "BRICK1");        // L81, L82: the door's tracks (south, north)
+        OneSided(b2, c2, Door, "BRICK1");
+        OneSided(e, c, Room2, "BRICK1");       // L83-L85: S's south, north and east walls
+        OneSided(c2, e2, Room2, "SW1BRCOM", special: 51); // T5.8: an S1 secret exit
+        OneSided(e2, e, Room2, "SW1BRCOM", special: 11);  // T5.8: an S1 exit
 
         // T5.6: room T (west) and the teleporter pad P (east), apart from the rest.
         int teleV = vertexes.Count / 2;
         vertexes.AddRange([320, 152, 384, 152, 448, 152, 320, 240, 384, 240, 448, 240]);
         int f = teleV, g = teleV + 1, h = teleV + 2, f2 = teleV + 3, g2 = teleV + 4, h2 = teleV + 5;
-        const int teleRoom = TeleportRoom, pad = TeleportPad;
+        const int TeleRoom = TeleportRoom, Pad = TeleportPad;
         lines.Add([ (short)g2, (short)g, TwoSidedFlag, (short)97, TeleportTag,
-            (short)Side("BRICK1", "BRICK1", "-", teleRoom), (short)Side("BRICK1", "BRICK1", "-", pad) ]); // L86: T | P (southwards: T in front), WR teleport
-        OneSided(g, f, teleRoom, "BRICK1");    // L87-L89: T's south, west and north walls
-        OneSided(f, f2, teleRoom, "BRICK1");
-        OneSided(f2, g2, teleRoom, "BRICK1");
-        OneSided(h, g, pad, "BRICK1");         // L90-L92: P's south, north and east walls
-        OneSided(g2, h2, pad, "BRICK1");
-        OneSided(h2, h, pad, "BRICK1");
+            (short)Side("BRICK1", "BRICK1", "-", TeleRoom), (short)Side("BRICK1", "BRICK1", "-", Pad) ]); // L86: T | P (southwards: T in front), WR teleport
+        OneSided(g, f, TeleRoom, "BRICK1");    // L87-L89: T's south, west and north walls
+        OneSided(f, f2, TeleRoom, "BRICK1");
+        OneSided(f2, g2, TeleRoom, "BRICK1");
+        OneSided(h, g, Pad, "BRICK1");         // L90-L92: P's south, north and east walls
+        OneSided(g2, h2, Pad, "BRICK1");
+        OneSided(h2, h, Pad, "BRICK1");
 
         var segs = new List<short>();
         var subsectors = new List<short>();
@@ -1043,12 +1043,12 @@ public static class SyntheticIwad
         // Subsector 0: the corridor, clockwise from its south wall.
         Seg(0, 1, 0, 0);
         Seg(1, Mid(0), 1, 0);
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < N; i++)
             Seg(Mid(i), Mid(i + 1), 3 + i, 1);
-        Seg(Mid(n), 0, 2, 0);
+        Seg(Mid(N), 0, 2, 0);
         Subsector(0);
         // Subsector 1 + i: alcove i.
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < N; i++)
         {
             int first = segs.Count / 6;
             Seg(Mid(i + 1), Mid(i), 3 + i, 0);
@@ -1057,8 +1057,8 @@ public static class SyntheticIwad
             else
                 Seg(Mid(i), Top(i), 52 + i, 0);
             Seg(Top(i), Top(i + 1), 27 + i, 0);
-            if (i == n - 1)
-                Seg(Top(n), Mid(n), 52, 0);
+            if (i == N - 1)
+                Seg(Top(N), Mid(N), 52, 0);
             else
                 Seg(Top(i + 1), Mid(i + 1), 52 + i + 1, 1);
             Subsector(first);
@@ -1095,39 +1095,39 @@ public static class SyntheticIwad
         // alcove j - 1, its front child the node of boundary j + 1 (or the last alcove); the root (last)
         // splits along y = 0 eastwards, the corridor (south) in front.
         var nodes = new List<short>();
-        for (int j = n - 1; j >= 1; j--)
+        for (int j = N - 1; j >= 1; j--)
         {
-            int front = j == n - 1 ? 0x8000 | n : n - 2 - j;
+            int front = j == N - 1 ? 0x8000 | N : N - 2 - j;
             int back = 0x8000 | j;
             nodes.AddRange(
             [
-                (short)(j * width), (short)0, (short)0, (short)128,
-                (short)128, (short)0, (short)(j * width), (short)(n * width), // right box: top, bottom, left, right
-                (short)128, (short)0, (short)((j - 1) * width), (short)(j * width), // left box
+                (short)(j * Width), (short)0, (short)0, (short)128,
+                (short)128, (short)0, (short)(j * Width), (short)(N * Width), // right box: top, bottom, left, right
+                (short)128, (short)0, (short)((j - 1) * Width), (short)(j * Width), // left box
                 unchecked((short)front), unchecked((short)back),
             ]);
         }
         nodes.AddRange(
         [
-            (short)0, (short)0, (short)(n * width), (short)0,
-            (short)0, (short)-128, (short)0, (short)(n * width),
-            (short)128, (short)0, (short)0, (short)(n * width),
-            unchecked((short)0x8000), (short)(n - 2),
+            (short)0, (short)0, (short)(N * Width), (short)0,
+            (short)0, (short)-128, (short)0, (short)(N * Width),
+            (short)128, (short)0, (short)0, (short)(N * Width),
+            unchecked((short)0x8000), (short)(N - 2),
         ]);
         // T5.3: the door area north of the row; node n along x = 160 (the door west, S east), n + 1 along
         // x = 128 (R west); the root (n + 2) along y = 144 eastwards, the corridor and alcoves (node n - 1) in front.
         nodes.AddRange(
         [
-            160, 152, 0, 88, 240, 152, 160, 288, 240, 152, 128, 160, unchecked((short)(0x8000 | room2)), unchecked((short)(0x8000 | door)),
-            128, 152, 0, 88, 240, 152, 128, 288, 240, 152, 0, 128, (short)n, unchecked((short)(0x8000 | room)),
+            160, 152, 0, 88, 240, 152, 160, 288, 240, 152, 128, 160, unchecked((short)(0x8000 | Room2)), unchecked((short)(0x8000 | Door)),
+            128, 152, 0, 88, 240, 152, 128, 288, 240, 152, 0, 128, (short)N, unchecked((short)(0x8000 | Room)),
             // T5.6: node n + 2 along x = 384 (T west, the pad east), n + 3 along x = 304 (the door area west, T east).
-            384, 152, 0, 88, 240, 152, 384, 448, 240, 152, 320, 384, unchecked((short)(0x8000 | pad)), unchecked((short)(0x8000 | teleRoom)),
-            304, 152, 0, 88, 240, 152, 320, 448, 240, 152, 0, 288, (short)(n + 2), (short)(n + 1),
-            0, 144, (short)(n * width), 0, 128, -128, 0, (short)(n * width), 240, 152, 0, 448, (short)(n - 1), (short)(n + 3),
+            384, 152, 0, 88, 240, 152, 384, 448, 240, 152, 320, 384, unchecked((short)(0x8000 | Pad)), unchecked((short)(0x8000 | TeleRoom)),
+            304, 152, 0, 88, 240, 152, 320, 448, 240, 152, 0, 288, (short)(N + 2), (short)(N + 1),
+            0, 144, (short)(N * Width), 0, 128, -128, 0, (short)(N * Width), 240, 152, 0, 448, (short)(N - 1), (short)(N + 3),
         ]);
 
         var sectors = new List<byte[]> { Sector(0, 128, "FLOOR1", "FLOOR2", 160) };
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < N; i++)
             sectors.Add(Sector((short)AlcoveFloor(i), (short)AlcoveCeiling(i), i % 2 == 0 ? "FLOOR2" : "LAVA1", "FLOOR1", (short)AlcoveLight(i), (short)AlcoveTag(i),
                 (short)AlcoveSpecial(i)));
         sectors.Add(Sector(0, 128, "FLOOR1", "FLOOR2", 160, TeleportTag)); // 25: room R (the teleport destination's, T5.6)
@@ -1481,19 +1481,19 @@ public static class SyntheticIwad
     private static byte[] BuildDmxSound()
     {
         // DMX: format 3, 11025 Hz, sample count (incl. the 16 pad bytes either side), then 8-bit unsigned samples.
-        const int samples = 2048;
-        byte[] lump = new byte[8 + 16 + samples + 16];
+        const int Samples = 2048;
+        byte[] lump = new byte[8 + 16 + Samples + 16];
         BinaryPrimitives.WriteUInt16LittleEndian(lump, 3);
         BinaryPrimitives.WriteUInt16LittleEndian(lump.AsSpan(2), 11025);
-        BinaryPrimitives.WriteUInt32LittleEndian(lump.AsSpan(4), samples + 32);
+        BinaryPrimitives.WriteUInt32LittleEndian(lump.AsSpan(4), Samples + 32);
         for (int i = 0; i < 16; i++)
         {
             lump[8 + i] = 128;
-            lump[8 + 16 + samples + i] = 128;
+            lump[8 + 16 + Samples + i] = 128;
         }
-        for (int i = 0; i < samples; i++)
+        for (int i = 0; i < Samples; i++)
         {
-            int amplitude = 100 * (samples - i) / samples;
+            int amplitude = 100 * (Samples - i) / Samples;
             lump[8 + 16 + i] = (byte)(128 + ((i / 12) % 2 == 0 ? amplitude : -amplitude)); // decaying square wave
         }
         return lump;

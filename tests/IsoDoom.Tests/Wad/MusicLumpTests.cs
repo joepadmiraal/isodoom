@@ -278,7 +278,7 @@ public class MusicLumpTests
     // ---- The IWADs ----
 
     // DOOM1.WAD v1.9's songs: events (the score end included) and length in tics.
-    private static readonly (string Name, int Events, long Tics)[] Doom1Songs =
+    private static readonly (string Name, int Events, long Tics)[] _doom1Songs =
     [
         ("D_E1M1", 5826, 13440), ("D_E1M2", 10847, 21751), ("D_E1M3", 7507, 38080), ("D_E1M4", 6270, 23893),
         ("D_E1M5", 3270, 22960), ("D_E1M6", 3332, 11760), ("D_E1M7", 2835, 21120), ("D_E1M8", 18113, 21280),
@@ -290,8 +290,8 @@ public class MusicLumpTests
     public void ReadsEverySharewareSongAndTheBank()
     {
         var wad = WadArchive.Open(TestWads.RequireDoom1());
-        Assert.Equal(Doom1Songs.Select(s => s.Name), wad.Lumps.Where(l => l.Name.StartsWith("D_", StringComparison.Ordinal)).Select(l => l.Name));
-        foreach ((string name, int events, long tics) in Doom1Songs)
+        Assert.Equal(_doom1Songs.Select(s => s.Name), wad.Lumps.Where(l => l.Name.StartsWith("D_", StringComparison.Ordinal)).Select(l => l.Name));
+        foreach ((string name, int events, long tics) in _doom1Songs)
         {
             var song = MusSong.Read(wad.W_CacheLumpName(name).Span, name);
             Assert.Equal((name, events, tics), (name, song.Events.Count, song.LengthTics));

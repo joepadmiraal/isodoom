@@ -16,24 +16,24 @@ namespace IsoDoom.Game;
 /// </summary>
 public sealed class ScreenGraphics
 {
-    private readonly WadArchive? wad;
-    private readonly IndexedImage?[] font;
-    private readonly Dictionary<string, IndexedImage?> patches = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IndexedImage?> flats = new(StringComparer.OrdinalIgnoreCase);
+    private readonly WadArchive? _wad;
+    private readonly IndexedImage?[] _font;
+    private readonly Dictionary<string, IndexedImage?> _patches = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IndexedImage?> _flats = new(StringComparer.OrdinalIgnoreCase);
 
     public ScreenGraphics(WadArchive? wad, HuStuff? hu)
     {
-        this.wad = wad;
-        font = hu?.hu_font ?? new IndexedImage?[HuStuff.HU_FONTSIZE];
+        this._wad = wad;
+        _font = hu?.hu_font ?? new IndexedImage?[HuStuff.HU_FONTSIZE];
     }
 
     /// <summary>The patch lump <paramref name="name"/>, or null when the WAD lacks it (or it is no patch).</summary>
     public IndexedImage? Patch(string name)
     {
-        if (patches.TryGetValue(name, out IndexedImage? image))
+        if (_patches.TryGetValue(name, out IndexedImage? image))
             return image;
         image = null;
-        if (wad?.Find(name) is { } lump)
+        if (_wad?.Find(name) is { } lump)
         {
             try
             {
@@ -43,17 +43,17 @@ public sealed class ScreenGraphics
             {
             }
         }
-        patches[name] = image;
+        _patches[name] = image;
         return image;
     }
 
     /// <summary>The flat <paramref name="name"/> (the flats' namespace), or null.</summary>
     public IndexedImage? Flat(string name)
     {
-        if (flats.TryGetValue(name, out IndexedImage? image))
+        if (_flats.TryGetValue(name, out IndexedImage? image))
             return image;
         image = null;
-        if (wad?.Find(name, LumpNamespace.Flats) is { } lump)
+        if (_wad?.Find(name, LumpNamespace.Flats) is { } lump)
         {
             try
             {
@@ -63,7 +63,7 @@ public sealed class ScreenGraphics
             {
             }
         }
-        flats[name] = image;
+        _flats[name] = image;
         return image;
     }
 
@@ -99,12 +99,12 @@ public sealed class ScreenGraphics
     }
 
     /// <summary>The message font's height (<c>STCFN033</c>'s; 7 without the font).</summary>
-    public int FontHeight => font[0]?.Height ?? 7;
+    public int FontHeight => _font[0]?.Height ?? 7;
 
     private IndexedImage? Glyph(char ch)
     {
         int c = char.ToUpperInvariant(ch);
-        return c > ' ' && c >= HuStuff.HU_FONTSTART && c <= HuStuff.HU_FONTEND ? font[c - HuStuff.HU_FONTSTART] : null;
+        return c > ' ' && c >= HuStuff.HU_FONTSTART && c <= HuStuff.HU_FONTEND ? _font[c - HuStuff.HU_FONTSTART] : null;
     }
 
     /// <summary>Whether the message font has <paramref name="ch"/> (upper case; not a space).</summary>

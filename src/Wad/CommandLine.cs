@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace IsoDoom.Wad;
 
@@ -10,7 +11,9 @@ namespace IsoDoom.Wad;
 /// </summary>
 public sealed class CommandLine
 {
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_argv.c)")]
     public string[] myargv { get; }
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_argv.c)")]
     public int myargc => myargv.Length;
 
     public CommandLine(string program, IEnumerable<string> args)
@@ -25,6 +28,7 @@ public sealed class CommandLine
     /// followed by at least <paramref name="num_args"/> arguments, else 0
     /// (m_argv.c: <c>M_CheckParmWithArgs</c>).
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_argv.c)")]
     public int M_CheckParmWithArgs(string check, int num_args)
     {
         for (int i = 1; i < myargc - num_args; i++)
@@ -36,6 +40,7 @@ public sealed class CommandLine
     }
 
     /// <summary>The index of <paramref name="check"/> (case-insensitive), or 0 (m_argv.c: <c>M_CheckParm</c>).</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_argv.c)")]
     public int M_CheckParm(string check) => M_CheckParmWithArgs(check, 0);
 
     /// <summary>

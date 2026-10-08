@@ -102,7 +102,7 @@ public class FinaleTests
 
     // ---- without a WAD ----
 
-    private static readonly WadArchive Synthetic = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+    private static readonly WadArchive _synthetic = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     /// <summary>A flow on the synthetic IWAD's E1M1 left as if it were map <paramref name="map"/> of episode <paramref name="episode"/>, at its finale.</summary>
     private static (GameFlow Flow, GameFlowTests.Host Host) AtFinale(GameMode mode, GameMission mission, int episode, int map, bool secret = false)
@@ -191,7 +191,7 @@ public class FinaleTests
     public void TheTextIsTypedOutAtVanillasSpeed()
     {
         // a font of 6×7 glyphs whose pixels are their character's code
-        WadArchive wad = Synthetic;
+        WadArchive wad = _synthetic;
         var hu = new HuStuff(null);
         for (int i = 0; i < HuStuff.HU_FONTSIZE; i++)
         {

@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 
@@ -126,9 +127,11 @@ public sealed class Genmidi
     public IReadOnlyList<GenmidiInstrument> Instruments => _instruments;
 
     /// <summary>i_oplmusic.c <c>main_instrs</c>: the 128 melodic instruments, by MIDI program.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (i_oplmusic.c)")]
     public ReadOnlySpan<GenmidiInstrument> main_instrs => _instruments.AsSpan(0, GENMIDI_NUM_INSTRS);
 
     /// <summary>i_oplmusic.c <c>percussion_instrs</c>: the 47 percussion instruments, for notes 35–81.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (i_oplmusic.c)")]
     public ReadOnlySpan<GenmidiInstrument> percussion_instrs => _instruments.AsSpan(GENMIDI_NUM_INSTRS, GENMIDI_NUM_PERCUSSION);
 
     /// <summary>True when the lump holds the whole name table.</summary>

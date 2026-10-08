@@ -9,7 +9,7 @@ namespace IsoDoom.Tests.Graphics;
 /// <summary>T1.5 sprite grouping on synthetic WADs (no DOOM1.WAD needed).</summary>
 public class SpriteIndexTests
 {
-    private static readonly string[] Names = ["TROO", "BAR1", "NONE"];
+    private static readonly string[] _names = ["TROO", "BAR1", "NONE"];
 
     private static WadFile SpriteWad(WadType type, params string[] lumps)
     {
@@ -24,18 +24,18 @@ public class SpriteIndexTests
     private static (WadArchive Wad, Sprites Sprites) Index(params WadFile[] files)
     {
         WadArchive wad = new(files);
-        return (wad, Sprites.R_InitSprites(wad, Names));
+        return (wad, Sprites.R_InitSprites(wad, _names));
     }
 
     private static string[] Slots(WadArchive wad, SpriteFrame f) =>
         [.. f.Lump.Select((l, r) => $"{wad.Lumps[l].File.Name[0]}:{wad.Lumps[l].Name}{(f.Flip[r] ? "*" : "")}")];
 
-    private static readonly string[] FullRotations = ["TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5"];
+    private static readonly string[] _fullRotations = ["TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5"];
 
     [Fact]
     public void GroupsFramesRotationsAndMirroredPairs()
     {
-        (WadArchive wad, Sprites s) = Index(SpriteWad(WadType.Iwad, [.. FullRotations, "TROOB0", "BAR1A0", "XXXXA0"]));
+        (WadArchive wad, Sprites s) = Index(SpriteWad(WadType.Iwad, [.. _fullRotations, "TROOB0", "BAR1A0", "XXXXA0"]));
         Assert.Equal(3, s.NumSprites);
 
         SpriteDef troo = s.SpriteDefs[0];
@@ -93,7 +93,7 @@ public class SpriteIndexTests
     {
         // The T1.1 note: a PWAD TROOA2 drops only the A2 half of the IWAD's TROOA2A8.
         (WadArchive wad, Sprites s) = Index(
-            SpriteWad(WadType.Iwad, FullRotations),
+            SpriteWad(WadType.Iwad, _fullRotations),
             SpriteWad(WadType.Pwad, "TROOA2"));
         Assert.Equal(new[] { "i:TROOA1", "p:TROOA2", "i:TROOA3A7", "i:TROOA4A6", "i:TROOA5", "i:TROOA4A6*", "i:TROOA3A7*", "i:TROOA2A8*" },
             Slots(wad, s.Find("TROO")!.Frames[0]));
@@ -103,7 +103,7 @@ public class SpriteIndexTests
     public void PwadRotationZeroReplacesAllRotations()
     {
         (WadArchive wad, Sprites s) = Index(
-            SpriteWad(WadType.Iwad, FullRotations),
+            SpriteWad(WadType.Iwad, _fullRotations),
             SpriteWad(WadType.Pwad, "TROOA0"));
         SpriteFrame a = s.Find("TROO")!.Frames[0];
         Assert.False(a.Rotate);

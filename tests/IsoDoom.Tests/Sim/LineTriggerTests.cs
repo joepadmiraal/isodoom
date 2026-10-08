@@ -18,7 +18,7 @@ namespace IsoDoom.Tests.Sim;
 /// switch; line 2 its east wall, an S1 switch of no sector; line 3 alcove 0's
 /// opening, a WR lift; line 25 alcove 22's, a W1 floor). The effects not
 /// ported yet are stubs until T5.6-T5.8, which record their calls in
-/// <see cref="World.unported"/>; the doors (T5.3), lifts and floors (T5.5)
+/// <see cref="World.Unported"/>; the doors (T5.3), lifts and floors (T5.5)
 /// are checked by the thinkers they start in the tagged alcoves 3, 7 and 12.
 /// </summary>
 public class LineTriggerTests
@@ -42,7 +42,7 @@ public class LineTriggerTests
     private static mobj_t Player(World world) => world.players[0].mo!;
 
     /// <summary>The tag-5 alcoves (sectors 4, 8 and 13), which lines 0 and 1 open as doors.</summary>
-    private static readonly int[] Tagged = [1 + 3, 1 + 7, 1 + 12];
+    private static readonly int[] _tagged = [1 + 3, 1 + 7, 1 + 12];
 
     /// <summary>
     /// The type of the doors moving the tag-5 alcoves (every one has the same),
@@ -50,7 +50,7 @@ public class LineTriggerTests
     /// </summary>
     private static vldoor_e? TaggedDoors(World world)
     {
-        var doors = Tagged.Select(s => world.sectors[s].specialdata).ToList();
+        var doors = _tagged.Select(s => world.sectors[s].specialdata).ToList();
         if (doors.All(d => d == null))
             return null;
         Assert.All(doors, d => Assert.IsType<vldoor_t>(d));
@@ -80,14 +80,14 @@ public class LineTriggerTests
         Assert.Equal(51, world.lines[SyntheticIwad.SecretExitSwitchLine].special);
         Assert.Equal(52, world.lines[SyntheticIwad.ExitWalkLine].special);
         Assert.Equal(124, world.lines[SyntheticIwad.SecretExitWalkLine].special);
-        Assert.Empty(world.unported); // the sector specials are ported (T5.7)
+        Assert.Empty(world.Unported); // the sector specials are ported (T5.7)
         Assert.Equal(1, world.totalsecret); // alcove 15 (T5.8)
     }
 
     /// <summary>The thinkers of type <typeparamref name="T"/> moving the tag-5 alcoves (none or all three).</summary>
     private static T[] TaggedMovers<T>(World world) where T : thinker_t
     {
-        T[] movers = [.. Tagged.Select(s => world.sectors[s].specialdata).OfType<T>()];
+        T[] movers = [.. _tagged.Select(s => world.sectors[s].specialdata).OfType<T>()];
         Assert.True(movers.Length is 0 or 3, $"{movers.Length} of the tagged alcoves move");
         return movers;
     }
@@ -95,9 +95,9 @@ public class LineTriggerTests
     /// <summary>Runs tics with no input until no tagged alcove moves (at most <paramref name="max"/>).</summary>
     private static void RunUntilIdle(World world, int max = 1000)
     {
-        for (int i = 0; i < max && Tagged.Any(s => world.sectors[s].specialdata != null); i++)
+        for (int i = 0; i < max && _tagged.Any(s => world.sectors[s].specialdata != null); i++)
             world.G_Ticker(new ticcmd_t());
-        Assert.All(Tagged, s => Assert.Null(world.sectors[s].specialdata));
+        Assert.All(_tagged, s => Assert.Null(world.sectors[s].specialdata));
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class LineTriggerTests
         Assert.True(world.P_TryMove(mo, F(720), F(-10)));
         Assert.True(world.P_TryMove(mo, F(720), F(10)));
         Assert.Empty(TaggedMovers<thinker_t>(world));
-        Assert.Empty(world.unported);
+        Assert.Empty(world.Unported);
     }
 
     [Fact]
@@ -170,8 +170,8 @@ public class LineTriggerTests
         // The doors open to the corridor's ceiling less 4, below the alcoves' ceilings: there at once.
         world.G_Ticker(new ticcmd_t());
         Assert.Null(TaggedDoors(world));
-        Assert.All(Tagged, s => Assert.Equal(F(124), world.sectors[s].ceilingheight));
-        world.sectors[Tagged[0]].ceilingheight = F(200);
+        Assert.All(_tagged, s => Assert.Equal(F(124), world.sectors[s].ceilingheight));
+        world.sectors[_tagged[0]].ceilingheight = F(200);
         Use(world, 40, -64, 180);
         Assert.Null(TaggedDoors(world));
 
@@ -179,7 +179,7 @@ public class LineTriggerTests
         Use(world, 740, -64, 0);
         Use(world, 740, -64, 0);
         Assert.Equal(103, world.lines[2].special);
-        Assert.Empty(world.unported);
+        Assert.Empty(world.Unported);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class LineTriggerTests
         void Tic(ticcmd_t cmd)
         {
             world.G_Ticker(cmd);
-            foreach (int s in Tagged)
+            foreach (int s in _tagged)
             {
                 if (world.sectors[s].specialdata is vldoor_t door)
                     doors.Add(door);
@@ -212,7 +212,7 @@ public class LineTriggerTests
         for (int i = 0; i < VDoor.VDOORWAIT + 4; i++)
             Tic(none);
         Assert.Null(TaggedDoors(world));
-        Assert.All(Tagged, s => Assert.Equal(world.sectors[s].floorheight, world.sectors[s].ceilingheight));
+        Assert.All(_tagged, s => Assert.Equal(world.sectors[s].floorheight, world.sectors[s].ceilingheight));
         Tic(use);
         Assert.Equal(6, doors.Count);
         Assert.Equal(63, world.lines[0].special);
@@ -317,7 +317,7 @@ public class LineTriggerTests
         world.G_Ticker(new ticcmd_t { angleturn = unchecked((short)(Deg(180) >> 16)), buttons = buttoncode_t.BT_USE });
         // The doors started and finished in the tic (the alcoves' ceilings are above where they open to).
         Assert.Equal(0, world.lines[1].special);
-        Assert.All(Tagged, s => Assert.Equal(F(124), world.sectors[s].ceilingheight));
+        Assert.All(_tagged, s => Assert.Equal(F(124), world.sectors[s].ceilingheight));
     }
 
     [Fact]
@@ -332,7 +332,7 @@ public class LineTriggerTests
         level.Lines[27].Special = 48;  // scrolling wall
         World world = Specials(level: level);
         Assert.Equal(2 + 1, world.totalsecret); // and the map's own, alcove 15 (T5.8)
-        Assert.Empty(world.unported);
+        Assert.Empty(world.Unported);
         // The light thinkers (T5.7), after the things, in sector order.
         var lights = new List<thinker_t>();
         for (thinker_t th = world.thinkercap.next; th != world.thinkercap; th = th.next)
@@ -376,7 +376,7 @@ public class LineTriggerTests
         var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         Assert.Equal(3, world.totalsecret);
-        Assert.Empty(world.unported);
+        Assert.Empty(world.Unported);
         // Sector 40's blinking light (the start alcove; T4.8's note) and more (T5.7).
         bool flash40 = false;
         for (thinker_t th = world.thinkercap.next; th != world.thinkercap; th = th.next)

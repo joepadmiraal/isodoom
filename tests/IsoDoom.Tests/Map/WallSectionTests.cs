@@ -46,7 +46,7 @@ public class WallSectionTests
     private static (int, int) Units((int Bottom, int Top) span) => (span.Bottom >> FRACBITS, span.Top >> FRACBITS);
 
     // line, side, kind, texture ("-" for none), bottom, top, row 0, x offset (map units)
-    private static readonly (int Line, int Side, WallSectionKind Kind, string Texture, PlaneRef Bottom, PlaneRef Top, PlaneRef TextureTop, int XOffset)[] SyntheticSections =
+    private static readonly (int Line, int Side, WallSectionKind Kind, string Texture, PlaneRef Bottom, PlaneRef Top, PlaneRef TextureTop, int XOffset)[] _syntheticSections =
     [
         (0, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         // L1: PANEL (72 high) upper pegged to the back ceiling, lower to the back floor.
@@ -117,7 +117,7 @@ public class WallSectionTests
     {
         (Level map, Textures textures, WallSections walls) = BuildSynthetic();
         Assert.Equal(
-            SyntheticSections.Select(e => (e.Line, e.Side, e.Kind, e.Texture, e.Bottom, e.Top, e.TextureTop, e.XOffset)),
+            _syntheticSections.Select(e => (e.Line, e.Side, e.Kind, e.Texture, e.Bottom, e.Top, e.TextureTop, e.XOffset)),
             walls.Sections.Select(s => (s.Line.Index, s.Side, s.Kind, s.Texture == 0 ? "-" : textures.TextureDefs[s.Texture].Name,
                 s.Bottom, s.Top, s.TextureTop, s.TextureOffset >> FRACBITS)));
         Assert.Empty(walls.Missing);
@@ -345,7 +345,7 @@ public class WallSectionTests
     }
 
     /// <summary>The same for DOOM II v1.666 (other versions only have to build).</summary>
-    private static readonly Dictionary<string, string> Doom2V1666Missing = new()
+    private static readonly Dictionary<string, string> _doom2V1666Missing = new()
     {
             { "MAP01", "334:1L 335:1L 369:1L" },
             { "MAP02", "347:0L 348:0L 358:0L 359:0L" },
@@ -398,7 +398,7 @@ public class WallSectionTests
         var walls = WallSections.Build(Level.Load(wad, name), textures);
         CheckConsistent(walls);
         if (TestWads.Doom2Md5 == TestWads.Doom2V1666Md5)
-            Assert.Equal(Doom2V1666Missing[name], Format(walls.Missing));
+            Assert.Equal(_doom2V1666Missing[name], Format(walls.Missing));
     }
 
     private static string Format(IEnumerable<MissingWallTexture> missing) =>

@@ -667,12 +667,12 @@ public partial class LevelCheck : Godot.Node
         // Floor: its corners, the flat's slot, the triangle list.
         if (floor is not null)
         {
-            const int flatSlot = 0; // the slot is the sector data's (T5.1)
+            const int FlatSlot = 0; // the slot is the sector data's (T5.1)
             for (int i = 0; i < floorVertices; i++)
             {
                 PolygonVertex v = floor.Vertices[i];
                 if (!Near(pos[i], LevelMesh.ToGodot(v.X, v.Y, 0)) || !Near(uv[i], new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)))
-                    || !Custom(c0, i, LevelMesh.KindFloor, flatSlot, sector, -1))
+                    || !Custom(c0, i, LevelMesh.KindFloor, FlatSlot, sector, -1))
                 {
                     Fail($"{what}: floor vertex {i} differs");
                     break;
@@ -698,7 +698,7 @@ public partial class LevelCheck : Godot.Node
                 {
                     PolygonVertex v = floor.Vertices[i];
                     if (!Near(pos[vb + i], LevelMesh.ToGodot(v.X, v.Y, 0)) || !Near(uv[vb + i], new Vector2((float)(v.X / 65536.0), (float)(-v.Y / 65536.0)))
-                        || !Custom(c0, vb + i, lid ? LevelMesh.KindLid : LevelMesh.KindCap, flatSlot, sector, centre))
+                        || !Custom(c0, vb + i, lid ? LevelMesh.KindLid : LevelMesh.KindCap, FlatSlot, sector, centre))
                     {
                         Fail($"{what}: {name} vertex {i} differs ({Custom4(c0, vb + i)})");
                         break;
@@ -930,12 +930,12 @@ public partial class LevelCheck : Godot.Node
         bool[] hasFloor = new bool[m.Level.Sectors.Length];
         foreach (SectorFloor f in m.Floors.BySector)
             hasFloor[f.Sector] |= f.TriangleCount > 0;
-        const int room = 2 * MoveUnits << Fixed.FRACBITS;
+        const int Room = 2 * MoveUnits << Fixed.FRACBITS;
         foreach (WallSection s in m.Walls.Sections)
         {
             if (s.Kind == WallSectionKind.Lower && LevelMesh.IsDrawn(s) && s.BackSector is Sector back && back != s.FrontSector
                 && (s.Line.Flags & Line.ML_DONTPEGBOTTOM) == 0 && IsSideOnCheckable(s) && WallLength(s) >= 16 && hasFloor[back.Index]
-                && back.CeilingHeight - back.FloorHeight >= room && s.FrontSector.CeilingHeight - back.FloorHeight >= room)
+                && back.CeilingHeight - back.FloorHeight >= Room && s.FrontSector.CeilingHeight - back.FloorHeight >= Room)
                 return (s, back);
         }
         return null;
@@ -1591,14 +1591,14 @@ public partial class LevelCheck : Godot.Node
             maxY = Math.Max(maxY, v.Y / 65536.0);
         }
         double s45 = Math.Sqrt(0.5);
-        const double distance = 1024;
+        const double Distance = 1024;
         double floorZ = sector.FloorHeight / 65536.0, ceilingZ = sector.CeilingHeight / 65536.0;
         // Camera centre (map x, y, height): looking north and down at 45° at the box's centre at the frame height;
         // x chosen so that pixel centres fall on x = n + 0.5.
         double cx = Math.Round((minX + maxX) / 2 - w / 2.0) + w / 2.0;
-        double cy = (minY + maxY) / 2 - s45 * distance, cz = frameHeight / 65536.0 + s45 * distance;
+        double cy = (minY + maxY) / 2 - s45 * Distance, cz = frameHeight / 65536.0 + s45 * Distance;
         var basis = new Basis(new Vector3(1, 0, 0), new Vector3(0, (float)s45, -(float)s45), new Vector3(0, (float)s45, (float)s45));
-        Ortho(basis, new Vector3((float)cx, (float)cy, (float)cz), 1, (float)(3 * distance));
+        Ortho(basis, new Vector3((float)cx, (float)cy, (float)cz), 1, (float)(3 * Distance));
         byte[]? frame = await Capture(what);
         if (frame is null)
             return expectedColours;
@@ -1782,7 +1782,7 @@ public partial class LevelCheck : Godot.Node
     /// <summary>A background colour more than a few steps from every colour of palette 0, so a missing floor can't pass as drawn.</summary>
     internal static (int R, int G, int B) UnusedColor(Playpal playpal)
     {
-        const int distance = 3 * BackgroundTolerance;
+        const int Distance = 3 * BackgroundTolerance;
         for (int g = 0; g < 256; g += 3)
         {
             for (int b = 255; b >= 0; b -= 5)
@@ -1793,7 +1793,7 @@ public partial class LevelCheck : Godot.Node
                     for (int i = 0; i < 256 && free; i++)
                     {
                         (byte pr, byte pg, byte pb) = playpal.GetColor(0, i);
-                        free = Math.Abs(pr - r) > distance || Math.Abs(pg - g) > distance || Math.Abs(pb - b) > distance;
+                        free = Math.Abs(pr - r) > Distance || Math.Abs(pg - g) > Distance || Math.Abs(pb - b) > Distance;
                     }
                     if (free)
                         return (r, g, b);

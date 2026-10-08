@@ -1641,17 +1641,17 @@ public partial class LevelScene : Node3D, IGameHost
         UnloadLevel();
     }
 
-    // How many of the world's World.unported calls are printed (or were there at its start).
+    // How many of the world's World.Unported calls are printed (or were there at its start).
     private int _unportedPrinted;
 
     /// <summary>
     /// Prints the calls the last tic made to specials not ported yet
-    /// (<see cref="World.unported"/>: a line triggered by walking or use, T5.2),
+    /// (<see cref="World.Unported"/>: a line triggered by walking or use, T5.2),
     /// so a trigger can be seen to fire until its effect exists (T5.3-T5.8).
     /// </summary>
     private void PrintUnported()
     {
-        List<string> calls = World!.unported;
+        List<string> calls = World!.Unported;
         for (; _unportedPrinted < calls.Count; _unportedPrinted++)
             GD.Print($"Level: tic {World.leveltime}: {calls[_unportedPrinted]} (not ported yet)");
     }
@@ -2368,7 +2368,7 @@ public partial class LevelScene : Node3D, IGameHost
                 world.G_DoLoadLevel(level);
             }
             World = world;
-            _unportedPrinted = world.unported.Count; // the level's start (P_SpawnSpecials) is not news
+            _unportedPrinted = world.Unported.Count; // the level's start (P_SpawnSpecials) is not news
         }
         catch (Exception e) when (e is WadFormatException or SaveGameException)
         {

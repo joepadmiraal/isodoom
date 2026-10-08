@@ -21,7 +21,7 @@ namespace IsoDoom.Tests.Purity;
 public static class DeterminismScanner
 {
     /// <summary>Types whose mere use is forbidden, with the reason.</summary>
-    private static readonly Dictionary<string, string> ForbiddenTypes = new()
+    private static readonly Dictionary<string, string> _forbiddenTypes = new()
     {
         ["System.Single"] = "float",
         ["System.Double"] = "double",
@@ -46,7 +46,7 @@ public static class DeterminismScanner
     };
 
     /// <summary>Individual members that are forbidden on otherwise allowed types.</summary>
-    private static readonly Dictionary<string, string> ForbiddenMembers = new()
+    private static readonly Dictionary<string, string> _forbiddenMembers = new()
     {
         ["System.Environment::get_TickCount"] = "wall-clock time (Environment.TickCount)",
         ["System.Environment::get_TickCount64"] = "wall-clock time (Environment.TickCount64)",
@@ -55,7 +55,7 @@ public static class DeterminismScanner
     };
 
     /// <summary>Unordered collections whose enumeration order is not part of the sim's contract.</summary>
-    private static readonly HashSet<string> UnorderedCollections = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> _unorderedCollections = new(StringComparer.Ordinal)
     {
         "System.Collections.Generic.Dictionary`2",
         "System.Collections.Generic.Dictionary`2/KeyCollection",
@@ -175,9 +175,9 @@ public static class DeterminismScanner
         }
 
         string declaring = callee.DeclaringType.GetElementType().FullName;
-        if (ForbiddenMembers.TryGetValue($"{declaring}::{callee.Name}", out string? reason))
+        if (_forbiddenMembers.TryGetValue($"{declaring}::{callee.Name}", out string? reason))
             violations.Add($"{at}: {reason} via {callee.FullName}");
-        if (callee.Name == "GetEnumerator" && UnorderedCollections.Contains(declaring))
+        if (callee.Name == "GetEnumerator" && _unorderedCollections.Contains(declaring))
             violations.Add($"{at}: iteration over unordered collection {declaring}");
     }
 
@@ -194,7 +194,7 @@ public static class DeterminismScanner
     {
         foreach (TypeReference part in Flatten(type))
         {
-            if (ForbiddenTypes.TryGetValue(part.FullName, out string? reason))
+            if (_forbiddenTypes.TryGetValue(part.FullName, out string? reason))
                 violations.Add($"{where}: {reason} ({part.FullName})");
         }
     }

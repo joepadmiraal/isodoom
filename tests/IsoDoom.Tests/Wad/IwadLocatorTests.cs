@@ -306,9 +306,9 @@ public sealed class IwadLocatorTests : IDisposable
     [Fact]
     public void ParsesSteamLibraryFolders()
     {
-        const string vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/deck/.local/share/Steam\"\n\t\t\"label\"\t\t\"\"\n\t}\n"
+        const string Vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/deck/.local/share/Steam\"\n\t\t\"label\"\t\t\"\"\n\t}\n"
             + "\t\"1\"\n\t{\n\t\t\"PATH\"\t\t\"D:\\\\SteamLibrary\"\n\t}\n}\n";
-        Assert.Equal(["/home/deck/.local/share/Steam", @"D:\SteamLibrary"], IwadLocator.ParseSteamLibraryFolders(vdf));
+        Assert.Equal(["/home/deck/.local/share/Steam", @"D:\SteamLibrary"], IwadLocator.ParseSteamLibraryFolders(Vdf));
     }
 
     // ---- Files ----

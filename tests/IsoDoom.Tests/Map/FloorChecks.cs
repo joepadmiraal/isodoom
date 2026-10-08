@@ -106,7 +106,7 @@ public static class FloorChecks
     /// </summary>
     public static int CheckNoTJunctions(FloorTriangles floors)
     {
-        const int shift = Fixed.FRACBITS + 6;
+        const int Shift = Fixed.FRACBITS + 6;
         var cells = new Dictionary<(int, int), List<PolygonVertex>>();
         var all = new HashSet<PolygonVertex>();
         foreach (SectorFloor f in floors.BySector)
@@ -115,7 +115,7 @@ public static class FloorChecks
             {
                 if (!all.Add(v))
                     continue;
-                (int, int) key = (v.X >> shift, v.Y >> shift);
+                (int, int) key = (v.X >> Shift, v.Y >> Shift);
                 if (!cells.TryGetValue(key, out List<PolygonVertex>? list))
                     cells[key] = list = [];
                 list.Add(v);
@@ -133,8 +133,8 @@ public static class FloorChecks
                     PolygonVertex a = f.Corner(t, k), b = f.Corner(t, (k + 1) % 3);
                     edges++;
                     long eps = FloorTriangles.OnEdgeEpsilon;
-                    int x0 = (int)((Math.Min(a.X, b.X) - eps) >> shift), x1 = (int)((Math.Max(a.X, b.X) + eps) >> shift);
-                    int y0 = (int)((Math.Min(a.Y, b.Y) - eps) >> shift), y1 = (int)((Math.Max(a.Y, b.Y) + eps) >> shift);
+                    int x0 = (int)((Math.Min(a.X, b.X) - eps) >> Shift), x1 = (int)((Math.Max(a.X, b.X) + eps) >> Shift);
+                    int y0 = (int)((Math.Min(a.Y, b.Y) - eps) >> Shift), y1 = (int)((Math.Max(a.Y, b.Y) + eps) >> Shift);
                     for (int cx = x0; cx <= x1; cx++)
                     {
                         for (int cy = y0; cy <= y1; cy++)

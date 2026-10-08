@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace IsoDoom.Map;
 
@@ -143,9 +144,11 @@ public sealed class LightTables
     }
 
     /// <summary>r_main.c <c>zlight[light][z]</c>: the colormap of a floor or ceiling span at distance index <paramref name="z"/>.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (r_main.c)")]
     public int zlight(int light, int z) => _zlight[light * MAXLIGHTZ + z];
 
     /// <summary>r_main.c <c>scalelight[light][scale]</c>: the colormap of a wall column (or sprite) at scale index <paramref name="scale"/>.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (r_main.c)")]
     public int scalelight(int light, int scale) => _scalelight[light * MAXLIGHTSCALE + scale];
 
     /// <summary>
@@ -241,7 +244,7 @@ public readonly record struct ContrastRun(int Start, int Contrast);
 /// </summary>
 public sealed class SideContrasts
 {
-    private static readonly ContrastRun[] NoRuns = [];
+    private static readonly ContrastRun[] _noRuns = [];
     private readonly ContrastRun[][] _runs; // per line * 2 + side
 
     private SideContrasts(ContrastRun[][] runs) => _runs = runs;
@@ -258,7 +261,7 @@ public sealed class SideContrasts
             List<Seg>? list = segs[i];
             if (list is null)
             {
-                runs[i] = NoRuns;
+                runs[i] = _noRuns;
                 continue;
             }
             list.Sort((a, b) => a.Offset != b.Offset ? a.Offset.CompareTo(b.Offset) : a.Index.CompareTo(b.Index));

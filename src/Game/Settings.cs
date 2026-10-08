@@ -82,7 +82,7 @@ public static class Settings
         return [.. list];
     }
 
-    private static readonly string[] OnOff = ["on", "off"];
+    private static readonly string[] _onOff = ["on", "off"];
 
     /// <summary>Every setting, in the menu's order within each page.</summary>
     public static readonly SettingDef[] Defs =
@@ -105,12 +105,12 @@ public static class Settings
         new("gameplay/cutaway_things", "CUTAWAY THINGS", SettingPage.Gameplay, "decor", ["decor", "all", "off"], "--level-cutaway-things"),
         new("gameplay/cutaway_cap", "CUTAWAY CAP", SettingPage.Gameplay, "dark", ["dark", "flat", "off"], "--level-cutaway-cap"),
         new("gameplay/cutaway_radius", "CUTAWAY RADIUS", SettingPage.Gameplay, "80", Range(48, 160, 16), "--level-cutaway-radius"),
-        new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", OnOff, "--level-cutaway-cursor"),
+        new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", _onOff, "--level-cutaway-cursor"),
         new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", ["player", "none", "camera"], "--level-light"),
-        new("gameplay/door_lids", "DOOR LIDS", SettingPage.Gameplay, "on", OnOff, "--level-door-lids"),
+        new("gameplay/door_lids", "DOOR LIDS", SettingPage.Gameplay, "on", _onOff, "--level-door-lids"),
         new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Gameplay, "mirror", ["mirror", "off"], "--level-masked-back"),
-        new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", OnOff, "--level-weapon-light"),
-        new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", OnOff, "--level-palette-effects"),
+        new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", _onOff, "--level-weapon-light"),
+        new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", _onOff, "--level-palette-effects"),
 
         // sprites (readability)
         new("sprites/tilt", "TILT", SettingPage.Sprites, "full", ["full", "half", "off"], "--level-sprite-tilt"),
@@ -120,12 +120,12 @@ public static class Settings
         new("sprites/wall_pull", "WALL PULL", SettingPage.Sprites, "16", ["off", "8", "16", "24", "32", "48", "64"], "--level-sprite-wall-pull"),
         new("sprites/hidden", "HIDE BEHIND WALLS", SettingPage.Sprites, "depth", ["depth", "upright"], "--level-sprite-hidden"),
         new("sprites/player_light", "PLAYER MIN LIGHT", SettingPage.Sprites, "128", ["off", "64", "96", "128", "160", "192", "255"], "--level-player-light"),
-        new("sprites/fuzz", "FUZZ", SettingPage.Sprites, "on", OnOff, "--level-fuzz"),
+        new("sprites/fuzz", "FUZZ", SettingPage.Sprites, "on", _onOff, "--level-fuzz"),
 
         // HUD (vanilla's screen size, messages and detail too)
         new("hud/mode", "SCREEN", SettingPage.Hud, "bar", ["bar", "full", "off"], "--level-hud"),
         new("hud/scale", "SCALE", SettingPage.Hud, "auto", ["auto", "1", "2", "3", "4", "5", "6", "7", "8"], "--level-hud-scale"),
-        new("hud/messages", "MESSAGES", SettingPage.Hud, "on", OnOff),
+        new("hud/messages", "MESSAGES", SettingPage.Hud, "on", _onOff),
         new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", ["high", "low"]),
 
         // controls and sound (vanilla's options)

@@ -271,13 +271,13 @@ public partial class MusicPlayer : Node, IMusicDevice
             Volatile.Write(ref _recentLoad, _recentLoad + (load - _recentLoad) / 256);
             if (took > Interlocked.Read(ref _worstTicks))
                 Interlocked.Exchange(ref _worstTicks, took);
-            const float scale = 1f / 32768f;
+            const float Scale = 1f / 32768f;
             int peak = 0;
             for (int i = 0; i < BlockFrames; i++)
             {
                 peak = Math.Max(peak, Math.Max(Math.Abs((int)block[2 * i]), Math.Abs((int)block[2 * i + 1])));
                 float gain = fadeLeft < 0 ? 1f : fadeLeft - i <= 0 ? 0f : (float)(fadeLeft - i) / fadeFrom;
-                frames[i] = new Vector2(block[2 * i] * scale * gain, block[2 * i + 1] * scale * gain);
+                frames[i] = new Vector2(block[2 * i] * Scale * gain, block[2 * i + 1] * Scale * gain);
             }
             if (peak > Volatile.Read(ref _peak))
                 Interlocked.Exchange(ref _peak, peak); // the only writer but TakePeak's reset: a lost peak is harmless

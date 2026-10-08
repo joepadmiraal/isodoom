@@ -271,7 +271,7 @@ public sealed partial class MMenu
             new(2, "M_MSENS", M_ChangeSensitivity, 'm', "MOUSE SENSITIVITY"),
             new(-1, "", null, '\0'),
             new(1, "M_SVOL", M_Sound, 's', "SOUND VOLUME"),
-            new(1, "M_ISOSET", M_Setup, 'o', "MORE OPTIONS..."), // not vanilla (T7.3): the text pages; no such patch, the text shows
+            new(1, "M_ISOSET", Setup, 'o', "MORE OPTIONS..."), // not vanilla (T7.3): the text pages; no such patch, the text shows
         ];
         OptionsDef = new menu_t("options", opt_end, MainDef, OptionsMenu, M_DrawOptions, 60, 37, 0);
 
@@ -987,7 +987,7 @@ public sealed partial class MMenu
         if (WaitingBinding is not null)
         {
             if (key == KEY_ESCAPE)
-                M_CancelBinding();
+                CancelBinding();
             return true;
         }
 
@@ -1323,7 +1323,7 @@ public sealed partial class MMenu
 
             if (WaitingBinding is not null || currentMenu.textItems)
             {
-                M_DrawTextMenu(); // T7.3
+                DrawTextMenu(); // T7.3
                 return;
             }
 

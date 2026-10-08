@@ -23,7 +23,7 @@ public class PlayerTests
 
     private static mobj_t Player(World w) => w.players[0].mo!;
 
-    private static readonly Tweaks TwinStick = Tweaks.Vanilla with { AbsoluteAiming = true, AbsoluteMovement = true };
+    private static readonly Tweaks _twinStick = Tweaks.Vanilla with { AbsoluteAiming = true, AbsoluteMovement = true };
 
     // A 2048×2048 room: room to walk in every direction from the middle.
     private static World BigRoom(int angle = 0, Tweaks? tweaks = null) =>
@@ -446,7 +446,7 @@ public class PlayerTests
     [Fact]
     public void AbsoluteAimingSetsTheAngle()
     {
-        World w = BigRoom(90, TwinStick);
+        World w = BigRoom(90, _twinStick);
         mobj_t mo = Player(w);
         // angleturn is the angle's upper 16 bits: each tic sets it, a repeated command does not turn further.
         uint[] angles = [0, Tables.ANG90, Tables.ANG180 + 12345678, Tables.ANG270, 0xffffffffu, 0x7fff8000u, Tables.ANG45 * 3];
@@ -504,7 +504,7 @@ public class PlayerTests
                 (int, int, int, int)? first = null;
                 for (int facing = 0; facing < 360; facing += 45)
                 {
-                    World w = BigRoom(facing, TwinStick);
+                    World w = BigRoom(facing, _twinStick);
                     cmd.angleturn = Ticcmds.AbsoluteAngle(Tables.ANG45 * (uint)(facing / 45));
                     WalkAndCheck(w, cmd, cmd.sidemove * 2048, cmd.forwardmove * 2048, 10);
                     mobj_t mo = Player(w);
@@ -534,7 +534,7 @@ public class PlayerTests
         // Running in any direction tends to the vanilla running speed straight ahead, 16.67 units a tic.
         for (int d = 0; d < 8; d++)
         {
-            World w = BigRoom(0, TwinStick);
+            World w = BigRoom(0, _twinStick);
             var cmd = new ticcmd_t { angleturn = Ticcmds.AbsoluteAngle(Tables.ANG45 * 5) };
             Ticcmds.AbsoluteMove(ref cmd, Tables.ANG45 * (uint)d, Ticcmds.TwinStickSpeed(true));
             for (int t = 0; t < 45; t++)
@@ -549,7 +549,7 @@ public class PlayerTests
     [Fact]
     public void TwinStickChainsawLungeGoesAlongTheFacing()
     {
-        World w = BigRoom(0, TwinStick);
+        World w = BigRoom(0, _twinStick);
         mobj_t mo = Player(w);
         uint aim = Tables.ANG45 * 3; // north-west
         w.G_Ticker(new ticcmd_t { angleturn = Ticcmds.AbsoluteAngle(aim) });

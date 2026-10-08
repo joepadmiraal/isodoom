@@ -27,7 +27,7 @@ public sealed class Steer
     private const int FU = 1 << 16;
     private const int Grid = 8;
 
-    public readonly World w;
+    public readonly World World;
     public readonly List<(int Forward, int Side, int Turn, int Buttons)> Cmds = [];
 
     /// <summary>Sector floor heights (units) the planner assumes (a lift that will be down when the player gets there).</summary>
@@ -57,11 +57,11 @@ public sealed class Steer
 
     public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
     {
-        w = new World(new SpawnSettings(GameMode.shareware, skill, nomonsters: !monsters), Tweaks.Vanilla)
+        World = new World(new SpawnSettings(GameMode.shareware, skill, nomonsters: !monsters), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
-        w.G_DoLoadLevel(Level.Load(wad, map));
+        World.G_DoLoadLevel(Level.Load(wad, map));
     }
 
     /// <summary>T5.6: a route's <c>start X Y ANGLE</c> (<see cref="RouteStart.Place"/>), before the first tic.</summary>
@@ -69,10 +69,10 @@ public sealed class Steer
         : this(wad, map, skill, monsters)
     {
         if (start is { } s)
-            RouteStart.Place(w, s.X, s.Y, s.Angle);
+            RouteStart.Place(World, s.X, s.Y, s.Angle);
     }
 
-    public mobj_t Mo => w.players[0].mo!;
+    public mobj_t Mo => World.players[0].mo!;
     public double X => Mo.x / (double)FU;
     public double Y => Mo.y / (double)FU;
     public double Z => Mo.z / (double)FU;
@@ -83,10 +83,10 @@ public sealed class Steer
         foreach (RouteEvent e in Events)
         {
             if (e.Tic == Cmds.Count)
-                e.Run(w);
+                e.Run(World);
         }
         Cmds.Add((forward, side, turn, buttons));
-        w.G_Ticker(new ticcmd_t { forwardmove = (sbyte)forward, sidemove = (sbyte)side, angleturn = (short)(turn << 8), buttons = (byte)buttons });
+        World.G_Ticker(new ticcmd_t { forwardmove = (sbyte)forward, sidemove = (sbyte)side, angleturn = (short)(turn << 8), buttons = (byte)buttons });
         OnTic?.Invoke();
     }
 
@@ -104,11 +104,11 @@ public sealed class Steer
 
     /// <summary>T6.4: the live mobj spawned at (x, y) (a damage event's target), or null.</summary>
     public mobj_t? Spawned(int x, int y) =>
-        w.Mobjs().FirstOrDefault(m => m.spawnpoint.X == x && m.spawnpoint.Y == y && (m.flags & mobjflag_t.MF_SHOOTABLE) != 0 && m.health > 0);
+        World.Mobjs().FirstOrDefault(m => m.spawnpoint.X == x && m.spawnpoint.Y == y && (m.flags & mobjflag_t.MF_SHOOTABLE) != 0 && m.health > 0);
 
     /// <summary>T6.4: the monsters out of their spawn state (type, spawn point, position, health, state) and the player's health, for the log.</summary>
     public string Monsters() =>
-        $"health {w.players[0].health} armor {w.players[0].armorpoints}; " + string.Join("; ", w.Mobjs()
+        $"health {World.players[0].health} armor {World.players[0].armorpoints}; " + string.Join("; ", World.Mobjs()
             .Where(m => (m.flags & mobjflag_t.MF_COUNTKILL) != 0 && m.state != m.info.spawnstate && m.state != Info.states[(int)m.info.spawnstate].nextstate)
             .Select(m => $"{m.type.ToString()[3..]}@{m.spawnpoint.X},{m.spawnpoint.Y} ({m.x >> 16},{m.y >> 16}) h{m.health} {m.state.ToString()[2..]}"));
 
@@ -123,11 +123,11 @@ public sealed class Steer
         for (int i = 0; i < max && !condition(); i++)
             Tic(0, 0, 0, 0);
         if (!condition())
-            throw new InvalidOperationException($"WaitUntil timed out at tic {w.leveltime}");
+            throw new InvalidOperationException($"WaitUntil timed out at tic {World.leveltime}");
     }
 
     /// <summary>Waits until <paramref name="sector"/> has no mover.</summary>
-    public void WaitIdle(int sector) => WaitUntil(() => w.sectors[sector].specialdata == null);
+    public void WaitIdle(int sector) => WaitUntil(() => World.sectors[sector].specialdata == null);
 
     /// <summary>Waits until the player stands still on the floor.</summary>
     public void Settle()
@@ -177,10 +177,10 @@ public sealed class Steer
     /// <summary>T5.9: waits until a tic leaves the level (e.g. E1M8's damage-and-exit sector 11): the route's last tic.</summary>
     public void WaitExit(int max = 2000)
     {
-        for (int i = 0; i < max && w.gameaction != gameaction_t.ga_completed; i++)
+        for (int i = 0; i < max && World.gameaction != gameaction_t.ga_completed; i++)
             Tic(0, 0, 0, 0);
-        if (w.gameaction != gameaction_t.ga_completed)
-            throw new InvalidOperationException($"WaitExit: no exit by tic {w.leveltime}");
+        if (World.gameaction != gameaction_t.ga_completed)
+            throw new InvalidOperationException($"WaitExit: no exit by tic {World.leveltime}");
     }
 
     /// <summary>
@@ -204,8 +204,8 @@ public sealed class Steer
     {
         Face(x, y);
         Tic(0, 0, 0, 2);
-        if (w.gameaction != gameaction_t.ga_completed)
-            throw new InvalidOperationException($"Exit: no exit at ({X:F1}, {Y:F1}) by tic {w.leveltime}");
+        if (World.gameaction != gameaction_t.ga_completed)
+            throw new InvalidOperationException($"Exit: no exit at ({X:F1}, {Y:F1}) by tic {World.leveltime}");
     }
 
     /// <summary>
@@ -214,7 +214,7 @@ public sealed class Steer
     /// </summary>
     public void Door(int sector, double fx, double fy)
     {
-        sector_t sec = w.sectors[sector];
+        sector_t sec = World.sectors[sector];
         bool Open() => IsOpen(sec);
         if (!Open())
             Use(fx, fy);
@@ -259,7 +259,7 @@ public sealed class Steer
 
     /// <summary>"SECTOR:FLOOR/CEILING" in units, for the log.</summary>
     public string Heights(params int[] sectors) =>
-        string.Join(" ", sectors.Select(s => $"{s}:{w.sectors[s].floorheight / FU}/{w.sectors[s].ceilingheight / FU}"));
+        string.Join(" ", sectors.Select(s => $"{s}:{World.sectors[s].floorheight / FU}/{World.sectors[s].ceilingheight / FU}"));
 
     // ---- planning ----
 
@@ -281,7 +281,7 @@ public sealed class Steer
             int r = Mo.radius;
             foreach ((int ax, int ay) in new[] { (x, y), (x - r, y - r), (x + r, y - r), (x - r, y + r), (x + r, y + r) })
             {
-                if (Avoid.Contains(w.R_PointInSubsector(ax, ay).sector.Index))
+                if (Avoid.Contains(World.R_PointInSubsector(ax, ay).sector.Index))
                     return new Cell(false, 0, 0);
             }
         }
@@ -290,9 +290,9 @@ public sealed class Steer
         Mo.flags &= ~mobjflag_t.MF_PICKUP;
         try
         {
-            return w.P_CheckPosition(Mo, x, y) && w.tmceilingz - w.tmfloorz >= Mo.height
-                ? new Cell(true, w.tmfloorz, w.tmceilingz)
-                : new Cell(false, w.tmfloorz, w.tmceilingz);
+            return World.P_CheckPosition(Mo, x, y) && World.tmceilingz - World.tmfloorz >= Mo.height
+                ? new Cell(true, World.tmfloorz, World.tmceilingz)
+                : new Cell(false, World.tmfloorz, World.tmceilingz);
         }
         finally
         {
@@ -312,14 +312,14 @@ public sealed class Steer
     /// <summary>Runs <paramref name="action"/> with the <see cref="Assume"/>d heights, then puts the real ones back.</summary>
     private T Assuming<T>(Func<T> action)
     {
-        var floors = Assume.Keys.ToDictionary(k => k, k => w.sectors[k].floorheight);
-        var ceilings = AssumeCeil.Keys.ToDictionary(k => k, k => w.sectors[k].ceilingheight);
+        var floors = Assume.Keys.ToDictionary(k => k, k => World.sectors[k].floorheight);
+        var ceilings = AssumeCeil.Keys.ToDictionary(k => k, k => World.sectors[k].ceilingheight);
         foreach ((int k, int v) in Assume)
-            w.sectors[k].floorheight = v * FU;
+            World.sectors[k].floorheight = v * FU;
         foreach ((int k, int v) in AssumeCeil)
-            w.sectors[k].ceilingheight = v * FU;
+            World.sectors[k].ceilingheight = v * FU;
         // T6.4: plan through the monsters (they move; the steering pushes past them)
-        var monsters = w.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)) == (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)).ToList();
+        var monsters = World.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)) == (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)).ToList();
         foreach (mobj_t m in monsters)
             m.flags &= ~mobjflag_t.MF_SOLID;
         try
@@ -331,9 +331,9 @@ public sealed class Steer
             foreach (mobj_t m in monsters)
                 m.flags |= mobjflag_t.MF_SOLID;
             foreach ((int k, int v) in floors)
-                w.sectors[k].floorheight = v;
+                World.sectors[k].floorheight = v;
             foreach ((int k, int v) in ceilings)
-                w.sectors[k].ceilingheight = v;
+                World.sectors[k].ceilingheight = v;
         }
     }
 
@@ -378,9 +378,9 @@ public sealed class Steer
         }
         if (!from.ContainsKey(end))
         {
-            var reached = new SortedSet<int>(cost.Keys.Select(p => w.R_PointInSubsector(p.Item1 * Grid * FU, p.Item2 * Grid * FU).sector.Index));
+            var reached = new SortedSet<int>(cost.Keys.Select(p => World.R_PointInSubsector(p.Item1 * Grid * FU, p.Item2 * Grid * FU).sector.Index));
             throw new NoPathException(
-                $"No path from ({X:F0}, {Y:F0}) to ({tx}, {ty}) at tic {w.leveltime}; reachable sectors: {string.Join(",", reached)}");
+                $"No path from ({X:F0}, {Y:F0}) to ({tx}, {ty}) at tic {World.leveltime}; reachable sectors: {string.Join(",", reached)}");
         }
         var path = new List<(double, double)>();
         for ((int, int) p = end; p != start; p = from[p])
@@ -472,8 +472,8 @@ public sealed class Steer
                 Tic(f, s, turn, 0);
                 if (Math.Abs(Mo.x - ox) + Math.Abs(Mo.y - oy) < FU / 8 && (f != 0 || s != 0))
                     blocked++;
-                if (Verbose && w.leveltime % 10 == 0)
-                    Console.Error.WriteLine($"    [{w.leveltime}] ({X:F0},{Y:F0},{Z:F0}) f {f} s {s} t {turn} target ({target.X:F0},{target.Y:F0})");
+                if (Verbose && World.leveltime % 10 == 0)
+                    Console.Error.WriteLine($"    [{World.leveltime}] ({X:F0},{Y:F0},{Z:F0}) f {f} s {s} t {turn} target ({target.X:F0},{target.Y:F0})");
                 if (dGoal < best - 0.5)
                 {
                     best = dGoal;
@@ -486,7 +486,7 @@ public sealed class Steer
             }
             Settle();
         }
-        throw new InvalidOperationException($"GoTo ({x}, {y}): stuck at ({X:F1}, {Y:F1}) at tic {w.leveltime}");
+        throw new InvalidOperationException($"GoTo ({x}, {y}): stuck at ({X:F1}, {Y:F1}) at tic {World.leveltime}");
     }
 
     /// <summary>
@@ -510,7 +510,7 @@ public sealed class Steer
                 return;
             }
         }
-        throw new InvalidOperationException($"Teleport towards ({x}, {y}): no teleport at ({X:F1}, {Y:F1}) by tic {w.leveltime}");
+        throw new InvalidOperationException($"Teleport towards ({x}, {y}): no teleport at ({X:F1}, {Y:F1}) by tic {World.leveltime}");
     }
 
     /// <summary>T5.9: sectors the player's box must not touch (e.g. a teleporter on the way: E1M5's sector 56).</summary>
@@ -519,7 +519,7 @@ public sealed class Steer
     /// <summary>T5.6: door sectors <see cref="GoToDoors"/> must not plan through (e.g. a door that opens from the other side only).</summary>
     public readonly HashSet<int> ShutDoors = [];
 
-    private static readonly int[] ManualDoors = [1, 31, 117, 118];
+    private static readonly int[] _manualDoors = [1, 31, 117, 118];
 
     /// <summary>
     /// T5.9: whether <see cref="GoToDoors"/> may open a door of line special
@@ -528,8 +528,8 @@ public sealed class Steer
     /// </summary>
     private bool CanOpen(int special)
     {
-        bool[] c = w.players[0].cards;
-        return ManualDoors.Contains(special) || special switch
+        bool[] c = World.players[0].cards;
+        return _manualDoors.Contains(special) || special switch
         {
             26 or 32 => c[(int)card_t.it_bluecard] || c[(int)card_t.it_blueskull],
             27 or 34 => c[(int)card_t.it_yellowcard] || c[(int)card_t.it_yellowskull],
@@ -549,7 +549,7 @@ public sealed class Steer
         {
             var doors = new HashSet<int>();
             AssumeCeil.Clear();
-            foreach (line_t l in w.lines)
+            foreach (line_t l in World.lines)
             {
                 if (CanOpen(l.special) && l.backsector is { } d && !ShutDoors.Contains(d.Index) && doors.Add(d.Index))
                     AssumeCeil[d.Index] = (World.P_FindLowestCeilingSurrounding(d) >> 16) - 4;
@@ -558,7 +558,7 @@ public sealed class Steer
             AssumeCeil.Clear();
             int hit = path.FindIndex(p =>
             {
-                sector_t sec = w.R_PointInSubsector((int)(p.X * FU), (int)(p.Y * FU)).sector;
+                sector_t sec = World.R_PointInSubsector((int)(p.X * FU), (int)(p.Y * FU)).sector;
                 return doors.Contains(sec.Index)
                     && !IsOpen(sec);
             });
@@ -576,15 +576,15 @@ public sealed class Steer
             catch (NoPathException e) when (hit < 0 || Dist(path[hit]) >= 48)
             {
                 // T5.9: a door that was open when planned closed on the way: plan again
-                Console.Error.WriteLine($"    [{w.leveltime}] ({X:F0},{Y:F0}) replanning: {e.Message.Split(';')[0]}");
+                Console.Error.WriteLine($"    [{World.leveltime}] ({X:F0},{Y:F0}) replanning: {e.Message.Split(';')[0]}");
                 continue;
             }
             catch (NoPathException)
             {
                 // T5.9: already at the door (its closing blocks the last steps): open it from here
             }
-            int door = w.R_PointInSubsector((int)(path[hit].X * FU), (int)(path[hit].Y * FU)).sector.Index;
-            Console.Error.WriteLine($"    [{w.leveltime}] ({X:F0},{Y:F0}) opening door {door} at ({path[hit].X:F0},{path[hit].Y:F0})");
+            int door = World.R_PointInSubsector((int)(path[hit].X * FU), (int)(path[hit].Y * FU)).sector.Index;
+            Console.Error.WriteLine($"    [{World.leveltime}] ({X:F0},{Y:F0}) opening door {door} at ({path[hit].X:F0},{path[hit].Y:F0})");
             Door(door, path[hit].X, path[hit].Y);
         }
         throw new InvalidOperationException("GoToDoors: more than 20 doors");

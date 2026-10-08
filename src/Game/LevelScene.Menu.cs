@@ -173,7 +173,7 @@ public partial class LevelScene : IMenuHost
                         if (key != 0)
                             menu.M_Responder(key);
                         else if (pad.ButtonIndex == JoyButton.X)
-                            menu.M_ClearBinding(true); // T7.3: on a binding page, the pad's bindings go
+                            menu.ClearBinding(true); // T7.3: on a binding page, the pad's bindings go
                         return true;
                     }
                     if (key == menu.key_menu_activate || key == menu.key_menu_qsave || key == menu.key_menu_qload)
@@ -193,7 +193,7 @@ public partial class LevelScene : IMenuHost
                         return false;
                     if (KeyOf(key) == Key.Escape && Input.MouseMode == Input.MouseModeEnum.Captured)
                         return false; // the free-fly camera lets the mouse go first
-                    if (menu.Active && !menu.saveStringEnter && KeyOf(key) == Key.Delete && menu.M_ClearBinding(false))
+                    if (menu.Active && !menu.saveStringEnter && KeyOf(key) == Key.Delete && menu.ClearBinding(false))
                         return true; // T7.3: on a binding page, the keyboard's and mouse's bindings go
                     // T7.3: the menu actions' keys (rebindable), else a letter, digit or space; typing a save's description takes the keys as they are
                     int code = menu.saveStringEnter ? MenuKeyOf(key) : MenuActionKey(key, menu), ch = CharOf(key);

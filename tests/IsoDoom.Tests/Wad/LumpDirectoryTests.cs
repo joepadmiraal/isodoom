@@ -12,8 +12,8 @@ namespace IsoDoom.Tests.Wad;
 /// <summary>T1.6a lump classification and overrides on synthetic WADs (no DOOM1.WAD needed).</summary>
 public class LumpDirectoryTests
 {
-    private static readonly byte[] GoodPatch = BuildPatch(2, 3, 0, 0, [(0, [1, 2])], [(1, [3, 4])]);
-    private static readonly byte[] OtherPatch = BuildPatch(1, 1, 0, 0, [(0, [7])]);
+    private static readonly byte[] _goodPatch = BuildPatch(2, 3, 0, 0, [(0, [1, 2])], [(1, [3, 4])]);
+    private static readonly byte[] _otherPatch = BuildPatch(1, 1, 0, 0, [(0, [7])]);
 
     private static byte[] Bytes(string ascii, int size)
     {
@@ -50,12 +50,12 @@ public class LumpDirectoryTests
             .Lump("SONG", Bytes("MThd", 32))
             .Lump("DSPISTOL", 3, 0, 0x11, 0x2B, 4, 0, 0, 0, 128, 128, 128, 128)
             .Lump("DPPISTOL", 0, 0, 2, 0, 9, 9)
-            .Lump("TITLEPIC", GoodPatch)
+            .Lump("TITLEPIC", _goodPatch)
             .Lump("FOOBAR", 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0, 1)
             .Markers("EMPTY", "X_END", "S_END")
-            .Markers("S_START").Lump("TROOA0", GoodPatch).Markers("S_END")
+            .Markers("S_START").Lump("TROOA0", _goodPatch).Markers("S_END")
             .Markers("F_START", "F1_START").Lump("FLAT1", new byte[4096]).Lump("SHORT", new byte[10]).Markers("F1_END", "F_END")
-            .Markers("P_START").Lump("WALL1", GoodPatch).Markers("P_END");
+            .Markers("P_START").Lump("WALL1", _goodPatch).Markers("P_END");
         return b.ToWadFile("iwad.wad");
     }
 
@@ -63,9 +63,9 @@ public class LumpDirectoryTests
     {
         WadBuilder b = new WadBuilder().Markers("E1M1");
         return MapLumps(b)
-            .Lump("TITLEPIC", OtherPatch)
+            .Lump("TITLEPIC", _otherPatch)
             .Markers("FF_START").Lump("FLAT1", new byte[4096]).Markers("FF_END")
-            .Markers("SS_START").Lump("TROOA0", OtherPatch).Markers("SS_END")
+            .Markers("SS_START").Lump("TROOA0", _otherPatch).Markers("SS_END")
             .ToWadFile("pwad.wad");
     }
 

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Render;
@@ -26,6 +27,7 @@ public static class Fuzz
     /// r_draw.c <c>fuzzoffset</c>, in rows: +1 (<c>FUZZOFF</c>, the row
     /// below) or −1 (the row above). The shader's <c>FUZZ_OFFSETS</c>.
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (r_draw.c)")]
     public static readonly int[] fuzzoffset =
     [
         1, -1, 1, -1, 1, 1, -1,

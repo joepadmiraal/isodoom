@@ -31,25 +31,25 @@ public class IntermissionTests
 
     internal sealed class RouteHost : IGameHost
     {
-        private readonly WadArchive wad;
+        private readonly WadArchive _wad;
         public readonly StStuff St;
 
         public RouteHost(World world, WadArchive wad, DoomRandom mrandom)
         {
             World = world;
-            this.wad = wad;
+            this._wad = wad;
             St = new StStuff(new StStuff.Graphics(), mrandom);
             St.ST_Start(world.players[world.consoleplayer]);
         }
 
         public World? World { get; private set; }
-        public bool HasLump(string name) => wad.W_CheckNumForName(name) >= 0;
+        public bool HasLump(string name) => _wad.W_CheckNumForName(name) >= 0;
         public bool G_InitNew(skill_t skill, string map) => throw new InvalidOperationException();
         public bool G_DoLoadLevel() => throw new InvalidOperationException();
 
         public bool G_DoWorldDone(string map)
         {
-            World!.G_DoWorldDone(Level.Load(wad, map));
+            World!.G_DoWorldDone(Level.Load(_wad, map));
             return true;
         }
 
@@ -156,7 +156,7 @@ public class IntermissionTests
 
     // ---- without a WAD ----
 
-    private static readonly WadArchive Synthetic = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+    private static readonly WadArchive _synthetic = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
     [Theory]
     [InlineData(GameMode.shareware, 1, 1, 30)]
@@ -170,7 +170,7 @@ public class IntermissionTests
     public void TheParComesFromVanillasTables(GameMode mode, int episode, int map, int seconds)
     {
         var world = new World(new SpawnSettings(mode, skill_t.sk_medium), Tweaks.Vanilla);
-        world.G_DoLoadLevel(Level.Load(Synthetic, "E1M1"));
+        world.G_DoLoadLevel(Level.Load(_synthetic, "E1M1"));
         world.gameepisode = episode;
         world.gamemap = map;
         world.G_DoCompleted();
@@ -244,7 +244,7 @@ public class IntermissionTests
         (GameFlow flow, GameFlowTests.Host host) = GameFlowTests.New();
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         host.World!.G_ExitLevel();
-        var g = new ScreenGraphics(Synthetic, new HuStuff(Synthetic));
+        var g = new ScreenGraphics(_synthetic, new HuStuff(_synthetic));
         var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
         var states = new HashSet<WiStuff.stateenum_t>();
         for (int t = 0; flow.gamestate == gamestate_t.GS_INTERMISSION || t == 0; t++)

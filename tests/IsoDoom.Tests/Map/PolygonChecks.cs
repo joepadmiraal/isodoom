@@ -381,12 +381,12 @@ public static class PolygonChecks
                 if (count[i] > 1)
                 {
                     colour = (255, 255, 255);
-                    if (!IsNearLine(lines, x, y)) { overlaps++; priority = 5; Note("overlap", x, y, expected, ss); } else { near++; priority = 2; colour = NearLineColour; }
+                    if (!IsNearLine(lines, x, y)) { overlaps++; priority = 5; Note("overlap", x, y, expected, ss); } else { near++; priority = 2; colour = _nearLineColour; }
                 }
                 else if (count[i] == 0 && expected != -1)
                 {
                     colour = (255, 0, 0);
-                    if (IsNearLine(lines, x, y)) { near++; priority = 2; colour = NearLineColour; }
+                    if (IsNearLine(lines, x, y)) { near++; priority = 2; colour = _nearLineColour; }
                     else if (!closed[expected]) { unclosedGaps++; colour = (128, 0, 0); priority = 3; }
                     else { gaps++; priority = 6; Note("gap", x, y, expected, ss); }
                 }
@@ -398,7 +398,7 @@ public static class PolygonChecks
                     {
                         near++;
                         priority = 2;
-                        colour = NearLineColour;
+                        colour = _nearLineColour;
                     }
                     else if (map.R_PointInSubsector((int)Math.Round(x * Unit), (int)Math.Round(y * Unit)).Index == ss)
                     {
@@ -462,7 +462,7 @@ public static class PolygonChecks
     }
 
     // Ignored mismatches next to a linedef.
-    private static readonly (byte, byte, byte) NearLineColour = (90, 90, 90);
+    private static readonly (byte, byte, byte) _nearLineColour = (90, 90, 90);
 
     private static (byte, byte, byte) SectorColour(int sector)
     {

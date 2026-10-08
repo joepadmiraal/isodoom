@@ -88,7 +88,7 @@ public sealed partial class MMenu
             setupItems.Add(new menuitem_t(1, "", _ => M_SetupNextMenu(def), key, title + "..."));
         }
         setupItems.Add(new menuitem_t(-1, "", null, '\0'));
-        setupItems.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETALL, M_ResetAllResponse, true), 'r', "RESET ALL TO DEFAULTS"));
+        setupItems.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETALL, ResetAllResponse, true), 'r', "RESET ALL TO DEFAULTS"));
         SetTextItems(SetupDef, [.. setupItems]);
 
         var controls = new List<menuitem_t>(SettingItems(SettingPage.Controls));
@@ -102,7 +102,7 @@ public sealed partial class MMenu
             {
                 (string action, string label) = actions[i];
                 names[i] = action;
-                items[i] = new menuitem_t(1, "", _ => M_StartBinding(action, label), '\0', label)
+                items[i] = new menuitem_t(1, "", _ => StartBinding(action, label), '\0', label)
                 {
                     value = () => SetupHost?.BindingText(action) ?? "",
                 };
@@ -112,7 +112,7 @@ public sealed partial class MMenu
             controls.Add(new menuitem_t(1, "", _ => M_SetupNextMenu(def), char.ToLowerInvariant(title[0]), title + "..."));
         }
         controls.Add(new menuitem_t(-1, "", null, '\0'));
-        controls.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETCONTROLS, M_ResetControlsResponse, true), 'r', "RESET CONTROLS"));
+        controls.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETCONTROLS, ResetControlsResponse, true), 'r', "RESET CONTROLS"));
         SetTextItems(ControlsDef, [.. controls]);
     }
 
@@ -123,7 +123,7 @@ public sealed partial class MMenu
             textItems = true,
             lineHeight = TEXTLINEHEIGHT,
         };
-        def.routine = () => M_DrawTextTitle(title, def);
+        def.routine = () => DrawTextTitle(title, def);
         return def;
     }
 
@@ -141,7 +141,7 @@ public sealed partial class MMenu
         for (int i = 0; i < defs.Length; i++)
         {
             SettingDef def = defs[i];
-            items[i] = new menuitem_t(2, "", choice => M_StepSetting(def, choice == 0 ? -1 : 1), '\0', def.Label)
+            items[i] = new menuitem_t(2, "", choice => StepSetting(def, choice == 0 ? -1 : 1), '\0', def.Label)
             {
                 value = () => Settings.Display(SetupHost?.GetSetting(def.Key) ?? def.Default),
             };
@@ -150,29 +150,29 @@ public sealed partial class MMenu
     }
 
     /// <summary>Steps setting <paramref name="def"/> one value on (or back) through the host: it applies at once.</summary>
-    private void M_StepSetting(SettingDef def, int step)
+    private void StepSetting(SettingDef def, int step)
     {
         if (SetupHost is not { } host)
             return;
         host.SetSetting(def.Key, def.Step(host.GetSetting(def.Key), step));
     }
 
-    private void M_Setup(int choice) => M_SetupNextMenu(SetupDef);
+    private void Setup(int choice) => M_SetupNextMenu(SetupDef);
 
-    private void M_ResetAllResponse(int key)
+    private void ResetAllResponse(int key)
     {
         if (key == key_menu_confirm)
             SetupHost?.ResetSettings();
     }
 
-    private void M_ResetControlsResponse(int key)
+    private void ResetControlsResponse(int key)
     {
         if (key == key_menu_confirm)
             SetupHost?.ResetControls();
     }
 
-    /// <summary>The next input binds to <paramref name="action"/> (the glue's <see cref="M_BindingDone"/>; Escape cancels).</summary>
-    private void M_StartBinding(string action, string label)
+    /// <summary>The next input binds to <paramref name="action"/> (the glue's <see cref="BindingDone"/>; Escape cancels).</summary>
+    private void StartBinding(string action, string label)
     {
         WaitingBinding = action;
         WaitingLabel = label;
@@ -180,7 +180,7 @@ public sealed partial class MMenu
     }
 
     /// <summary>The glue bound the input (or gave up): the page shows again.</summary>
-    public void M_BindingDone()
+    public void BindingDone()
     {
         WaitingBinding = null;
         S_StartSound(sfxenum_t.sfx_pistol);
@@ -188,7 +188,7 @@ public sealed partial class MMenu
     }
 
     /// <summary>Escape (or the wait's time out): nothing is bound.</summary>
-    public void M_CancelBinding()
+    public void CancelBinding()
     {
         WaitingBinding = null;
         S_StartSound(sfxenum_t.sfx_swtchx);
@@ -209,7 +209,7 @@ public sealed partial class MMenu
     }
 
     /// <summary>Clears the pad's (<paramref name="pad"/>) or the keyboard's and mouse's bindings of the item the cursor is on (Delete, the pad's X). Returns whether there was one.</summary>
-    public bool M_ClearBinding(bool pad)
+    public bool ClearBinding(bool pad)
     {
         if (WaitingBinding is not null || ActionOn() is not { } action)
             return false;
@@ -219,7 +219,7 @@ public sealed partial class MMenu
         return true;
     }
 
-    private void M_DrawTextTitle(string title, menu_t def)
+    private void DrawTextTitle(string title, menu_t def)
     {
         M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(title) / 2, 16, title);
         bool bindings = BindingDefs.Exists(b => b.Def == def);
@@ -229,7 +229,7 @@ public sealed partial class MMenu
     }
 
     /// <summary>A text page (T7.3): its title, each item's text and value, the cursor; or the wait for an input to bind.</summary>
-    private void M_DrawTextMenu()
+    private void DrawTextMenu()
     {
         if (WaitingBinding is not null)
         {

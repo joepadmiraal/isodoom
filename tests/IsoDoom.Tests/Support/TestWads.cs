@@ -18,8 +18,8 @@ public static class TestWads
     /// <summary>MD5 of the shareware v1.9 DOOM1.WAD the tests are written against.</summary>
     public const string Doom1Md5 = "f0cefca49926d00903cf57551d901abe";
 
-    private static readonly Lazy<string?> Doom1 = new(FindDoom1);
-    private static readonly Lazy<string?> Doom1Problem = new(CheckDoom1);
+    private static readonly Lazy<string?> _doom1 = new(FindDoom1);
+    private static readonly Lazy<string?> _doom1Problem = new(CheckDoom1);
 
     /// <summary>The repo root (the directory holding IsoDoom.sln), or null if not found.</summary>
     public static string? RepoRoot { get; } = FindRepoRoot();
@@ -28,7 +28,7 @@ public static class TestWads
     /// Full path of <c>wads/DOOM1.WAD</c> (or of <see cref="Doom1EnvVar"/> when set),
     /// or null when the file does not exist.
     /// </summary>
-    public static string? Doom1Path => Doom1.Value;
+    public static string? Doom1Path => _doom1.Value;
 
     /// <summary>
     /// Returns the path of the shareware v1.9 DOOM1.WAD, or skips the calling
@@ -36,7 +36,7 @@ public static class TestWads
     /// </summary>
     public static string RequireDoom1()
     {
-        string? problem = Doom1Problem.Value;
+        string? problem = _doom1Problem.Value;
         if (problem is not null)
             Assert.Skip(problem);
         return Doom1Path!;
@@ -45,13 +45,13 @@ public static class TestWads
     /// <summary>Environment variable that overrides the DOOM2.WAD path (an absent path forces a skip).</summary>
     public const string Doom2EnvVar = "ISODOOM_DOOM2_WAD";
 
-    private static readonly Lazy<string?> Doom2 = new(FindDoom2);
+    private static readonly Lazy<string?> _doom2 = new(FindDoom2);
 
     /// <summary>
     /// Full path of a DOOM II IWAD: <see cref="Doom2EnvVar"/> when set, else
     /// <c>wads/DOOM2.WAD</c> or <c>wads/doom2.wad</c>; null when absent.
     /// </summary>
-    public static string? Doom2Path => Doom2.Value;
+    public static string? Doom2Path => _doom2.Value;
 
     /// <summary>
     /// Returns the path of a DOOM II IWAD (any version; no MD5 check, so tests
@@ -72,10 +72,10 @@ public static class TestWads
     /// <summary>MD5 of the DOOM II v1.666 IWAD; tests assert version-specific counts only for this file.</summary>
     public const string Doom2V1666Md5 = "30e3c2d0350b67bfbf47271970b74b2f";
 
-    private static readonly Lazy<string?> Doom2Md5Value = new(() => Doom2Path is null ? null : Md5Of(Doom2Path));
+    private static readonly Lazy<string?> _doom2Md5Value = new(() => Doom2Path is null ? null : Md5Of(Doom2Path));
 
     /// <summary>MD5 (lower-case hex) of <see cref="Doom2Path"/>, or null when there is no DOOM II IWAD.</summary>
-    public static string? Doom2Md5 => Doom2Md5Value.Value;
+    public static string? Doom2Md5 => _doom2Md5Value.Value;
 
     private static string Md5Of(string path)
     {

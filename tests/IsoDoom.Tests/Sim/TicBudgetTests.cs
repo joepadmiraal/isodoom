@@ -58,13 +58,13 @@ public class TicBudgetTests
             }
         }
 
-        const int warmup = 105, measured = 1050;
-        double[] ms = new double[measured];
+        const int Warmup = 105, Measured = 1050;
+        double[] ms = new double[Measured];
         var clock = new Stopwatch();
         mobj_t player = world.players[world.consoleplayer].mo!;
         var sectors = new System.Collections.Generic.SortedSet<int>();
         int travelled = 0;
-        for (int tic = 0; tic < warmup + measured; tic++)
+        for (int tic = 0; tic < Warmup + Measured; tic++)
         {
             // Run in a slow circle (twin-stick: an absolute direction and aim), so the player
             // collides, slides and changes sectors.
@@ -74,17 +74,17 @@ public class TicBudgetTests
             clock.Restart();
             world.G_Ticker(cmd);
             clock.Stop();
-            if (tic >= warmup)
-                ms[tic - warmup] = clock.Elapsed.TotalMilliseconds;
+            if (tic >= Warmup)
+                ms[tic - Warmup] = clock.Elapsed.TotalMilliseconds;
             sectors.Add(player.subsector.sector.Index);
             travelled += Math.Abs(player.x - player.oldx) + Math.Abs(player.y - player.oldy);
         }
 
         double mean = ms.Average();
         Array.Sort(ms);
-        double median = ms[measured / 2], p95 = ms[(int)(measured * 0.95)], worst = ms[^1];
+        double median = ms[Measured / 2], p95 = ms[(int)(Measured * 0.95)], worst = ms[^1];
         int chasing = world.Mobjs().Count(m => (m.flags & mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && m.target != null);
-        _output.WriteLine($"E1M9 skill 4, {mobjs} mobjs ({chasing} monsters with a target), player through {sectors.Count} sectors, {travelled >> 16} units, {measured} tics: mean {mean:F4} ms, median {median:F4}, p95 {p95:F4}, worst {worst:F4}");
+        _output.WriteLine($"E1M9 skill 4, {mobjs} mobjs ({chasing} monsters with a target), player through {sectors.Count} sectors, {travelled >> 16} units, {Measured} tics: mean {mean:F4} ms, median {median:F4}, p95 {p95:F4}, worst {worst:F4}");
         Assert.True(mobjs > 100, $"{mobjs} mobjs");
         Assert.True(sectors.Count > 1, "the player stayed in one sector");
         // The median and 95th percentile, not the worst tic: a GC pause or the test host can stall one.

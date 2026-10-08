@@ -16,10 +16,10 @@ namespace IsoDoom.Tests.Graphics;
 /// </summary>
 public class Doom2TextureTests
 {
-    private static readonly TextureCompositeMode[] Modes = [TextureCompositeMode.Vanilla, TextureCompositeMode.Corrected];
+    private static readonly TextureCompositeMode[] _modes = [TextureCompositeMode.Vanilla, TextureCompositeMode.Corrected];
 
     // The see-through midtextures (grates, bars, the brown "small" grates).
-    private static readonly string[] MaskedMidtextures =
+    private static readonly string[] _maskedMidtextures =
         ["BRNSMAL1", "BRNSMAL2", "BRNSMALC", "BRNSMALL", "BRNSMALR", "MIDBARS1", "MIDBARS3", "MIDBRN1", "MIDBRONZ", "MIDGRATE", "MIDSPACE"];
 
     private static (WadArchive Wad, Textures Textures) OpenDoom2()
@@ -59,7 +59,7 @@ public class Doom2TextureTests
         (_, Textures t) = OpenDoom2();
         foreach (int i in All(t))
         {
-            foreach (TextureCompositeMode mode in Modes)
+            foreach (TextureCompositeMode mode in _modes)
             {
                 IndexedImage img = t.R_GenerateComposite(i, mode);
                 Assert.Equal((t.TextureDefs[i].Width, t.TextureDefs[i].Height), (img.Width, img.Height));
@@ -73,7 +73,7 @@ public class Doom2TextureTests
     {
         (WadArchive wad, Textures t) = OpenDoom2();
         IndexedImage patch = Patch.Load(wad, "M1_1");
-        foreach (TextureCompositeMode mode in Modes)
+        foreach (TextureCompositeMode mode in _modes)
         {
             IndexedImage img = t.GetComposite("MIDGRATE", mode);
             // One 128×128 patch at (0,0): the composite is the patch, pixel for pixel and hole for hole.
@@ -93,14 +93,14 @@ public class Doom2TextureTests
     public void MaskedMidtexturesHaveHoles(string name)
     {
         (_, Textures t) = OpenDoom2();
-        foreach (TextureCompositeMode mode in Modes)
+        foreach (TextureCompositeMode mode in _modes)
         {
             IndexedImage img = t.GetComposite(name, mode);
             Assert.InRange(img.Opaque.Count(b => b == 0), img.Opaque.Length / 20, img.Opaque.Length * 9 / 10);
         }
     }
 
-    public static TheoryData<string> MaskedMidtextureNames() => [.. MaskedMidtextures];
+    public static TheoryData<string> MaskedMidtextureNames() => [.. _maskedMidtextures];
 
     /// <summary>
     /// Multi-patch textures leave no gaps between their patches: all are fully
@@ -113,7 +113,7 @@ public class Doom2TextureTests
         (_, Textures t) = OpenDoom2();
         foreach (int i in All(t).Where(i => t.TextureDefs[i].Patches.Count > 1 && t.TextureDefs[i].Name != "SKINEDGE"))
         {
-            foreach (TextureCompositeMode mode in Modes)
+            foreach (TextureCompositeMode mode in _modes)
                 Assert.True(t.R_GenerateComposite(i, mode).Opaque.All(b => b != 0), $"{t.TextureDefs[i].Name} ({mode}) has transparent pixels");
         }
     }
@@ -123,12 +123,12 @@ public class Doom2TextureTests
     {
         (WadArchive wad, Textures t) = OpenDoom2();
         Assert.SkipUnless(IsV1666, "Hole list is for DOOM II v1.666.");
-        foreach (TextureCompositeMode mode in Modes)
+        foreach (TextureCompositeMode mode in _modes)
         {
             string[] withHoles = [.. All(t).Where(i => t.R_GenerateComposite(i, mode).Opaque.Any(b => b == 0))
                 .Select(i => t.TextureDefs[i].Name).Order()];
             // Plus three single missing pixels in the patch data itself.
-            Assert.Equal(MaskedMidtextures.Concat(["SKINEDGE", "SKY2", "ZZZFACE3"]).Order(), withHoles);
+            Assert.Equal(_maskedMidtextures.Concat(["SKINEDGE", "SKY2", "ZZZFACE3"]).Order(), withHoles);
         }
 
         Assert.Equal(1, t.GetComposite("SKINEDGE").Opaque.Count(b => b == 0));

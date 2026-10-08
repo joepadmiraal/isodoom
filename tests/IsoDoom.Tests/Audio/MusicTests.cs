@@ -41,36 +41,36 @@ public class MusicTests
     /// <summary>A route's game, its first level from <see cref="G_InitNew"/> (the demo's <c>G_InitNew</c>), with reborns and the next levels.</summary>
     private sealed class RouteHost : IGameHost
     {
-        private readonly WadArchive wad;
-        private readonly VanillaRoute route;
-        private World? first;
+        private readonly WadArchive _wad;
+        private readonly VanillaRoute _route;
+        private World? _first;
 
         public RouteHost(VanillaRoute route, World world, WadArchive wad)
         {
-            this.route = route;
-            first = world;
-            this.wad = wad;
+            this._route = route;
+            _first = world;
+            this._wad = wad;
         }
 
         public World? World { get; private set; }
-        public bool HasLump(string name) => wad.W_CheckNumForName(name) >= 0;
+        public bool HasLump(string name) => _wad.W_CheckNumForName(name) >= 0;
 
         public bool G_InitNew(skill_t skill, string map)
         {
-            World = first;
-            first = null;
+            World = _first;
+            _first = null;
             return World is not null;
         }
 
         public bool G_DoLoadLevel()
         {
             World!.gameaction = gameaction_t.ga_loadlevel;
-            return route.Reborn(World, wad);
+            return _route.Reborn(World, _wad);
         }
 
         public bool G_DoWorldDone(string map)
         {
-            World!.G_DoWorldDone(Level.Load(wad, map));
+            World!.G_DoWorldDone(Level.Load(_wad, map));
             return true;
         }
 
@@ -300,9 +300,9 @@ public class MusicTests
         return (flow, host, s, d);
     }
 
-    private static readonly ticcmd_t None = default;
-    private static readonly ticcmd_t Use = new() { buttons = buttoncode_t.BT_USE };
-    private static readonly ticcmd_t Pause = new() { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE };
+    private static readonly ticcmd_t _none = default;
+    private static readonly ticcmd_t _use = new() { buttons = buttoncode_t.BT_USE };
+    private static readonly ticcmd_t _pause = new() { buttons = buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE };
 
     [Theory]
     [InlineData(GameMode.shareware, "intro")]
@@ -315,7 +315,7 @@ public class MusicTests
         s.MusicChanged = c => asked.Add($"{SSound.MusicName(c.musicnum)}{(c.looping ? " looping" : "")}");
         flow.D_StartTitle(null);
         for (int i = 0; i < 2000; i++)
-            flow.G_Ticker(None);
+            flow.G_Ticker(_none);
         // d_main.c D_DoAdvanceDemo: S_StartMusic at the first step (Doom II's fifth too), once: the song goes on around the loop
         string[] once = expected.Split(',');
         Assert.Equal(Enumerable.Repeat(once, 10).SelectMany(o => o).Take(asked.Count), asked);
@@ -331,14 +331,14 @@ public class MusicTests
         var asked = new List<string>();
         s.MusicChanged = c => asked.Add($"{flow.gametic} {flow.gamestate} {SSound.MusicName(c.musicnum)}");
         flow.D_StartTitle(null);
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         flow.G_DeferedInitNew(skill_t.sk_medium, 1, 1);
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         host.World!.G_ExitLevel();
         int tics = 0;
         while (flow.gamestate != gamestate_t.GS_LEVEL || host.World.level.Name != "E1M2")
         {
-            flow.G_Ticker(tics % 2 == 0 ? None : Use);
+            flow.G_Ticker(tics % 2 == 0 ? _none : _use);
             Assert.True(++tics < 100);
         }
         // the new game's at the start of the tic (G_InitNew), the intermission's at its first tic (WI_Ticker's bcnt 1)
@@ -359,8 +359,8 @@ public class MusicTests
         Assert.Equal(musicenum_t.mus_runnin, s.mus_playing);
         host.World!.gamemap = 5;
         host.World.G_ExitLevel();
-        flow.G_Ticker(None);
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
+        flow.G_Ticker(_none);
         Assert.Equal((gamestate_t.GS_INTERMISSION, musicenum_t.mus_dm2int, true), (flow.gamestate, s.mus_playing, s.mus_looping));
     }
 
@@ -383,12 +383,12 @@ public class MusicTests
         world.gameepisode = episode;
         world.gamemap = mode == GameMode.commercial ? 6 : 8;
         world.G_ExitLevel();
-        flow.G_Ticker(None);
+        flow.G_Ticker(_none);
         if (mode == GameMode.commercial)
         {
             // Doom II: the intermission, then its text screen
             for (int i = 0; i < 40 && flow.gamestate == gamestate_t.GS_INTERMISSION; i++)
-                flow.G_Ticker(i % 2 == 0 ? None : Use);
+                flow.G_Ticker(i % 2 == 0 ? _none : _use);
         }
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
         Assert.Equal((text, true), (s.mus_playing, s.mus_looping));
@@ -396,7 +396,7 @@ public class MusicTests
             return;
         int textTics = flow.Finale.finaletext.Length * FFinale.TEXTSPEED + FFinale.TEXTWAIT;
         for (int i = 0; i < textTics; i++)
-            flow.G_Ticker(None);
+            flow.G_Ticker(_none);
         Assert.Equal(1, flow.Finale.finalestage);
         Assert.Equal(end, s.mus_playing); // E3's bunny once (S_StartMusic), the others' song on
         Assert.Equal(end == text, s.mus_looping);
@@ -413,24 +413,24 @@ public class MusicTests
             flow.G_InitNewMap(skill_t.sk_medium, "E1M2");
             flow.savegameslot = 1;
             Assert.True(flow.G_DoSaveGame());
-            flow.G_Ticker(Pause);
+            flow.G_Ticker(_pause);
             Assert.True(flow.paused && s.mus_paused && d.Paused);
-            flow.G_Ticker(Pause);
+            flow.G_Ticker(_pause);
             Assert.True(!flow.paused && !s.mus_paused && !d.Paused);
             // a new game while paused: G_InitNew's S_ResumeSound, then the level's song
-            flow.G_Ticker(Pause);
+            flow.G_Ticker(_pause);
             flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
             Assert.True(!flow.paused && !s.mus_paused && !d.Paused);
             Assert.Equal("D_E1M1", d.Song);
             // a load while paused: the same, the save's level's song
-            flow.G_Ticker(Pause);
+            flow.G_Ticker(_pause);
             flow.G_LoadGame(1);
             flow.G_DoGameActions();
             Assert.Null(flow.LoadRefused);
             Assert.True(!flow.paused && !s.mus_paused && !d.Paused);
             Assert.Equal((musicenum_t.mus_e1m2, "D_E1M2"), (s.mus_playing, d.Song));
             // End Game while paused (the title loop does not resume, as vanilla's): the title song plays
-            flow.G_Ticker(Pause);
+            flow.G_Ticker(_pause);
             flow.D_StartTitle(null);
             Assert.Equal(("D_INTROA", false), (d.Song, d.Paused));
         }

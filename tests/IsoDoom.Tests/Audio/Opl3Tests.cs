@@ -243,25 +243,25 @@ public class Opl3Tests
             Opl3.OPL3_WriteReg(chip, (ushort)(bank + 0xA0 + c), (byte)(0x40 + ch * 9));
             Opl3.OPL3_WriteReg(chip, (ushort)(bank + 0xB0 + c), (byte)(0x20 | (4 << 2) | 1));
         }
-        const int rate = 48000, block = 512, seconds = 60;
-        short[] buf = new short[2 * block];
-        for (int done = 0; done < rate; done += block)
-            Opl3.OPL3_GenerateStream(chip, buf, block); // a second of warm-up: the JIT's optimized code, as a music thread runs
+        const int Rate = 48000, Block = 512, Seconds = 60;
+        short[] buf = new short[2 * Block];
+        for (int done = 0; done < Rate; done += Block)
+            Opl3.OPL3_GenerateStream(chip, buf, Block); // a second of warm-up: the JIT's optimized code, as a music thread runs
         long sum = 0;
         var clock = Stopwatch.StartNew();
-        for (int done = 0; done < rate * seconds; done += block)
+        for (int done = 0; done < Rate * Seconds; done += Block)
         {
-            Opl3.OPL3_GenerateStream(chip, buf, block);
+            Opl3.OPL3_GenerateStream(chip, buf, Block);
             sum += buf[0];
         }
         clock.Stop();
         double s = clock.Elapsed.TotalSeconds;
 #if DEBUG
-        const string config = "Debug";
+        const string Config = "Debug";
 #else
         const string config = "Release";
 #endif
-        _output.WriteLine($"{config}: {seconds} s of OPL3 output at {rate} Hz in {s:F3} s = {100 * s / seconds:F2}% of a core (checksum {sum})");
-        Assert.True(s < seconds, $"slower than real time: {s:F1} s for {seconds} s");
+        _output.WriteLine($"{Config}: {Seconds} s of OPL3 output at {Rate} Hz in {s:F3} s = {100 * s / Seconds:F2}% of a core (checksum {sum})");
+        Assert.True(s < Seconds, $"slower than real time: {s:F1} s for {Seconds} s");
     }
 }

@@ -525,7 +525,7 @@ public sealed partial class World
         {
             P_InitThinkers();
             P_SetupLevelMap(level);
-            unported.Clear();
+            Unported.Clear();
             events.Clear();
             gameaction = gameaction_t.ga_nothing;
             secretexit = false;

@@ -374,19 +374,19 @@ public partial class LevelCheck
         bool onFloor = me.z == me.floorz;
         // Things near the sector that don't fit already (a monster stuck at its spawn) set nofit either way.
         bool stuck = world.P_ChangeSector(sec, false);
-        const int step = 8 << Fixed.FRACBITS;
-        sec.floorheight = floor - step;
-        sec.ceilingheight = ceiling + step;
+        const int Step = 8 << Fixed.FRACBITS;
+        sec.floorheight = floor - Step;
+        sec.ceilingheight = ceiling + Step;
         if (world.P_ChangeSector(sec, false) && !stuck)
             Fail($"{map}: sector {sec.Index}: something no longer fits after its floor dropped and its ceiling rose");
-        if (onFloor && (me.z != me.floorz || me.floorz > floor - step && SoleSector(world, me)))
+        if (onFloor && (me.z != me.floorz || me.floorz > floor - Step && SoleSector(world, me)))
             Fail($"{map}: the player on sector {sec.Index}'s floor is at {me.z >> Fixed.FRACBITS} (floorz {me.floorz >> Fixed.FRACBITS}) after it dropped to {sec.floorheight >> Fixed.FRACBITS} (P_ChangeSector)");
         foreach (double f in new[] { 0.0, 0.5, 1.0 })
         {
             _scene.SetTicFraction(f);
             _scene.PresentWorld();
             Color d = m.SectorData(sec.Index);
-            float ef = (float)((floor - step * f) / 65536.0), ec = (float)((ceiling + step * f) / 65536.0);
+            float ef = (float)((floor - Step * f) / 65536.0), ec = (float)((ceiling + Step * f) / 65536.0);
             if (Math.Abs(d.R - ef) > 1e-3 || Math.Abs(d.G - ec) > 1e-3 || d.B != sec.lightlevel)
                 Fail($"{map}: sector {sec.Index} at tic fraction {f}: data texel {d}, expected floor {ef}, ceiling {ec}, light {sec.lightlevel}");
         }
@@ -557,13 +557,13 @@ public partial class LevelCheck
         if (translated == 0)
             Fail($"{map}: line {s.Line.Index}'s {s.Kind} translated to {Textures.TextureDefs[texture].Name}: no pixel compared");
 
-        const int scroll = 7 << Fixed.FRACBITS;
+        const int Scroll = 7 << Fixed.FRACBITS;
         IsoDoom.Map.Side side = s.SideDef;
         int before = side.TextureOffset;
         int already = (int)MathF.Round(m.SideScroll(side.Index)) << Fixed.FRACBITS; // a scrolling wall moved by the sim
-        side.TextureOffset += scroll;
+        side.TextureOffset += Scroll;
         m.UpdateSectors();
-        int scrolled = (await CheckWall(m, s, WallTextureTiling.Vanilla, map, scroll: already + scroll)).Pixels;
+        int scrolled = (await CheckWall(m, s, WallTextureTiling.Vanilla, map, scroll: already + Scroll)).Pixels;
         side.TextureOffset = before;
         m.UpdateSectors();
         if (scrolled == 0)

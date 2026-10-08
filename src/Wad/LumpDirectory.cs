@@ -95,7 +95,7 @@ public sealed record LumpEntry(int Index, WadLump Lump, LumpKind Kind, string De
 public static class LumpDirectory
 {
     // doomdata.h ML_* order after the header; BEHAVIOR is Hexen-format maps' extra lump.
-    private static readonly string[] MapLumpNames =
+    private static readonly string[] _mapLumpNames =
     [
         "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS",
         "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP", "BEHAVIOR",
@@ -134,7 +134,7 @@ public static class LumpDirectory
     };
 
     /// <summary>True for the map data lump names (<c>THINGS</c> … <c>BLOCKMAP</c>, <c>BEHAVIOR</c>).</summary>
-    public static bool IsMapLumpName(string name) => Array.IndexOf(MapLumpNames, name) >= 0;
+    public static bool IsMapLumpName(string name) => Array.IndexOf(_mapLumpNames, name) >= 0;
 
     /// <summary>True for <c>ExMy</c> and <c>MAPxx</c> (digits only).</summary>
     public static bool IsMapName(string name) =>

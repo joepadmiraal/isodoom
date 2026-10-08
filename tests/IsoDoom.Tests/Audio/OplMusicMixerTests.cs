@@ -17,11 +17,11 @@ public class OplMusicMixerTests
 {
     private const int Rate = 48000, Block = 512;
 
-    private static readonly WadArchive Wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+    private static readonly WadArchive _wad = new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
-    private static byte[] Bank => Wad.W_CacheLumpName("GENMIDI").ToArray();
+    private static byte[] Bank => _wad.W_CacheLumpName("GENMIDI").ToArray();
 
-    private static midi_file_t Song(OplMusic m) => m.I_OPL_RegisterSong(Wad.W_CacheLumpName("D_E1M1").Span)!;
+    private static midi_file_t Song(OplMusic m) => m.I_OPL_RegisterSong(_wad.W_CacheLumpName("D_E1M1").Span)!;
 
     private static short[] Render(Action<Span<short>> mix, int blocks)
     {

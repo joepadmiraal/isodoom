@@ -277,11 +277,11 @@ public class SettingsTests
         Keys(menu, Esc);
         Assert.Equal(("actions", null), (menu.StateName, menu.WaitingBinding));
         Keys(menu, Enter);
-        menu.M_BindingDone();
+        menu.BindingDone();
         Assert.Equal("actions", menu.StateName);
 
         Keys(menu, Down);
-        Assert.True(menu.M_ClearBinding(true));
+        Assert.True(menu.ClearBinding(true));
         Assert.Equal(("use", true), host.Cleared[^1]);
 
         // menu keys: one page, every menu action
@@ -289,7 +289,7 @@ public class SettingsTests
         Assert.Equal("menukeys", menu.StateName);
         Assert.Equal(Settings.MenuActions.Length, menu.currentMenu.numitems);
         Keys(menu, Back);
-        Assert.False(menu.M_ClearBinding(false)); // not a binding page
+        Assert.False(menu.ClearBinding(false)); // not a binding page
 
         // reset the controls: asks first
         menu.itemOn = (short)(menu.ControlsDef.numitems - 1);

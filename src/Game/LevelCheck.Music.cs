@@ -139,11 +139,11 @@ public partial class LevelCheck
             _scene.Menu.musicVolume = 8;
         _scene.UpdateSound(0);
 
-        const double seconds = 3;
+        const double Seconds = 3;
         long pushed0 = player.FramesPushed;
         player.TakePeak();
         ulong t0 = Time.GetTicksUsec();
-        while (Time.GetTicksUsec() - t0 < (ulong)(seconds * 1e6))
+        while (Time.GetTicksUsec() - t0 < (ulong)(Seconds * 1e6))
             await NextFrame();
         double elapsed = (Time.GetTicksUsec() - t0) / 1e6;
         double rendered = (player.FramesPushed - pushed0) / (double)player.MixRate;

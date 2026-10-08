@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace IsoDoom.Wad.Graphics;
 
 /// <summary>
@@ -13,6 +15,7 @@ public static class SpriteNames
     public const int NUMSPRITES = 138;
 
     /// <summary>info.c.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (info.c)")]
     public static readonly string[] sprnames =
     [
         "TROO", "SHTG", "PUNG", "PISG", "PISF", "SHTF", "SHT2", "CHGG", "CHGF", "MISG",

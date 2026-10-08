@@ -1004,7 +1004,7 @@ public sealed class LevelMesh
             }
         }
 
-        const Mesh.ArrayFormat custom =
+        const Mesh.ArrayFormat Custom =
             (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift)
             | (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom1Shift)
             | (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom2Shift);
@@ -1028,7 +1028,7 @@ public sealed class LevelMesh
                 arrays[(int)Mesh.ArrayType.Custom1] = c.Custom1.ToArray();
                 arrays[(int)Mesh.ArrayType.Custom2] = c.Custom2.ToArray();
                 arrays[(int)Mesh.ArrayType.Index] = c.Indices.ToArray();
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, flags: custom);
+                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, flags: Custom);
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
                 foreach (Vector3 v in c.Vertices)
                 {

@@ -8,7 +8,7 @@ namespace IsoDoom.Tests.Wad;
 /// <summary>T1.2a: d_main.c's modified-game checks (PWADs with the shareware or a fake registered IWAD).</summary>
 public class ModifiedGameTests
 {
-    private static readonly string[] RegisteredLumps =
+    private static readonly string[] _registeredLumps =
         [.. ModifiedGame.name.Select(n => n.ToUpperInvariant()).Distinct()];
 
     private static WadFile Iwad(params string[] lumps) =>
@@ -23,7 +23,7 @@ public class ModifiedGameTests
     }
 
     private static string[] Registered(params string[] except) =>
-        ["E1M1", .. RegisteredLumps.Where(n => !except.Contains(n))];
+        ["E1M1", .. _registeredLumps.Where(n => !except.Contains(n))];
 
     [Fact]
     public void SharewareWithoutPwadsIsFine() => Check(Iwad("E1M1"));

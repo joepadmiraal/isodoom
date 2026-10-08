@@ -16,5 +16,5 @@ public sealed partial class World
     /// <c>P_Foo()</c>, so tests and the level scene can see them.
     /// Cleared by <see cref="P_SetupLevel"/>; not sim state (outside the checksum).
     /// </summary>
-    public readonly List<string> unported = [];
+    public readonly List<string> Unported = [];
 }

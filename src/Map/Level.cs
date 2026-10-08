@@ -35,7 +35,7 @@ public sealed class Level
     public const int ML_REJECT = 9;
     public const int ML_BLOCKMAP = 10;
 
-    private static readonly string[] LumpNames =
+    private static readonly string[] _lumpNames =
     [
         "", "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS",
         "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP",
@@ -79,8 +79,8 @@ public sealed class Level
         string name = wad.Lumps[lumpnum].Name;
         for (int ml = ML_THINGS; ml <= ML_BLOCKMAP; ml++)
         {
-            if (lumpnum + ml >= wad.NumLumps || wad.Lumps[lumpnum + ml].Name != LumpNames[ml])
-                throw new WadFormatException($"Map {name}: lump {ml} after the header is not {LumpNames[ml]}.");
+            if (lumpnum + ml >= wad.NumLumps || wad.Lumps[lumpnum + ml].Name != _lumpNames[ml])
+                throw new WadFormatException($"Map {name}: lump {ml} after the header is not {_lumpNames[ml]}.");
         }
 
         var level = new Level(name);

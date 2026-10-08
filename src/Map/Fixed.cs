@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace IsoDoom.Map;
 
 /// <summary>
@@ -41,6 +43,7 @@ public static class BBox
     public const int BOXRIGHT = 3;
 
     /// <summary>m_bbox.c <c>M_ClearBox</c>.</summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_bbox.c)")]
     public static void M_ClearBox(int[] box)
     {
         box[BOXTOP] = box[BOXRIGHT] = int.MinValue;
@@ -51,6 +54,7 @@ public static class BBox
     /// m_bbox.c <c>M_AddToBox</c>, with its <c>else if</c>: the first point added
     /// to a cleared box only sets its left and bottom edges.
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (m_bbox.c)")]
     public static void M_AddToBox(int[] box, int x, int y)
     {
         if (x < box[BOXLEFT])

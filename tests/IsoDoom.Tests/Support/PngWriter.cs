@@ -12,7 +12,7 @@ namespace IsoDoom.Tests.Support;
 /// </summary>
 public static class PngWriter
 {
-    private static readonly uint[] CrcTable = BuildCrcTable();
+    private static readonly uint[] _crcTable = BuildCrcTable();
 
     public static void WriteRgba(string path, int width, int height, ReadOnlySpan<byte> rgba)
     {
@@ -74,7 +74,7 @@ public static class PngWriter
     private static uint Crc(uint crc, byte[] data)
     {
         foreach (byte b in data)
-            crc = CrcTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
+            crc = _crcTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
         return crc;
     }
 

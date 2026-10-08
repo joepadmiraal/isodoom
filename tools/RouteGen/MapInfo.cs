@@ -23,7 +23,7 @@ public static class MapInfo
     {
         var g = new Steer(wad, map, (skill_t)(skill - 1), monsters: true);
         Console.WriteLine($"start ({g.X:F0}, {g.Y:F0}) sector {g.Mo.subsector!.sector.Index}");
-        foreach (mobj_t m in g.w.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SHOOTABLE)) != 0 && m != g.Mo))
+        foreach (mobj_t m in g.World.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SHOOTABLE)) != 0 && m != g.Mo))
         {
             string deaf = (m.flags & mobjflag_t.MF_AMBUSH) != 0 ? " deaf" : "";
             Console.WriteLine($"{m.type} at ({m.spawnpoint.X}, {m.spawnpoint.Y}) angle {m.spawnpoint.Angle}{deaf} health {m.health} sector {m.subsector.sector.Index}");
@@ -34,7 +34,7 @@ public static class MapInfo
     public static int Print(WadArchive wad, string map, int[]? only = null)
     {
         var g = new Steer(wad, map);
-        World w = g.w;
+        World w = g.World;
         Console.WriteLine($"start ({g.X:F0}, {g.Y:F0}) angle {(double)g.Mo.angle / 4294967296.0 * 360:F0} sector {g.Mo.subsector!.sector.Index}");
         foreach (line_t l in w.lines.Where(l => l.special != 0))
         {

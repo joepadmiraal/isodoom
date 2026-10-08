@@ -9,11 +9,11 @@ namespace IsoDoom.Tests.Purity;
 /// <summary>Proves the scanner catches each forbidden construct, so a green SimPurityTests means something.</summary>
 public class DeterminismScannerTests
 {
-    private static readonly ModuleDefinition TestModule =
+    private static readonly ModuleDefinition _testModule =
         ModuleDefinition.ReadModule(typeof(DeterminismScannerTests).Assembly.Location);
 
     private static IReadOnlyList<string> ScanFixture(Type fixture) =>
-        DeterminismScanner.Scan(TestModule, t => IsOrIsNestedIn(t, fixture.FullName!));
+        DeterminismScanner.Scan(_testModule, t => IsOrIsNestedIn(t, fixture.FullName!));
 
     private static bool IsOrIsNestedIn(TypeDefinition type, string fullName)
     {

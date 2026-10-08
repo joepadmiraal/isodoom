@@ -14,7 +14,7 @@ namespace IsoDoom.Tests.Sim;
 public class WorldTests
 {
     private const int FRACUNIT = 1 << 16;
-    private static readonly SpawnSettings Medium = new(GameMode.shareware, skill_t.sk_medium);
+    private static readonly SpawnSettings _medium = new(GameMode.shareware, skill_t.sk_medium);
 
     private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
 
@@ -90,7 +90,7 @@ public class WorldTests
     public void SyntheticE1M1SpawnsTheT32List()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         List<mobj_t> mobjs = [.. world.Mobjs()];
         Assert.Equal(12, mobjs.Count); // T3.2/T3.5: 11 mobjs plus player 1, in THINGS order
 
@@ -108,7 +108,7 @@ public class WorldTests
         Assert.Null(world.players[1].mo);
 
         // The rest as SpawnedThings (T3.5) places them.
-        SpawnedThing[] expected = SpawnedThings.Build(world.level, MapThingSpawning.SpawnList(world.level.Things, Medium));
+        SpawnedThing[] expected = SpawnedThings.Build(world.level, MapThingSpawning.SpawnList(world.level.Things, _medium));
         Assert.Equal(expected.Length, mobjs.Count - 1);
         for (int i = 0; i < expected.Length; i++)
         {
@@ -186,8 +186,8 @@ public class WorldTests
     public void Doom1E1M1RunsStably()
     {
         var wad = WadArchive.Open(TestWads.RequireDoom1());
-        World a = Load(wad, "E1M1", Medium);
-        World b = Load(wad, "E1M1", Medium);
+        World a = Load(wad, "E1M1", _medium);
+        World b = Load(wad, "E1M1", _medium);
         for (int tic = 0; tic < 35; tic++)
         {
             Assert.Equal(a.Checksum(), b.Checksum());
@@ -204,7 +204,7 @@ public class WorldTests
         WadArchive wad = Synthetic();
         ulong[] Run()
         {
-            World world = Load(wad, "E1M1", Medium);
+            World world = Load(wad, "E1M1", _medium);
             ulong[] sums = new ulong[36];
             sums[0] = world.Checksum();
             for (int tic = 1; tic <= 35; tic++)
@@ -221,8 +221,8 @@ public class WorldTests
         Assert.Equal(36, first.Distinct().Count()); // leveltime alone changes it every tic
 
         // Two worlds side by side don't share state: running one leaves the other alone.
-        World x = Load(wad, "E1M1", Medium);
-        World y = Load(wad, "E1M1", Medium);
+        World x = Load(wad, "E1M1", _medium);
+        World y = Load(wad, "E1M1", _medium);
         for (int tic = 0; tic < 10; tic++)
             x.P_Ticker();
         Assert.Equal(first[0], y.Checksum());
@@ -233,7 +233,7 @@ public class WorldTests
     public void ChecksumCoversTheState()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         ulong sum = world.Checksum();
         mobj_t imp = world.Mobjs().ElementAt(2);
 
@@ -264,7 +264,7 @@ public class WorldTests
     public void SectorHeightsChangeTheLevelInPlace()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         world.sectors[3].ceilingheight = 72 * FRACUNIT; // the closed door opens
         Assert.Equal(72 * FRACUNIT, world.level.Sectors[3].CeilingHeight);
     }
@@ -272,7 +272,7 @@ public class WorldTests
     [Fact]
     public void ThinkerList()
     {
-        var world = new World(Medium, Tweaks.Vanilla);
+        var world = new World(_medium, Tweaks.Vanilla);
         thinker_t[] t = [.. Enumerable.Range(0, 4).Select(_ => new thinker_t())];
         foreach (thinker_t th in t)
             world.P_AddThinker(th);
@@ -304,7 +304,7 @@ public class WorldTests
     public void RemoveMobjUnlinks()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         mobj_t[] mobjs = [.. world.Mobjs()];
         int block = 1 * 10 + 1; // player, barrel, imps 8 and 9
         world.P_RemoveMobj(mobjs[1]); // middle of its lists
@@ -321,7 +321,7 @@ public class WorldTests
     public void MovingAThingRelinksIt()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         mobj_t barrel = world.Mobjs().ElementAt(1);
         world.P_UnsetThingPosition(barrel);
         barrel.x = 320 * FRACUNIT; // into the east room, block (3, 1)
@@ -345,7 +345,7 @@ public class WorldTests
     public void NoSectorNoBlockmapThings()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         mobj_t tele = world.P_SpawnMobj(64 * FRACUNIT, 0, World.ONFLOORZ, mobjtype_t.MT_TELEPORTMAN); // MF_NOSECTOR | MF_NOBLOCKMAP
         Assert.DoesNotContain(tele, SectorList(world.sectors[0]));
         Assert.Equal(0, tele.subsector.sector.Index);
@@ -358,7 +358,7 @@ public class WorldTests
     public void SetMobjState()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         mobj_t imp = world.Mobjs().ElementAt(2);
         Assert.True(world.P_SetMobjState(imp, statenum_t.S_TROO_RUN1));
         Assert.Equal((statenum_t.S_TROO_RUN1, 3, spritenum_t.SPR_TROO, 0), (imp.state, imp.tics, imp.sprite, imp.frame));
@@ -379,7 +379,7 @@ public class WorldTests
     public void StatesCycleOverTics()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         mobj_t barrel = world.Mobjs().ElementAt(1);
         int first = barrel.tics; // 1 + P_Random() % 6
         for (int i = 0; i < first; i++)
@@ -398,7 +398,7 @@ public class WorldTests
     public void SecondPlayer()
     {
         WadArchive wad = Synthetic();
-        var world = new World(Medium, Tweaks.Vanilla);
+        var world = new World(_medium, Tweaks.Vanilla);
         world.playeringame[1] = true;
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
         Assert.Null(world.players[1].mo); // the synthetic map has no player 2 start
@@ -417,7 +417,7 @@ public class WorldTests
     [Fact]
     public void PlayerRebornKeepsFragsAndCounts()
     {
-        var world = new World(Medium, Tweaks.Vanilla);
+        var world = new World(_medium, Tweaks.Vanilla);
         player_t p = world.players[0];
         p.frags[2] = 3;
         p.killcount = 5;
@@ -474,7 +474,7 @@ public class WorldTests
     public void NewGameClearsRandomAndLevelKeepsIt()
     {
         WadArchive wad = Synthetic();
-        World world = Load(wad, "E1M1", Medium);
+        World world = Load(wad, "E1M1", _medium);
         int index = world.random.prndindex;
         world.G_DoLoadLevel(Level.Load(wad, "E1M1")); // the next level: the index carries on
         Assert.Equal((index * 2) & 0xff, world.random.prndindex);
@@ -490,6 +490,6 @@ public class WorldTests
         Assert.NotEmpty(flags);
         Assert.All(flags, f => Assert.False((bool)f.GetValue(Tweaks.Vanilla)!, f.Name));
         Assert.All(flags, f => Assert.True((bool)f.GetValue(Tweaks.TopDown)!, f.Name));
-        Assert.Same(Tweaks.TopDown, new World(Medium, Tweaks.TopDown).tweaks);
+        Assert.Same(Tweaks.TopDown, new World(_medium, Tweaks.TopDown).tweaks);
     }
 }

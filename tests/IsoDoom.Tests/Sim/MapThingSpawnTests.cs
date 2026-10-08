@@ -13,7 +13,7 @@ namespace IsoDoom.Tests.Sim;
 /// <summary>T3.2: the selection part of p_mobj.c <c>P_SpawnMapThing</c> (and p_setup.c <c>P_LoadThings</c>' loop).</summary>
 public class MapThingSpawnTests
 {
-    private static readonly SpawnSettings Medium = new(GameMode.shareware, skill_t.sk_medium);
+    private static readonly SpawnSettings _medium = new(GameMode.shareware, skill_t.sk_medium);
 
     private static MapThingSpawn One(short type, short options, SpawnSettings settings)
     {
@@ -54,15 +54,15 @@ public class MapThingSpawnTests
     [Fact]
     public void LookupAmbushAndAngle()
     {
-        MapThingSpawn imp = One(3001, MapThing.MTF_NORMAL | MapThing.MTF_AMBUSH, Medium);
+        MapThingSpawn imp = One(3001, MapThing.MTF_NORMAL | MapThing.MTF_AMBUSH, _medium);
         Assert.Equal((MapThingSpawnKind.Mobj, mobjtype_t.MT_TROOP, true), (imp.Kind, imp.Type, imp.Ambush));
         Assert.True(imp.Spawns);
-        Assert.False(One(2035, 7, Medium).Ambush);
-        Assert.Equal(mobjtype_t.MT_BARREL, One(2035, 7, Medium).Type);
+        Assert.False(One(2035, 7, _medium).Ambush);
+        Assert.Equal(mobjtype_t.MT_BARREL, One(2035, 7, _medium).Type);
 
         // ANG45 * (angle / 45): snaps down to 45° steps, C division truncates.
         int dm = 0;
-        uint Angle(short a) => MapThingSpawning.Select(new MapThing(0, 0, a, 3001, 7), Medium, ref dm).Angle;
+        uint Angle(short a) => MapThingSpawning.Select(new MapThing(0, 0, a, 3001, 7), _medium, ref dm).Angle;
         Assert.Equal(0u, Angle(44));
         Assert.Equal(0x40000000u, Angle(90));
         Assert.Equal(0x40000000u, Angle(134));
@@ -78,18 +78,18 @@ public class MapThingSpawnTests
         for (short type = 1; type <= 4; type++)
         {
             // Player starts ignore the skill and multiplayer bits.
-            MapThingSpawn p = One(type, 16, Medium);
+            MapThingSpawn p = One(type, 16, _medium);
             Assert.Equal((MapThingSpawnKind.PlayerStart, type - 1, true), (p.Kind, p.PlayerNum, p.SpawnsPlayer));
-            MapThingSpawn dmp = One(type, 7, Medium with { netgame = true, deathmatch = 1 });
+            MapThingSpawn dmp = One(type, 7, _medium with { netgame = true, deathmatch = 1 });
             Assert.Equal((MapThingSpawnKind.PlayerStart, false, false), (dmp.Kind, dmp.SpawnsPlayer, dmp.Spawns));
         }
 
-        Assert.Equal(MapThingSpawnKind.Ignored, One(0, 7, Medium).Kind);
-        Assert.Equal(MapThingSpawnKind.Ignored, One(-1, 7, Medium).Kind);
+        Assert.Equal(MapThingSpawnKind.Ignored, One(0, 7, _medium).Kind);
+        Assert.Equal(MapThingSpawnKind.Ignored, One(-1, 7, _medium).Kind);
 
         // Only the first 10 deathmatch starts are kept, whatever the mode.
         MapThing[] starts = [.. Enumerable.Range(0, 12).Select(i => new MapThing((short)i, 0, 0, 11, 0))];
-        MapThingSpawn[] list = MapThingSpawning.SpawnList(starts, Medium);
+        MapThingSpawn[] list = MapThingSpawning.SpawnList(starts, _medium);
         Assert.All(list.Take(10), s => Assert.Equal(MapThingSpawnKind.DeathmatchStart, s.Kind));
         Assert.All(list.Skip(10), s => Assert.Equal(MapThingSpawnKind.Ignored, s.Kind));
     }
@@ -97,23 +97,23 @@ public class MapThingSpawnTests
     [Fact]
     public void MultiplayerOnlyBit()
     {
-        Assert.Equal(MapThingSpawnKind.NotSinglePlayer, One(2035, 7 | 16, Medium).Kind);
-        Assert.Equal(MapThingSpawnKind.Mobj, One(2035, 7 | 16, Medium with { netgame = true }).Kind);
+        Assert.Equal(MapThingSpawnKind.NotSinglePlayer, One(2035, 7 | 16, _medium).Kind);
+        Assert.Equal(MapThingSpawnKind.Mobj, One(2035, 7 | 16, _medium with { netgame = true }).Kind);
         // The bit is tested before the skill bits.
-        Assert.Equal(MapThingSpawnKind.NotSinglePlayer, One(2035, 16, Medium).Kind);
-        Assert.Equal(MapThingSpawnKind.NotThisSkill, One(2035, 16, Medium with { netgame = true }).Kind);
+        Assert.Equal(MapThingSpawnKind.NotSinglePlayer, One(2035, 16, _medium).Kind);
+        Assert.Equal(MapThingSpawnKind.NotThisSkill, One(2035, 16, _medium with { netgame = true }).Kind);
     }
 
     [Fact]
     public void DeathmatchAndNoMonsters()
     {
         // Keys have MF_NOTDMATCH.
-        SpawnSettings dm = Medium with { netgame = true, deathmatch = 1 };
+        SpawnSettings dm = _medium with { netgame = true, deathmatch = 1 };
         Assert.Equal((MapThingSpawnKind.NotDeathmatch, mobjtype_t.MT_MISC4), (One(5, 7, dm).Kind, One(5, 7, dm).Type));
-        Assert.Equal(MapThingSpawnKind.Mobj, One(5, 7, Medium).Kind);
+        Assert.Equal(MapThingSpawnKind.Mobj, One(5, 7, _medium).Kind);
         Assert.Equal(MapThingSpawnKind.Mobj, One(2035, 7, dm).Kind);
 
-        SpawnSettings nm = Medium with { nomonsters = true };
+        SpawnSettings nm = _medium with { nomonsters = true };
         Assert.Equal(MapThingSpawnKind.NoMonsters, One(3001, 7, nm).Kind); // MF_COUNTKILL
         Assert.Equal(MapThingSpawnKind.NoMonsters, One(3006, 7, nm).Kind); // MT_SKULL, no MF_COUNTKILL
         Assert.Equal(MapThingSpawnKind.Mobj, One(2035, 7, nm).Kind);       // shootable but not a monster
@@ -123,10 +123,10 @@ public class MapThingSpawnTests
     [Fact]
     public void UnknownTypeErrorsOnlyWhenItWouldSpawn()
     {
-        WadFormatException e = Assert.Throws<WadFormatException>(() => One(9999, 7, Medium));
+        WadFormatException e = Assert.Throws<WadFormatException>(() => One(9999, 7, _medium));
         Assert.Equal("P_SpawnMapThing: Unknown type 9999 at (1, 2)", e.Message);
-        Assert.Equal(MapThingSpawnKind.NotThisSkill, One(9999, MapThing.MTF_EASY, Medium).Kind);
-        Assert.Equal(MapThingSpawnKind.NotSinglePlayer, One(9999, 7 | 16, Medium).Kind);
+        Assert.Equal(MapThingSpawnKind.NotThisSkill, One(9999, MapThing.MTF_EASY, _medium).Kind);
+        Assert.Equal(MapThingSpawnKind.NotSinglePlayer, One(9999, 7 | 16, _medium).Kind);
     }
 
     [Fact]
@@ -139,15 +139,15 @@ public class MapThingSpawnTests
             new(0, 0, 0, 66, 7),   // revenant
             new(0, 0, 0, 2035, 7), // never reached outside commercial
         ];
-        MapThingSpawn[] doom1 = MapThingSpawning.SpawnList(things, Medium);
+        MapThingSpawn[] doom1 = MapThingSpawning.SpawnList(things, _medium);
         Assert.Equal(
             [MapThingSpawnKind.PlayerStart, MapThingSpawnKind.Mobj, MapThingSpawnKind.NotLoaded, MapThingSpawnKind.NotLoaded],
             doom1.Select(s => s.Kind));
         // Even on a skill the revenant isn't on.
         MapThing[] offSkill = [.. things.Select(t => t.Type == 66 ? t with { Options = 1 } : t)];
-        Assert.Equal(MapThingSpawnKind.NotLoaded, MapThingSpawning.SpawnList(offSkill, Medium)[3].Kind);
+        Assert.Equal(MapThingSpawnKind.NotLoaded, MapThingSpawning.SpawnList(offSkill, _medium)[3].Kind);
 
-        MapThingSpawn[] doom2 = MapThingSpawning.SpawnList(things, Medium with { gamemode = GameMode.commercial });
+        MapThingSpawn[] doom2 = MapThingSpawning.SpawnList(things, _medium with { gamemode = GameMode.commercial });
         Assert.Equal(mobjtype_t.MT_UNDEAD, doom2[2].Type);
         Assert.All(doom2, s => Assert.True(s.Spawns));
     }

@@ -251,7 +251,7 @@ public sealed partial class World
         iquehead = iquetail = 0;
 
         // set up world state
-        unported.Clear(); // not vanilla (T5.2)
+        Unported.Clear(); // not vanilla (T5.2)
         events.Clear(); // not vanilla (T6.10)
         P_SpawnSpecials();
     }

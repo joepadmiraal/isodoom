@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace IsoDoom.Wad;
 
@@ -37,6 +38,7 @@ public static class ModifiedGame
     /// The lumps a registered IWAD must have when the game is modified (d_main.c).
     /// Vanilla's list checks <c>e3m3</c> twice and never <c>e3m2</c>; kept as is.
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (d_main.c)")]
     public static IReadOnlyList<string> name { get; } =
     [
         "e2m1", "e2m2", "e2m3", "e2m4", "e2m5", "e2m6", "e2m7", "e2m8", "e2m9",
@@ -49,6 +51,7 @@ public static class ModifiedGame
     /// <c>-file</c>). <c>-deh</c> and <c>-merge</c>, which also set it in
     /// Chocolate Doom, don't exist here yet.
     /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (d_main.c)")]
     public static bool modifiedgame(WadArchive archive) => archive.Files.Count > 1;
 
     /// <summary>

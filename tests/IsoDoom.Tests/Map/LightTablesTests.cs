@@ -16,7 +16,7 @@ namespace IsoDoom.Tests.Map;
 /// </summary>
 public class LightTablesTests
 {
-    private static readonly LightTables Full = LightTables.R_InitLightTables();
+    private static readonly LightTables _full = LightTables.R_InitLightTables();
 
     [Theory]
     [InlineData(0, 0, 0)] // startmap 60, scale 160: clamped to 0
@@ -37,7 +37,7 @@ public class LightTablesTests
     [InlineData(14, 127, 4)]
     [InlineData(15, 0, 0)]
     [InlineData(15, 127, 0)]
-    public void ZlightMatchesVanilla(int light, int z, int colormap) => Assert.Equal(colormap, Full.zlight(light, z));
+    public void ZlightMatchesVanilla(int light, int z, int colormap) => Assert.Equal(colormap, _full.zlight(light, z));
 
     [Theory]
     [InlineData(0, 0, 31)]
@@ -53,7 +53,7 @@ public class LightTablesTests
     [InlineData(10, 40, 0)]
     [InlineData(12, 0, 12)]
     [InlineData(15, 0, 0)]
-    public void ScalelightMatchesVanillaAtFullSize(int light, int scale, int colormap) => Assert.Equal(colormap, Full.scalelight(light, scale));
+    public void ScalelightMatchesVanillaAtFullSize(int light, int scale, int colormap) => Assert.Equal(colormap, _full.scalelight(light, scale));
 
     [Theory]
     [InlineData(1, 47, 30)]
@@ -70,13 +70,13 @@ public class LightTablesTests
         for (int i = 0; i < LightTables.LIGHTLEVELS; i++)
         {
             for (int j = 1; j < LightTables.MAXLIGHTZ; j++)
-                Assert.True(Full.zlight(i, j) >= Full.zlight(i, j - 1));
+                Assert.True(_full.zlight(i, j) >= _full.zlight(i, j - 1));
             for (int j = 1; j < LightTables.MAXLIGHTSCALE; j++)
-                Assert.True(Full.scalelight(i, j) <= Full.scalelight(i, j - 1)); // bigger scale = nearer = brighter
+                Assert.True(_full.scalelight(i, j) <= _full.scalelight(i, j - 1)); // bigger scale = nearer = brighter
             if (i > 0)
             {
                 for (int j = 0; j < LightTables.MAXLIGHTZ; j++)
-                    Assert.True(Full.zlight(i, j) <= Full.zlight(i - 1, j));
+                    Assert.True(_full.zlight(i, j) <= _full.zlight(i - 1, j));
             }
         }
     }
@@ -84,17 +84,17 @@ public class LightTablesTests
     [Fact]
     public void WallScaleIndexIsTheScaleOfAWallSeenStraightOn()
     {
-        Assert.Equal(160, Full.CenterX);
-        Assert.Equal(LightTables.MAXLIGHTSCALE - 1, Full.WallScaleIndex(0));
-        Assert.Equal(LightTables.MAXLIGHTSCALE - 1, Full.WallScaleIndex(1));
-        Assert.Equal(LightTables.MAXLIGHTSCALE - 1, Full.WallScaleIndex(54 << FRACBITS)); // 2560 / 54 = 47
-        Assert.Equal(46, Full.WallScaleIndex(55 << FRACBITS));
-        Assert.Equal(10, Full.WallScaleIndex(256 << FRACBITS));
-        Assert.Equal(1, Full.WallScaleIndex(2560 << FRACBITS));
-        Assert.Equal(0, Full.WallScaleIndex((2560 << FRACBITS) + 1));
+        Assert.Equal(160, _full.CenterX);
+        Assert.Equal(LightTables.MAXLIGHTSCALE - 1, _full.WallScaleIndex(0));
+        Assert.Equal(LightTables.MAXLIGHTSCALE - 1, _full.WallScaleIndex(1));
+        Assert.Equal(LightTables.MAXLIGHTSCALE - 1, _full.WallScaleIndex(54 << FRACBITS)); // 2560 / 54 = 47
+        Assert.Equal(46, _full.WallScaleIndex(55 << FRACBITS));
+        Assert.Equal(10, _full.WallScaleIndex(256 << FRACBITS));
+        Assert.Equal(1, _full.WallScaleIndex(2560 << FRACBITS));
+        Assert.Equal(0, _full.WallScaleIndex((2560 << FRACBITS) + 1));
         // The shader's integer form: (centerx << 20) / distance.
         for (int d = 1; d < LightTables.MaxDistanceUnits << FRACBITS; d += 9973)
-            Assert.Equal(System.Math.Min((160 << 20) / d, LightTables.MAXLIGHTSCALE - 1), Full.WallScaleIndex(d));
+            Assert.Equal(System.Math.Min((160 << 20) / d, LightTables.MAXLIGHTSCALE - 1), _full.WallScaleIndex(d));
     }
 
     [Fact]
@@ -119,25 +119,25 @@ public class LightTablesTests
     public void WallAndPlaneColormapsClampTheLightLevel()
     {
         int d = 256 << FRACBITS; // scale index 10, z index 16
-        Assert.Equal(Full.scalelight(10, 10), Full.WallColormap(160, 0, 0, d));
-        Assert.Equal(Full.scalelight(9, 10), Full.WallColormap(160, 0, -1, d));
-        Assert.Equal(Full.scalelight(11, 10), Full.WallColormap(160, 0, 1, d));
-        Assert.Equal(Full.scalelight(12, 10), Full.WallColormap(160, 2, 0, d)); // extralight 2 (muzzle flash)
-        Assert.Equal(Full.scalelight(15, 10), Full.WallColormap(255, 0, 1, d)); // clamped at LIGHTLEVELS - 1
-        Assert.Equal(Full.scalelight(0, 10), Full.WallColormap(15, 0, -1, d)); // clamped at 0
-        Assert.Equal(Full.zlight(10, 16), Full.PlaneColormap(160, 0, d));
-        Assert.Equal(Full.zlight(11, 16), Full.PlaneColormap(160, 1, d));
-        Assert.Equal(Full.zlight(15, 16), Full.PlaneColormap(255, 2, d));
-        Assert.Equal(Full.zlight(0, 16), Full.PlaneColormap(0, 0, d));
+        Assert.Equal(_full.scalelight(10, 10), _full.WallColormap(160, 0, 0, d));
+        Assert.Equal(_full.scalelight(9, 10), _full.WallColormap(160, 0, -1, d));
+        Assert.Equal(_full.scalelight(11, 10), _full.WallColormap(160, 0, 1, d));
+        Assert.Equal(_full.scalelight(12, 10), _full.WallColormap(160, 2, 0, d)); // extralight 2 (muzzle flash)
+        Assert.Equal(_full.scalelight(15, 10), _full.WallColormap(255, 0, 1, d)); // clamped at LIGHTLEVELS - 1
+        Assert.Equal(_full.scalelight(0, 10), _full.WallColormap(15, 0, -1, d)); // clamped at 0
+        Assert.Equal(_full.zlight(10, 16), _full.PlaneColormap(160, 0, d));
+        Assert.Equal(_full.zlight(11, 16), _full.PlaneColormap(160, 1, d));
+        Assert.Equal(_full.zlight(15, 16), _full.PlaneColormap(255, 2, d));
+        Assert.Equal(_full.zlight(0, 16), _full.PlaneColormap(0, 0, d));
     }
 
     [Fact]
     public void ToBytesHoldsZlightThenScalelight()
     {
-        byte[] b = Full.ToBytes();
+        byte[] b = _full.ToBytes();
         Assert.Equal(LightTables.TableWidth * LightTables.TableHeight, b.Length);
-        Assert.Equal(Full.zlight(8, 15), b[8 * LightTables.TableWidth + 15]);
-        Assert.Equal(Full.scalelight(8, 10), b[(16 + 8) * LightTables.TableWidth + 10]);
+        Assert.Equal(_full.zlight(8, 15), b[8 * LightTables.TableWidth + 15]);
+        Assert.Equal(_full.scalelight(8, 10), b[(16 + 8) * LightTables.TableWidth + 10]);
         Assert.Equal(0, b[(16 + 0) * LightTables.TableWidth + 48]);
     }
 
