@@ -9,7 +9,7 @@
     "args": {
       "GODOT_VERSION": "4.7.2",
       "GODOT_RELEASE": "stable",
-      "INSTALL_EXPORT_TEMPLATES": "false"
+      "INSTALL_EXPORT_TEMPLATES": "true"
     }
   },
   "features": {
