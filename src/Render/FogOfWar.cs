@@ -19,6 +19,19 @@ public enum FogStyle
 }
 
 /// <summary>
+/// Where the fog of war draws the things that act or move (monsters, barrels,
+/// missiles, corpses, event marks; T6.13n, SPEC §12; a presentation option).
+/// </summary>
+public enum FogThings
+{
+    /// <summary>In every discovered sector, live, as items are: they stay drawn when the player leaves their room (the default, the user's choice, as Isowulf).</summary>
+    Seen = 0,
+
+    /// <summary>Only while their sector is in the player's sight (T6.13l's rule): no monster shows through a wall.</summary>
+    Sight = 1,
+}
+
+/// <summary>
 /// How dim draws an unseen surface (T6.13l): through COLORMAP row
 /// <paramref name="Row"/> (0 bright to 31 dark), whatever its light, then
 /// <paramref name="Grey"/> percent towards grey (<see cref="FogOfWar.DimMap"/>);

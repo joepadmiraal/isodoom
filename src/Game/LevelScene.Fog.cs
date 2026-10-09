@@ -21,6 +21,13 @@ public partial class LevelScene
     /// </summary>
     public FogStyle FogStyle { get; set; } = FogStyle.Hide;
 
+    /// <summary>
+    /// Where the things that act or move are drawn (<c>--level-fog-things</c>,
+    /// <c>gameplay/fog_things</c>; T6.13n): in every discovered sector by
+    /// default, or only in the sectors in sight.
+    /// </summary>
+    public FogThings FogThings { get; set; } = FogThings.Seen;
+
     /// <summary>The level's fog of war (its discovered sectors and mapped lines), or null without a world.</summary>
     public FogOfWar? Fog { get; private set; }
 
@@ -63,15 +70,19 @@ public partial class LevelScene
 
     /// <summary>
     /// Whether the fog lets <paramref name="mo"/> be drawn: everything while
-    /// it is not active; else a thing that acts or moves (<see cref="FogActs"/>)
+    /// it is not active; else as <see cref="FogLets"/> says.
+    /// </summary>
+    public bool FogShows(mobj_t mo) => !FogActive || FogLets(Fog!, FogThings, mo);
+
+    /// <summary>
+    /// Whether <paramref name="fog"/> lets <paramref name="mo"/> be drawn: a
+    /// thing that acts or moves (<see cref="FogActs"/>) with <see cref="FogThings.Sight"/>
     /// only while its sector is visible, any other once its sector is discovered.
     /// </summary>
-    public bool FogShows(mobj_t mo)
+    public static bool FogLets(FogOfWar fog, FogThings things, mobj_t mo)
     {
-        if (!FogActive)
-            return true;
         int sector = mo.subsector.sector.Index;
-        return FogActs(mo) ? Fog!.IsVisible(sector) : Fog!.IsDiscovered(sector);
+        return things == FogThings.Sight && FogActs(mo) ? fog.IsVisible(sector) : fog.IsDiscovered(sector);
     }
 
     /// <summary>
@@ -94,7 +105,7 @@ public partial class LevelScene
         if (Fog is not { } fog)
             return $"fog: {style}, no world";
         return string.Create(CultureInfo.InvariantCulture,
-            $"fog: {style}{(FogStyle != FogStyle.Off && !IsoActive ? " (game camera only)" : "")} (N), {fog.VisibleCount} visible, {fog.DiscoveredCount} discovered of {fog.Level.Sectors.Length} sectors, walk {FogMilliseconds:F3} ms");
+            $"fog: {style}{(FogStyle != FogStyle.Off && !IsoActive ? " (game camera only)" : "")} (N), things {FogThings.ToString().ToLowerInvariant()}, {fog.VisibleCount} visible, {fog.DiscoveredCount} discovered of {fog.Level.Sectors.Length} sectors, walk {FogMilliseconds:F3} ms");
     }
 
     private static FogStyle ParseFog(string value, string name) => value switch
@@ -103,6 +114,13 @@ public partial class LevelScene
         "hide" => FogStyle.Hide,
         "off" or "vanilla" => FogStyle.Off,
         _ => throw new ArgumentException($"{name}: \"{value}\" (hide, dim or off)"),
+    };
+
+    private static FogThings ParseFogThings(string value, string name) => value switch
+    {
+        "seen" => FogThings.Seen,
+        "sight" => FogThings.Sight,
+        _ => throw new ArgumentException($"{name}: \"{value}\" (seen or sight)"),
     };
 
     /// <summary>Parses a sector's state for the level script's <c>seen</c>.</summary>

@@ -95,7 +95,10 @@ namespace IsoDoom.Game;
 /// mouse cursor aims, always, or never; default pad);
 /// <c>--level-fog=hide|dim|off</c> (T6.13l, <see cref="FogStyle"/>: under the
 /// game camera, the sectors the player has not seen not drawn or dimmed,
-/// and the monsters out of its sight hidden; default hide) and
+/// and their things hidden; default hide),
+/// <c>--level-fog-things=seen|sight</c> (T6.13n, <see cref="FogThings"/>:
+/// monsters, barrels and missiles drawn in every discovered sector, or only
+/// in the sectors in the player's sight; default seen) and
 /// <c>--level-fog-dim=ROW,GREY[,dither]</c> (<see cref="FogDim"/>: the dim
 /// look, a COLORMAP row 0–31 and a percentage towards grey; default 20,100);
 /// <c>--level-hud=bar|full|off</c> (T6.11, <see cref="HudView"/>: under the
@@ -656,6 +659,8 @@ public partial class LevelScene : Node3D, IGameHost
                 AimMarkerShown = ParseAimMarker(aimMarker, "--level-aim-marker");
             if (WadLocator.GetUserArg("--level-fog") is string fog)
                 FogStyle = ParseFog(fog, "--level-fog");
+            if (WadLocator.GetUserArg("--level-fog-things") is string fogThings)
+                FogThings = ParseFogThings(fogThings, "--level-fog-things");
             if (WadLocator.GetUserArg("--level-fog-dim") is string fogDim)
                 _fogDim = FogDim.Parse(fogDim);
             if (WadLocator.GetUserArg("--level-hud") is string hud)
@@ -1629,8 +1634,8 @@ public partial class LevelScene : Node3D, IGameHost
         bool own = shot.shooter.player is { } p && World is { } world && p == world.players[world.consoleplayer];
         if (Tracers == TracerMode.Off || (Tracers == TracerMode.Player && !own) || shot.range < World.MISSILERANGE)
             return;
-        if (!own && FogActive && !Fog!.IsVisible(shot.shooter.subsector.sector.Index))
-            return; // T6.13l: a shooter out of the player's sight
+        if (!own && !FogShows(shot.shooter))
+            return; // T6.13l: a shooter the fog hides
 
         var from = new Vector3((float)(shot.x1 / 65536.0), (float)(shot.y1 / 65536.0), (float)(shot.z1 / 65536.0));
         var to = new Vector3((float)(shot.x2 / 65536.0), (float)(shot.y2 / 65536.0), (float)(shot.z2 / 65536.0));

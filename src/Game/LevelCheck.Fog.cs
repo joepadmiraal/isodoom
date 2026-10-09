@@ -15,13 +15,13 @@ namespace IsoDoom.Game;
 // every mapped line's sectors are discovered; the sector_fog texels are the
 // fog's states; with the fog on (FogEverywhere: the check has no game
 // camera) the drawn things are those the fog's rule lets through (an acting
-// thing only in a visible sector, any other in a discovered one), with it
-// off all of them. A closed door seen from in front of it is discovered, not
+// thing only in a visible sector with things sight, any other, and every
+// one with things seen (T6.13n), in a discovered one), with it off all of them. A closed door seen from in front of it is discovered, not
 // visible; opened in the sim it shows the sector across it. The reborn's
 // reload starts the fog afresh. With a real renderer: every floor top-down
 // with the fog dim (an unseen one's pixels the CPU's dim mapping) and hide
 // (the background), and a monster in a discovered room out of sight not
-// drawn while one in sight is. CheckSaves checks the discovered set
+// drawn with things sight (drawn with seen) while one in sight is. CheckSaves checks the discovered set
 // across a save and load.
 public partial class LevelCheck
 {
@@ -100,25 +100,35 @@ public partial class LevelCheck
         _fogMaps++;
     }
 
-    // The drawn mobjs with the fog on: exactly those its rule lets through; with it off, all.
+    // The drawn mobjs with the fog on: exactly those its rule lets through, with
+    // the acting things in sight only and in every discovered sector (T6.13n);
+    // with it off, all.
     private void CheckFogThings(string map, FogOfWar fog, mobj_t me)
     {
-        _scene.PresentWorld();
-        var drawn = new HashSet<mobj_t>(_scene.DrawnMobjs);
+        FogThings keep = _scene.FogThings;
         int all = 0;
-        foreach (mobj_t mo in _scene.World!.Mobjs().Where(mo => mo != me && LevelScene.IsDrawn(mo)))
+        foreach (FogThings things in new[] { FogThings.Sight, FogThings.Seen })
         {
-            all++;
-            int s = mo.subsector.sector.Index;
-            bool shown = LevelScene.FogActs(mo) ? fog.IsVisible(s) : fog.IsDiscovered(s);
-            if (drawn.Contains(mo) != shown)
+            _scene.FogThings = things;
+            _scene.PresentWorld();
+            var drawn = new HashSet<mobj_t>(_scene.DrawnMobjs);
+            all = 0;
+            foreach (mobj_t mo in _scene.World!.Mobjs().Where(mo => mo != me && LevelScene.IsDrawn(mo)))
             {
-                Fail($"{map}: fog (T6.13l): {mo.type} in sector {s} ({fog.State(s)}) is {(shown ? "not " : "")}drawn");
-                return;
+                all++;
+                int s = mo.subsector.sector.Index;
+                bool shown = things == FogThings.Sight && LevelScene.FogActs(mo) ? fog.IsVisible(s) : fog.IsDiscovered(s);
+                if (drawn.Contains(mo) != shown)
+                {
+                    Fail($"{map}: fog (T6.13l): {mo.type} in sector {s} ({fog.State(s)}), things {things}, is {(shown ? "not " : "")}drawn");
+                    _scene.FogThings = keep;
+                    return;
+                }
+                if (!shown && LevelScene.FogActs(mo))
+                    _fogHiddenThings++;
             }
-            if (!shown && LevelScene.FogActs(mo))
-                _fogHiddenThings++;
         }
+        _scene.FogThings = keep;
         _scene.FogStyle = FogStyle.Off;
         _scene.PresentWorld();
         if (_scene.DrawnMobjs.Count != all)
@@ -221,7 +231,7 @@ public partial class LevelCheck
     private void PrintFog()
     {
         GD.Print($"Level check: fog of war (T6.13l): {_fogMaps} maps looked from the start (no sector seen that no open line joins to it, the mapped lines' sectors discovered, sector_fog as the fog says), "
-            + $"{_fogHiddenThings} acting things out of sight not drawn; {_fogDoors} maps opened a closed door in the sim and saw across it; {_fogResets} reborns started the fog afresh");
+            + $"{_fogHiddenThings} acting things out of sight not drawn with things sight (all drawn with things seen, T6.13n); {_fogDoors} maps opened a closed door in the sim and saw across it; {_fogResets} reborns started the fog afresh");
         if (_fogMaps == 0 || _fogDoors == 0)
             Fail($"fog (T6.13l): {_fogMaps} maps checked, {_fogDoors} doors opened");
     }
@@ -247,6 +257,7 @@ public partial class LevelCheck
             return;
         }
         FogStyle style = _scene.FogStyle;
+        FogThings fogThings = _scene.FogThings;
         (DoorLidMode lids, WallCapMode caps) = (m.LidMode, m.CapMode);
         bool thingsShown = _scene.Things?.Visible ?? false;
         _scene.FogEverywhere = true;
@@ -279,6 +290,7 @@ public partial class LevelCheck
         {
             _scene.FogEverywhere = false;
             _scene.FogStyle = style;
+            _scene.FogThings = fogThings;
             _scene.UpdateFog();
             _scene.PresentWorld();
             m.SetDoorLids(lids);
@@ -330,9 +342,10 @@ public partial class LevelCheck
             spots[0] = (ax - (48 << Fixed.FRACBITS), ay, "in sight");
         foreach ((int x, int y, string what) in spots)
         {
-            foreach (FogStyle style in new[] { FogStyle.Dim, FogStyle.Off })
+            foreach ((FogStyle style, FogThings things) in new[] { (FogStyle.Dim, FogThings.Sight), (FogStyle.Dim, FogThings.Seen), (FogStyle.Off, FogThings.Sight) })
             {
                 _scene.FogStyle = style;
+                _scene.FogThings = things;
                 _scene.UpdateFog();
                 mobj_t imp = world.P_SpawnMobj(x, y, World.ONFLOORZ, mobjtype_t.MT_TROOP);
                 _scene.PresentWorld();
@@ -340,7 +353,7 @@ public partial class LevelCheck
                 float z = (float)(s.FloorHeight / 65536.0);
                 var basis = new Basis(new Vector3(1, 0, 0), new Vector3(0, 0, -1), new Vector3(0, 1, 0));
                 Ortho(basis, new Vector3((float)(x / 65536.0), (float)(y / 65536.0), z + 256.5f), 1, 512);
-                string where = $"{map}: fog drawn (T6.13l): an imp {what} in sector {s.Index} ({fog.State(s.Index)}), fog {style.ToString().ToLowerInvariant()}";
+                string where = $"{map}: fog drawn (T6.13l): an imp {what} in sector {s.Index} ({fog.State(s.Index)}), fog {style.ToString().ToLowerInvariant()}, things {things.ToString().ToLowerInvariant()}";
                 byte[]? with = await Capture(where);
                 world.P_RemoveMobj(imp);
                 _scene.PresentWorld();
@@ -353,14 +366,15 @@ public partial class LevelCheck
                     if (with[i] != without[i] || with[i + 1] != without[i + 1] || with[i + 2] != without[i + 2])
                         differ++;
                 }
-                bool drawn = what == "in sight" || style == FogStyle.Off;
+                bool drawn = what == "in sight" || style == FogStyle.Off || things == FogThings.Seen;
                 if ((differ > 0) != drawn)
                     Fail($"{where}: {differ} pixels differ with it and without it, expected it {(drawn ? "" : "not ")}drawn");
                 _pixels += with.Length / 4;
             }
         }
         _scene.FogStyle = FogStyle.Dim;
+        _scene.FogThings = FogThings.Sight;
         _scene.PlacePlayer((float)(sx / 65536.0), (float)(sy / 65536.0));
-        GD.Print($"Level check: {map}: fog drawn (T6.13l): an imp in sight drawn and one in the discovered start sector {start} out of sight from sector {away.Sector} not (drawn with the fog off)");
+        GD.Print($"Level check: {map}: fog drawn (T6.13l): an imp in sight drawn and one in the discovered start sector {start} out of sight from sector {away.Sector} not with things sight (drawn with things seen, T6.13n, and with the fog off)");
     }
 }
