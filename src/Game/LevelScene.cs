@@ -93,6 +93,11 @@ namespace IsoDoom.Game;
 /// <c>--level-aim-marker=pad|on|off</c> (<see cref="AimMarkerMode"/>: a ring
 /// around the player's feet with a chevron along its facing, unless the
 /// mouse cursor aims, always, or never; default pad);
+/// <c>--level-fog=hide|dim|off</c> (T6.13l, <see cref="FogStyle"/>: under the
+/// game camera, the sectors the player has not seen not drawn or dimmed,
+/// and the monsters out of its sight hidden; default hide) and
+/// <c>--level-fog-dim=ROW,GREY[,dither]</c> (<see cref="FogDim"/>: the dim
+/// look, a COLORMAP row 0–31 and a percentage towards grey; default 20,100);
 /// <c>--level-hud=bar|full|off</c> (T6.11, <see cref="HudView"/>: under the
 /// game camera, vanilla's status bar at the bottom, the minimal fullscreen
 /// HUD, or neither; the message line shows with all; default bar) and
@@ -160,7 +165,7 @@ namespace IsoDoom.Game;
 /// the player's minimum light (on, off), M
 /// the one-sided masked middles from behind (mirrored, off), K the cutaway
 /// cap (dark, flat, off), V the things it cuts (decor, all, off), J the door
-/// lids (on, off), = and -
+/// lids (on, off), N the fog of war (hide, dim, off; T6.13l), = and -
 /// the HUD (T6.11: as vanilla's screen size keys, = bar, fullscreen HUD,
 /// none, - back), F1 shows the controls, F3 hides the overlay.
 /// </para>
@@ -220,6 +225,9 @@ public partial class LevelScene : Node3D, IGameHost
     public AimMarkerMode AimMarkerShown { get; set; } = AimMarkerMode.Pad;
 
     private readonly AimMarker _aimMarker = new() { Name = "AimMarker", Visible = false };
+
+    // T6.13l: the dim look (--level-fog-dim).
+    private FogDim _fogDim = FogDim.Default;
 
     /// <summary>
     /// The pad's right stick aims, not the mouse: set while the stick is
@@ -485,7 +493,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   I upper walls   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -646,6 +654,10 @@ public partial class LevelScene : Node3D, IGameHost
                 Tracers = ParseTracers(tracers, "--level-tracers");
             if (WadLocator.GetUserArg("--level-aim-marker") is string aimMarker)
                 AimMarkerShown = ParseAimMarker(aimMarker, "--level-aim-marker");
+            if (WadLocator.GetUserArg("--level-fog") is string fog)
+                FogStyle = ParseFog(fog, "--level-fog");
+            if (WadLocator.GetUserArg("--level-fog-dim") is string fogDim)
+                _fogDim = FogDim.Parse(fogDim);
             if (WadLocator.GetUserArg("--level-hud") is string hud)
                 Hud.Mode = hud switch
                 {
@@ -916,7 +928,8 @@ public partial class LevelScene : Node3D, IGameHost
     /// Puts the player mobj at map point (<paramref name="x"/>, <paramref name="y"/>)
     /// on the floor there, facing <paramref name="angle"/> (vanilla degrees)
     /// when given, with no momentum (<see cref="World.PlaceMobj"/>: a debug
-    /// move, no collision check, not interpolated), and centres the game camera on it.
+    /// move, no collision check, not interpolated), looks from there (the fog
+    /// of war, T6.13l), and centres the game camera on it.
     /// </summary>
     public void PlacePlayer(float x, float y, float? angle = null)
     {
@@ -924,6 +937,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         world.PlaceMobj(mo, ToFixed(x), ToFixed(y), angle is float a ? ThingSprites.BamOfDegrees(a) : null);
         TiccmdBuilder.Reset(); // keep the new facing until something aims
+        SeeFog(); // T6.13l: what it sees from there
         PresentWorld();
         if (Player is not null)
             Iso?.Snap(Player.Foot);
@@ -1100,6 +1114,9 @@ public partial class LevelScene : Node3D, IGameHost
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
                 Mesh?.SetUpperWalls(UpperWalls);
                 break;
+            case Key.N:
+                FogStyle = FogStyle switch { FogStyle.Hide => FogStyle.Dim, FogStyle.Dim => FogStyle.Off, _ => FogStyle.Hide };
+                break;
             case Key.Equal:
                 // T6.11: vanilla's screen size keys: = shows more of the view (bar, fullscreen HUD, none), - less.
                 Hud.Mode = Hud.Mode == HudMode.Bar ? HudMode.Full : HudMode.Off;
@@ -1157,6 +1174,7 @@ public partial class LevelScene : Node3D, IGameHost
                     Things?.UpdateRotations(current);
                 Mesh.SetLightOrigin(LightOrigin());
                 UpdateCutaway();
+                UpdateFog();
                 if (Mesh.Sprites != SpriteOptions)
                     Mesh.SetSprites(SpriteOptions);
             }
@@ -1422,6 +1440,7 @@ public partial class LevelScene : Node3D, IGameHost
             SnapPending = true;
         if (_planeMoves.Count > 0)
             MovePlanes();
+        SeeFog(); // T6.13l: the sight walk after the tic, as vanilla's renderer draws after it
         PrintUnported();
     }
 
@@ -1601,14 +1620,18 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>
     /// A hitscan's tracer (<see cref="Tracers"/>): a gun's shot (not a melee's)
-    /// of the console player, or with <see cref="TracerMode.All"/> anyone's,
-    /// from the shooter's edge to where it stopped.
+    /// of the console player, or with <see cref="TracerMode.All"/> anyone's
+    /// in the player's sight (the fog of war, T6.13l), from the shooter's edge
+    /// to where it stopped.
     /// </summary>
     private void AddTracer(shot_event_t shot)
     {
         bool own = shot.shooter.player is { } p && World is { } world && p == world.players[world.consoleplayer];
         if (Tracers == TracerMode.Off || (Tracers == TracerMode.Player && !own) || shot.range < World.MISSILERANGE)
             return;
+        if (!own && FogActive && !Fog!.IsVisible(shot.shooter.subsector.sector.Index))
+            return; // T6.13l: a shooter out of the player's sight
+
         var from = new Vector3((float)(shot.x1 / 65536.0), (float)(shot.y1 / 65536.0), (float)(shot.z1 / 65536.0));
         var to = new Vector3((float)(shot.x2 / 65536.0), (float)(shot.y2 / 65536.0), (float)(shot.z2 / 65536.0));
         float length = (to - from).Length(), edge = shot.shooter.radius / 65536f;
@@ -1923,7 +1946,7 @@ public partial class LevelScene : Node3D, IGameHost
         _scratch.Clear();
         foreach (mobj_t mo in world.Mobjs())
         {
-            if (mo != me && IsDrawn(mo))
+            if (mo != me && IsDrawn(mo) && FogShows(mo))
                 _scratch.Add(mo);
         }
         bool same = _scratch.Count == _drawn.Count;
@@ -2180,6 +2203,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append(CultureInfo.InvariantCulture, $"cursor x {c.X:F0}  y {c.Y:F0}  z {c.Z:F0}   ");
             text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the player's height)\n");
         }
+        if (Mesh is not null)
+            text.Append(FogText() + "\n"); // T6.13l
         if (Iso is { Current: true })
             text.Append(Cutaway.Style == CutawayStyle.Off
                 ? "cutaway: off\n"
@@ -2403,6 +2428,7 @@ public partial class LevelScene : Node3D, IGameHost
         mesh.SetDoorLids(DoorLids);
         mesh.SetWallCaps(WallCaps);
         mesh.SetUpperWalls(UpperWalls);
+        mesh.SetFogDim(_fogDim);
         if (WadLocator.GetUserArg("--level-light-near") is string near)
             mesh.SetLightNear(Math.Max(0, ParseFloat(near, "--level-light-near")));
         if (WadLocator.GetUserArg("--level-light-reference") is string reference)
@@ -2420,6 +2446,7 @@ public partial class LevelScene : Node3D, IGameHost
             Chunks[s] = node;
         }
         StartWorld(level, carry); // (a new game's M_ClearRandom is GameFlow.G_InitNewMap's, T6.11)
+        StartFog(level); // T6.13l
         _hudMobj = null;
         StartHud(); // T6.11: P_SpawnPlayer's ST_Start and HU_Start (drawn after the first tic's ST_Ticker, as vanilla's)
         BuildThings(level, mesh);
@@ -2460,6 +2487,7 @@ public partial class LevelScene : Node3D, IGameHost
         Things = null;
         _drawn.Clear();
         World = null;
+        Fog = null;
         _hudMobj = null;
         Player?.Visible = false;
         Cursor = null;

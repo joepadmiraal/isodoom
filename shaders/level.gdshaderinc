@@ -140,6 +140,16 @@
 // each of its walls again (as kind 1, its sectors' plane references unused),
 // draws the wall on from its sector's ceiling up to that top, its texture
 // going on upwards (collapsed with the caps off, or where the ceiling is the top).
+//
+// Fog of war (T6.13l; IsoDoom.Render.FogOfWar, `fog_mode` 0 off, 1 dim, 2
+// hide): `sector_fog` (R8, one texel per sector, the same layout) holds each
+// sector's IsoDoom.Render.SectorSight (0 unseen, 1 discovered, 2 visible).
+// Every kind takes its front sector's (CUSTOM0.z: a wall its own side's
+// sector, a cap or lid its sector's). An unseen surface is collapsed with
+// hide; with dim its texel is drawn as `fog_dim` maps it (R8, 256 x 1: a
+// fixed dark colormap row towards grey, FogOfWar.DimMap), whatever its light,
+// and with `fog_dither` 1 half its pixels discard in the 4x4 dither, so the
+// void shows through.
 
 const float MAP_UNITS_PER_METRE = 32.0;
 const int SECTOR_DATA_WIDTH = 256;
@@ -202,6 +212,11 @@ uniform int cut_doors = 0;
 uniform int wall_caps = 1;
 // The upper walls: 0 all, 1 only over the sectors that keep them.
 uniform int upper_walls = 1;
+// The fog of war (T6.13l): 0 off, 1 dim, 2 hide.
+uniform int fog_mode = 0;
+uniform sampler2D sector_fog : filter_nearest, repeat_disable;
+uniform sampler2D fog_dim : filter_nearest, repeat_disable;
+uniform int fog_dither = 0;
 
 varying flat ivec4 v_rect;
 // 0 floor, 1 solid wall, 2 masked middle, 3 wall cap (a wall's texture, a floor's light).
@@ -211,6 +226,8 @@ varying flat int v_lightnum;
 varying flat int v_cap;
 // 1 when the cutaway leaves this surface whole: a door's while doors are kept (T6.13d).
 varying flat int v_door;
+// 1 when the fog of war dims this surface (its sector unseen, T6.13l).
+varying flat int v_fog;
 varying vec2 v_texcoord;
 varying vec2 v_map;
 varying float v_height;
@@ -235,6 +252,11 @@ float plane_height(int plane, vec4 front, vec4 back) {
 	}
 }
 
+// T6.13l: the sector's IsoDoom.Render.SectorSight (2, visible, with the fog off).
+int fog_state(int sector) {
+	return fog_mode == 0 ? 2 : int(data_texel(sector_fog, sector).r * 255.0 + 0.5);
+}
+
 void vertex() {
 	int kind = int(CUSTOM0.x);
 	bool back_face = kind == 3;
@@ -250,6 +272,9 @@ void vertex() {
 		kind = 0;
 	}
 	int front_id = int(CUSTOM0.z);
+	bool unseen = fog_state(front_id) == 0;
+	v_fog = unseen && fog_mode == 1 ? 1 : 0;
+	bool fog_hides = unseen && fog_mode == 2;
 	if (kind == 6 || kind == 7) {
 		// T6.13e: a wall cap (kind 6) or its cutaway cap (kind 7, CUSTOM0.w its centre).
 		vec4 cap_front = data_texel(sector_data, front_id);
@@ -282,7 +307,7 @@ void vertex() {
 		v_lightnum = (clamp(int(cap_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
 		v_texcoord = vec2(UV.x + cap_side.g, UV.y);
 		v_normal = vec3(0.0, 0.0, 1.0);
-		if (cap_collapse) {
+		if (cap_collapse || fog_hides) {
 			VERTEX.xz = vec2(0.0);
 		}
 		VERTEX.y = cap_z / MAP_UNITS_PER_METRE;
@@ -332,7 +357,7 @@ void vertex() {
 
 		if (kind == 0) {
 			v_texcoord = UV;
-			if (collapse) {
+			if (collapse || fog_hides) {
 				VERTEX.xz = vec2(0.0);
 			}
 			if (v_cap >= 0 && cut_cap == 2) {
@@ -361,8 +386,8 @@ void vertex() {
 				vec4 back_lid = data_texel(sector_lids, back_id);
 				dropped = back_lid.a < 0.5 && back_lid.r <= back.g;
 			}
-			if ((back_face && masked_backs == 0) || slot < 0 || dropped) {
-				// Collapsed: a back face turned off, a texture changed to none, or a dropped upper wall.
+			if ((back_face && masked_backs == 0) || slot < 0 || dropped || fog_hides) {
+				// Collapsed: a back face turned off, a texture changed to none, a dropped upper wall, or hidden by the fog (T6.13l).
 				top = bottom;
 			}
 			z = UV.y > 0.5 ? top : bottom;
@@ -445,6 +470,9 @@ vec3 srgb_to_linear(vec3 c) {
 }
 
 void fragment() {
+	if (v_fog == 1 && fog_dither == 1 && bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
+		discard;
+	}
 	vec3 p = vec3(v_map, v_height);
 	if (cut_mode != 0 && v_door == 0) {
 		// Godot space (x, height, -y, metres) to map units (x, y, height).
@@ -506,7 +534,9 @@ void fragment() {
 	}
 #endif
 	int index = int(texel.r * 255.0 + 0.5);
-	int mapped = int(texelFetch(colormap, ivec2(index, light_colormap()), 0).r * 255.0 + 0.5);
+	int mapped = v_fog == 1
+		? int(texelFetch(fog_dim, ivec2(index, 0), 0).r * 255.0 + 0.5)
+		: int(texelFetch(colormap, ivec2(index, light_colormap()), 0).r * 255.0 + 0.5);
 	// PLAYPAL holds sRGB values; ALBEDO is linear (Godot converts back on output).
 	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb);
 }

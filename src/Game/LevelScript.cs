@@ -95,6 +95,10 @@ namespace IsoDoom.Game;
 /// <c>reborns N</c> waits for the queued tics and fails unless the scene
 /// reloaded the level for a reborn N times since it started (e.g.
 /// <c>route tests/IsoDoom.Tests/Sim/Routes/e1m8-death.route; reborns 1</c>).
+/// T6.13l: <c>fog</c> waits for the queued tics and prints the fog of war's
+/// style and its visible and discovered sector counts; <c>seen SECTOR
+/// unseen|discovered|visible</c> waits for them and fails unless the sector
+/// is in that state (the player looks after each tic and after <c>place</c>).
 /// <c>route FILE TICS</c> (T6.11) queues only the route's first TICS tics, so
 /// <c>tics TICS; shot FILE.png</c> captures the scene (and its HUD) after
 /// exactly that tic, as <c>tools/VanillaRef/routes.sh</c>'s <c>DUMP_HUD_TICS</c> does vanilla's.
@@ -471,6 +475,26 @@ public partial class LevelScript : Node
                             if (w.Length > 2 && _scene.LevelsCompleted != Int(w[2]))
                             {
                                 GD.PrintErr($"Level script: map: expected {Int(w[2])} map(s) completed by exits, there were {_scene.LevelsCompleted}");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "fog":
+                        // T6.13l: waits for the queued tics; prints the fog's style and counts
+                        await Drain();
+                        GD.Print($"Level script: {_scene.FogText()}");
+                        break;
+                    case "seen":
+                        {
+                            // T6.13l: waits for the queued tics; fails unless sector N is in that state
+                            await Drain();
+                            int sector = Int(w[1]);
+                            SectorSight expected = LevelScene.ParseSectorSight(w[2]);
+                            SectorSight? state = _scene.Fog is { } fog && sector >= 0 && sector < fog.Level.Sectors.Length ? fog.State(sector) : null;
+                            GD.Print($"Level script: seen: sector {sector} {state?.ToString().ToLowerInvariant() ?? "(no such sector)"}");
+                            if (state != expected)
+                            {
+                                GD.PrintErr($"Level script: seen: sector {sector} is {state?.ToString().ToLowerInvariant() ?? "not in the level"}, expected {w[2]}");
                                 exit = 1;
                             }
                             break;

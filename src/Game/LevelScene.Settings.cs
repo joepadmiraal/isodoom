@@ -623,6 +623,7 @@ public partial class LevelScene : ISetupHost
         Add("gameplay/palette_effects", () => OnOff(PaletteEffects), s => PaletteEffects = ParseOnOff(s, "gameplay/palette_effects"));
         Add("gameplay/tracers", () => Tracers.ToString().ToLowerInvariant(), s => Tracers = ParseTracers(s, "gameplay/tracers"));
         Add("gameplay/aim_marker", () => AimMarkerShown.ToString().ToLowerInvariant(), s => AimMarkerShown = ParseAimMarker(s, "gameplay/aim_marker"));
+        Add("gameplay/fog", () => FogStyle.ToString().ToLowerInvariant(), s => FogStyle = ParseFog(s, "gameplay/fog"));
 
         // sprites
         Add("sprites/tilt", () => SpriteOptions.Tilt switch

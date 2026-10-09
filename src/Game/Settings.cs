@@ -116,6 +116,7 @@ public static class Settings
         new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", _onOff, "--level-palette-effects"),
         new("gameplay/tracers", "SHOT TRACERS", SettingPage.Gameplay, "player", ["player", "all", "off"], "--level-tracers"),
         new("gameplay/aim_marker", "AIM MARKER", SettingPage.Gameplay, "pad", ["pad", "on", "off"], "--level-aim-marker"),
+        new("gameplay/fog", "FOG OF WAR", SettingPage.Gameplay, "hide", ["hide", "dim", "off"], "--level-fog"),
 
         // sprites (readability)
         new("sprites/tilt", "TILT", SettingPage.Sprites, "full", ["full", "half", "off"], "--level-sprite-tilt"),

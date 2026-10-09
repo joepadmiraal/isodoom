@@ -594,6 +594,60 @@ public sealed class LevelMesh
         SetParameter("upper_walls", (int)mode);
     }
 
+    /// <summary>The fog of war's style as last set (<see cref="SetFog"/>; off until set). T6.13l.</summary>
+    public FogStyle FogMode { get; private set; } = FogStyle.Off;
+
+    /// <summary>The dim mapping in <c>fog_dim</c> (<see cref="FogOfWar.DimMap"/>), as last set (<see cref="SetFogDim"/>).</summary>
+    public FogDim FogDimLook { get; private set; } = FogDim.Default;
+
+    /// <summary>The fog of war's data texture (T6.13l, <c>sector_fog</c>, R8, one texel per sector): its <see cref="SectorSight"/>.</summary>
+    public ImageTexture FogDataTexture { get; private set; } = null!;
+
+    private Image _fogImage = null!;
+    private byte[] _fogBytes = [];
+    private int _fogVersion = -1;
+    private FogOfWar? _fogSource;
+    private ImageTexture _fogDimTexture = null!;
+
+    /// <summary>Draws the sectors the player has not seen dimmed, hidden or as the others (T6.13l, <see cref="FogStyle"/>).</summary>
+    public void SetFog(FogStyle style)
+    {
+        FogMode = style;
+        SetParameter("fog_mode", (int)style);
+    }
+
+    /// <summary>
+    /// Copies the sectors' states of <paramref name="fog"/> into <c>sector_fog</c>
+    /// when they changed since the last upload (<see cref="FogOfWar.Version"/>);
+    /// null shows every sector as visible.
+    /// </summary>
+    public void UpdateFog(FogOfWar? fog)
+    {
+        if (fog == _fogSource && (fog is null || fog.Version == _fogVersion))
+            return;
+        _fogSource = fog;
+        _fogVersion = fog?.Version ?? -1;
+        for (int i = 0; i < Level.Sectors.Length; i++)
+            _fogBytes[i] = (byte)(fog is null ? SectorSight.Visible : fog.State(i));
+        _fogImage.SetData(DataWidth, Rows(Level.Sectors.Length), false, Image.Format.R8, _fogBytes);
+        FogDataTexture.Update(_fogImage);
+    }
+
+    /// <summary>The <c>sector_fog</c> texel of <paramref name="sector"/> as uploaded.</summary>
+    public SectorSight FogData(int sector) => (SectorSight)_fogBytes[sector];
+
+    /// <summary>The dim mapping as uploaded (<c>fog_dim</c>): the palette index each texel index of an unseen surface is drawn as.</summary>
+    public byte[] FogDimMap { get; private set; } = [];
+
+    /// <summary>Sets how dim draws an unseen surface (<see cref="FogDim"/>: its colormap row, grey and dither).</summary>
+    public void SetFogDim(FogDim look)
+    {
+        FogDimLook = look;
+        FogDimMap = FogOfWar.DimMap(_playpal!, _colormap!, look.Row, look.Grey);
+        _fogDimTexture.Update(Image.CreateFromData(256, 1, false, Image.Format.R8, FogDimMap));
+        SetParameter("fog_dither", look.Dither ? 1 : 0);
+    }
+
     /// <summary>The sprite readability settings as last set (<see cref="SetSprites"/>; the defaults until set).</summary>
     public SpriteSettings Sprites { get; private set; } = new();
 
@@ -652,6 +706,7 @@ public sealed class LevelMesh
     public int Palette { get; private set; }
 
     private Playpal? _playpal;
+    private Colormap? _colormap;
 
     /// <summary>A sector's floor and ceiling heights to draw, in map units (T5.1: interpolated between tics).</summary>
     public delegate (float Floor, float Ceiling) SectorHeights(Sector sector);
@@ -902,6 +957,7 @@ public sealed class LevelMesh
     private void CreateTextures(Playpal playpal, Colormap colormap)
     {
         _playpal = playpal;
+        _colormap = colormap;
         AtlasTexture = IndexedTextures.CreateTexture(Atlas.Image);
 
         Image info = _infoImage = Image.CreateEmpty(DataWidth, Rows(Atlas.Rects.Count), false, Image.Format.Rgbaf);
@@ -930,6 +986,11 @@ public sealed class LevelMesh
         IslandDataTexture = ImageTexture.CreateFromImage(_islandImage);
         WriteSides();
         SideTexturesTexture = ImageTexture.CreateFromImage(_sideImage);
+        _fogBytes = new byte[DataWidth * Rows(Level.Sectors.Length)];
+        Array.Fill(_fogBytes, (byte)SectorSight.Visible);
+        _fogImage = Image.CreateFromData(DataWidth, Rows(Level.Sectors.Length), false, Image.Format.R8, _fogBytes);
+        FogDataTexture = ImageTexture.CreateFromImage(_fogImage);
+        _fogDimTexture = ImageTexture.CreateFromImage(Image.CreateFromData(256, 1, false, Image.Format.R8, new byte[256]));
 
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
@@ -942,6 +1003,8 @@ public sealed class LevelMesh
         SetParameter("sector_lids", LidDataTexture);
         SetParameter("wall_islands", IslandDataTexture);
         SetParameter("side_textures", SideTexturesTexture);
+        SetParameter("sector_fog", FogDataTexture);
+        SetParameter("fog_dim", _fogDimTexture);
         SetParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
         SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
         LightTablesTexture = ImageTexture.CreateFromImage(
@@ -961,6 +1024,8 @@ public sealed class LevelMesh
         SetDoorLids(LidMode);
         SetWallCaps(CapMode);
         SetUpperWalls(UpperMode);
+        SetFog(FogMode);
+        SetFogDim(FogDimLook);
         SetSprites(Sprites);
         SetCutawayCentres(null, null);
         SetFuzzPhase(0);

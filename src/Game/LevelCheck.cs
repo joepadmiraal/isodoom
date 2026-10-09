@@ -95,6 +95,9 @@ public partial class LevelCheck : Godot.Node
 
     /// <summary>Pixels compared whose colormap Player mode's shortest distance (T3.7) changed.</summary>
     private long _nearCompared;
+
+    /// <summary>Pixels compared against the fog of war's dim mapping (T6.13l).</summary>
+    private long _fogDimPixels;
     private long _maskedOpaque, _maskedClear, _maskedBackOpaque, _maskedBackClear;
     private IsoCamera? _isoProbe;
     private int _cursorPoints, _cursorInFront;
@@ -204,6 +207,7 @@ public partial class LevelCheck : Godot.Node
             CheckLightTables(m, map);
             CheckCursorGround(m, map);
             CheckThings(m, map);
+            CheckFog(m, map); // T6.13l: before the game loop moves the player
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
@@ -217,7 +221,9 @@ public partial class LevelCheck : Godot.Node
             CheckHudState(map);
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
+            CheckFogDoor(m, map); // T6.13l: it opens and closes a door in the sim
             CheckReborn(map); // it reloads the map (T6.12)
+            CheckFogReborn(map);
             CheckExit(map); // last: it may load the next map (T5.8)
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
@@ -257,6 +263,7 @@ public partial class LevelCheck : Godot.Node
         GD.Print($"Level check: lids (T6.13b): {_lidMoves} maps moved a lid sector's lowest neighbouring ceiling up and down: the lid texel follows");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
+        PrintFog();
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
             + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
     }
@@ -1163,6 +1170,8 @@ public partial class LevelCheck : Godot.Node
 
         await CheckAnimationDrawn(m);
 
+        await FogDrawnCheck(m); // T6.13l (before the HUD's, which leaves the message line drawn)
+
         await CheckHudDrawn();
 
         GD.Print($"Level check: {map}: light compared at sector light levels {string.Join(" ", _lightLevels)} (>> 4), "
@@ -1229,8 +1238,11 @@ public partial class LevelCheck : Godot.Node
     /// pixel with pixel centres on texel centres. Each pixel whose 5×5
     /// neighbourhood lies in one sector's floor triangles (rasterised on the
     /// CPU) must show that sector's flat texel; in the void, the background.
+    /// With <paramref name="fog"/> (T6.13l), an unseen sector's floor shows
+    /// the dim mapping of its texel (<see cref="LevelMesh.FogDimMap"/>) or,
+    /// hidden, the background, as the mesh's fog style says.
     /// </summary>
-    private async Task CheckFloorsTopDown(LevelMesh m, string pass, int maxTiles = int.MaxValue)
+    private async Task CheckFloorsTopDown(LevelMesh m, string pass, int maxTiles = int.MaxValue, FogOfWar? fog = null)
     {
         string map = m.Level.Name;
         int tiles = 0;
@@ -1286,8 +1298,10 @@ public partial class LevelCheck : Godot.Node
                         (int R, int G, int B) got = (frame[p * 4], frame[p * 4 + 1], frame[p * 4 + 2]);
                         bool ok;
                         (int R, int G, int B) expected;
-                        if (s < 0)
+                        bool hidden = s >= 0 && fog is not null && fog.State(s) == SectorSight.Unseen && m.FogMode == FogStyle.Hide;
+                        if (s < 0 || hidden)
                         {
+                            // T6.13l: an unseen floor the fog hides shows the void.
                             expected = _background;
                             ok = Math.Abs(got.R - expected.R) <= BackgroundTolerance && Math.Abs(got.G - expected.G) <= BackgroundTolerance
                                 && Math.Abs(got.B - expected.B) <= BackgroundTolerance;
@@ -1301,7 +1315,16 @@ public partial class LevelCheck : Godot.Node
                             if (map0 < 0)
                                 continue;
                             (int col, int row) = TextureWrap.FlatTexel(x, y);
-                            expected = Shade(ShownFlat(m, sector.FloorPic)[col, row], map0);
+                            byte texel = ShownFlat(m, sector.FloorPic)[col, row];
+                            if (fog is not null && fog.State(s) == SectorSight.Unseen && m.FogMode == FogStyle.Dim)
+                            {
+                                // T6.13l: the dim mapping, whatever the light.
+                                (byte r, byte g, byte b) = Playpal.GetColor(m.Palette, m.FogDimMap[texel]);
+                                expected = (r, g, b);
+                                _fogDimPixels++;
+                            }
+                            else
+                                expected = Shade(texel, map0);
                             ok = got == expected;
                             sectorsSeen[s] = true;
                         }

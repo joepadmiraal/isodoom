@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Godot;
 using IsoDoom.Sim;
 
@@ -12,7 +13,8 @@ namespace IsoDoom.Game;
 // quickload key (F9) and its yes loading it back: the scene shows the
 // save's map with a new world at the saved tic, which then goes on with the
 // same checksums as the game that was saved; a damaged save refused with
-// the menus' message, the game shown left as it is.
+// the menus' message, the game shown left as it is. T6.13l: the loaded
+// game's fog of war has the saved game's discovered sectors.
 public partial class LevelCheck
 {
     private void CheckSaves()
@@ -79,6 +81,7 @@ public partial class LevelCheck
         }
         _scene.Tic(Cmd(40)); // carries BTS_SAVEGAME, saved after it
         int savedAt = world.leveltime;
+        bool[] discovered = FogDiscovered(); // T6.13l: the mapped lines are saved
         if (flow.SaveDescription(3) != "CHECK" || world.players[world.consoleplayer].message != GameFlow.GGSAVED)
         {
             Fail(Step($"the save after the tic: slot 3 is \"{flow.SaveDescription(3)}\", message \"{world.players[world.consoleplayer].message}\""));
@@ -111,6 +114,11 @@ public partial class LevelCheck
             Fail(Step($"the load shows {_scene.Mesh?.Level.Name} at tic {_scene.World?.leveltime}, expected {world.level.Name} at {savedAt} in a new world"));
             return;
         }
+        if (discovered.Length == 0 || !FogDiscovered().SequenceEqual(discovered))
+        {
+            Fail(Step($"the fog of war (T6.13l): {discovered.Count(d => d)} sectors discovered when saved, {FogDiscovered().Count(d => d)} after the load"));
+            return;
+        }
         for (int tic = 41; tic < 111; tic++)
         {
             _scene.Tic(Cmd(tic));
@@ -133,6 +141,6 @@ public partial class LevelCheck
             return;
         }
         _scene.MenuEvent(KeyEvent(Key.Space));
-        GD.Print($"Level check: saves (T7.6): F6 picked slot 3 and saved {world.level.Name} at tic {savedAt}, F9 loaded it, {expected.Count} tics on the same checksums; a damaged save refused");
+        GD.Print($"Level check: saves (T7.6): F6 picked slot 3 and saved {world.level.Name} at tic {savedAt}, F9 loaded it with its {discovered.Count(d => d)} discovered sectors (T6.13l), {expected.Count} tics on the same checksums; a damaged save refused");
     }
 }
