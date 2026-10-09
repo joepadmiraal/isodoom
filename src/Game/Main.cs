@@ -20,9 +20,18 @@ public partial class Main : Node
     public const string WadViewerScene = "res://scenes/WadViewer.tscn";
     public const string LevelScenePath = "res://scenes/Level.tscn";
 
+    /// <summary>
+    /// The release version, from the tag CI exported it for
+    /// (<c>tools/stamp-version.sh</c>), or <c>dev</c> for any other build.
+    /// </summary>
+    public static string Version =>
+        ProjectSettings.GetSetting("application/config/version", "").AsString() is { Length: > 0 } version
+            ? version
+            : "dev";
+
     public override void _Ready()
     {
-        GD.Print($"IsoDoom started (Sim assembly: {typeof(IsoDoom.Sim.SimInfo).Assembly.GetName().Name})");
+        GD.Print($"IsoDoom started (version {Version}, Sim assembly: {typeof(IsoDoom.Sim.SimInfo).Assembly.GetName().Name})");
         if (UseViewer())
         {
             AddChild(GD.Load<PackedScene>(WadViewerScene).Instantiate());

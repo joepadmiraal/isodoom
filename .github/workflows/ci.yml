@@ -4,7 +4,9 @@
 # check (T2.6) against a generated synthetic IWAD (tools/SyntheticIwad: no id
 # data, no download) in the editor and in the exported Linux build, upload
 # the builds, and smoke-test and check the Windows build on a Windows runner
-# (T8.4) and the macOS build on macOS runners, Apple Silicon and Intel (T8.4a). Toolchain versions are
+# (T8.4) and the macOS build on macOS runners, Apple Silicon and Intel (T8.4a),
+# and on a pushed tag v* stamp its version into the builds and publish them
+# as a GitHub release. Toolchain versions are
 # pinned in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
 # IsoDoom.csproj; the .NET SDK comes from global.json). The actions' versions
 # are bumped by Dependabot (.github/dependabot.yml). CONTRIBUTING.md lists
@@ -173,6 +175,15 @@ jobs:
 
       - name: Godot version
         run: godot --headless --version
+
+      # On a release tag (v*), the tag's version goes into the project and the
+      # Windows and macOS metadata before anything runs (tools/stamp-version.sh;
+      # the game prints it at start). Other builds stay "dev".
+      - name: Stamp the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: tools/stamp-version.sh "$TAG"
 
       # A fresh checkout has no .godot/ cache: import first so the export sees
       # every resource, then export (Godot runs `dotnet publish` itself).
@@ -444,3 +455,39 @@ jobs:
             [ -f "$f" ] || continue
             grep -E "check: |ERROR|Unhandled|Exception" "$f" | grep -v ": OK$" | head -30 | sed "s/^/::error title=$f::/" || true
           done
+
+  # A pushed tag v* (e.g. `git tag v0.1.0 && git push origin v0.1.0`)
+  # publishes a GitHub release of that commit once every job above passed:
+  # the three builds (stamped with the tag's version by the export job), zipped, with notes generated from the commits since the
+  # previous tag. A tag with a hyphen (v0.2.0-rc1) makes a pre-release.
+  release:
+    name: Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [actionlint, export, test-windows, test-macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Package the builds
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir dist
+          (cd artifacts/IsoDoom-linux-x86_64 && chmod +x IsoDoom.x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-linux-x86_64.zip" .)
+          (cd artifacts/IsoDoom-windows-x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-windows-x86_64.zip" .)
+          cp artifacts/IsoDoom-macos-universal/IsoDoom.zip "dist/IsoDoom-$TAG-macos-universal.zip"
+          ls -la dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          [[ "$TAG" == *-* ]] && flags+=(--prerelease)
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "IsoDoom $TAG" \
+            --generate-notes --verify-tag "${flags[@]}"
