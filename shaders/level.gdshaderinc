@@ -145,7 +145,9 @@
 // hide): `sector_fog` (R8, one texel per sector, the same layout) holds each
 // sector's IsoDoom.Render.SectorSight (0 unseen, 1 discovered, 2 visible).
 // Every kind takes its front sector's (CUSTOM0.z: a wall its own side's
-// sector, a cap or lid its sector's). An unseen surface is collapsed with
+// sector, a cap or lid its sector's); a two-sided wall the more seen of its
+// two sectors' (CUSTOM0.w its back), as it is the face of the solid across
+// it too (a shut door's face on the unseen side). An unseen surface is collapsed with
 // hide; with dim its texel is drawn as `fog_dim` maps it (R8, 256 x 1: a
 // fixed dark colormap row towards grey, FogOfWar.DimMap), whatever its light,
 // and with `fog_dither` 1 half its pixels discard in the 4x4 dither, so the
@@ -272,7 +274,10 @@ void vertex() {
 		kind = 0;
 	}
 	int front_id = int(CUSTOM0.z);
-	bool unseen = fog_state(front_id) == 0;
+	// A two-sided wall (an upper or lower wall, a masked middle) is the face of the solid across it too:
+	// seen when either sector is (a shut door's far face, the edge of a seen floor).
+	int fog_back = (kind == 1 || kind == 2) && int(CUSTOM0.w) >= 0 ? fog_state(int(CUSTOM0.w)) : 0;
+	bool unseen = max(fog_state(front_id), fog_back) == 0;
 	v_fog = unseen && fog_mode == 1 ? 1 : 0;
 	bool fog_hides = unseen && fog_mode == 2;
 	if (kind == 6 || kind == 7) {
