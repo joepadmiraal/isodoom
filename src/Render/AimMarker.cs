@@ -23,7 +23,9 @@ public enum AimMarkerMode
 /// aims; the sprite's 8 rotations only tell the facing to within 22.5°
 /// either way. Built once around the origin pointing east; the scene moves
 /// and turns it to the drawn (interpolated) player each frame. Depth-tested,
-/// just above the floor, so the player's sprite covers the ring's far half.
+/// just above the floor, but pulled towards the camera (<see cref="ShaderPath"/>)
+/// so the billboards of things lying on the floor (pools of blood, items) do
+/// not cover it, while the player's sprite still covers the ring's far half.
 /// Presentation only: the sim never reads it.
 /// </summary>
 public partial class AimMarker : MeshInstance3D
@@ -43,19 +45,16 @@ public partial class AimMarker : MeshInstance3D
     /// <summary>The marker's colour (the player's tracers', <see cref="ShotTracers.PlayerColor"/>).</summary>
     public static readonly Color MarkerColor = ShotTracers.PlayerColor;
 
+    /// <summary>The marker's shader: the vertex colours, pulled towards the camera.</summary>
+    public const string ShaderPath = "res://shaders/aim_marker.gdshader";
+
     private const int RingSegments = 48;
 
     public AimMarker()
     {
         CastShadow = ShadowCastingSetting.Off;
         Mesh = Build();
-        MaterialOverride = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            VertexColorUseAsAlbedo = true,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-        };
+        MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
     }
 
     /// <summary>Puts the marker at <paramref name="feet"/> (map units: x, y, height) pointing along <paramref name="angle"/> (BAM, 0 = east).</summary>
