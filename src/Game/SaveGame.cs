@@ -34,7 +34,7 @@ public sealed class SaveGameFile
     /// <c>VERSIONSIZE</c> check). Bump it whenever the sim's state or its
     /// layout changes (a field saved, a thinker added).
     /// </summary>
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /// <summary>The slot files' name (Chocolate Doom's <c>doomsav%d.dsg</c>, in a directory per IWAD).</summary>
     public static string SlotFileName(int slot) => $"isodoomsav{slot}.dsg";

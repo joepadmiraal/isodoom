@@ -562,4 +562,93 @@ public class PlayerTests
         Assert.Equal((71, -71), (lunge.forwardmove, lunge.sidemove));
         Assert.Equal((x - 71 * 2048, y + 71 * 2048), (mo.x, mo.y));
     }
+
+    // ---- instant stop tweak ----
+
+    private static readonly Tweaks _instantStop = _twinStick with { InstantStop = true };
+
+    [Fact]
+    public void TopDownTweaksStopAtOnce()
+    {
+        Assert.True(Tweaks.TopDown.InstantStop);
+        Assert.False(Tweaks.Vanilla.InstantStop);
+    }
+
+    [Fact]
+    public void LettingGoStopsAtOnce()
+    {
+        // Without the tweak the player slides on; with it, the tic the keys are let go it stays put.
+        foreach (bool instant in new[] { false, true })
+        {
+            World w = BigRoom(0, instant ? _instantStop : _twinStick);
+            mobj_t mo = Player(w);
+            var run = new ticcmd_t { forwardmove = 50 };
+            for (int t = 0; t < 35; t++)
+                w.G_Ticker(run);
+            Assert.InRange(mo.state, statenum_t.S_PLAY_RUN1, statenum_t.S_PLAY_RUN4);
+            int y = mo.y;
+            w.G_Ticker(new ticcmd_t());
+            if (instant)
+            {
+                Assert.Equal((y, 0, 0), (mo.y, mo.momx, mo.momy));
+                Assert.Equal(statenum_t.S_PLAY, mo.state);
+            }
+            else
+            {
+                Assert.True(mo.y > y + F(10), $"y {mo.y}");
+            }
+        }
+    }
+
+    [Fact]
+    public void LettingGoOfOneKeyStopsItsPart()
+    {
+        // Running north-east, then north only: the east part stops at once, the north part goes on.
+        World w = BigRoom(0, _instantStop);
+        mobj_t mo = Player(w);
+        for (int t = 0; t < 35; t++)
+            w.G_Ticker(new ticcmd_t { forwardmove = 35, sidemove = 35 });
+        int x = mo.x, y = mo.y, momy = mo.momy;
+        Assert.True(mo.momx > F(5) && momy > F(5));
+        w.G_Ticker(new ticcmd_t { forwardmove = 35 });
+        Assert.Equal(x, mo.x);
+        Assert.True(mo.y >= y + momy, $"y {mo.y}");
+
+        // Reversing drops the momentum against the new input: the first tic moves by the thrust alone.
+        y = mo.y;
+        w.G_Ticker(new ticcmd_t { forwardmove = -35 });
+        Assert.Equal((x, y - 35 * 2048), (mo.x, mo.y));
+    }
+
+    [Fact]
+    public void UnchangedInputMovesAsVanilla()
+    {
+        // Running diagonally into a wall and sliding along it: the tweak only acts when the input changes.
+        World a = BigRoom(0, _twinStick), b = BigRoom(0, _instantStop);
+        var cmd = new ticcmd_t { forwardmove = 20, sidemove = 45 };
+        for (int t = 0; t < 140; t++)
+        {
+            a.G_Ticker(cmd);
+            b.G_Ticker(cmd);
+            Assert.Equal((Player(a).x, Player(a).y, Player(a).momx, Player(a).momy),
+                (Player(b).x, Player(b).y, Player(b).momx, Player(b).momy));
+        }
+        Assert.True(Player(b).x > F(1000), $"x {Player(b).x}"); // against the east wall
+    }
+
+    [Fact]
+    public void FacingRelativeMovementStopsToo()
+    {
+        // Vanilla's facing-relative movement with the tweak: strafing right facing north-east, then letting go.
+        World w = BigRoom(45, Tweaks.Vanilla with { InstantStop = true });
+        mobj_t mo = Player(w);
+        for (int t = 0; t < 35; t++)
+            w.G_Ticker(new ticcmd_t { forwardmove = 25, sidemove = 24 });
+        int x = mo.x, y = mo.y;
+        w.G_Ticker(new ticcmd_t { forwardmove = 25 }); // forward only: the strafe stops, along the facing goes on
+        long dx = mo.x - x, dy = mo.y - y;
+        Assert.InRange(Math.Abs(dx - dy), 0, F(1) / 8); // north-east
+        w.G_Ticker(new ticcmd_t());
+        Assert.Equal((0, 0), (mo.momx, mo.momy));
+    }
 }

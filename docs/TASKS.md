@@ -480,6 +480,8 @@ Legend: `[ ]` todo, `[x]` done.
   - [x] **T6.13n Monsters stay drawn in seen rooms (user request).** With T6.13l's rule a monster vanished as soon as the player left its room; in Isowulf the enemies stay visible. Draw the things that act or move in every discovered sector, live (as items), with T6.13l's sight rule kept as an option.
     *Done when:* by default a monster in a discovered room out of sight is drawn; with the option set to `sight` it is not; the level check covers both.
     *Done (2026-10-09):* `FogThings` (`Seen`, the default, or `Sight`): `--level-fog-things=seen|sight`, `gameplay/fog_things` (Gameplay page: FOG MONSTERS), the overlay's `fog:` line. `LevelScene.FogLets` is the rule; a monster's shot tracer (`all`) follows its shooter's. The level check's per-map things rule runs with both, and under a renderer the imp in the discovered start room out of sight is drawn with `seen` and not with `sight`. `dotnet test` (1728), `--level-check` headless (DOOM1, Doom II, synthetic) and under lavapipe (DOOM1 E1M1) pass. SPEC §7.3, §12 T6.13n.
+  - [x] **T6.13o Instant stop (user request).** The player slid on after a move key was let go. Stop it at once under the twin-stick tweaks, vanilla's slide kept behind a tweak flag.
+    *Done (2026-10-09):* `Tweaks.InstantStop` (on in `TopDown`): `World.P_InstantStop` in `P_MovePlayer` drops the momentum off the new input's direction when the input changes on the ground; save version 2. `PlayerTests` (stop, one key let go, reversing, unchanged input as vanilla, facing-relative), `dotnet test` (1695) and `--level-check` headless (DOOM1) pass. SPEC §12 T6.13o.
 
 ## M7 — Game shell
 

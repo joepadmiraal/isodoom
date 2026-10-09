@@ -439,6 +439,7 @@ public class WorldTests
             object? value = f.FieldType switch
             {
                 var t when t == typeof(int) => 7,
+                var t when t == typeof(sbyte) => (sbyte)7,
                 var t when t == typeof(bool) => true,
                 var t when t == typeof(string) => "x",
                 var t when t.IsEnum => System.Enum.ToObject(t, 1),

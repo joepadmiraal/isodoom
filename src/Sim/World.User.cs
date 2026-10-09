@@ -294,6 +294,9 @@ public sealed partial class World
         //  if not onground.
         onground = mo.z <= mo.floorz;
 
+        if (tweaks.InstantStop && onground)
+            P_InstantStop(player, cmd);
+
         if (cmd.forwardmove != 0 && onground)
         {
             if (tweaks.AbsoluteMovement)
@@ -315,6 +318,55 @@ public sealed partial class World
         {
             P_SetMobjState(mo, statenum_t.S_PLAY_RUN1);
         }
+    }
+
+    /// <summary>
+    /// <see cref="Tweaks.InstantStop"/> (not vanilla's, SPEC §12): when the
+    /// player's move input differs from the last on the ground, its momentum
+    /// keeps only its part along the new input's direction (in the world: north
+    /// and east with <see cref="Tweaks.AbsoluteMovement"/>, else along and right
+    /// of its facing), none against it or without input, so a key let go stops
+    /// its movement this tic. A player stopped this way leaves its walking
+    /// frames, as <see cref="P_XYMovement"/>'s friction stop does. Unchanged
+    /// input leaves the momentum to vanilla's friction, so wall slides and
+    /// knockback keep their feel.
+    /// </summary>
+    public void P_InstantStop(player_t player, in ticcmd_t cmd)
+    {
+        if (cmd.forwardmove == player.lastforwardmove && cmd.sidemove == player.lastsidemove)
+            return;
+        player.lastforwardmove = cmd.forwardmove;
+        player.lastsidemove = cmd.sidemove;
+
+        mobj_t mo = player.mo!;
+        long dx, dy; // the thrust's direction, as P_MovePlayer's
+        if (tweaks.AbsoluteMovement)
+        {
+            dx = cmd.sidemove;
+            dy = cmd.forwardmove;
+        }
+        else
+        {
+            // P_Thrust along the angle and along angle - ANG90 (whose cosine is the sine, its sine minus the cosine),
+            // at 8 bits: enough for a direction, and the products below stay in a long.
+            int an = (int)(mo.angle >> Tables.ANGLETOFINESHIFT);
+            long cos = Tables.finecosine[an] >> 8, sin = Tables.finesine[an] >> 8;
+            dx = cmd.forwardmove * cos + cmd.sidemove * sin;
+            dy = cmd.forwardmove * sin - cmd.sidemove * cos;
+        }
+
+        long dot = (long)mo.momx * dx + (long)mo.momy * dy;
+        if (dot <= 0)
+        {
+            mo.momx = mo.momy = 0;
+            // if in a walking frame, stop moving
+            if (cmd.forwardmove == 0 && cmd.sidemove == 0 && unchecked((uint)(mo.state - statenum_t.S_PLAY_RUN1)) < 4)
+                P_SetMobjState(mo, statenum_t.S_PLAY);
+            return;
+        }
+        long len2 = dx * dx + dy * dy;
+        mo.momx = (int)(dot * dx / len2);
+        mo.momy = (int)(dot * dy / len2);
     }
 
     /// <summary>

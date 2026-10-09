@@ -127,6 +127,13 @@ public sealed class player_t
     public bool attackdown;
     public bool usedown;
 
+    /// <summary>
+    /// The <c>forwardmove</c> and <c>sidemove</c> the player last moved on the
+    /// ground with, for <see cref="Tweaks.InstantStop"/> (not vanilla's).
+    /// </summary>
+    public sbyte lastforwardmove;
+    public sbyte lastsidemove;
+
     /// <summary>Bit flags, for cheats and debug (<see cref="CF_NOCLIP"/>…).</summary>
     public int cheats;
 
@@ -191,6 +198,7 @@ public sealed class player_t
         System.Array.Clear(ammo);
         System.Array.Clear(maxammo);
         attackdown = usedown = false;
+        lastforwardmove = lastsidemove = 0;
         cheats = refire = 0;
         killcount = itemcount = secretcount = 0;
         message = null;

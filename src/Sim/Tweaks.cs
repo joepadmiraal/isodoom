@@ -21,6 +21,7 @@ public sealed record Tweaks
         AbsoluteMovement = true,
         AimAssistCone = DefaultAimAssistCone,
         UseFallback = true,
+        InstantStop = true,
     };
 
     /// <summary>
@@ -58,4 +59,14 @@ public sealed record Tweaks
     /// hits nothing the nearest usable line within <c>USERANGE</c> facing the player is used (T5.2).
     /// </summary>
     public bool UseFallback { get; init; }
+
+    /// <summary>
+    /// The player stops at once instead of sliding to a halt: on the ground,
+    /// when its move input changes (a move key let go, or all of them),
+    /// <see cref="World.P_MovePlayer"/> keeps only the part of its momentum
+    /// along the new input, none without input, before thrusting
+    /// (<see cref="World.P_InstantStop"/>, SPEC §12). Momentum under unchanged
+    /// input (wall slides, knockback) keeps vanilla's friction.
+    /// </summary>
+    public bool InstantStop { get; init; }
 }
