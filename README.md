@@ -4,7 +4,7 @@ An isometric top-down remake of Doom in Godot 4 + C#, heavily inspired by [Isowu
 
 [![IsoDoom demo video](https://img.youtube.com/vi/wHehnQ2Vzbo/maxresdefault.jpg?v=2)](https://www.youtube.com/watch?v=wHehnQ2Vzbo)
 
-Builds for Windows, MacOS and Linux are provided. I'm actively testing it on a SteamDeck with the thumbsticks as well as on a laptop with the keyboard and mouse. You need to provide a shareware or registered WAD file, both Doom1 and Doom2 WADS are supported.
+Builds for Windows, MacOS and Linux are provided. I'm actively testing it on a SteamDeck with the thumbsticks as well as on a laptop with the keyboard and mouse. You need to provide a shareware or registered WAD file, both Doom1 and Doom2 WADS are supported. Without one, the game offers to download the shareware episode (id Software's own release, from the idgames archive).
 
 ## Contributing
 

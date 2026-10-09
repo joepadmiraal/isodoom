@@ -13,7 +13,10 @@ namespace IsoDoom.Game;
 /// <c>--viewer-screenshots</c>. T7.2: before the game, the IWAD menu
 /// (<see cref="IwadMenu"/>) when several IWADs are found and none was named,
 /// or none is found (its file picker), unless nobody can answer it
-/// (headless) or a debug argument asks for a level.
+/// (headless) or a debug argument asks for a level. T1.1b: with
+/// <c>--download-shareware</c>, first the shareware <c>DOOM1.WAD</c>
+/// (downloaded and verified, as the IWAD menu's button does) becomes the
+/// chosen and configured IWAD; the run quits with 1 if it can't.
 /// </summary>
 public partial class Main : Node
 {
@@ -32,6 +35,35 @@ public partial class Main : Node
     public override void _Ready()
     {
         GD.Print($"IsoDoom started (version {Version}, Sim assembly: {typeof(IsoDoom.Sim.SimInfo).Assembly.GetName().Name})");
+        if (WadLocator.HasUserArg("--download-shareware"))
+        {
+            DownloadSharewareThenStart();
+            return;
+        }
+        Start();
+    }
+
+    private async void DownloadSharewareThenStart()
+    {
+        string path;
+        try
+        {
+            path = await WadLocator.DownloadShareware();
+        }
+        catch (SharewareDownloadException e)
+        {
+            GD.PrintErr(e.Message);
+            GetTree().Quit(1);
+            return;
+        }
+        GD.Print($"The shareware {SharewareDownload.FileName} is verified in {path}");
+        WadLocator.ChosenIwad = path;
+        WadLocator.SaveConfiguredIwad(path);
+        Start();
+    }
+
+    private void Start()
+    {
         if (UseViewer())
         {
             AddChild(GD.Load<PackedScene>(WadViewerScene).Instantiate());
@@ -73,7 +105,7 @@ public partial class Main : Node
         if (found.Path is { } path && !iwads.Exists(p => Path.GetFullPath(p) == Path.GetFullPath(path)))
             iwads.Insert(0, path); // the configured IWAD, outside the search folders
         if (found.Path is null)
-            return new IwadMenu(iwads, null, "No IWAD found: browse for DOOM1.WAD, DOOM.WAD or DOOM2.WAD, or put one in wads/", found.Pwads);
+            return new IwadMenu(iwads, null, "No IWAD found: download the shareware episode, browse for an IWAD (DOOM1.WAD, DOOM.WAD, DOOM2.WAD, …) or put one in wads/", found.Pwads, offerDownload: true);
         return iwads.Count > 1 ? new IwadMenu(iwads, found.Path, null, found.Pwads) : null;
     }
 }

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http.Headers;
+using System.Threading;
+using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Wad;
 
@@ -89,6 +92,25 @@ public static class WadLocator
         if (err != Error.Ok)
             GD.PushWarning($"Could not save {SettingsPath}: {err}");
     }
+
+    /// <summary>T1.1b: where the shareware download puts <c>DOOM1.WAD</c> (<c>user://wads</c>: writable wherever the game is installed).</summary>
+    public static string SharewareDirectory => ProjectSettings.GlobalizePath("user://wads");
+
+    private static readonly Lazy<System.Net.Http.HttpClient> _http = new(() =>
+    {
+        var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IsoDoom", Main.Version));
+        return http;
+    });
+
+    /// <summary>
+    /// T1.1b: the shareware <c>DOOM1.WAD</c> in <see cref="SharewareDirectory"/>,
+    /// downloaded and verified unless a verified copy is already there
+    /// (<see cref="SharewareDownload"/>); throws <see cref="SharewareDownloadException"/>.
+    /// The caller makes it the chosen IWAD.
+    /// </summary>
+    public static Task<string> DownloadShareware(IProgress<SharewareDownload.Progress>? progress = null, CancellationToken cancel = default) =>
+        SharewareDownload.DownloadAsync(_http.Value, SharewareDirectory, progress, cancel: cancel);
 
     /// <summary>The value of <c>name VALUE</c> or <c>name=VALUE</c> among the user arguments, or null.</summary>
     public static string? GetUserArg(string name)

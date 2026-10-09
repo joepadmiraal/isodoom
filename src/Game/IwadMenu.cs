@@ -14,7 +14,9 @@ namespace IsoDoom.Game;
 /// IWADs (<see cref="IwadLocator.D_FindAllIWADs"/>) and none was named
 /// (<c>-iwad</c>, <c>ISODOOM_IWAD</c>), the last one chosen first; and when
 /// none is found, with only the file picker (which T1.6 put in the WAD
-/// viewer). The choice is checked (it must open and be an IWAD the game
+/// viewer) and, T1.1b, the shareware download (<see cref="SharewareDownload"/>:
+/// id's <c>doom19s.zip</c> from the idgames mirrors, its <c>DOOM1.WAD</c>
+/// verified and kept in <c>user://wads</c>). The choice is checked (it must open and be an IWAD the game
 /// accepts with the <c>-file</c> PWADs), saved as the configured IWAD
 /// (<c>[wad] iwad</c> in <c>user://settings.cfg</c>), and the game opens on it.
 /// </summary>
@@ -24,7 +26,10 @@ public partial class IwadMenu : Control
     private readonly string? _selected;
     private readonly string? _message;
     private readonly IReadOnlyList<string> _pwads;
+    private readonly bool _offerDownload;
     private Label _error = null!;
+    private Label _status = null!;
+    private bool _downloading;
     private FileDialog _picker = null!;
     private readonly List<Button> _buttons = [];
 
@@ -35,8 +40,10 @@ public partial class IwadMenu : Control
     /// <param name="selected">The one the search would take (focused first), or null.</param>
     /// <param name="message">Why the menu shows without a choice (none found), or null.</param>
     /// <param name="pwads">The <c>-file</c> PWADs the game will load with it.</param>
-    public IwadMenu(IReadOnlyList<string> iwads, string? selected, string? message, IReadOnlyList<string> pwads)
+    /// <param name="offerDownload">T1.1b: offer the shareware download (when no IWAD is found).</param>
+    public IwadMenu(IReadOnlyList<string> iwads, string? selected, string? message, IReadOnlyList<string> pwads, bool offerDownload = false)
     {
+        _offerDownload = offerDownload;
         _iwads = iwads;
         _selected = selected;
         _message = message;
@@ -44,7 +51,7 @@ public partial class IwadMenu : Control
         Name = "IwadMenu";
     }
 
-    /// <summary>The menu's buttons (the IWADs', then browse and quit), for checks.</summary>
+    /// <summary>The menu's buttons (the IWADs', then the download when offered, browse and quit), for checks.</summary>
     public IReadOnlyList<Button> Buttons => _buttons;
 
     public override void _Ready()
@@ -69,10 +76,13 @@ public partial class IwadMenu : Control
             HorizontalAlignment = HorizontalAlignment.Center,
             LabelSettings = new LabelSettings { FontSize = text * 2, FontColor = new Color(0.8f, 0.1f, 0.1f) },
         });
+        float wrap = Math.Min(GetViewport().GetVisibleRect().Size.X * 0.8f, 1200);
         box.AddChild(new Label
         {
             Text = _message ?? "Choose a game",
             HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(wrap, 0),
             LabelSettings = new LabelSettings { FontSize = text },
         });
 
@@ -84,13 +94,24 @@ public partial class IwadMenu : Control
             if (focus is null || PathsEqual(path, _selected))
                 focus = button;
         }
+        if (_offerDownload)
+        {
+            Button download = AddButton(box, "Download the shareware episode (DOOM1.WAD, 2.4 MB from idgames)", text, Download);
+            focus ??= download;
+        }
         Button browse = AddButton(box, "Browse for an IWAD…", text, Browse);
         AddButton(box, "Quit", text, () => GetTree().Quit());
+        _status = new Label
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            LabelSettings = new LabelSettings { FontSize = Math.Max(14, text * 3 / 4) },
+        };
+        box.AddChild(_status);
         _error = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(Math.Min(GetViewport().GetVisibleRect().Size.X * 0.8f, 1200), 0),
+            CustomMinimumSize = new Vector2(wrap, 0),
             LabelSettings = new LabelSettings { FontSize = Math.Max(14, text * 3 / 4), FontColor = new Color(1, 0.6f, 0.4f) },
         };
         box.AddChild(_error);
@@ -147,6 +168,51 @@ public partial class IwadMenu : Control
         box.AddChild(button);
         _buttons.Add(button);
         return button;
+    }
+
+    /// <summary>
+    /// T1.1b: downloads and verifies the shareware <c>DOOM1.WAD</c>
+    /// (<see cref="WadLocator.DownloadShareware"/>), showing its progress, and
+    /// chooses it; on a failure says why and leaves the menu as it was.
+    /// Quit stays live meanwhile.
+    /// </summary>
+    private async void Download()
+    {
+        if (_downloading)
+            return;
+        _downloading = true;
+        Button quit = _buttons[^1];
+        foreach (Button button in _buttons)
+            button.Disabled = button != quit;
+        quit.GrabFocus();
+        _error.Text = "";
+        _status.Text = "Downloading…";
+        // Progress<T> reports on the scene's synchronization context (the main thread).
+        var progress = new Progress<SharewareDownload.Progress>(p => _status.Text = p.Total is > 0
+            ? $"Downloading from {p.Mirror.Host}… {p.Received * 100 / p.Total.Value}%"
+            : $"Downloading from {p.Mirror.Host}… {p.Received / 1024} KB");
+        try
+        {
+            string path = await WadLocator.DownloadShareware(progress);
+            _status.Text = "";
+            GD.Print($"IWAD menu: the shareware {SharewareDownload.FileName} is verified in {path}");
+            Choose(path);
+        }
+        catch (SharewareDownloadException e)
+        {
+            _status.Text = "";
+            _error.Text = e.Message;
+            GD.PrintErr($"IWAD menu: {e.Message}");
+        }
+        finally
+        {
+            _downloading = false;
+            if (IsInsideTree())
+            {
+                foreach (Button button in _buttons)
+                    button.Disabled = false;
+            }
+        }
     }
 
     private void Browse()
