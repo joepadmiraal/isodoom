@@ -31,6 +31,15 @@ public partial class LevelScene : IMenuHost
     private bool _menuStepFromPad;
     private double _menuClock, _menuStepAt, _padReleasedAt;
 
+    // The menu and item the pointer last put the skull on: a click works the item under the pointer only while the skull is
+    // still there, else (the keys or the pad moved it since) the skull's item.
+    private (MMenu.menu_t Menu, short Item)? _pointerSkull;
+
+    // The pad's right trigger is held, and when it was last pressed (Time.GetTicksMsec): Steam Input (the Steam Deck's)
+    // may also click the mouse with it, and that click is its echo.
+    private bool _triggerHeld;
+    private ulong? _triggerAt;
+
     // The menus were up: fire and use held since then don't reach the game until let go.
     private bool _menuButtonsHeld;
 
@@ -147,10 +156,11 @@ public partial class LevelScene : IMenuHost
         switch (e)
         {
             case InputEventMouseMotion motion:
-                if (menu.Active)
+                if (menu.Active && !_padAims) // not the right stick's echo (Steam Input)
                 {
                     Vector2I at = MenuScreens.ToScreen(motion.Position);
                     menu.M_MouseMove(at.X, at.Y);
+                    _pointerSkull = (menu.currentMenu, menu.itemOn);
                 }
                 return false;
             case InputEventMouseButton { Pressed: true } button:
@@ -159,7 +169,11 @@ public partial class LevelScene : IMenuHost
                     Vector2I at = MenuScreens.ToScreen(button.Position == Vector2.Zero ? GetViewport().GetMousePosition() : button.Position);
                     switch (button.ButtonIndex)
                     {
-                        case MouseButton.Left: menu.M_MouseButton(true, at.X, at.Y); break;
+                        case MouseButton.Left when TriggerEcho():
+                            break; // the trigger worked the item already
+                        case MouseButton.Left:
+                            menu.M_MouseButton(true, at.X, at.Y, _pointerSkull == (menu.currentMenu, menu.itemOn));
+                            break;
                         case MouseButton.Right: menu.M_MouseButton(false, at.X, at.Y); break;
                         case MouseButton.WheelUp: menu.M_Responder(menu.key_menu_up); break;
                         case MouseButton.WheelDown: menu.M_Responder(menu.key_menu_down); break;
@@ -196,6 +210,25 @@ public partial class LevelScene : IMenuHost
                 }
             case InputEventJoypadButton:
                 return menu.Active;
+            case InputEventJoypadMotion { Axis: JoyAxis.TriggerRight } trigger:
+                {
+                    // The right trigger works the skull's item as A does (it fires in the game, so it is no menu action)
+                    bool held = trigger.AxisValue >= 0.5f;
+                    if (held == _triggerHeld || !(_triggerHeld = held))
+                        return menu.Active;
+                    _triggerAt = Time.GetTicksMsec();
+                    if (menu.Active)
+                    {
+                        menu.M_Responder(MMenu.KEY_PAD_ACCEPT);
+                        return true;
+                    }
+                    if (title)
+                    {
+                        menu.M_StartControlPanel();
+                        return true;
+                    }
+                    return false;
+                }
             case InputEventKey { Pressed: true } key:
                 {
                     if (key.Echo && !menu.Active)
@@ -222,6 +255,9 @@ public partial class LevelScene : IMenuHost
         }
         return false;
     }
+
+    /// <summary>Whether a mouse click is the right trigger's echo (Steam Input's click): the trigger is held, or was pressed <see cref="GameInput.StickEchoMs"/> ago.</summary>
+    private bool TriggerEcho() => _triggerHeld || _triggerAt is ulong at && Time.GetTicksMsec() - at < GameInput.StickEchoMs;
 
     private static Key KeyOf(InputEventKey key) => key.Keycode != Key.None ? key.Keycode : key.PhysicalKeycode;
 

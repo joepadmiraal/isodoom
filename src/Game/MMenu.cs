@@ -1225,9 +1225,13 @@ public sealed partial class MMenu
     /// the left one (<paramref name="left"/>) works the item under it as
     /// <see cref="KEY_PAD_ACCEPT"/> (a slider's thermometer takes the cell
     /// clicked), answers yes to a message, turns a read-this page; the right
-    /// one is <see cref="KEY_PAD_CANCEL"/>. Returns whether the menus took it.
+    /// one is <see cref="KEY_PAD_CANCEL"/>. Unless the pointer put the skull
+    /// where it is (<paramref name="pointed"/>: the keys or the pad moved it
+    /// since, or Steam Input clicks with the pad's trigger, the pointer unseen
+    /// where it was left), the left one works the skull's item instead.
+    /// Returns whether the menus took it.
     /// </summary>
-    public bool M_MouseButton(bool left, int x, int y)
+    public bool M_MouseButton(bool left, int x, int y, bool pointed = true)
     {
         if (!Active)
             return false;
@@ -1237,6 +1241,8 @@ public sealed partial class MMenu
             return true; // the glue binds the button
         if (messageToPrint || saveStringEnter || currentMenu == ReadDef1 || currentMenu == ReadDef2)
             return M_Responder(saveStringEnter ? KEY_ENTER : KEY_PAD_ACCEPT);
+        if (!pointed)
+            return M_Responder(KEY_PAD_ACCEPT);
         if (!currentMenu.textItems && Thermo(x, y) is (int item, int cell, int value))
         {
             itemOn = (short)item;

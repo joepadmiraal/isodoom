@@ -215,6 +215,19 @@ public class MenuTests
         Assert.Equal(("new E1M1", skill_t.sk_medium), (host.Loads[^1], flow.gameskill));
     }
 
+    [Fact]
+    public void AClickTheKeysMovedTheSkullFromWorksTheSkullsItem()
+    {
+        (_, _, MMenu menu, _) = New();
+        Keys(menu, Esc);
+        menu.M_MouseMove(120, 64 + 16 * 5 + 4); // the pointer on Quit
+        Keys(menu, Down, Down); // the skull from Quit to Options (wrapping)
+        Assert.Equal(1, menu.itemOn);
+        // the pointer did not put the skull there (Steam Input's click with the pad's trigger): Options, not Quit
+        Assert.True(menu.M_MouseButton(true, 120, 64 + 16 * 5 + 4, pointed: false));
+        Assert.Equal("options", menu.StateName);
+    }
+
     // ---- quit, end game, read this ----
 
     [Theory]
