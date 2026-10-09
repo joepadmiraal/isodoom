@@ -85,7 +85,9 @@ public enum SectorSight : byte
 /// one of its lines is mapped, either side: so the mapped lines, which saves
 /// keep (<c>P_ArchiveWorld</c>), are the whole discovered set
 /// (<see cref="Discover"/> rebuilds it), and the sector across a seen line
-/// (a closed door's) is discovered with it.
+/// (a closed door's) is discovered with it. A visible sector's doors
+/// (<see cref="DoorLids.FindDoors"/>) are discovered too, their lines to it
+/// mapped, so a door shows with its room even where its face was out of sight.
 /// </para>
 /// </summary>
 public sealed class FogOfWar
@@ -114,6 +116,7 @@ public sealed class FogOfWar
     ];
 
     private readonly SectorSight[] _states;
+    private readonly bool[] _doors;
     private readonly int[] _visibleStamp;
     // The occlusion buffer as a skip list: _next[c] leads to the first open column at or after c (Columns: none).
     private readonly int[] _next = new int[Columns + 1];
@@ -127,6 +130,7 @@ public sealed class FogOfWar
         Level = level;
         _states = new SectorSight[level.Sectors.Length];
         _visibleStamp = new int[level.Sectors.Length];
+        _doors = DoorLids.FindDoors(level);
         Discover();
     }
 
@@ -195,6 +199,7 @@ public sealed class FogOfWar
         // The player's own sector, whatever its segs.
         Subsector own = Level.R_PointInSubsector(x, y);
         _visibleStamp[own.Sector.Index] = _stamp;
+        DiscoverDoors();
 
         int visible = 0;
         for (int s = 0; s < _states.Length; s++)
@@ -215,6 +220,22 @@ public sealed class FogOfWar
         {
             Recount();
             Version++;
+        }
+    }
+
+    // A visible sector's doors are discovered, its lines to them mapped: a door shows with the room, whether its face was in sight or not.
+    private void DiscoverDoors()
+    {
+        foreach (Sector sector in Level.Sectors)
+        {
+            if (_visibleStamp[sector.Index] != _stamp)
+                continue;
+            foreach (Line line in sector.Lines)
+            {
+                if ((line.Flags & Line.ML_MAPPED) == 0 && line.BackSector is { } back
+                    && _doors[(line.FrontSector == sector ? back : line.FrontSector!).Index])
+                    MapLine(line);
+            }
         }
     }
 

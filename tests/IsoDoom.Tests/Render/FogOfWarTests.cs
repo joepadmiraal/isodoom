@@ -173,6 +173,44 @@ public class FogOfWarTests
     }
 
     [Fact]
+    public void AVisibleSectorsDoorsAreDiscovered()
+    {
+        // DOOM1 E1M1 from a 64-unit grid of points: a door shows with its room, its face in sight or not
+        // (the user's report: walking up to the first door, it popped in once its face came into sight).
+        Level level = Level.Load(WadArchive.Open(TestWads.RequireDoom1()), "E1M1");
+        bool[] doors = DoorLids.FindDoors(level);
+        int points = 0, mappedByRoom = 0;
+        for (int x = -1024; x <= 3584; x += 64)
+        {
+            for (int y = -5120; y <= -2048; y += 64)
+            {
+                Sector sector = level.R_PointInSubsector(x << Fixed.FRACBITS, y << Fixed.FRACBITS).Sector;
+                if (sector.CeilingHeight - sector.FloorHeight < 56 << Fixed.FRACBITS)
+                    continue;
+                foreach (Line l in level.Lines)
+                    l.Flags &= ~Line.ML_MAPPED;
+                var fog = new FogOfWar(level);
+                fog.See(x << Fixed.FRACBITS, y << Fixed.FRACBITS);
+                points++;
+                foreach (Sector s in level.Sectors.Where(s => fog.IsVisible(s.Index)))
+                {
+                    foreach (Line l in s.Lines.Where(l => l.BackSector is not null))
+                    {
+                        Sector other = l.FrontSector == s ? l.BackSector! : l.FrontSector!;
+                        if (!doors[other.Index])
+                            continue;
+                        Assert.True(fog.IsDiscovered(other.Index), $"from ({x}, {y}): door sector {other.Index} next to visible sector {s.Index} is {fog.State(other.Index)}");
+                        Assert.True(Mapped(level, l.Index), $"from ({x}, {y}): line {l.Index} between visible sector {s.Index} and door sector {other.Index} not mapped");
+                        mappedByRoom++;
+                    }
+                }
+            }
+        }
+        Assert.True(points > 100, $"{points} points");
+        Assert.True(mappedByRoom > 0);
+    }
+
+    [Fact]
     public void AShutDoorAboveItsNeighboursFloorBlocks()
     {
         // DOOM1 E1M4's door sector 10 (x -216 to -200), shut at 144, between sectors 8 (floor 136) and 9 (floor 136):
