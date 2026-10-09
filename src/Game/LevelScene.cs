@@ -2642,9 +2642,11 @@ public partial class LevelScene : Node3D, IGameHost
     /// Whether a thing of <paramref name="info"/> is an actor the cutaway keeps
     /// whole by default (T3.4b, <see cref="CutawayThings.Decorations"/>):
     /// <c>MF_SHOOTABLE</c> (monsters, barrels, the player), what the player
-    /// must see to shoot.
+    /// must see to shoot, and missiles (a type with <c>MF_MISSILE</c>, flying
+    /// or exploding), what it must see to dodge: an imp's fireball coming at
+    /// the player from the camera's side was cut as it neared (SPEC §12).
     /// </summary>
-    public static bool IsActor(mobjinfo_t info) => (info.flags & mobjflag_t.MF_SHOOTABLE) != 0;
+    public static bool IsActor(mobjinfo_t info) => (info.flags & (mobjflag_t.MF_SHOOTABLE | mobjflag_t.MF_MISSILE)) != 0;
 
     /// <summary>
     /// The blob shadow's radius for a thing of <paramref name="info"/> (T3.6,

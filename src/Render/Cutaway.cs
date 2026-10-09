@@ -41,7 +41,7 @@ public enum CutawayThings
     /// <summary>None: billboards are drawn whole (T3.5).</summary>
     Off = 0,
 
-    /// <summary>Every thing but actors (<c>MF_SHOOTABLE</c>: monsters, barrels, the player), which must stay visible to be shot (the default).</summary>
+    /// <summary>Every thing but actors (<c>MF_SHOOTABLE</c>: monsters, barrels, the player, which must stay visible to be shot; and <c>MF_MISSILE</c> types, to be dodged) (the default).</summary>
     Decorations = 1,
 
     /// <summary>Every thing, actors too.</summary>
