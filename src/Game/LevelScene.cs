@@ -90,6 +90,9 @@ namespace IsoDoom.Game;
 /// <c>--level-tracers=player|all|off</c> (<see cref="Tracers"/>: a short-lived
 /// line along each of the player's hitscans, or everyone's, to where it
 /// stopped; default player);
+/// <c>--level-aim-marker=pad|on|off</c> (<see cref="AimMarkerMode"/>: a ring
+/// around the player's feet with a chevron along its facing, unless the
+/// mouse cursor aims, always, or never; default pad);
 /// <c>--level-hud=bar|full|off</c> (T6.11, <see cref="HudView"/>: under the
 /// game camera, vanilla's status bar at the bottom, the minimal fullscreen
 /// HUD, or neither; the message line shows with all; default bar) and
@@ -208,6 +211,15 @@ public partial class LevelScene : Node3D, IGameHost
     public TracerMode Tracers { get; set; } = TracerMode.Player;
 
     private readonly ShotTracers _shotTracers = new() { Name = "ShotTracers" };
+
+    /// <summary>
+    /// When the aim marker shows around the player's feet (<see cref="AimMarker"/>,
+    /// <c>--level-aim-marker</c>; not vanilla, SPEC §12): by default unless the
+    /// mouse cursor aims, so a twin-stick player sees its facing.
+    /// </summary>
+    public AimMarkerMode AimMarkerShown { get; set; } = AimMarkerMode.Pad;
+
+    private readonly AimMarker _aimMarker = new() { Name = "AimMarker", Visible = false };
 
     /// <summary>
     /// T6.11: m_random.c's <c>M_Random</c> index of the presentation (the
@@ -516,6 +528,7 @@ public partial class LevelScene : Node3D, IGameHost
         _background = Environment.BackgroundColor;
         AddChild(new WorldEnvironment { Environment = Environment });
         AddChild(_shotTracers); // in the tree from the start, so a failed load or the check still frees it at exit
+        AddChild(_aimMarker);
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
         // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
@@ -623,6 +636,8 @@ public partial class LevelScene : Node3D, IGameHost
                 };
             if (WadLocator.GetUserArg("--level-tracers") is string tracers)
                 Tracers = ParseTracers(tracers, "--level-tracers");
+            if (WadLocator.GetUserArg("--level-aim-marker") is string aimMarker)
+                AimMarkerShown = ParseAimMarker(aimMarker, "--level-aim-marker");
             if (WadLocator.GetUserArg("--level-hud") is string hud)
                 Hud.Mode = hud switch
                 {
@@ -1129,6 +1144,7 @@ public partial class LevelScene : Node3D, IGameHost
                 UpdatePaletteEffects();
                 FollowPlayer(delta);
                 _shotTracers.Update(delta, GetViewport().GetCamera3D());
+                UpdateAimMarker();
                 if (GetViewport().GetCamera3D() is Camera3D current)
                     Things?.UpdateRotations(current);
                 Mesh.SetLightOrigin(LightOrigin());
@@ -1592,6 +1608,33 @@ public partial class LevelScene : Node3D, IGameHost
         from += (to - from) * (edge / length);
         _shotTracers.Add(from, to, own ? ShotTracers.PlayerColor : ShotTracers.MonsterColor);
     }
+
+    /// <summary>
+    /// The aim marker (<see cref="AimMarkerShown"/>) at the drawn player under
+    /// the game camera, while it lives; with <see cref="AimMarkerMode.Pad"/>
+    /// not while the mouse cursor aims.
+    /// </summary>
+    private void UpdateAimMarker()
+    {
+        bool shown = AimMarkerShown != AimMarkerMode.Off
+            && (AimMarkerShown == AimMarkerMode.On || TiccmdBuilder.Aim != AimSource.Cursor)
+            && Iso is { Current: true } && _showThings
+            && World is { } world && world.players[world.consoleplayer] is { playerstate: playerstate_t.PST_LIVE, mo: not null };
+        _aimMarker.Visible = shown;
+        if (shown)
+        {
+            (Vector3 feet, uint angle) = Interpolated(PlayerMobj!);
+            _aimMarker.Place(feet, angle);
+        }
+    }
+
+    private static AimMarkerMode ParseAimMarker(string value, string name) => value switch
+    {
+        "pad" => AimMarkerMode.Pad,
+        "on" => AimMarkerMode.On,
+        "off" or "vanilla" => AimMarkerMode.Off,
+        _ => throw new ArgumentException($"{name}: \"{value}\" (pad, on or off)"),
+    };
 
     private static TracerMode ParseTracers(string value, string name) => value switch
     {
