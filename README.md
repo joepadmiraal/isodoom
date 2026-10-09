@@ -1,6 +1,10 @@
 # IsoDoom
 
-An isometric top-down remake of Doom in Godot 4 + C#, heavily inspired by [Isowulf mod for Wolfenstein 3D](https://www.moddb.com/mods/isowulf).
+An isometric top-down remake of Doom in Godot 4 + C#, heavily inspired by [Isowulf mod for Wolfenstein 3D](https://www.moddb.com/mods/isowulf). I really enjoyed Isowulf, and since I've been doing a lot of AI development at my day job, it got me thinking: Would Doom be just as fun to play like this? And how much work would it take to create something similar using AI coding tools?
+
+[![IsoDoom demo video](https://img.youtube.com/vi/wHehnQ2Vzbo/maxresdefault.jpg?v=2)](https://www.youtube.com/watch?v=wHehnQ2Vzbo)
+
+Builds for Windows, MacOS and Linux are provided. I'm actively testing it on a SteamDeck with the thumbsticks as well as on a laptop with the keyboard and mouse.
 
 ## Contributing
 
