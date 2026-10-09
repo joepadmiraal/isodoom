@@ -23,3 +23,6 @@ TestResults/
 # .claude/settings.json may be committed)
 .claude/worktrees/
 .claude/settings.local.json
+
+# local deploy/test scripts
+deploy/
