@@ -52,12 +52,36 @@ public sealed class GameInput
     /// <summary>The actions missing from the <see cref="InputMap"/>.</summary>
     public static string[] MissingActions() => Array.FindAll(Actions(), a => !InputMap.HasAction(a));
 
+    /// <summary>
+    /// How long after the aim stick was last deflected mouse motion is still
+    /// taken for its echo, milliseconds (Steam Input, e.g. on the Steam Deck,
+    /// may also move the mouse with the right stick).
+    /// </summary>
+    public const ulong StickEchoMs = 250;
+
     private readonly InputLatches _latches = new();
     private bool _cursorMoved;
     private float _mouseX;
+    private ulong? _aimStickAt;
 
     /// <summary>The move axes, screen-relative (X right, Y up), each in [−1, 1]; keys give whole steps (W+D = (1, 1)).</summary>
     public static Vector2 Move() => new(Input.GetAxis(MoveLeft, MoveRight), Input.GetAxis(MoveDown, MoveUp));
+
+    /// <summary>The aim stick's axes, screen-relative (X right, Y up), each in [−1, 1], past the actions' dead zone.</summary>
+    public static Vector2 AimStick() => new(Input.GetAxis(AimLeft, AimRight), Input.GetAxis(AimDown, AimUp));
+
+    /// <summary>
+    /// Whether the pad aims: the aim stick is deflected now, or <see cref="StickEchoMs"/>
+    /// ago (call every frame, <see cref="Poll"/> does). Mouse motion meanwhile
+    /// is the stick's echo, not a mouse's (<see cref="LevelScene"/> drops it).
+    /// </summary>
+    public bool AimStickActive()
+    {
+        ulong now = Time.GetTicksMsec();
+        if (AimStick() != Vector2.Zero)
+            _aimStickAt = now;
+        return _aimStickAt is ulong at && now - at < StickEchoMs;
+    }
 
     /// <summary>The run key is held.</summary>
     public static bool RunHeld() => Input.IsActionPressed(Run);
@@ -88,6 +112,7 @@ public sealed class GameInput
     /// <summary>Latches this frame's presses (call every frame while the game reads input; again per tic is fine, <see cref="InputLatches"/>).</summary>
     public void Poll()
     {
+        AimStickActive();
         int weapon = 0;
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
         {

@@ -222,6 +222,14 @@ public partial class LevelScene : Node3D, IGameHost
     private readonly AimMarker _aimMarker = new() { Name = "AimMarker", Visible = false };
 
     /// <summary>
+    /// The pad's right stick aims, not the mouse: set while the stick is
+    /// deflected, cleared by mouse motion that is not its echo
+    /// (<see cref="GameInput.AimStickActive"/>). Meanwhile the pointer is
+    /// hidden and the game camera does not look ahead to it (SPEC §12 T6.13k).
+    /// </summary>
+    private bool _padAims;
+
+    /// <summary>
     /// T6.11: m_random.c's <c>M_Random</c> index of the presentation (the
     /// status bar's face; later the wipes and the intermission): cleared at
     /// a new game as vanilla's <c>G_InitNew</c>, never read by the sim (the
@@ -1156,6 +1164,7 @@ public partial class LevelScene : Node3D, IGameHost
             UpdateScreens();
             WipeLayer.Show(flow.Wipe, _wipeStartPending);
             SyncSettings(); // T7.3: what the menus, the keys and the zoom changed is saved
+            UpdatePointer(flow);
         }
         _crosshair.Visible = FreeFlyActive;
         if (!IsCheckRun && Overlay.Visible)
@@ -1628,6 +1637,21 @@ public partial class LevelScene : Node3D, IGameHost
         }
     }
 
+    /// <summary>
+    /// Hides the mouse pointer while the pad aims (<see cref="_padAims"/>) on a
+    /// level under the game camera, menus closed, and shows it again otherwise.
+    /// </summary>
+    private void UpdatePointer(GameFlow flow)
+    {
+        if (GameInput.AimStickActive())
+            _padAims = true;
+        bool hide = _padAims && IsoActive && flow.gamestate == gamestate_t.GS_LEVEL && !flow.Menu.Active;
+        if (hide && Input.MouseMode == Input.MouseModeEnum.Visible)
+            Input.MouseMode = Input.MouseModeEnum.Hidden;
+        else if (!hide && Input.MouseMode == Input.MouseModeEnum.Hidden)
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+    }
+
     private static AimMarkerMode ParseAimMarker(string value, string name) => value switch
     {
         "pad" => AimMarkerMode.Pad,
@@ -2006,7 +2030,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (Player is null)
             return;
         if (!SnapCameraIfPending() && Iso is { Current: true } iso && !HoldCamera)
-            iso.Follow(Player.Foot, Cursor?.Point, delta);
+            iso.Follow(Player.Foot, _padAims ? null : Cursor?.Point, delta);
         if (GetViewport().GetCamera3D() is Camera3D current)
             Player.FaceCamera(current);
     }
@@ -2033,7 +2057,16 @@ public partial class LevelScene : Node3D, IGameHost
     public override void _Input(InputEvent @event)
     {
         if (@event is InputEventMouseMotion motion && !IsCheckRun)
-            GameInput.CursorMoved(motion.Relative.X);
+        {
+            // The right stick's echo (Steam Input moves the mouse with it, e.g. on the Steam Deck) does not aim
+            if (GameInput.AimStickActive())
+                _padAims = true;
+            else
+            {
+                _padAims = false;
+                GameInput.CursorMoved(motion.Relative.X);
+            }
+        }
         // T7.2: the menus before anything else (d_main.c D_ProcessEvents: M_Responder first; on the title loop
         // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
         if (!IsCheckRun && MenuEvent(@event))
