@@ -247,10 +247,11 @@ public partial class LevelCheck
                     Fail($"{map}: item beams (T6.13r): with the option off {_scene.Beams.Beams.Count} beams, {changed} pixels differ from the item alone");
             }
             _scene.ItemBeams = ItemBeamMode.All;
+            string actors = await CheckBeamActors(open, h.Mobj);
             string undiscovered = await CheckBeamUndiscovered(m, things, basis, toCamera);
             GD.Print($"Level check: {map}: item beams (T6.13r): {scanned} pickups viewed alone from the game camera ({spawned.Count} spawned by the check), {visibleChecked} seen without a beam; "
                 + $"{h.Mobj.type} at ({hf.X:F0}, {hf.Y:F0}) hidden whole, beamed ({h.View.BeamPixels} pixels), cut open without one; "
-                + $"{(open is null ? "none" : $"{open.type} at ({open.x >> 16}, {open.y >> 16})")} in the open; option off: none; {undiscovered}");
+                + $"{(open is null ? "none" : $"{open.type} at ({open.x >> 16}, {open.y >> 16})")} in the open; option off: none; {actors}; {undiscovered}");
         }
         finally
         {
@@ -265,6 +266,95 @@ public partial class LevelCheck
             _scene.BeamsEverywhere = false;
             m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
             m.SetCutawayCentres(null, null);
+        }
+
+        // An actor does not hide an item: barons (the widest monsters on the floor in the
+        // shareware) side by side on the open item, covering it whole, give it no beam, and on
+        // and behind the hidden item they leave its beam.
+        async Task<string> CheckBeamActors(mobj_t? seen, mobj_t behind)
+        {
+            Vector3 flat = new Vector3(toCamera.X, toCamera.Y, 0).Normalized();
+            string result = "";
+            foreach ((mobj_t? item, bool beamed) in new[] { (seen, false), (behind, true) })
+            {
+                if (item is null)
+                    continue;
+                Vector3 foot = Foot(item);
+                CutView(foot, basis, toCamera);
+                int covered = 0, kept = 0;
+                foreach (int distance in _beamActorDistances)
+                {
+                    // In front of the open item, to cover it; on and behind the hidden one, which what hides it hides too.
+                    int d = beamed ? -distance : distance;
+                    List<(int X, int Y)> spots = [.. _beamActorLaterals.Select(l => ((int)((foot.X + flat.X * d - flat.Y * l) * 65536), (int)((foot.Y + flat.Y * d + flat.X * l) * 65536)))];
+                    // Only where a baron fits (p_map.c P_CheckPosition): one overlapping a wall is drawn in front of it.
+                    mobj_t probe = world.P_SpawnMobj(spots[0].X, spots[0].Y, World.ONFLOORZ, mobjtype_t.MT_BRUISER);
+                    bool fit = spots.All(p => world.P_CheckPosition(probe, p.X, p.Y));
+                    world.P_RemoveMobj(probe);
+                    if (!fit)
+                        continue;
+                    List<mobj_t> barons = [.. spots.Select(p => world.P_SpawnMobj(p.X, p.Y, World.ONFLOORZ, mobjtype_t.MT_BRUISER))];
+                    try
+                    {
+                        _scene.PresentWorld();
+                        int i = DrawnIndex(item);
+                        List<int> b = [.. barons.Select(DrawnIndex)];
+                        if (i < 0 || b.Any(k => k < 0))
+                            continue;
+                        things.UpdateRotations(_scene.Camera);
+                        _scene.UpdateItemBeams();
+                        if (_scene.Beams.Beams.FirstOrDefault(x => x.Mobj == item) is not { Slot: >= 0 } beam)
+                            continue;
+                        List<ItemBeams.Actor> actors = [.. b.Select(k => new ItemBeams.Actor(things.Entries[k].MapPosition, things.Entries[k].Radius))];
+                        string what = $"{map}: item beam (T6.13r) of {item.type} at ({foot.X:F0}, {foot.Y:F0}), barons {d} units in front of it";
+                        things.IsolateSet(b);
+                        _scene.Beams.Set([]);
+                        byte[]? alone = await Capture($"{what}, the barons");
+                        things.IsolateSet([i, .. b]);
+                        byte[]? both = await Capture($"{what}, the barons and the item");
+                        _scene.Beams.Set([beam], actors);
+                        byte[]? lit = await Capture($"{what}, and its beam");
+                        _scene.Beams.Set([]);
+                        if (alone is null || both is null || lit is null)
+                            return "no capture";
+                        Vector2I size = ViewSize();
+                        int itemPixels = 0, beamPixels = 0;
+                        for (int y = 0; y < size.Y; y++)
+                        {
+                            for (int x = 0; x < size.X; x++)
+                            {
+                                var q = new Vector2I(x, y);
+                                if (!Same(q, both, alone))
+                                    itemPixels++;
+                                if (!Same(q, lit, both))
+                                    beamPixels++;
+                            }
+                        }
+                        _pixels += size.X * size.Y;
+                        if (beamed)
+                        {
+                            kept++;
+                            if (beamPixels == 0)
+                                Fail($"{what}: hidden, its beam drew nothing with the barons on it");
+                        }
+                        if (!beamed && itemPixels == 0)
+                        {
+                            covered++;
+                            if (beamPixels > 0)
+                                Fail($"{what}: in the open and covered whole by the barons, its beam drew {beamPixels} pixels");
+                        }
+                    }
+                    finally
+                    {
+                        foreach (mobj_t baron in barons)
+                            world.P_RemoveMobj(baron);
+                        _scene.PresentWorld();
+                    }
+                }
+                // The barons cover DOOM1's green armor whole; the synthetic IWAD's sprites are too sparse to.
+                result += beamed ? $", the hidden one beamed with barons on it {kept} times" : $"{item.type} in the open covered whole by barons {covered} times without a beam";
+            }
+            return result.Length == 0 ? "no actor case" : result.TrimStart(',', ' ');
         }
 
         mobj_t Spawn(double x, double y)
@@ -307,6 +397,12 @@ public partial class LevelCheck
             return true;
         }
     }
+
+    /// <summary>How far in front of an item (map units) the render check stands three barons side by side (within 48 they stand on it).</summary>
+    private static readonly int[] _beamActorDistances = [0, 16, 32, 40, 48];
+
+    /// <summary>The three barons' places across the view (map units).</summary>
+    private static readonly int[] _beamActorLaterals = [-16, 0, 16];
 
     private static Vector3 Foot(mobj_t mo) => new((float)(mo.x / 65536.0), (float)(mo.y / 65536.0), (float)(mo.z / 65536.0));
 

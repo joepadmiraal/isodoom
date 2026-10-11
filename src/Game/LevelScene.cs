@@ -212,6 +212,7 @@ public partial class LevelScene : Node3D, IGameHost
     public bool BeamsEverywhere { get; set; }
 
     private readonly List<ItemBeams.Beam> _beamScratch = [];
+    private readonly List<ItemBeams.Actor> _actorScratch = [];
 
     /// <summary>Which upper walls are drawn (<c>--level-upper-walls</c>, key I); applied to every level.</summary>
     public UpperWallMode UpperWalls { get; private set; } = UpperWallMode.Doors;
@@ -1716,6 +1717,7 @@ public partial class LevelScene : Node3D, IGameHost
     public void UpdateItemBeams()
     {
         _beamScratch.Clear();
+        _actorScratch.Clear();
         if (Mesh is { } mesh)
             Beams.SetSprites(mesh.Sprites);
         if (ItemBeams != ItemBeamMode.Off && (IsoActive || BeamsEverywhere) && _showThings && Things is { } things
@@ -1731,8 +1733,16 @@ public partial class LevelScene : Node3D, IGameHost
                     continue;
                 _beamScratch.Add(new ItemBeams.Beam(mo, kind, entries[i].MapPosition, shown[i].Slot, shown[i].Flip, entries[i].Radius, entries[i].Sector));
             }
+            // The actors, the player among them, do not hide items.
+            for (int i = 0; i < entries.Count && _beamScratch.Count > 0; i++)
+            {
+                if (entries[i].Actor)
+                    _actorScratch.Add(new ItemBeams.Actor(entries[i].MapPosition, entries[i].Radius));
+            }
+            if (_beamScratch.Count > 0 && Player is { Visible: true } player)
+                _actorScratch.Add(new ItemBeams.Actor(player.Entry.MapPosition, player.Entry.Radius));
         }
-        Beams.Set(_beamScratch);
+        Beams.Set(_beamScratch, _actorScratch);
     }
 
     /// <summary>The script's <c>beams</c> lines: each beamed item's type, kind, position and sector (whether it shows is the GPU's).</summary>

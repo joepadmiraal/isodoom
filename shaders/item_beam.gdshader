@@ -5,9 +5,14 @@
 // One MultiMesh instance per beamed item:
 //   instance transform  the item's foot (Godot space; basis identity)
 //   INSTANCE_CUSTOM     the item billboard's atlas slot (-1: no beam), flags
-//                       (1 flip), radius (map units, the wall pull)
+//                       (1 flip), radius (map units, the wall pull), and the
+//                       beam's row of `beam_actors`
 //   COLOR               the beam's colour (sRGB)
 //   VERTEX              x -1 left / 1 right, y 0 foot / 1 top
+//   `beam_actors`       texel (k, row): the k-th of the BEAM_ACTORS
+//                       actors nearest the item (IsoDoom.Render.ItemBeams.Set):
+//                       its foot from the item's (Godot space) and radius
+//                       (map units; < 0: none)
 //
 // Hidden (the vertex shader, once per instance's vertices): up to
 // HIDDEN_GRID x HIDDEN_GRID of the item patch's opaque texels are put where
@@ -18,7 +23,14 @@
 // masked middles, lids, wall caps and switch markers, and the opaque thing
 // sprites, the item's own among them). The beam shows only when something is
 // in front of every one by more than HIDDEN_MARGIN; a texel off screen counts
-// as seen, so an item off screen gets no beam. With the sprites' upright
+// as seen, so an item off screen gets no beam. An actor (a monster, a barrel,
+// the player) does not hide an item: a texel whose occluder lies on the
+// billboard of one of the actors near the item (as the sprite shader draws
+// it, within ACTOR_PLANE; actor_surface) counts as seen when the actor stands
+// on the item (what hides the item there hides the actor too, so a monster
+// walking over an item in the open does not beam it) and does not count when
+// it stands in front (an item behind a wall keeps its beam while one walks
+// past); with no texel counted the item is not hidden. With the sprites' upright
 // hiding (T3.6a: `upright_hiding` 1) an item whose upright billboard is hidden
 // whole is dropped whole by the sprite shader, so it counts as hidden too.
 //
@@ -36,10 +48,24 @@ const float MAX_WALL_PULL = 4.0;
 const int HIDDEN_GRID = 8;
 const float HIDDEN_MARGIN = 1.0;
 const float FADE_START = 2.0 / 3.0;
+// The actors near an item (IsoDoom.Render.ItemBeams.ActorsPerBeam) and how far
+// from an actor's billboard plane, and its extent, a surface counts as the
+// actor's (map units).
+const int BEAM_ACTORS = 4;
+const float ACTOR_PLANE = 2.0;
+const float ACTOR_HALF_WIDTH = 64.0;
+const float ACTOR_HEIGHT = 160.0;
+// How much more than their radii apart an actor and an item may stand for the
+// actor to count as standing on it (map units).
+const float ACTOR_ON = 8.0;
+// sprite.gdshaderinc's PULL_MARGIN and MAX_PULL: the rows below the origin.
+const float PULL_MARGIN = 1.0;
+const float MAX_PULL = 64.0;
 
 uniform sampler2D sprite_atlas : filter_nearest, repeat_disable;
 uniform sampler2D sprite_info : filter_nearest, repeat_disable;
 uniform sampler2D level_depth : hint_depth_texture, filter_nearest, repeat_disable;
+uniform sampler2D beam_actors : filter_nearest, repeat_disable;
 // The sprites' settings (IsoDoom.Render.SpriteSettings), as on the sprite material.
 uniform float tilt = 1.0;
 uniform int tilt_depth = 0;
@@ -60,12 +86,60 @@ float wall_pull_length(float up, float pull) {
 	return min(pull / max(horizontal, 1e-4), MAX_WALL_PULL * pull);
 }
 
+// What the surface at `w` (Godot space) is to beam `beam`'s actors (the
+// sprite shader's billboard: its plane, upright through the foot or tilted
+// with tilted depth, `right` the view plane's right axis, flattened, `facing`
+// the upright plane's normal; its rows below the origin on the floor plane,
+// PULL_MARGIN above it; all moved towards the camera by the wall pull): 0 none
+// of theirs, 1 a billboard of an actor in front of the item, 2 one of an actor
+// standing on it (their radii overlapping, ACTOR_ON).
+int actor_surface(vec3 w, int beam, vec3 item_foot, float item_radius, vec3 right, vec3 facing, bool ortho, mat4 inv_view, vec3 camera) {
+	for (int k = 0; k < BEAM_ACTORS; k++) {
+		vec4 a = texelFetch(beam_actors, ivec2(k, beam), 0);
+		if (a.w < 0.0) {
+			continue;
+		}
+		vec3 foot = item_foot + a.xyz;
+		vec3 to_camera = ortho ? normalize(inv_view[2].xyz) : normalize(camera - foot);
+		vec3 up = vec3(0.0, 1.0, 0.0);
+		if (tilt > 0.0 && tilt_depth != 0) {
+			float angle = clamp(tilt, 0.0, 1.0) * asin(clamp(to_camera.y, 0.0, 1.0));
+			up = cos(angle) * up - sin(angle) * facing;
+		}
+		vec3 normal = normalize(cross(right, up));
+		float pull = clamp(a.w, 0.0, max(wall_pull, 0.0));
+		vec3 shift = pull > 0.0 ? to_camera * (wall_pull_length(to_camera.y, pull) / MAP_UNITS_PER_METRE) : vec3(0.0);
+		vec3 origin = foot + shift;
+		vec3 d = w - origin;
+		bool on_actor = false;
+		if (abs(dot(d, right)) <= ACTOR_HALF_WIDTH / MAP_UNITS_PER_METRE) {
+			// Its plane, from below its floor (the rows below the origin) to its top.
+			float h = dot(d, up);
+			on_actor = abs(dot(d, normal)) <= ACTOR_PLANE / MAP_UNITS_PER_METRE
+				&& h >= -MAX_PULL / MAP_UNITS_PER_METRE && h <= ACTOR_HEIGHT / MAP_UNITS_PER_METRE;
+			// The rows below the origin, pulled onto the floor plane.
+			on_actor = on_actor || (abs(d.y - PULL_MARGIN / MAP_UNITS_PER_METRE) <= ACTOR_PLANE / MAP_UNITS_PER_METRE
+				&& abs(dot(d, facing)) <= MAX_PULL / MAP_UNITS_PER_METRE);
+		}
+		if (on_actor) {
+			bool on_item = length(a.xz) <= (a.w + item_radius + ACTOR_ON) / MAP_UNITS_PER_METRE;
+			return on_item ? 2 : 1;
+		}
+	}
+	return 0;
+}
+
 // Whether something the opaque pass drew is in front of every tested opaque
 // texel of the patch at `rect`, each where the sprite shader draws it: `up`
 // the billboard's (tilted) up axis, `lean` its tilt (0: upright), `facing` the
-// upright quad's normal.
+// upright quad's normal. Actors do not hide the item (actor_surface): a texel
+// one standing on the item covers counts as seen (whatever hides the item
+// there hides the actor too), one an actor in front covers does not count,
+// and with none counted the item is not hidden.
 bool billboard_hidden(ivec4 rect, bool flip, float left, float top, vec3 right, vec3 up, float lean, vec3 facing,
-		vec3 foot, float pull, bool ortho, mat4 modelview, mat4 projection, mat4 inv_projection, mat4 inv_view, vec3 camera) {
+		vec3 foot, float pull, bool ortho, mat4 modelview, mat4 projection, mat4 inv_projection, mat4 inv_view, vec3 camera,
+		int beam, float radius) {
+	int counted = 0;
 	int nc = min(rect.z, HIDDEN_GRID);
 	int nr = min(rect.w, HIDDEN_GRID);
 	for (int j = 0; j < nr; j++) {
@@ -100,15 +174,23 @@ bool billboard_hidden(ivec4 rect, bool flip, float left, float top, vec3 right, 
 			if (v.z / v.w <= q.z + HIDDEN_MARGIN / MAP_UNITS_PER_METRE) {
 				return false;
 			}
+			int actor = actor_surface((inv_view * vec4(v.xyz / v.w, 1.0)).xyz, beam, foot, radius, right, facing, ortho, inv_view, camera);
+			if (actor == 2) {
+				return false;
+			}
+			if (actor == 0) {
+				counted++;
+			}
 		}
 	}
-	return true;
+	return counted > 0;
 }
 
 void vertex() {
 	int slot = int(round(INSTANCE_CUSTOM.x));
 	bool flip = (int(round(INSTANCE_CUSTOM.y)) & 1) != 0;
 	float pull = clamp(INSTANCE_CUSTOM.z, 0.0, max(wall_pull, 0.0));
+	int row = int(round(INSTANCE_CUSTOM.w));
 	vec3 foot = MODEL_MATRIX[3].xyz;
 	bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
 	// As the sprite shader: the view plane's right axis, flattened, and the upright quad's normal.
@@ -130,10 +212,10 @@ void vertex() {
 			up = cos(a) * up - lean * facing;
 		}
 		hidden = rect.z > 0 && rect.w > 0 && billboard_hidden(rect, flip, o.x, o.y, right, up, lean, facing, foot, pull, ortho,
-			MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD);
+			MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD, row, INSTANCE_CUSTOM.z);
 		if (!hidden && upright_hiding != 0 && lean > 0.0) {
 			hidden = billboard_hidden(rect, flip, o.x, o.y, right, vec3(0.0, 1.0, 0.0), 0.0, facing, foot, pull, ortho,
-				MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD);
+				MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD, row, INSTANCE_CUSTOM.z);
 		}
 	}
 	if (hidden) {

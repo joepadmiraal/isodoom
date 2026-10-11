@@ -15,7 +15,11 @@ namespace IsoDoom.Render;
 /// the shader puts the patch's opaque texels where the sprite shader draws
 /// them and tests them against the depth texture, so the cutaway, door lids,
 /// wall caps and fog all count as they draw. The beam is depth-tested, so it
-/// rises from behind the wall that hides its item. One <see cref="MultiMesh"/>
+/// rises from behind the wall that hides its item. Actors (monsters, barrels,
+/// the player) do not hide items: the shader leaves out the texels the
+/// billboards of the <see cref="ActorsPerBeam"/> actors nearest the item cover
+/// (<see cref="Set"/>), so a monster walking over an item in the open does not
+/// beam it. One <see cref="MultiMesh"/>
 /// instance per beam (<see cref="Set"/>); which items get one is the owner's
 /// choice (pickups the fog shows, <see cref="ItemBeamMode"/>). Presentation
 /// only: the sim never reads them.
@@ -44,8 +48,26 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// </summary>
     public readonly record struct Beam(mobj_t Mobj, ItemKind Kind, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector);
 
+    /// <summary>An actor's billboard (<see cref="ThingSprites.FlagActor"/>): its foot (map units: x, y, height) and radius (the wall pull, as its billboard's).</summary>
+    public readonly record struct Actor(Vector3 MapPosition, float Radius);
+
+    /// <summary>How many actors near each item the shader checks (the shader's <c>BEAM_ACTORS</c>).</summary>
+    public const int ActorsPerBeam = 4;
+
+    /// <summary>
+    /// How near an item an actor must be (map units, horizontally) to be one of
+    /// its <see cref="ActorsPerBeam"/>: one that covers the item on screen
+    /// stands at most about 1.2 × its height in front of it at the game
+    /// camera's pitch (a tilted billboard shows its full height), and the
+    /// tallest (the spider mastermind, the cyberdemon) are about 110 high.
+    /// </summary>
+    public const float ActorReach = 160f;
+
     private readonly ShaderMaterial _material;
     private Beam[] _beams = [];
+    private Image _actorImage = Image.CreateEmpty(ActorsPerBeam, 1, false, Image.Format.Rgbaf);
+    private readonly ImageTexture _actorTexture;
+    private readonly (float Distance, int Index)[] _nearest = new (float, int)[ActorsPerBeam];
     private SpriteSettings? _sprites;
 
     /// <summary>The beams as last set.</summary>
@@ -57,6 +79,9 @@ public partial class ItemBeams : MultiMeshInstance3D
         _material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         _material.SetShaderParameter("beam_height", Height);
         _material.SetShaderParameter("beam_half_width", HalfWidth);
+        _actorImage.Fill(new Color(0, 0, 0, -1));
+        _actorTexture = ImageTexture.CreateFromImage(_actorImage);
+        _material.SetShaderParameter("beam_actors", _actorTexture);
         MaterialOverride = _material;
         Multimesh = new MultiMesh
         {
@@ -100,9 +125,15 @@ public partial class ItemBeams : MultiMeshInstance3D
         _material.SetShaderParameter("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
     }
 
-    /// <summary>Replaces the beams (one instance each), writing only the instances that changed.</summary>
-    public void Set(IReadOnlyList<Beam> beams)
+    /// <summary>
+    /// Replaces the beams (one instance each), writing only the instances that
+    /// changed, with the <see cref="ActorsPerBeam"/> of <paramref name="actors"/>
+    /// nearest each item within <see cref="ActorReach"/>, whose billboards do
+    /// not hide it.
+    /// </summary>
+    public void Set(IReadOnlyList<Beam> beams, IReadOnlyList<Actor>? actors = null)
     {
+        SetActors(beams, actors ?? []);
         bool resized = beams.Count != _beams.Length;
         if (resized)
         {
@@ -116,10 +147,52 @@ public partial class ItemBeams : MultiMeshInstance3D
                 continue;
             _beams[i] = b;
             Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, new Vector3(b.MapPosition.X, b.MapPosition.Z, -b.MapPosition.Y) / LevelMesh.MapUnitsPerMetre));
-            Multimesh.SetInstanceCustomData(i, new Color(b.Slot, b.Flip ? ThingSprites.FlagFlip : 0, b.Radius, 0));
+            Multimesh.SetInstanceCustomData(i, new Color(b.Slot, b.Flip ? ThingSprites.FlagFlip : 0, b.Radius, i));
             (float r, float g, float bl) = ItemKinds.ColorOf(b.Kind);
             Multimesh.SetInstanceColor(i, new Color(r, g, bl));
         }
+    }
+
+    /// <summary>The actors' texture: texel (k, beam) the k-th actor nearest the beam's item (its foot from the item's, Godot space, and its radius; radius −1: none).</summary>
+    private void SetActors(IReadOnlyList<Beam> beams, IReadOnlyList<Actor> actors)
+    {
+        int rows = Math.Max(beams.Count, 1);
+        bool resized = _actorImage.GetHeight() != rows;
+        if (resized)
+            _actorImage = Image.CreateEmpty(ActorsPerBeam, rows, false, Image.Format.Rgbaf);
+        _actorImage.Fill(new Color(0, 0, 0, -1));
+        for (int i = 0; i < beams.Count; i++)
+        {
+            int found = 0;
+            Vector3 item = beams[i].MapPosition;
+            for (int a = 0; a < actors.Count; a++)
+            {
+                Vector3 p = actors[a].MapPosition;
+                float d = new Vector2(p.X - item.X, p.Y - item.Y).LengthSquared();
+                if (d > ActorReach * ActorReach)
+                    continue;
+                // Insert by distance, the nearest first; when full, the farthest drops out.
+                if (found == ActorsPerBeam && d >= _nearest[found - 1].Distance)
+                    continue;
+                int k = found < ActorsPerBeam ? found++ : ActorsPerBeam - 1;
+                while (k > 0 && _nearest[k - 1].Distance > d)
+                {
+                    _nearest[k] = _nearest[k - 1];
+                    k--;
+                }
+                _nearest[k] = (d, a);
+            }
+            for (int k = 0; k < found; k++)
+            {
+                Actor actor = actors[_nearest[k].Index];
+                Vector3 offset = (actor.MapPosition - item) / LevelMesh.MapUnitsPerMetre;
+                _actorImage.SetPixel(k, i, new Color(offset.X, offset.Z, -offset.Y, actor.Radius));
+            }
+        }
+        if (resized)
+            _actorTexture.SetImage(_actorImage);
+        else
+            _actorTexture.Update(_actorImage);
     }
 
     /// <summary>Removes every beam (a level unloads).</summary>
