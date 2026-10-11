@@ -345,7 +345,7 @@ public sealed class WallCaps
     }
 
     // Keeps the part of a convex polygon where h.X·x + h.Y·y + h.C ≥ 0.
-    private static List<(double X, double Y)> Clip(List<(double X, double Y)> poly, (double X, double Y, double C) h)
+    internal static List<(double X, double Y)> Clip(List<(double X, double Y)> poly, (double X, double Y, double C) h)
     {
         var result = new List<(double X, double Y)>(poly.Count + 1);
         if (poly.Count == 0)
@@ -409,7 +409,7 @@ public sealed class WallCaps
     }
 
     // Twice the signed area... halved: positive counterclockwise (y up).
-    private static double Area(IReadOnlyList<(double X, double Y)> poly)
+    internal static double Area(IReadOnlyList<(double X, double Y)> poly)
     {
         double sum = 0;
         for (int i = 0; i < poly.Count; i++)

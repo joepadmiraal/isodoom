@@ -43,6 +43,9 @@ public sealed partial class MMenu
     /// <summary>The rows between a text page's items.</summary>
     public const short TEXTLINEHEIGHT = 10;
 
+    /// <summary>The row of a text page's hint (<c>LEFT / RIGHT: CHANGE</c>), below its items.</summary>
+    public const int TEXTHINTY = 188;
+
     /// <summary>Where a text page's values start.</summary>
     public const int VALUEX = 176;
 
@@ -78,6 +81,7 @@ public sealed partial class MMenu
         {
             ("video", "VIDEO", SettingPage.Video, 'v'),
             ("gameplay", "GAMEPLAY", SettingPage.Gameplay, 'g'),
+            ("walls", "WALLS", SettingPage.Walls, 'w'), // T6.13p: off the gameplay page, which no longer fitted the screen
             ("sprites", "SPRITES", SettingPage.Sprites, 's'),
             ("hud", "HUD", SettingPage.Hud, 'h'),
             ("soundsetup", "SOUND", SettingPage.Sound, 'u'), // T7.8g: the volumes and the music's chip
@@ -229,7 +233,7 @@ public sealed partial class MMenu
         bool bindings = BindingDefs.Exists(b => b.Def == def);
         string hint = bindings ? "ENTER: BIND   DEL / PAD X: CLEAR" : def.menuitems.Length > 0 && Array.Exists(def.menuitems, i => i.status == 2) ? "LEFT / RIGHT: CHANGE" : "";
         if (hint.Length > 0)
-            M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(hint) / 2, 188, hint);
+            M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(hint) / 2, TEXTHINTY, hint);
     }
 
     /// <summary>A text page (T7.3): its title, each item's text and value, the cursor; or the wait for an input to bind.</summary>

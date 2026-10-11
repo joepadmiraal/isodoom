@@ -59,7 +59,7 @@ public class WallSectionTests
         (3, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         (4, 0, Middle, "BRKPNL", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         (5, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling, 8), 0),
-        (6, 0, Middle, "BRKPNL", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
+        (6, 0, Middle, "SW1BRCOM", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         (7, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         // L8: room C | closed door D.
         (8, 0, Upper, "PANEL", P(BackCeiling), P(FrontCeiling), P(BackCeiling, 72), 0),

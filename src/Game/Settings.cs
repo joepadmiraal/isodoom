@@ -6,7 +6,7 @@ using System.Linq;
 namespace IsoDoom.Game;
 
 /// <summary>The options menu's pages of settings (T7.3, SPEC §8).</summary>
-public enum SettingPage { Video, Gameplay, Sprites, Hud, Controls, Sound }
+public enum SettingPage { Video, Gameplay, Sprites, Hud, Controls, Sound, Walls }
 
 /// <summary>
 /// One setting of <c>user://settings.cfg</c> (T7.3): its key
@@ -108,16 +108,19 @@ public static class Settings
         new("gameplay/cutaway_radius", "CUTAWAY RADIUS", SettingPage.Gameplay, "80", Range(48, 160, 16), "--level-cutaway-radius"),
         new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", _onOff, "--level-cutaway-cursor"),
         new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", ["player", "none", "camera"], "--level-light"),
-        new("gameplay/door_lids", "DOOR LIDS", SettingPage.Gameplay, "on", _onOff, "--level-door-lids"),
-        new("gameplay/wall_caps", "WALL TOPS", SettingPage.Gameplay, "on", _onOff, "--level-wall-caps"),
-        new("gameplay/upper_walls", "UPPER WALLS", SettingPage.Gameplay, "doors", ["doors", "all"], "--level-upper-walls"),
-        new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Gameplay, "mirror", ["mirror", "off"], "--level-masked-back"),
         new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", _onOff, "--level-weapon-light"),
         new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "on", _onOff, "--level-palette-effects"),
         new("gameplay/tracers", "SHOT TRACERS", SettingPage.Gameplay, "player", ["player", "all", "off"], "--level-tracers"),
         new("gameplay/aim_marker", "AIM MARKER", SettingPage.Gameplay, "pad", ["pad", "on", "off"], "--level-aim-marker"),
         new("gameplay/fog", "FOG OF WAR", SettingPage.Gameplay, "hide", ["hide", "dim", "off"], "--level-fog"),
         new("gameplay/fog_things", "FOG MONSTERS", SettingPage.Gameplay, "seen", ["seen", "sight"], "--level-fog-things"),
+
+        // walls (the level's look under the game camera; the keys stay in gameplay, where they were first)
+        new("gameplay/door_lids", "DOOR LIDS", SettingPage.Walls, "on", _onOff, "--level-door-lids"),
+        new("gameplay/wall_caps", "WALL TOPS", SettingPage.Walls, "on", _onOff, "--level-wall-caps"),
+        new("gameplay/upper_walls", "UPPER WALLS", SettingPage.Walls, "doors", ["doors", "all"], "--level-upper-walls"),
+        new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Walls, "mirror", ["mirror", "off"], "--level-masked-back"),
+        new("gameplay/switch_markers", "SWITCH MARKERS", SettingPage.Walls, "on", _onOff, "--level-switch-markers"),
 
         // sprites (readability)
         new("sprites/tilt", "TILT", SettingPage.Sprites, "full", ["full", "half", "off"], "--level-sprite-tilt"),

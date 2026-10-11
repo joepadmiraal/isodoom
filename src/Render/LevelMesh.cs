@@ -80,6 +80,12 @@ namespace IsoDoom.Render;
 /// data texture): each gets its quads again above its ceiling
 /// (<see cref="KindWallExtension"/>), and their caps go there.
 /// <see cref="SetWallCaps"/> turns them off, extensions included.</item>
+/// <item><b>Switch markers</b> (T6.13p): a decal on the floor in front of each
+/// switch side (<see cref="SwitchMarkers"/>; <see cref="KindSwitchMarker"/>),
+/// which the vertex shader places just above its sector's floor while the
+/// wall faces away from the camera and has a height, showing the switch's
+/// texture (its current one, from <c>side_textures</c>) laid back onto the
+/// floor. <see cref="SetSwitchMarkers"/> turns them off.</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -112,9 +118,11 @@ public sealed class LevelMesh
     /// <see cref="KindWallExtension"/> (T6.13e) is a quad of an island's one-sided
     /// wall again, from its sector's ceiling up to the island's top (<c>CUSTOM0.w</c>
     /// the island), textured as the wall goes on.
+    /// <see cref="KindSwitchMarker"/> (T6.13p) is a piece of a switch side's marker
+    /// (<see cref="SwitchMarkers"/>), placed on its sector's floor.
     /// </summary>
     public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7,
-        KindWallExtension = 8;
+        KindWallExtension = 8, KindSwitchMarker = 9;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -161,14 +169,15 @@ public sealed class LevelMesh
     private bool _infoDirty;
     private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
 
-    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, WallCaps caps, Textures textures, int[] textureSlot,
-        List<string> slotNames, TextureAtlas atlas, Image sectorImage)
+    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, WallCaps caps, SwitchMarkers markers, Textures textures,
+        int[] textureSlot, List<string> slotNames, TextureAtlas atlas, Image sectorImage)
     {
         Level = level;
         Walls = walls;
         Floors = floors;
         Lids = lids;
         Caps = caps;
+        Markers = markers;
         Pieces = WallPieces.Build(level, floors);
         foreach (WallSection s in walls.Sections)
         {
@@ -212,6 +221,9 @@ public sealed class LevelMesh
 
     /// <summary>The wall caps (T6.13e), in their sectors' chunks.</summary>
     public WallCaps Caps { get; }
+
+    /// <summary>The switch markers (T6.13p), in their sectors' chunks.</summary>
+    public SwitchMarkers Markers { get; }
 
     /// <summary>The quads of every side (per seg, on the floor's corners, with each seg's fake contrast; T2.9): one wall quad per piece of each drawn section.</summary>
     public WallPieces Pieces { get; }
@@ -298,6 +310,9 @@ public sealed class LevelMesh
     /// <summary>Number of wall cap triangles (T6.13e; each also twice more as cutaway caps).</summary>
     public int WallCapTriangleCount { get; private set; }
 
+    /// <summary>Number of switch marker triangles (T6.13p, <see cref="KindSwitchMarker"/>).</summary>
+    public int SwitchMarkerTriangleCount { get; private set; }
+
     /// <summary>Number of quads that draw the islands' walls on above their ceilings (T6.13e, <see cref="KindWallExtension"/>).</summary>
     public int WallExtensionQuads { get; private set; }
 
@@ -331,17 +346,20 @@ public sealed class LevelMesh
     /// sequences, <c>IsoDoom.Sim.PicAnims</c>): when the level draws one
     /// texture of a group, the atlas gets all of them (the ones the WAD has;
     /// SPEC §12 T5.1). <paramref name="flatGroups"/> are the same for floor
-    /// flats (the animated flat sequences, T5.7).
+    /// flats (the animated flat sequences, T5.7). <paramref name="switchPairs"/>
+    /// are the switch textures (off, on; p_switch.c <c>alphSwitchList</c>'s for
+    /// the game), whose sides get a marker (T6.13p, <see cref="SwitchMarkers"/>).
     /// </summary>
     public static LevelMesh Build(WadArchive wad, Level level, Textures textures, Playpal playpal, Colormap colormap,
         TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla, IEnumerable<IReadOnlyList<string>>? textureGroups = null,
-        IEnumerable<IReadOnlyList<string>>? flatGroups = null)
+        IEnumerable<IReadOnlyList<string>>? flatGroups = null, IEnumerable<(string Off, string On)>? switchPairs = null)
     {
         var walls = WallSections.Build(level, textures);
         var polygons = SubsectorPolygons.Build(level);
         var floors = FloorTriangles.Build(level, polygons);
         var lids = DoorLids.Build(level, floors);
         var caps = WallCaps.Build(level, polygons);
+        var markers = SwitchMarkers.Build(walls, polygons, SwitchRows(textures, walls, switchPairs, compositeMode));
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
         var images = new List<IndexedImage>();
@@ -422,7 +440,7 @@ public sealed class LevelMesh
             throw new WadFormatException($"{level.Name}: nothing to draw");
         var atlas = TextureAtlas.Build(images);
 
-        var mesh = new LevelMesh(level, walls, floors, lids, caps, textures, textureSlot, names, atlas,
+        var mesh = new LevelMesh(level, walls, floors, lids, caps, markers, textures, textureSlot, names, atlas,
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
         foreach ((string? name, int slot) in flatSlot)
             mesh._flatSlot[name] = slot;
@@ -431,6 +449,30 @@ public sealed class LevelMesh
         mesh.CreateTextures(playpal, colormap);
         mesh.BuildChunks();
         return mesh;
+    }
+
+    /// <summary>
+    /// The rows each switch texture's marker shows (T6.13p, <see cref="SwitchMarkers.Band"/>),
+    /// by name: both textures of every pair (both in the WAD) one of which a section of <paramref name="walls"/> draws.
+    /// </summary>
+    public static Dictionary<string, (int Top, int Bottom)> SwitchRows(Textures textures, WallSections walls, IEnumerable<(string Off, string On)>? pairs,
+        TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla)
+    {
+        var rows = new Dictionary<string, (int Top, int Bottom)>(StringComparer.OrdinalIgnoreCase);
+        var drawn = new HashSet<int>();
+        foreach (WallSection s in walls.Sections)
+        {
+            if (IsDrawn(s))
+                drawn.Add(s.Texture);
+        }
+        foreach ((string off, string on) in pairs ?? [])
+        {
+            int a = textures.R_CheckTextureNumForName(off), b = textures.R_CheckTextureNumForName(on);
+            if (a <= 0 || b <= 0 || (!drawn.Contains(a) && !drawn.Contains(b)))
+                continue;
+            rows[off] = rows[on] = SwitchMarkers.Band(textures.R_GenerateComposite(a, compositeMode), textures.R_GenerateComposite(b, compositeMode));
+        }
+        return rows;
     }
 
     /// <summary>Whether the meshes draw <paramref name="s"/>: every section with a texture (<see cref="IsMasked"/> ones in the masked pass).</summary>
@@ -582,6 +624,16 @@ public sealed class LevelMesh
     {
         CapMode = mode;
         SetParameter("wall_caps", (int)mode);
+    }
+
+    /// <summary>Whether the switch markers are drawn (T6.13p), as last set (<see cref="SetSwitchMarkers"/>; on until set).</summary>
+    public SwitchMarkerMode MarkerMode { get; private set; } = SwitchMarkerMode.On;
+
+    /// <summary>Turns the switch markers (T6.13p, <see cref="Markers"/>) on or off.</summary>
+    public void SetSwitchMarkers(SwitchMarkerMode mode)
+    {
+        MarkerMode = mode;
+        SetParameter("switch_markers", (int)mode);
     }
 
     /// <summary>Which upper walls are drawn, as last set (<see cref="SetUpperWalls"/>; <see cref="UpperWallMode.Doors"/> until set).</summary>
@@ -1023,6 +1075,7 @@ public sealed class LevelMesh
         SetCutaway(Cutaway);
         SetDoorLids(LidMode);
         SetWallCaps(CapMode);
+        SetSwitchMarkers(MarkerMode);
         SetUpperWalls(UpperMode);
         SetFog(FogMode);
         SetFogDim(FogDimLook);
@@ -1183,6 +1236,30 @@ public sealed class LevelMesh
                     if (centre < 0)
                         WallCapTriangleCount += piece.Length - 2;
                 }
+            }
+        }
+
+        // T6.13p: each switch side's marker, on its sector's floor.
+        foreach (SwitchMarker marker in Markers.Markers)
+        {
+            WallSection s = marker.Section;
+            Chunk c = ChunkOf(marker.Sector);
+            var c0 = new Vector4(KindSwitchMarker, SidePartId(s), marker.Sector, s.BackSector?.Index ?? -1);
+            var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
+            var c2 = new Vector4(0, 0, 0, (float)Math.Atan2(marker.Dy, marker.Dx));
+            float column = Units(s.TextureOffset);
+            foreach ((double X, double Y)[] piece in marker.Pieces)
+            {
+                int first = c.Vertices.Count;
+                foreach ((double x, double y) in piece)
+                {
+                    var uv = new Vector2(column + (float)marker.Column(x, y), (float)marker.Row(x, y));
+                    c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, c1, c2);
+                }
+                // A fan, clockwise in map space as the floors.
+                for (int i = 1; i + 1 < piece.Length; i++)
+                    c.Indices.AddRange([first, first + i, first + i + 1]);
+                SwitchMarkerTriangleCount += piece.Length - 2;
             }
         }
 

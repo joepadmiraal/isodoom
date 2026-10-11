@@ -39,13 +39,15 @@
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
 //              4 a floor's cutaway cap, 5 a lid, 6 a wall cap, 7 a wall cap's cutaway cap, 8 an
-//              island's wall above its ceiling), side
+//              island's wall above its ceiling, 9 a switch marker), side
 //              part (walls and wall caps: the side_textures texel; floors 0, their slot is the
 //              sector's), front sector, back sector (-1: none; for a cap its cut centre, 0
 //              player, 1 cursor; for kind 8 its island)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   wall caps: UV = (texture column, distance behind the wall); CUSTOM1.x the wall's island
 //              (-1: none); CUSTOM2.w the wall's direction
+//   switch markers: UV = (texture column, texture row); CUSTOM1 the switch section's planes
+//              as walls'; CUSTOM2.w its direction
 //   walls:     UV.x = texture column (textureoffset at the build + distance from V1; the
 //              side's scroll is added, T5.7), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
@@ -141,6 +143,16 @@
 // draws the wall on from its sector's ceiling up to that top, its texture
 // going on upwards (collapsed with the caps off, or where the ceiling is the top).
 //
+// Switch markers (T6.13p; IsoDoom.Render.SwitchMarkers, `switch_markers` 0 off,
+// 1 on): kind 9 is a piece of the decal on the floor in front of a switch side,
+// placed SWITCH_MARKER_LIFT above its sector's floor and drawn while the wall
+// does not face the camera (facing away, its quad culled; edge-on; or seen
+// straight down) and the switch's section has a height (WallSection.Span, as
+// the walls'). It shows the side's texture of that part (its current one, so a
+// pressed switch shows its other texture), UV its column and row (the wall laid
+// back onto the floor, mirrored so that it reads from behind the wall), lit as
+// a floor of the sector (v_kind 3, not a wall cap: v_wall_normal zero).
+//
 // Fog of war (T6.13l; IsoDoom.Render.FogOfWar, `fog_mode` 0 off, 1 dim, 2
 // hide): `sector_fog` (R8, one texel per sector, the same layout) holds each
 // sector's IsoDoom.Render.SectorSight (0 unseen, 1 discovered, 2 visible).
@@ -167,6 +179,8 @@ const float MAX_DISTANCE = 4096.0;
 const float CUT_PLANE_MARGIN = 1.0;
 // IsoDoom.Render.Cutaway.CapDarken: light levels (of 16) a dark cap loses.
 const int CAP_DARKEN = 4;
+// IsoDoom.Render.SwitchMarkers.Lift: a switch marker's height above its floor (map units).
+const float SWITCH_MARKER_LIFT = 1.0;
 
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
@@ -212,6 +226,8 @@ uniform int lids = 1;
 uniform int cut_doors = 0;
 // The wall caps (T6.13e): 0 off, 1 on.
 uniform int wall_caps = 1;
+// The switch markers (T6.13p): 0 off, 1 on.
+uniform int switch_markers = 1;
 // The upper walls: 0 all, 1 only over the sectors that keep them.
 uniform int upper_walls = 1;
 // The fog of war (T6.13l): 0 off, 1 dim, 2 hide.
@@ -236,6 +252,7 @@ varying float v_height;
 // The surface's normal (map axes): towards the front sector for walls, up for floors.
 varying flat vec3 v_normal;
 // A wall cap's wall (v_kind 3): its normal towards its sector (map axes); v_texcoord.y is how far behind it.
+// Zero for a switch marker (v_kind 3 too, T6.13p).
 varying flat vec2 v_wall_normal;
 varying float v_depth;
 
@@ -280,7 +297,37 @@ void vertex() {
 	bool unseen = max(fog_state(front_id), fog_back) == 0;
 	v_fog = unseen && fog_mode == 1 ? 1 : 0;
 	bool fog_hides = unseen && fog_mode == 2;
-	if (kind == 6 || kind == 7) {
+	if (kind == 9) {
+		// T6.13p: a switch marker, on its sector's floor.
+		vec4 m_front = data_texel(sector_data, front_id);
+		int m_back_id = int(CUSTOM0.w);
+		vec4 m_back = m_back_id >= 0 ? data_texel(sector_data, m_back_id) : m_front;
+		vec4 m_side = data_texel(side_textures, int(CUSTOM0.y));
+		int m_slot = int(floor(m_side.r + 0.5));
+		// The switch's span (WallSection.Span, as the walls').
+		float m_bottom = max(plane_height(int(CUSTOM1.x), m_front, m_back) + CUSTOM1.y, m_front.r);
+		float m_top = min(plane_height(int(CUSTOM1.z), m_front, m_back) + CUSTOM1.w, m_front.g);
+		// Towards the front sector, and the view direction towards the camera, both map axes.
+		vec2 n = vec2(sin(CUSTOM2.w), -cos(CUSTOM2.w));
+		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
+		vec2 to_camera = vec2(view_back.x, -view_back.z);
+		bool m_collapse = switch_markers == 0 || m_slot < 0 || m_top <= m_bottom || dot(n, to_camera) > 0.001;
+		v_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
+		v_rect = m_slot >= 0 ? ivec4(data_texel(texture_info, m_slot) + 0.5) : ivec4(0);
+		v_kind = 3;
+		v_lightnum = (clamp(int(m_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight;
+		v_texcoord = vec2(UV.x + m_side.g, UV.y);
+		v_normal = vec3(0.0, 0.0, 1.0);
+		v_wall_normal = vec2(0.0);
+		if (m_collapse || fog_hides) {
+			VERTEX.xz = vec2(0.0);
+		}
+		float m_z = m_front.r + SWITCH_MARKER_LIFT;
+		VERTEX.y = m_z / MAP_UNITS_PER_METRE;
+		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+		v_height = m_z;
+		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+	} else if (kind == 6 || kind == 7) {
 		// T6.13e: a wall cap (kind 6) or its cutaway cap (kind 7, CUSTOM0.w its centre).
 		vec4 cap_front = data_texel(sector_data, front_id);
 		vec4 cap_lid = data_texel(sector_lids, front_id);
@@ -456,7 +503,7 @@ bool cut_hides(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
 // cut by centre c, the centre behind the wall's plane (it faces the camera).
 // Always true for any other surface.
 bool cap_wall_cut(vec3 p, vec4 c) {
-	if (v_kind != 3) {
+	if (v_kind != 3 || v_wall_normal == vec2(0.0)) {
 		return true;
 	}
 	vec2 a = c.xy;

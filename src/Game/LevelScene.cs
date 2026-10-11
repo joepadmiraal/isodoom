@@ -80,6 +80,9 @@ namespace IsoDoom.Game;
 /// <c>--level-wall-caps=on|off</c> (T6.13e, <see cref="WallCapMode"/>: a top
 /// on each one-sided wall, the void behind it to a depth of 16 units, so walls
 /// read as blocks; default on);
+/// <c>--level-switch-markers=on|off</c> (T6.13p, <see cref="SwitchMarkerMode"/>:
+/// a decal of the switch on the floor in front of each switch on a wall facing
+/// away from the camera; default on);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -191,6 +194,9 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Whether the one-sided walls get a top (T6.13e, <c>--level-wall-caps</c>, key U); applied to every level.</summary>
     public WallCapMode WallCaps { get; private set; } = WallCapMode.On;
+
+    /// <summary>Whether the switches on walls facing away get a marker on the floor (T6.13p, <c>--level-switch-markers</c>, key R); applied to every level.</summary>
+    public SwitchMarkerMode SwitchMarkers { get; private set; } = SwitchMarkerMode.On;
 
     /// <summary>Which upper walls are drawn (<c>--level-upper-walls</c>, key I); applied to every level.</summary>
     public UpperWallMode UpperWalls { get; private set; } = UpperWallMode.Doors;
@@ -496,7 +502,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -636,6 +642,13 @@ public partial class LevelScene : Node3D, IGameHost
                     "on" => WallCapMode.On,
                     "off" or "vanilla" => WallCapMode.Off,
                     _ => throw new ArgumentException($"--level-wall-caps: \"{caps}\" (on or off)"),
+                };
+            if (WadLocator.GetUserArg("--level-switch-markers") is string markers)
+                SwitchMarkers = markers switch
+                {
+                    "on" => SwitchMarkerMode.On,
+                    "off" or "vanilla" => SwitchMarkerMode.Off,
+                    _ => throw new ArgumentException($"--level-switch-markers: \"{markers}\" (on or off)"),
                 };
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
@@ -1114,6 +1127,10 @@ public partial class LevelScene : Node3D, IGameHost
             case Key.U:
                 WallCaps = WallCaps == WallCapMode.On ? WallCapMode.Off : WallCapMode.On;
                 Mesh?.SetWallCaps(WallCaps);
+                break;
+            case Key.R:
+                SwitchMarkers = SwitchMarkers == SwitchMarkerMode.On ? SwitchMarkerMode.Off : SwitchMarkerMode.On;
+                Mesh?.SetSwitchMarkers(SwitchMarkers);
                 break;
             case Key.I:
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
@@ -2230,6 +2247,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("door lids: off (J)\n");
         if (Mesh is { CapMode: WallCapMode.Off })
             text.Append("wall caps: off (U)\n");
+        if (Mesh is { MarkerMode: SwitchMarkerMode.Off })
+            text.Append("switch markers: off (R)\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");
         text.Append(_status);
@@ -2425,13 +2444,14 @@ public partial class LevelScene : Node3D, IGameHost
         var level = Level.Load(wad, map);
         (List<string[]> animTextures, List<string[]> animFlats) = AnimGroups(wad);
         var mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!,
-            textureGroups: System.Linq.Enumerable.Concat(SwitchGroups(GameMode), animTextures), flatGroups: animFlats);
+            textureGroups: System.Linq.Enumerable.Concat(SwitchGroups(GameMode), animTextures), flatGroups: animFlats, switchPairs: SwitchPairs(GameMode));
         if (WadLocator.GetUserArg("--level-tiling") is string tiling)
             mesh.SetWallTiling(tiling == "size" ? WallTextureTiling.TextureSize : WallTextureTiling.Vanilla);
         mesh.SetLightDiminishing(_lightMode);
         mesh.SetMaskedBackFaces(MaskedBacks);
         mesh.SetDoorLids(DoorLids);
         mesh.SetWallCaps(WallCaps);
+        mesh.SetSwitchMarkers(SwitchMarkers);
         mesh.SetUpperWalls(UpperWalls);
         mesh.SetFogDim(_fogDim);
         if (WadLocator.GetUserArg("--level-light-near") is string near)
@@ -2512,6 +2532,13 @@ public partial class LevelScene : Node3D, IGameHost
     {
         foreach (switchlist_t s in Switches.For(mode))
             yield return new[] { s.name1, s.name2 };
+    }
+
+    /// <summary>The switch pairs of <paramref name="mode"/> (off, on), whose sides get a marker (T6.13p, <see cref="LevelMesh.Build"/>).</summary>
+    public static IEnumerable<(string Off, string On)> SwitchPairs(GameMode mode)
+    {
+        foreach (switchlist_t s in Switches.For(mode))
+            yield return (s.name1, s.name2);
     }
 
     /// <summary>

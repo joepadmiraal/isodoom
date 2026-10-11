@@ -609,6 +609,11 @@ public partial class LevelScene : ISetupHost
             WallCaps = ParseOnOff(s, "gameplay/wall_caps") ? WallCapMode.On : WallCapMode.Off;
             Mesh?.SetWallCaps(WallCaps);
         });
+        Add("gameplay/switch_markers", () => OnOff(SwitchMarkers == SwitchMarkerMode.On), s =>
+        {
+            SwitchMarkers = ParseOnOff(s, "gameplay/switch_markers") ? SwitchMarkerMode.On : SwitchMarkerMode.Off;
+            Mesh?.SetSwitchMarkers(SwitchMarkers);
+        });
         Add("gameplay/upper_walls", () => UpperWalls == UpperWallMode.All ? "all" : "doors", s =>
         {
             UpperWalls = ParseUpperWalls(s, "gameplay/upper_walls");
