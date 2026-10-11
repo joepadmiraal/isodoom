@@ -7,6 +7,10 @@ doom_20230531/*
 *.wad
 *.WAD
 
+# Screenshots of the game (WAD-derived: never commit them). Its .gdignore
+# stops Godot importing them.
+screenshots/
+
 # Godot
 .godot/
 export/
