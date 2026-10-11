@@ -83,6 +83,10 @@ namespace IsoDoom.Game;
 /// <c>--level-switch-markers=on|off</c> (T6.13p, <see cref="SwitchMarkerMode"/>:
 /// a decal of the switch on the floor in front of each switch on a wall facing
 /// away from the camera; default on);
+/// <c>--level-item-beams=off|keys|all</c> (T6.13r, <see cref="ItemBeamMode"/>:
+/// a thin beam rising from each pickup the level hides whole under the game
+/// camera, coloured by its kind; <c>keys</c> beams keys, weapons and power-ups
+/// only; default all);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -197,6 +201,17 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Whether the switches on walls facing away get a marker on the floor (T6.13p, <c>--level-switch-markers</c>, key R); applied to every level.</summary>
     public SwitchMarkerMode SwitchMarkers { get; private set; } = SwitchMarkerMode.On;
+
+    /// <summary>Which pickups get a beam while the level hides them under the game camera (T6.13r, <see cref="Render.ItemBeams"/>, <c>--level-item-beams</c>, key F).</summary>
+    public ItemBeamMode ItemBeams { get; set; } = ItemBeamMode.All;
+
+    /// <summary>The item beams (T6.13r) as <see cref="UpdateItemBeams"/> last set them.</summary>
+    public ItemBeams Beams { get; } = new() { Name = "ItemBeams" };
+
+    /// <summary>The item beams under any camera (the level check's, which has no game camera).</summary>
+    public bool BeamsEverywhere { get; set; }
+
+    private readonly List<ItemBeams.Beam> _beamScratch = [];
 
     /// <summary>Which upper walls are drawn (<c>--level-upper-walls</c>, key I); applied to every level.</summary>
     public UpperWallMode UpperWalls { get; private set; } = UpperWallMode.Doors;
@@ -502,7 +517,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   F item beams   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -554,6 +569,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(new WorldEnvironment { Environment = Environment });
         AddChild(_shotTracers); // in the tree from the start, so a failed load or the check still frees it at exit
         AddChild(_aimMarker);
+        AddChild(Beams);
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
         // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
@@ -650,6 +666,8 @@ public partial class LevelScene : Node3D, IGameHost
                     "off" or "vanilla" => SwitchMarkerMode.Off,
                     _ => throw new ArgumentException($"--level-switch-markers: \"{markers}\" (on or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-item-beams") is string beams)
+                ItemBeams = ItemKinds.Parse(beams, "--level-item-beams");
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
@@ -1132,6 +1150,9 @@ public partial class LevelScene : Node3D, IGameHost
                 SwitchMarkers = SwitchMarkers == SwitchMarkerMode.On ? SwitchMarkerMode.Off : SwitchMarkerMode.On;
                 Mesh?.SetSwitchMarkers(SwitchMarkers);
                 break;
+            case Key.F:
+                ItemBeams = ItemBeams switch { ItemBeamMode.All => ItemBeamMode.Keys, ItemBeamMode.Keys => ItemBeamMode.Off, _ => ItemBeamMode.All };
+                break;
             case Key.I:
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
                 Mesh?.SetUpperWalls(UpperWalls);
@@ -1194,6 +1215,7 @@ public partial class LevelScene : Node3D, IGameHost
                 UpdateAimMarker();
                 if (GetViewport().GetCamera3D() is Camera3D current)
                     Things?.UpdateRotations(current);
+                UpdateItemBeams();
                 Mesh.SetLightOrigin(LightOrigin());
                 UpdateCutaway();
                 UpdateFog();
@@ -1680,6 +1702,45 @@ public partial class LevelScene : Node3D, IGameHost
             (Vector3 feet, uint angle) = Interpolated(PlayerMobj!);
             _aimMarker.Place(feet, angle);
         }
+    }
+
+    /// <summary>
+    /// The item beams (T6.13r, <see cref="ItemBeams"/>): one for each drawn
+    /// pickup (<c>MF_SPECIAL</c>, dropped ones too) the mode beams, from its
+    /// billboard's place and frame (so after the rotations), under the game
+    /// camera (or <see cref="BeamsEverywhere"/>) on a level. The drawn mobjs
+    /// are those the fog shows (<see cref="FogShows"/>), so no beam reveals an
+    /// item in a sector the player has not discovered. Whether each shows is
+    /// the shader's: only while its item is hidden.
+    /// </summary>
+    public void UpdateItemBeams()
+    {
+        _beamScratch.Clear();
+        if (Mesh is { } mesh)
+            Beams.SetSprites(mesh.Sprites);
+        if (ItemBeams != ItemBeamMode.Off && (IsoActive || BeamsEverywhere) && _showThings && Things is { } things
+            && World is not null && GameState == gamestate_t.GS_LEVEL)
+        {
+            IReadOnlyList<ThingSprites.Entry> entries = things.Entries;
+            IReadOnlyList<ThingSprites.Shown> shown = things.ShownFrames;
+            for (int i = 0; i < _drawn.Count && i < entries.Count; i++)
+            {
+                mobj_t mo = _drawn[i];
+                ItemKind kind = ItemKinds.KindOf(mo.type);
+                if ((mo.flags & mobjflag_t.MF_SPECIAL) == 0 || !ItemKinds.Beamed(kind, ItemBeams))
+                    continue;
+                _beamScratch.Add(new ItemBeams.Beam(mo, kind, entries[i].MapPosition, shown[i].Slot, shown[i].Flip, entries[i].Radius, entries[i].Sector));
+            }
+        }
+        Beams.Set(_beamScratch);
+    }
+
+    /// <summary>The script's <c>beams</c> lines: each beamed item's type, kind, position and sector (whether it shows is the GPU's).</summary>
+    public IEnumerable<string> BeamsText()
+    {
+        yield return $"item beams: {ItemKinds.Name(ItemBeams)}, {Beams.Beams.Count} beamed item(s)";
+        foreach (ItemBeams.Beam b in Beams.Beams)
+            yield return $"  {b.Mobj.type} {b.Kind.ToString().ToLowerInvariant()} at ({b.MapPosition.X:F0}, {b.MapPosition.Y:F0}, {b.MapPosition.Z:F0}) sector {b.Sector}";
     }
 
     /// <summary>
@@ -2249,6 +2310,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("wall caps: off (U)\n");
         if (Mesh is { MarkerMode: SwitchMarkerMode.Off })
             text.Append("switch markers: off (R)\n");
+        if (ItemBeams != ItemBeamMode.All)
+            text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");
         text.Append(_status);
@@ -2519,6 +2582,7 @@ public partial class LevelScene : Node3D, IGameHost
         _cursorMarker?.Visible = false;
         _soundLog.Clear();
         _shotTracers.Clear();
+        Beams.Clear();
         _planeMoves.Clear();
     }
 
@@ -2624,6 +2688,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         Things = new ThingSprites { Name = "Things" };
         Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
+        Beams.Bind(SpriteAtlas);
         _drawn.Clear();
         PresentWorld(); // fills the entries from the mobjs
         Things.Visible = Things.Shadows.Visible = _showThings;

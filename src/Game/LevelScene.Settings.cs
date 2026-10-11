@@ -614,6 +614,7 @@ public partial class LevelScene : ISetupHost
             SwitchMarkers = ParseOnOff(s, "gameplay/switch_markers") ? SwitchMarkerMode.On : SwitchMarkerMode.Off;
             Mesh?.SetSwitchMarkers(SwitchMarkers);
         });
+        Add("gameplay/item_beams", () => ItemKinds.Name(ItemBeams), s => ItemBeams = ItemKinds.Parse(s, "gameplay/item_beams"));
         Add("gameplay/upper_walls", () => UpperWalls == UpperWallMode.All ? "all" : "doors", s =>
         {
             UpperWalls = ParseUpperWalls(s, "gameplay/upper_walls");

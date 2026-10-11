@@ -99,6 +99,9 @@ namespace IsoDoom.Game;
 /// style and its visible and discovered sector counts; <c>seen SECTOR
 /// unseen|discovered|visible</c> waits for them and fails unless the sector
 /// is in that state (the player looks after each tic and after <c>place</c>).
+/// T6.13r: <c>beams</c> waits for the queued tics and a frame and prints the
+/// item beams' mode and each beamed item (type, kind, position, sector);
+/// whether a beam shows is the GPU's (only while its item is hidden).
 /// <c>route FILE TICS</c> (T6.11) queues only the route's first TICS tics, so
 /// <c>tics TICS; shot FILE.png</c> captures the scene (and its HUD) after
 /// exactly that tic, as <c>tools/VanillaRef/routes.sh</c>'s <c>DUMP_HUD_TICS</c> does vanilla's.
@@ -483,6 +486,13 @@ public partial class LevelScript : Node
                         // T6.13l: waits for the queued tics; prints the fog's style and counts
                         await Drain();
                         GD.Print($"Level script: {_scene.FogText()}");
+                        break;
+                    case "beams":
+                        // T6.13r: waits for the queued tics and a frame; prints the beamed items
+                        await Drain();
+                        await Frames(1);
+                        foreach (string line in _scene.BeamsText())
+                            GD.Print($"Level script: {line}");
                         break;
                     case "seen":
                         {

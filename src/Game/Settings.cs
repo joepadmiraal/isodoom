@@ -131,6 +131,7 @@ public static class Settings
         new("sprites/hidden", "HIDE BEHIND WALLS", SettingPage.Sprites, "depth", ["depth", "upright"], "--level-sprite-hidden"),
         new("sprites/player_light", "PLAYER MIN LIGHT", SettingPage.Sprites, "128", ["off", "64", "96", "128", "160", "192", "255"], "--level-player-light"),
         new("sprites/fuzz", "FUZZ", SettingPage.Sprites, "on", _onOff, "--level-fuzz"),
+        new("gameplay/item_beams", "ITEM BEAMS", SettingPage.Sprites, "all", ["all", "keys", "off"], "--level-item-beams"), // T6.13r: the gameplay page is full
 
         // HUD (vanilla's screen size, messages and detail too)
         new("hud/mode", "SCREEN", SettingPage.Hud, "bar", ["bar", "full", "off"], "--level-hud"),

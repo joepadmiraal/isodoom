@@ -186,7 +186,10 @@ public partial class LevelCheck
         if (!fog.IsVisible(door.Index) || !fog.IsVisible(there.Index))
             Fail($"{where}: opened in the sim to {door.CeilingHeight >> Fixed.FRACBITS}: the door {fog.State(door.Index)}, sector {there.Index} across it {fog.State(there.Index)} (expected both visible)");
         else
+        {
             _fogDoors++;
+            CheckBeamsThroughDoor(where, fog, there); // T6.13r
+        }
         _scene.MovePlane(door.Index, true, floor, 16);
         for (int i = 0; i < 64 && door.CeilingHeight > door.FloorHeight; i++)
             _scene.Tic(cmd);

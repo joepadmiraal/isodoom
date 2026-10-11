@@ -208,6 +208,7 @@ public partial class LevelCheck : Godot.Node
             CheckCursorGround(m, map);
             CheckThings(m, map);
             CheckFog(m, map); // T6.13l: before the game loop moves the player
+            CheckBeamData(map); // T6.13r: the fog's start
             (int s, int v) = CheckChunks(m, map);
             sections += s;
             vertices += v;
@@ -267,6 +268,7 @@ public partial class LevelCheck : Godot.Node
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         PrintFog();
+        PrintBeams();
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
             + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
     }
@@ -1208,6 +1210,8 @@ public partial class LevelCheck : Godot.Node
         await WallCapCheck(m);
 
         await SwitchMarkerCheck(m); // T6.13p
+
+        await BeamCheck(m); // T6.13r
 
         await UpperWallCheck(m);
 

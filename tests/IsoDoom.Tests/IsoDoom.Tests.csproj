@@ -45,6 +45,7 @@
     <Compile Include="../../src/Render/WallCaps.cs" Link="Render/WallCaps.cs" />
     <Compile Include="../../src/Render/SwitchMarkers.cs" Link="Render/SwitchMarkers.cs" />
     <Compile Include="../../src/Render/FogOfWar.cs" Link="Render/FogOfWar.cs" />
+    <Compile Include="../../src/Render/ItemKinds.cs" Link="Render/ItemKinds.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
