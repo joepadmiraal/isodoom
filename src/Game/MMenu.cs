@@ -62,7 +62,7 @@ public sealed partial class MMenu
     /// <summary>Not vanilla: the pad's A and the left mouse button: <see cref="key_menu_forward"/> in a menu, <see cref="key_menu_confirm"/> on a message.</summary>
     public const int KEY_PAD_ACCEPT = 0x100;
 
-    /// <summary>Not vanilla: the pad's B and the right mouse button: <see cref="key_menu_back"/> in a menu, <see cref="key_menu_abort"/> on a message.</summary>
+    /// <summary>Not vanilla: the pad's B and the right mouse button: <see cref="key_menu_back"/> in a menu (<see cref="key_menu_activate"/>, closing the menus, on one with none before it: the main menu), <see cref="key_menu_abort"/> on a message.</summary>
     public const int KEY_PAD_CANCEL = 0x101;
 
     // m_controls.c (Chocolate Doom): the menu keys' defaults
@@ -1037,7 +1037,8 @@ public sealed partial class MMenu
         if (key == KEY_PAD_ACCEPT)
             key = messageToPrint ? key_menu_confirm : key_menu_forward;
         else if (key == KEY_PAD_CANCEL)
-            key = messageToPrint ? key_menu_abort : key_menu_back;
+            // on a menu with none before it (the main menu, or one the menus open straight to), B closes the menus as Escape
+            key = messageToPrint ? key_menu_abort : currentMenu.prevMenu is null ? key_menu_activate : key_menu_back;
 
         // Take care of any messages that need input
         if (messageToPrint)

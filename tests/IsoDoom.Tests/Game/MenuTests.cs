@@ -176,6 +176,9 @@ public class MenuTests
         Assert.Equal("episode", menu.StateName);
         Keys(menu, MMenu.KEY_PAD_CANCEL);
         Assert.Equal("main", menu.StateName);
+        Keys(menu, MMenu.KEY_PAD_CANCEL); // not vanilla: B on the main menu closes it, as Escape
+        Assert.Equal("closed", menu.StateName);
+        Keys(menu, Esc);
         Keys(menu, MMenu.KEY_PAD_ACCEPT, MMenu.KEY_PAD_ACCEPT, Down, Down, MMenu.KEY_PAD_ACCEPT);
         Assert.Equal(MMenu.NIGHTMARE, menu.messageString);
         Keys(menu, MMenu.KEY_PAD_CANCEL); // no
