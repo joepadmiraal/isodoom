@@ -1167,8 +1167,9 @@ public partial class LevelCheck
     /// camera), at least 2 × <paramref name="halfSpan"/> + 128 units long, in a
     /// sector at least 96 units high, and the spot <paramref name="distance"/>
     /// (of the wall's normal) in front of its middle, in its sector, with open
-    /// floor (only that sector, no other line) for 96 units towards the camera
-    /// across the billboard's width.
+    /// floor (only that sector, no other line) towards the camera across the
+    /// billboard's width, for 96 units or as far as a wall of the sector's
+    /// height would hide the floor at the game camera's pitch.
     /// </summary>
     private static WallSpot? FacingWall(LevelMesh m, Vector2 ground, Vector2 right, float halfSpan, Func<Vector2, float> distance) =>
         FacingWalls(m, ground, right, halfSpan, distance).Cast<WallSpot?>().FirstOrDefault();
@@ -1191,11 +1192,17 @@ public partial class LevelCheck
             Vector2 at = (a + b) / 2 + normal * d;
             if (m.Level.R_PointInSubsector((int)(at.X * 65536), (int)(at.Y * 65536)).Sector != sector)
                 continue;
+            // T6.13q: as far towards the camera as a wall the sector's height would hide the floor from it (E1M3's
+            // line 386, 336 units high, 80 in front of line 367), every 8 units across the billboard's width.
+            float height = (sector.CeilingHeight - sector.FloorHeight) / 65536f;
+            float clear = Math.Max(96, height / MathF.Tan(Mathf.DegToRad(IsoCamera.DefaultPitch)));
             bool open = true;
-            foreach (float side in new[] { -halfSpan, 0, halfSpan })
+            int sides = (int)Math.Ceiling(2 * halfSpan / 8);
+            for (int i = 0; i <= sides && open; i++)
             {
-                Vector2 start = at + right * side, end = start + ground * 96;
-                for (int k = 0; k <= 96 && open; k += 4)
+                float side = -halfSpan + 2 * halfSpan * i / sides;
+                Vector2 start = at + right * side, end = start + ground * clear;
+                for (int k = 0; k <= clear && open; k += 4)
                 {
                     Vector2 p = start + ground * k;
                     open = m.Level.R_PointInSubsector((int)(p.X * 65536), (int)(p.Y * 65536)).Sector == sector;
@@ -1408,9 +1415,9 @@ public partial class LevelCheck
         things.UpdateRotations(true, -basis.Z, Vector3.Zero);
         const float Pull = SpriteSettings.DefaultWallPull;
 
-        // The widest thing standing on its floor, with a radius over the pull (+ 4) and at most 140 rows above its origin.
-        int thing = -1;
-        float widest = 0;
+        // The widest thing standing on its floor, with a radius over the pull (+ 4) and at most 140 rows above its origin,
+        // whose columns reach a wall facing the camera.
+        var candidates = new List<(int Index, float Span)>();
         for (int i = 0; i < things.Entries.Count; i++)
         {
             ThingSprites.Entry e = things.Entries[i];
@@ -1418,37 +1425,52 @@ public partial class LevelCheck
             if (s.Slot < 0 || e.Radius < Pull + 4 || e.MapPosition.Z != m.Level.Sectors[e.Sector].FloorHeight / 65536f)
                 continue;
             IndexedImage image = atlas.Images[s.Slot];
-            float span = Math.Max(image.LeftOffset, image.Width - image.LeftOffset);
-            if (image.TopOffset <= 140 && span > widest)
-            {
-                widest = span;
-                thing = i;
-            }
+            if (image.TopOffset <= 140)
+                candidates.Add((i, Math.Max(image.LeftOffset, image.Width - image.LeftOffset)));
         }
-        if (thing < 0)
+        if (candidates.Count == 0)
         {
             Fail($"{map}: no thing on a floor with a radius over {Pull + 4} for the wall pull view");
             return;
         }
-        ThingSprites.Entry original = things.Entries[thing];
-        IndexedImage patch = atlas.Images[things.ShownFrames[thing].Slot];
         float grow = m.Sprites.Outline >= 0 ? 1 : 0;
-        // Sprite x runs from -leftoffset to width - leftoffset along the screen's right (the outline adds a texel).
-        float leftReach = patch.LeftOffset + grow, rightReach = patch.Width - patch.LeftOffset + grow;
-        float halfSpan = Math.Max(leftReach, rightReach) + 2;
-        // The columns towards the wall reach `reach` (along the billboard) × |right · normal| behind the foot;
-        // the pull moves the billboard pull × facing nearer: 2 units short of that.
-        float Reach(Vector2 normal) => (right.Dot(normal) < 0 ? rightReach : leftReach) * MathF.Abs(right.Dot(normal));
-        if (FacingWall(m, ground, right, halfSpan, normal => Reach(normal) - Pull * normal.Dot(ground) + 2) is not { } wall)
+        int thing = -1;
+        IndexedImage patch = null!;
+        float leftReach = 0, rightReach = 0;
+        WallSpot wall = default;
+        string? why = null;
+        // A stable sort: the widest first, the first spawned among equals.
+        foreach ((int index, float _) in candidates.OrderByDescending(c => c.Span))
         {
-            Fail($"{map}: no one-sided wall facing the game camera with open floor in front for the wall pull view");
+            IndexedImage image = atlas.Images[things.ShownFrames[index].Slot];
+            // Sprite x runs from -leftoffset to width - leftoffset along the screen's right (the outline adds a texel).
+            float l = image.LeftOffset + grow, r = image.Width - image.LeftOffset + grow;
+            float halfSpan = Math.Max(l, r) + 2;
+            // The columns towards the wall reach `reach` (along the billboard) × |right · normal| behind the foot;
+            // the pull moves the billboard pull × facing nearer: 2 units short of that.
+            float Reach(Vector2 normal) => (right.Dot(normal) < 0 ? r : l) * MathF.Abs(right.Dot(normal));
+            // T6.13q: the first wall the columns reach (E1M3's first, line 217, faces the camera squarely: they reach none of it).
+            List<WallSpot> spots = FacingWalls(m, ground, right, halfSpan, normal => Reach(normal) - Pull * normal.Dot(ground) + 2).ToList();
+            if (spots.Count == 0)
+            {
+                why ??= $"{map}: no one-sided wall facing the game camera with open floor in front for the wall pull view";
+                continue;
+            }
+            int reached = spots.FindIndex(w => w.Distance >= 1);
+            if (reached < 0)
+            {
+                why ??= $"{map}: the wall pull view's thing ({SpriteName(things.Entries[index])}) is too narrow to reach a wall ({spots[0].Distance:F1} units in front of line {spots[0].Line.Index})";
+                continue;
+            }
+            (thing, patch, leftReach, rightReach, wall) = (index, image, l, r, spots[reached]);
+            break;
+        }
+        if (thing < 0)
+        {
+            Fail(why!);
             return;
         }
-        if (wall.Distance < 1)
-        {
-            Fail($"{map}: the wall pull view's thing ({SpriteName(original)}) is too narrow to reach the wall ({wall.Distance:F1} units in front)");
-            return;
-        }
+        ThingSprites.Entry original = things.Entries[thing];
 
         SpriteSettings settings = m.Sprites;
         SpriteSettings Pulled(float units) => settings with { Tilt = 1, TiltDepth = SpriteTiltDepth.Upright, WallPull = units };

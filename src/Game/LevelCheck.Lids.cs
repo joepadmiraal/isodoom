@@ -82,6 +82,10 @@ public partial class LevelCheck
             .Where(i => DoorLids.Shows(lids[i], m.Level.Sectors[i].CeilingHeight / 65536f)
                 && lids[i] - m.Level.Sectors[i].FloorHeight / 65536f >= settings.Height + 16)
             .OrderBy(i => m.Level.Sectors[i].CeilingHeight > m.Level.Sectors[i].FloorHeight ? 1 : 0);
+        // T6.13q: a door's view must also show the doors-kept rule (at least 50 pixels the cut view clears or caps
+        // kept) and its lid (50 pixels with the cutaway off); a door with a wall of another sector cut in front of it
+        // (E1M3's sector 2) is only a fallback, after one whose lid the walls hide (E1M3's sector 30).
+        (Sector Door, Line Line, Vector3 Centre, CutClasses Cut, CutClasses? Kept)? hidden = null, fallback = null;
         int tried = 0;
         foreach (int i in candidates)
         {
@@ -111,52 +115,95 @@ public partial class LevelCheck
                 CutClasses c = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings, toCamera, size.X, size.Y, lids);
                 if (c.Capped < 50)
                     continue;
-                string what = $"{map}: lid of sector {door.Index} (lid at {lids[i]:F0}, ceiling {door.CeilingHeight >> Fixed.FRACBITS}), centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0}) behind line {line.Index}";
-                await CompareLidTopDown(m, door, lids, $"{map}: lid of sector {door.Index}");
-                await CompareLidView(m, centre, c, settings, basis, toCamera, what);
-                if (m.Lids.IsDoor(door.Index))
+                if (!m.Lids.IsDoor(door.Index))
                 {
-                    // T6.13d: with doors kept (the default), the same view keeps the door whole.
-                    CutawaySettings keep = settings with { Doors = CutawayDoors.Keep };
-                    CutClasses k = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, keep, toCamera, size.X, size.Y, lids);
-                    int kept = 0; // pixels the view with doors cut clears or caps and this one keeps
-                    for (int p = 0; p < k.Classes.Length; p++)
-                    {
-                        if (k.Classes[p] == CutPixel.Keep && (c.Classes[p] is CutPixel.Cleared or CutPixel.Capped || c.CapClasses[p] == CutPixel.Capped))
-                            kept++;
-                    }
-                    if (k.Capped > 0 || kept < 50)
-                        Fail($"{what}, doors kept: {k.Capped} pixels capped (none expected), {kept} pixels kept that the cut view clears or caps (at least 50 expected)");
-                    else
-                        await CompareLidView(m, centre, k, keep, basis, toCamera, $"{what}, doors kept ({kept} pixels kept that doors cut would clear or cap)");
+                    await LidViews(m, door, line, centre, c, null, lids, settings, basis, toCamera, toCameraFlat);
+                    return;
                 }
-                else
-                    GD.Print($"Level check: {what}: not a door, no view with doors kept");
-
-                // The door half open, as the sim moves it: its ceiling above the cutoff, so the lid stays and caps nothing.
-                int old = door.CeilingHeight;
-                door.CeilingHeight = door.FloorHeight + ((int)settings.Height + 8 << Fixed.FRACBITS);
-                m.UpdateSectors();
-                float[] moved = LidHeights(m);
-                CutClasses o = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings, toCamera, size.X, size.Y, moved);
-                string opened = $"{map}: lid of sector {door.Index} opened to {door.CeilingHeight >> Fixed.FRACBITS}, centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0})";
-                await CompareLidTopDown(m, door, moved, opened);
-                if (o.Capped > 0)
-                    Fail($"{opened}: {o.Capped} pixels classified as capped (none expected: the ceiling is above the cutoff)");
-                else
-                    await CompareLidView(m, centre, o, settings, basis, toCamera, opened);
-                door.CeilingHeight = old;
-                m.UpdateSectors();
-                await LidInFrontView(m, door, lids, settings, basis, toCamera, toCameraFlat);
-                _lidMaps++;
+                // T6.13d: with doors kept (the default), the same view keeps the door whole.
+                CutClasses k = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings with { Doors = CutawayDoors.Keep }, toCamera, size.X, size.Y, lids);
+                if (k.Capped == 0 && KeptPixels(c, k) < 50)
+                {
+                    fallback ??= (door, line, centre, c, null);
+                    continue;
+                }
+                if (c.Lids < 50)
+                {
+                    hidden ??= (door, line, centre, c, k);
+                    continue;
+                }
+                await LidViews(m, door, line, centre, c, k, lids, settings, basis, toCamera, toCameraFlat);
                 return;
             }
+        }
+        if ((hidden ?? fallback) is var (fDoor, fLine, fCentre, fCut, fKept))
+        {
+            GD.Print(hidden is null
+                ? $"Level check: {map}: lids: no door view keeps at least 50 pixels with doors kept (a wall of another sector is cut in front of each); "
+                    + $"sector {fDoor.Index}'s view without its doors-kept view"
+                : $"Level check: {map}: lids: no door view shows 50 lid pixels with the cutaway off and keeps 50 with doors kept; sector {fDoor.Index}'s keeps them");
+            await LidViews(m, fDoor, fLine, fCentre, fCut, fKept, lids, settings, basis, toCamera, toCameraFlat);
+            return;
         }
         if (m.Lids.Sectors.Count == 0)
             GD.Print($"Level check: {map}: lids: no lid sector");
         else
             Fail($"{map}: lids: no view found (a lid sector {settings.Height + 16} units deep below its lid, a two-sided line onto a sector away from the game camera, "
                 + "with at least 50 pixels capped from 24 units behind it)");
+    }
+
+    /// <summary>The pixels the view with doors cut clears or caps (<paramref name="c"/>) and the one with doors kept keeps (<paramref name="k"/>).</summary>
+    private static int KeptPixels(CutClasses c, CutClasses k)
+    {
+        int kept = 0;
+        for (int p = 0; p < k.Classes.Length; p++)
+        {
+            if (k.Classes[p] == CutPixel.Keep && (c.Classes[p] is CutPixel.Cleared or CutPixel.Capped || c.CapClasses[p] == CutPixel.Capped))
+                kept++;
+        }
+        return kept;
+    }
+
+    /// <summary>
+    /// The lid views of <paramref name="door"/> from <paramref name="centre"/>
+    /// behind <paramref name="line"/>: top-down, cut, with doors kept (when
+    /// <paramref name="k"/> is given), half open, and from in front.
+    /// </summary>
+    private async Task LidViews(LevelMesh m, Sector door, Line line, Vector3 centre, CutClasses c, CutClasses? k, float[] lids,
+        CutawaySettings settings, Basis basis, Vector3 toCamera, Vector2 toCameraFlat)
+    {
+        string map = m.Level.Name;
+        Vector2I size = ViewSize();
+        string what = $"{map}: lid of sector {door.Index} (lid at {lids[door.Index]:F0}, ceiling {door.CeilingHeight >> Fixed.FRACBITS}), centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0}) behind line {line.Index}";
+        await CompareLidTopDown(m, door, lids, $"{map}: lid of sector {door.Index}");
+        await CompareLidView(m, centre, c, settings, basis, toCamera, what);
+        if (k is CutClasses kept)
+        {
+            int count = KeptPixels(c, kept);
+            if (kept.Capped > 0 || count < 50)
+                Fail($"{what}, doors kept: {kept.Capped} pixels capped (none expected), {count} pixels kept that the cut view clears or caps (at least 50 expected)");
+            else
+                await CompareLidView(m, centre, kept, settings with { Doors = CutawayDoors.Keep }, basis, toCamera, $"{what}, doors kept ({count} pixels kept that doors cut would clear or cap)");
+        }
+        else
+            GD.Print($"Level check: {what}: {(m.Lids.IsDoor(door.Index) ? "no view with doors kept that keeps 50 pixels" : "not a door, no view with doors kept")}");
+
+        // The door half open, as the sim moves it: its ceiling above the cutoff, so the lid stays and caps nothing.
+        int old = door.CeilingHeight;
+        door.CeilingHeight = door.FloorHeight + ((int)settings.Height + 8 << Fixed.FRACBITS);
+        m.UpdateSectors();
+        float[] moved = LidHeights(m);
+        CutClasses o = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings, toCamera, size.X, size.Y, moved);
+        string opened = $"{map}: lid of sector {door.Index} opened to {door.CeilingHeight >> Fixed.FRACBITS}, centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0})";
+        await CompareLidTopDown(m, door, moved, opened);
+        if (o.Capped > 0)
+            Fail($"{opened}: {o.Capped} pixels classified as capped (none expected: the ceiling is above the cutoff)");
+        else
+            await CompareLidView(m, centre, o, settings, basis, toCamera, opened);
+        door.CeilingHeight = old;
+        m.UpdateSectors();
+        await LidInFrontView(m, door, lids, settings, basis, toCamera, toCameraFlat);
+        _lidMaps++;
     }
 
     /// <summary>
