@@ -85,7 +85,7 @@ namespace IsoDoom.Game;
 /// away from the camera; default on);
 /// <c>--level-height-cues=edges|shade|both|off</c> (T6.13s, <see cref="HeightCueMode"/>:
 /// a bright line along the top of each ledge, a drop over 24 units, and/or the
-/// floors lit by their height above or below the player's; default edges);
+/// floors lit by their height above or below the player's; default shade);
 /// <c>--level-item-beams=off|keys|all</c> (T6.13r, <see cref="ItemBeamMode"/>:
 /// a thin beam rising from each pickup the level hides whole under the game
 /// camera, coloured by its kind; <c>keys</c> beams keys, weapons and power-ups
@@ -206,7 +206,7 @@ public partial class LevelScene : Node3D, IGameHost
     public SwitchMarkerMode SwitchMarkers { get; private set; } = SwitchMarkerMode.On;
 
     /// <summary>The height cues (T6.13s, <c>--level-height-cues</c>, key Z): the ledge edges, the height shading, both or neither; applied to every level.</summary>
-    public HeightCueMode HeightCues { get; private set; } = HeightCueMode.Edges;
+    public HeightCueMode HeightCues { get; private set; } = HeightCueMode.Shade;
 
     /// <summary>Which pickups get a beam while the level hides them under the game camera (T6.13r, <see cref="Render.ItemBeams"/>, <c>--level-item-beams</c>, key F).</summary>
     public ItemBeamMode ItemBeams { get; set; } = ItemBeamMode.All;
@@ -1160,7 +1160,7 @@ public partial class LevelScene : Node3D, IGameHost
                 Mesh?.SetSwitchMarkers(SwitchMarkers);
                 break;
             case Key.Z:
-                HeightCues = HeightCues switch { HeightCueMode.Edges => HeightCueMode.Shade, HeightCueMode.Shade => HeightCueMode.Both, HeightCueMode.Both => HeightCueMode.Off, _ => HeightCueMode.Edges };
+                HeightCues = HeightCues switch { HeightCueMode.Shade => HeightCueMode.Edges, HeightCueMode.Edges => HeightCueMode.Both, HeightCueMode.Both => HeightCueMode.Off, _ => HeightCueMode.Shade };
                 Mesh?.SetHeightCues(HeightCues);
                 break;
             case Key.F:
@@ -2336,7 +2336,7 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("wall caps: off (U)\n");
         if (Mesh is { MarkerMode: SwitchMarkerMode.Off })
             text.Append("switch markers: off (R)\n");
-        if (Mesh is { HeightCues: not HeightCueMode.Edges } m)
+        if (Mesh is { HeightCues: not HeightCueMode.Shade } m)
             text.Append("height cues: ").Append(LedgeEdges.Name(m.HeightCues)).Append(" (Z)\n");
         if (ItemBeams != ItemBeamMode.All)
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");

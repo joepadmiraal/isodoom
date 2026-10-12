@@ -653,8 +653,8 @@ public sealed class LevelMesh
         SetParameter("switch_markers", (int)mode);
     }
 
-    /// <summary>The height cues (T6.13s), as last set (<see cref="SetHeightCues"/>; <see cref="HeightCueMode.Edges"/> until set).</summary>
-    public HeightCueMode HeightCues { get; private set; } = HeightCueMode.Edges;
+    /// <summary>The height cues (T6.13s), as last set (<see cref="SetHeightCues"/>; <see cref="HeightCueMode.Shade"/> until set).</summary>
+    public HeightCueMode HeightCues { get; private set; } = HeightCueMode.Shade;
 
     /// <summary>Draws the ledge edges (<see cref="Ledges"/>), the height shading of the floors, both or neither (T6.13s).</summary>
     public void SetHeightCues(HeightCueMode mode)
