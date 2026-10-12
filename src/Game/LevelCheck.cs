@@ -213,6 +213,7 @@ public partial class LevelCheck : Godot.Node
             sections += s;
             vertices += v;
             CheckSwitchMarkerData(m, map); // T6.13p
+            CheckLedgeData(m, map); // T6.13s
             CheckTextureChangeData(m, map);
             CheckSectorInterpolation(m, map);
             CheckScrollData(m, map);
@@ -261,6 +262,7 @@ public partial class LevelCheck : Godot.Node
             Fail($"{_scene.MapNames.Count - _rebornMaps - _rebornSkipped} map(s) did not reborn the player");
         GD.Print($"Level check: switch markers (T6.13p): {_markerMaps} maps, {_markerSides} switch sides with a marker on their floor, "
             + $"{_markersShown} of them shown from the game camera (their walls face away), the rest not");
+        PrintLedges();
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");
@@ -594,6 +596,9 @@ public partial class LevelCheck : Godot.Node
         var markers = new List<SwitchMarker>?[level.Sectors.Length];
         foreach (SwitchMarker marker in m.Markers.Markers)
             (markers[marker.Sector] ??= []).Add(marker);
+        var ledges = new List<LedgeEdge>?[level.Sectors.Length];
+        foreach (LedgeEdge edge in m.Ledges.Edges)
+            (ledges[edge.Sector] ??= []).Add(edge);
 
         var sideSegs = new List<Seg>?[level.Lines.Length * 2];
         foreach (Seg seg in level.Segs)
@@ -615,8 +620,9 @@ public partial class LevelCheck : Godot.Node
             }
             List<WallCap> sectorCaps = caps[sector] ?? [];
             List<SwitchMarker> sectorMarkers = markers[sector] ?? [];
+            List<LedgeEdge> sectorLedges = ledges[sector] ?? [];
             int solidVertices = floorVertices + 4 * QuadCount(sectorWalls) + 3 * sectorCaps.Sum(c => c.Pieces.Sum(p => p.Length))
-                + sectorMarkers.Sum(k => k.Pieces.Sum(p => p.Length)) + 4 * QuadCount([.. sectorWalls.Where(w => IsIslandWall(m, w.Item1))]);
+                + sectorMarkers.Sum(k => k.Pieces.Sum(p => p.Length)) + sectorLedges.Sum(e => e.Pieces.Sum(p => p.Length)) + 4 * QuadCount([.. sectorWalls.Where(w => IsIslandWall(m, w.Item1))]);
             int maskedVertices = 4 * QuadCount(sectorMasked);
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
             if (solidVertices + maskedVertices == 0)
@@ -639,13 +645,13 @@ public partial class LevelCheck : Godot.Node
             {
                 if (mesh.SurfaceGetMaterial(surface) != m.Material)
                     Fail($"{what}: the chunk's first surface doesn't use the level material");
-                quads += CheckSurface(m, mesh, surface++, sector, floor, sectorWalls, sectorCaps, sectorMarkers, sideSegs, what, ref sectionCount, ref vertexCount);
+                quads += CheckSurface(m, mesh, surface++, sector, floor, sectorWalls, sectorCaps, sectorMarkers, sectorLedges, sideSegs, what, ref sectionCount, ref vertexCount);
             }
             if (maskedVertices > 0)
             {
                 if (mesh.SurfaceGetMaterial(surface) != m.MaskedMaterial)
                     Fail($"{what}: the chunk's masked surface doesn't use the masked material");
-                maskedQuads += CheckSurface(m, mesh, surface, sector, null, sectorMasked, [], [], sideSegs, $"{what} (masked)", ref sectionCount, ref vertexCount);
+                maskedQuads += CheckSurface(m, mesh, surface, sector, null, sectorMasked, [], [], [], sideSegs, $"{what} (masked)", ref sectionCount, ref vertexCount);
             }
         }
         if (quads != m.WallQuads)
@@ -667,11 +673,12 @@ public partial class LevelCheck : Godot.Node
     /// (T6.13e, <paramref name="caps"/>), each as a fan per piece, then again per
     /// cut centre (<see cref="LevelMesh.KindWallCap"/>, <see cref="LevelMesh.KindWallCapCut"/>),
     /// the sector's switch markers (T6.13p, <paramref name="markers"/>, <see cref="LevelMesh.KindSwitchMarker"/>),
+    /// each as a fan per piece, the sector's ledge edges (T6.13s, <paramref name="ledges"/>, <see cref="LevelMesh.KindLedge"/>),
     /// each as a fan per piece, and the walls of islands once more (<see cref="LevelMesh.KindWallExtension"/>).
     /// Returns the wall quads checked.
     /// </summary>
     private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
-        List<WallCap> caps, List<SwitchMarker> markers, List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
+        List<WallCap> caps, List<SwitchMarker> markers, List<LedgeEdge> ledges, List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
     {
         Level level = m.Level;
         int floorVertices = floor?.Vertices.Count ?? 0;
@@ -681,8 +688,10 @@ public partial class LevelCheck : Godot.Node
         int floorCopies = floor is not null && m.Lids.Has(sector) ? 4 : 3; // the floor, two caps, the lid (T6.13b)
         List<WallSection> islandWalls = [.. sectionsOfSurface.Where(w => !w.Back && IsIslandWall(m, w.S)).Select(w => w.S)];
         int extensionQuads = islandWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count);
-        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)) + markers.Sum(k => k.Pieces.Sum(p => p.Length)) + 4 * extensionQuads;
-        int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + markers.Sum(k => k.Pieces.Sum(p => 3 * (p.Length - 2))) + 6 * extensionQuads;
+        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)) + markers.Sum(k => k.Pieces.Sum(p => p.Length))
+            + ledges.Sum(e => e.Pieces.Sum(p => p.Length)) + 4 * extensionQuads;
+        int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + markers.Sum(k => k.Pieces.Sum(p => 3 * (p.Length - 2)))
+            + ledges.Sum(e => e.Pieces.Sum(p => 3 * (p.Length - 2))) + 6 * extensionQuads;
         int expectedVertices = floorCopies * floorVertices + 4 * quadCount + capVertices; // the floor, the walls, the caps and lid, the wall caps
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
         Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
@@ -919,6 +928,35 @@ public partial class LevelCheck : Godot.Node
             }
         }
 
+        // T6.13s: the ledge edges, each piece a fan, the sector across the line in CUSTOM0.w, UV (along, in from the line).
+        foreach (LedgeEdge edge in ledges)
+        {
+            string sw = $"{level.Name}: line {edge.Line} side {edge.Side}'s ledge edge";
+            foreach ((double X, double Y)[] piece in edge.Pieces)
+            {
+                bool ok = true;
+                for (int k = 0; k < piece.Length && ok; k++)
+                {
+                    (double x, double y) = piece[k];
+                    var at = new Vector3((float)(x / LevelMesh.MapUnitsPerMetre), 0, (float)(-y / LevelMesh.MapUnitsPerMetre));
+                    ok = Near(pos[cv + k], at) && Math.Abs(uv[cv + k].X - edge.Along(x, y)) < 1e-3 && Math.Abs(uv[cv + k].Y - edge.Inside(x, y)) < 1e-3
+                        && Custom(c0, cv + k, LevelMesh.KindLedge, 0, edge.Sector, edge.Other);
+                    if (!ok)
+                        Fail($"{sw}: vertex {k} differs ({Custom4(c0, cv + k)})");
+                }
+                for (int k = 1; k + 1 < piece.Length && ok; k++)
+                {
+                    if (idx[ci] != cv || idx[ci + 1] != cv + k || idx[ci + 2] != cv + k + 1)
+                    {
+                        Fail($"{sw}: fan indices differ");
+                        ok = false;
+                    }
+                    ci += 3;
+                }
+                cv += piece.Length;
+            }
+        }
+
         // T6.13e: the islands' walls again, as their quads, with the island in CUSTOM0.w.
         foreach (WallSection s in islandWalls)
         {
@@ -1113,6 +1151,8 @@ public partial class LevelCheck : Godot.Node
         m.SetWallCaps(WallCapMode.Off);
         SwitchMarkerMode markerMode = m.MarkerMode; // T6.13p: straight down every marker shows, over the floors
         m.SetSwitchMarkers(SwitchMarkerMode.Off);
+        HeightCueMode cueMode = m.HeightCues; // T6.13s: the ledge edges and the shading change the floors (LedgeCheck shows them)
+        m.SetHeightCues(HeightCueMode.Off);
         // Every upper wall, as the CPU's comparisons expect (UpperWallCheck shows which are dropped).
         UpperWallMode upperMode = m.UpperMode;
         m.SetUpperWalls(UpperWallMode.All);
@@ -1211,6 +1251,9 @@ public partial class LevelCheck : Godot.Node
 
         await SwitchMarkerCheck(m); // T6.13p
 
+        await LedgeCheck(m); // T6.13s
+        m.SetHeightCues(HeightCueMode.Off);
+
         await BeamCheck(m); // T6.13r
 
         await UpperWallCheck(m);
@@ -1241,6 +1284,7 @@ public partial class LevelCheck : Godot.Node
         m.SetDoorLids(lidMode);
         m.SetWallCaps(capMode);
         m.SetSwitchMarkers(markerMode);
+        m.SetHeightCues(cueMode);
         m.SetUpperWalls(upperMode);
         if (_scene.Things is { } shown)
             shown.Visible = true;
