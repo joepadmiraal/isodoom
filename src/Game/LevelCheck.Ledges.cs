@@ -180,7 +180,7 @@ public partial class LevelCheck
                 byte index = (byte)(rim ? 0 : LedgeEdges.ColourIndex);
                 double depth = cameraZ - (floor + LedgeEdges.Lift);
                 int colormap = ExpectedColormap(m, false, edgeLight << LightTables.LIGHTSEGSHIFT, 0, x, y, depth);
-                int shaded = ExpectedColormap(m, false, (edgeLight + LedgeEdges.ShadeLevels(floor, floor - 48)) << LightTables.LIGHTSEGSHIFT, 0, x, y, depth);
+                int shaded = ExpectedColormap(m, false, LedgeEdges.ShadeLight(edgeLight, floor, floor - 48) << LightTables.LIGHTSEGSHIFT, 0, x, y, depth);
                 int floorColormap = ExpectedColormap(m, false, light, 0, x, y, cameraZ - floor);
                 if (colormap < 0 || shaded < 0 || floorColormap < 0)
                     continue;
@@ -230,8 +230,8 @@ public partial class LevelCheck
                 int p = i * 4;
                 foreach ((byte[] frame, double? r, string name) in new[] { (below, (double?)(floor - 48), "48 below"), (above, floor + 48, "48 above"), (noReference, null, "none") })
                 {
-                    int shade = r is double rv ? LedgeEdges.ShadeLevels(height, rv) : 0;
-                    int colormap = ExpectedColormap(m, false, (level + shade) << LightTables.LIGHTSEGSHIFT, 0, x, y, cameraZ - height);
+                    int shaded = r is double rv ? LedgeEdges.ShadeLight(level, height, rv) : level;
+                    int colormap = ExpectedColormap(m, false, shaded << LightTables.LIGHTSEGSHIFT, 0, x, y, cameraZ - height);
                     if (colormap < 0)
                         continue;
                     shadePixels++;
@@ -239,7 +239,7 @@ public partial class LevelCheck
                         ownPixels++;
                     (int R, int G, int B) expected = Shade(texel, colormap), got = (frame[p], frame[p + 1], frame[p + 2]);
                     if (got != expected && badShade++ == 0)
-                        firstShade = $"sector {s} (floor {height}, light {level}) at pixel ({px}, {py}), map ({x}, {y}), reference {name}: drew {got}, expected {shade} level(s) at colormap {colormap}: {expected}";
+                        firstShade = $"sector {s} (floor {height}, light {level}) at pixel ({px}, {py}), map ({x}, {y}), reference {name}: drew {got}, expected light {shaded} at colormap {colormap}: {expected}";
                 }
             }
         }

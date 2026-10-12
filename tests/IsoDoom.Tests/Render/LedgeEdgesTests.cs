@@ -65,6 +65,22 @@ public class LedgeEdgesTests
     }
 
     [Fact]
+    public void TheShadingDarkensNoLowerThanItsMinimum()
+    {
+        // Brighter: every level, past 15 too (the shader clamps).
+        Assert.Equal(12, LedgeEdges.ShadeLight(10, 48, 0));
+        Assert.Equal(15 + LedgeEdges.ShadeMax - 2, LedgeEdges.ShadeLight(13, 1000, 0));
+        // Darker: every level while above the minimum, then stops there.
+        Assert.Equal(13, LedgeEdges.ShadeLight(15, 0, 48));
+        Assert.Equal(15 - LedgeEdges.ShadeMax, LedgeEdges.ShadeLight(15, 0, 1000));
+        Assert.Equal(LedgeEdges.ShadeMinLight, LedgeEdges.ShadeLight(LedgeEdges.ShadeMinLight + 2, 0, 1000));
+        // Already at or below it: not darkened.
+        Assert.Equal(LedgeEdges.ShadeMinLight, LedgeEdges.ShadeLight(LedgeEdges.ShadeMinLight, 0, 1000));
+        Assert.Equal(3, LedgeEdges.ShadeLight(3, 0, 1000));
+        Assert.Equal(5, LedgeEdges.ShadeLight(3, 48, 0));
+    }
+
+    [Fact]
     public void TheModesParseTheirNames()
     {
         foreach (HeightCueMode mode in new[] { HeightCueMode.Off, HeightCueMode.Edges, HeightCueMode.Shade, HeightCueMode.Both })

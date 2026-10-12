@@ -166,7 +166,8 @@
 // caps, switch markers, ledge edges) gains a light level per SHADE_STEP units
 // it is above `height_reference` (the player's feet), and loses one per
 // SHADE_STEP below, at most SHADE_MAX either way (none while
-// `height_reference_on` is 0).
+// `height_reference_on` is 0); the darkening stops at SHADE_MIN_LIGHT (a
+// surface already below it is not darkened), so a deep drop never goes black.
 //
 // Fog of war (T6.13l; IsoDoom.Render.FogOfWar, `fog_mode` 0 off, 1 dim, 2
 // hide): `sector_fog` (R8, one texel per sector, the same layout) holds each
@@ -196,12 +197,13 @@ const float CUT_PLANE_MARGIN = 1.0;
 const int CAP_DARKEN = 4;
 // IsoDoom.Render.SwitchMarkers.Lift: a switch marker's height above its floor (map units).
 const float SWITCH_MARKER_LIFT = 1.0;
-// IsoDoom.Render.LedgeEdges (T6.13s): MinDrop, Lift, Width, ShadeStep, ShadeMax, ColourIndex, Brighten, MinLight, Rim.
+// IsoDoom.Render.LedgeEdges (T6.13s): MinDrop, Lift, Width, ShadeStep, ShadeMax, ShadeMinLight, ColourIndex, Brighten, MinLight, Rim.
 const float LEDGE_MIN_DROP = 24.0;
 const float LEDGE_LIFT = 0.5;
 const float LEDGE_WIDTH = 3.0;
 const float SHADE_STEP = 24.0;
 const int SHADE_MAX = 5;
+const int SHADE_MIN_LIGHT = 8;
 const int LEDGE_INDEX = 80;
 const int LEDGE_BRIGHTEN = 4;
 const int LEDGE_MIN_LIGHT = 10;
@@ -308,6 +310,12 @@ int height_shade(float z) {
 	return clamp(int(floor((z - height_reference) / SHADE_STEP + 0.5)), -SHADE_MAX, SHADE_MAX);
 }
 
+// T6.13s: light number lightnum shaded for a surface lit as a floor at height z, darkened no lower than SHADE_MIN_LIGHT (IsoDoom.Render.LedgeEdges.ShadeLight).
+int shade_light(int lightnum, float z) {
+	int shade = height_shade(z);
+	return shade < 0 ? max(lightnum + shade, min(lightnum, SHADE_MIN_LIGHT)) : lightnum + shade;
+}
+
 // T6.13l: the sector's IsoDoom.Render.SectorSight (2, visible, with the fog off).
 int fog_state(int sector) {
 	return fog_mode == 0 ? 2 : int(data_texel(sector_fog, sector).r * 255.0 + 0.5);
@@ -343,7 +351,7 @@ void vertex() {
 		v_rect = ivec4(0);
 		v_kind = 4;
 		v_cap = -1;
-		v_lightnum = max((clamp(int(l_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight + height_shade(l_front.r);
+		v_lightnum = shade_light(max((clamp(int(l_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight, l_front.r);
 		v_texcoord = UV;
 		v_normal = vec3(0.0, 0.0, 1.0);
 		v_wall_normal = vec2(0.0);
@@ -381,7 +389,7 @@ void vertex() {
 			VERTEX.xz = vec2(0.0);
 		}
 		float m_z = m_front.r + SWITCH_MARKER_LIFT;
-		v_lightnum += height_shade(m_front.r);
+		v_lightnum = shade_light(v_lightnum, m_front.r);
 		VERTEX.y = m_z / MAP_UNITS_PER_METRE;
 		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
 		v_height = m_z;
@@ -416,7 +424,7 @@ void vertex() {
 		v_rect = cap_slot >= 0 ? ivec4(data_texel(texture_info, cap_slot) + 0.5) : ivec4(0);
 		v_kind = 3;
 		v_lightnum = (clamp(int(cap_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
-		v_lightnum += height_shade(cap_z);
+		v_lightnum = shade_light(v_lightnum, cap_z);
 		v_texcoord = vec2(UV.x + cap_side.g, UV.y);
 		v_normal = vec3(0.0, 0.0, 1.0);
 		if (cap_collapse || fog_hides) {
@@ -475,7 +483,7 @@ void vertex() {
 			if (v_cap >= 0 && cut_cap == 2) {
 				v_lightnum -= CAP_DARKEN;
 			}
-			v_lightnum += height_shade(z);
+			v_lightnum = shade_light(v_lightnum, z);
 		} else {
 			// WallSection.Span: clipped to the front sector, empty when top <= bottom.
 			float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);

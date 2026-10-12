@@ -63,7 +63,8 @@ public sealed record LedgeEdge(int Line, int Side, int Sector, int Other, double
 /// <para>
 /// The other cue (<see cref="HeightCueMode.Shade"/>) is the shader's alone:
 /// floors, lids, wall caps and switch markers are drawn <see cref="ShadeLevels"/>
-/// light levels brighter or darker by their height above the player's floor.
+/// light levels brighter or darker by their height above the player's floor,
+/// darker no lower than <see cref="ShadeMinLight"/> (<see cref="ShadeLight"/>).
 /// </para>
 /// </summary>
 public sealed class LedgeEdges
@@ -82,6 +83,9 @@ public sealed class LedgeEdges
 
     /// <summary>The most light levels the shading adds or takes: the shader's <c>SHADE_MAX</c>.</summary>
     public const int ShadeMax = 5;
+
+    /// <summary>The light level (of 16) the shading darkens no lower than (<see cref="ShadeLight"/>), so a deep drop does not go black: the shader's <c>SHADE_MIN_LIGHT</c>.</summary>
+    public const int ShadeMinLight = 8;
 
     /// <summary>The edge's palette index (PLAYPAL's light grey): the shader's <c>LEDGE_INDEX</c>.</summary>
     public const int ColourIndex = 80;
@@ -114,6 +118,18 @@ public sealed class LedgeEdges
     /// </summary>
     public static int ShadeLevels(double height, double reference) =>
         Math.Clamp((int)Math.Floor((height - reference) / ShadeStep + 0.5), -ShadeMax, ShadeMax);
+
+    /// <summary>
+    /// Light number <paramref name="light"/> (of 16) of a surface at <paramref name="height"/>
+    /// shaded with the player's floor at <paramref name="reference"/>: <see cref="ShadeLevels"/>
+    /// added, but darkened no lower than <see cref="ShadeMinLight"/>, and not at all when
+    /// already below it (the shader's <c>shade_light</c>).
+    /// </summary>
+    public static int ShadeLight(int light, double height, double reference)
+    {
+        int shade = ShadeLevels(height, reference);
+        return shade < 0 ? Math.Max(light + shade, Math.Min(light, ShadeMinLight)) : light + shade;
+    }
 
     /// <summary>The name of <paramref name="mode"/> as the option and the setting take it.</summary>
     public static string Name(HeightCueMode mode) => mode.ToString().ToLowerInvariant();
