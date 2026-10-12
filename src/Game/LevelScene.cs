@@ -94,9 +94,10 @@ namespace IsoDoom.Game;
 /// a live monster without a line of sight to the player, vanilla's
 /// <c>P_CheckSight</c> from the monster, drawn ROWS colormap rows darker under
 /// the game camera; default 6);
-/// <c>--level-monster-markers=on|off</c> (T6.13u, <see cref="Render.MonsterMarkers"/>:
+/// <c>--level-monster-markers=beam|chevron|off</c> (T6.13u, <see cref="Render.MonsterMarkers"/>:
 /// a small red chevron over a live monster with a line of sight to the player
-/// while the level hides it whole under the game camera; default on);
+/// while the level hides it whole under the game camera, or a red beam rising
+/// from behind the wall as the item beams'; <c>on</c> = chevron; default chevron);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -224,8 +225,8 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>The item beams under any camera (the level check's, which has no game camera).</summary>
     public bool BeamsEverywhere { get; set; }
 
-    /// <summary>Whether monsters in sight of the player that the level hides whole get a marker under the game camera (T6.13u, <see cref="Render.MonsterMarkers"/>, <c>--level-monster-markers</c>, key C).</summary>
-    public bool MonsterMarking { get; set; } = true;
+    /// <summary>Which marker monsters in sight of the player that the level hides whole get under the game camera, if any (T6.13u, <see cref="Render.MonsterMarkers"/>, <c>--level-monster-markers</c>, key C).</summary>
+    public MonsterMarkerMode MonsterMarking { get; set; } = MonsterMarkerMode.Chevron;
 
     /// <summary>The monster markers (T6.13u) as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
     public MonsterMarkers Markers { get; } = new() { Name = "MonsterMarkers" };
@@ -1192,7 +1193,8 @@ public partial class LevelScene : Node3D, IGameHost
                 SightDimRows = SightDimRows switch { 6 => 10, 10 => 14, 14 => 0, _ => 6 };
                 break;
             case Key.C:
-                MonsterMarking = !MonsterMarking; // T6.13u
+                // T6.13u: beam, chevron, off
+                MonsterMarking = MonsterMarking switch { MonsterMarkerMode.Beam => MonsterMarkerMode.Chevron, MonsterMarkerMode.Chevron => MonsterMarkerMode.Off, _ => MonsterMarkerMode.Beam };
                 break;
             case Key.I:
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
@@ -2375,8 +2377,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("height cues: ").Append(LedgeEdges.Name(m.HeightCues)).Append(" (Z)\n");
         if (ItemBeams != ItemBeamMode.All)
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
-        if (!MonsterMarking)
-            text.Append("monster markers: off (C)\n");
+        if (MonsterMarking != MonsterMarkerMode.Chevron)
+            text.Append("monster markers: ").Append(MonsterMarkers.ModeName(MonsterMarking)).Append(" (C)\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");
         text.Append(_status);

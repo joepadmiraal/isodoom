@@ -10,16 +10,18 @@ using IsoDoom.Sim;
 namespace IsoDoom.Game;
 
 // T6.13u: monster markers. On every map (no renderer needed), after the
-// sight dim's check: with the markers on (MarkersEverywhere: the check has no
-// game camera), the marked monsters are exactly the drawn candidates
+// sight dim's check: with the markers on, as chevrons and as beams
+// (MarkersEverywhere: the check has no game camera), the marked monsters are
+// exactly the drawn candidates
 // P_CheckSight gives a line of sight to the player (an imp spawned beside it
 // among them), each with its own billboard left out of its actors; the sight
 // checks leave the world's checksum alone, also with the sight dim off; with
 // the option off, or without the game camera, none. With a real renderer
 // (MonsterMarkerCheck), from the game camera's angle, an imp alone in turn at the
 // places that hide it until one hidden whole and one in the open: the hidden
-// one's marker draws red pixels over the vertical through its foot, all above
-// its foot; the open one's none. A hidden one is required on DOOM1 E1M1 only:
+// one's marker, chevron and beam, draws red pixels over the vertical through
+// its foot, all above its foot (the beam's rising from behind the wall); the
+// open one's none. A hidden one is required on DOOM1 E1M1 only:
 // an imp is 56 high, and the synthetic E1M1's walls do not hide one whole.
 public partial class LevelCheck
 {
@@ -29,12 +31,12 @@ public partial class LevelCheck
     {
         if (_scene.World is not { } world || _scene.PlayerMobj is not { } me)
             return;
-        (bool on, bool everywhere, int rows) = (_scene.MonsterMarking, _scene.MarkersEverywhere, _scene.SightDimRows);
+        (MonsterMarkerMode on, bool everywhere, int rows) = (_scene.MonsterMarking, _scene.MarkersEverywhere, _scene.SightDimRows);
         var spawned = new List<mobj_t>();
         int failures = _failures;
         try
         {
-            _scene.MonsterMarking = true;
+            _scene.MonsterMarking = MonsterMarkerMode.Chevron;
             _scene.MarkersEverywhere = true;
             _scene.SightDimRows = 0; // the markers take the sight checks on their own
             mobj_t? near = null;
@@ -76,8 +78,13 @@ public partial class LevelCheck
                 }
             }
 
-            // Off, and without the game camera: none.
-            foreach ((bool marking, bool every, string what) in new[] { (false, true, "off"), (true, false, "without the game camera") })
+            // As beams: the same; off, and without the game camera: none.
+            _scene.MonsterMarking = MonsterMarkerMode.Beam;
+            _scene.SeeSight();
+            _scene.UpdateMonsterMarkers();
+            if (!_scene.Markers.Markers.Select(k => k.Mobj).ToHashSet().SetEquals(got) || _scene.Markers.Mode != MonsterMarkerMode.Beam)
+                Fail($"{map}: monster markers (T6.13u): as beams, {_scene.Markers.Markers.Count} marker(s) ({_scene.Markers.Mode}), as chevrons {got.Count}");
+            foreach ((MonsterMarkerMode marking, bool every, string what) in new[] { (MonsterMarkerMode.Off, true, "off"), (MonsterMarkerMode.Beam, false, "without the game camera") })
             {
                 _scene.MonsterMarking = marking;
                 _scene.MarkersEverywhere = every;
@@ -107,9 +114,9 @@ public partial class LevelCheck
     /// every thing but the imp viewed hidden, the player's own sprite too): an
     /// imp spawned in turn at E1M1's case (DOOM1), just behind the walls facing
     /// the camera, the tallest first, and at player 1's start, until one hidden
-    /// whole and one in the open are found. The hidden one's marker draws red
-    /// pixels over the vertical through its foot, all above the foot; the open
-    /// one's draws none. Only DOOM1 E1M1 must have a hidden one.
+    /// whole and one in the open are found. The hidden one's marker, as a
+    /// chevron and as a beam, draws red pixels over the vertical through its
+    /// foot, all above the foot; the open one's draws none either way. Only DOOM1 E1M1 must have a hidden one.
     /// </summary>
     private async Task MonsterMarkerCheck(LevelMesh m)
     {
@@ -123,7 +130,7 @@ public partial class LevelCheck
         _scene.Player?.Visible = false;
         m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
         m.SetCutawayCentres(null, null);
-        int viewed = 0, hiddenPixels = 0;
+        int viewed = 0, hiddenPixels = 0, hiddenBeamPixels = 0;
         string? hidden = null, open = null;
         try
         {
@@ -157,7 +164,7 @@ public partial class LevelCheck
             if (open is null)
                 Fail($"{map}: monster markers (T6.13u): no imp in the open among the {viewed} viewed");
             GD.Print($"Level check: {map}: monster markers (T6.13u): {viewed} imps viewed alone from the game camera; "
-                + $"{hidden ?? "none"} hidden whole, marked ({hiddenPixels} pixels above it); {open ?? "none"} in the open, unmarked");
+                + $"{hidden ?? "none"} hidden whole, marked ({hiddenPixels} chevron pixels, {hiddenBeamPixels} beam pixels above it); {open ?? "none"} in the open, unmarked");
         }
         finally
         {
@@ -165,6 +172,7 @@ public partial class LevelCheck
             things.Visible = false;
             _scene.Player?.Visible = playerShown;
             _scene.Markers.Clear();
+            _scene.Markers.Mode = _scene.MonsterMarking == MonsterMarkerMode.Beam ? MonsterMarkerMode.Beam : MonsterMarkerMode.Chevron;
             m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
             m.SetCutawayCentres(null, null);
         }
@@ -191,55 +199,75 @@ public partial class LevelCheck
             byte[]? none = await Capture($"{what}, no things");
             things.Isolate(index);
             byte[]? alone = await Capture($"{what}, the imp");
+            _scene.Markers.Mode = MonsterMarkerMode.Chevron;
             _scene.Markers.Set([marker], actors);
-            byte[]? marked = await Capture($"{what}, the imp and its marker");
+            byte[]? marked = await Capture($"{what}, the imp and its chevron");
+            _scene.Markers.Mode = MonsterMarkerMode.Beam;
+            byte[]? beamed = await Capture($"{what}, the imp and its beam");
+            _scene.Markers.Mode = _scene.MonsterMarking == MonsterMarkerMode.Beam ? MonsterMarkerMode.Beam : MonsterMarkerMode.Chevron;
             _scene.Markers.Set([], []);
-            if (none is null || alone is null || marked is null)
+            if (none is null || alone is null || marked is null || beamed is null)
                 return false;
             viewed++;
             Vector2I size = ViewSize();
             // The foot on screen: CutView centres the point Cutaway.Anchor above it, 1 map unit per pixel.
             float footY = size.Y / 2f + Cutaway.Anchor * Mathf.Cos(Mathf.DegToRad(IsoCamera.DefaultPitch));
-            int impPixels = 0, markerPixels = 0, red = 0, astray = 0;
+            int impPixels = 0;
             for (int y = 0; y < size.Y; y++)
             {
                 for (int x = 0; x < size.X; x++)
                 {
-                    var q = new Vector2I(x, y);
-                    if (!Same(q, alone, none))
+                    if (!Same(new Vector2I(x, y), alone, none))
                         impPixels++;
-                    if (Same(q, marked, alone))
-                        continue;
-                    markerPixels++;
-                    int i = (y * size.X + x) * 4;
-                    if (marked[i] >= 160 && marked[i + 1] <= 90 && marked[i + 2] <= 90)
-                        red++;
-                    if (Math.Abs(x + 0.5f - size.X / 2f) > 16 || y >= footY)
-                        astray++;
                 }
             }
-            _pixels += size.X * size.Y;
+            (int chevronPixels, int chevronRed, int chevronAstray) = MarkerPixels(marked);
+            (int beamPixels, int beamRed, int beamAstray) = MarkerPixels(beamed);
+            _pixels += 3 * size.X * size.Y;
             int texels = atlas.Images[shown.Slot].Opaque.Count(o => o != 0);
             if (impPixels * 4 >= texels)
             {
-                if (markerPixels > 0)
-                    Fail($"{what}: {impPixels} of its {texels} texels show, but its marker drew {markerPixels} pixels");
+                if (chevronPixels > 0 || beamPixels > 0)
+                    Fail($"{what}: {impPixels} of its {texels} texels show, but its chevron drew {chevronPixels} pixels and its beam {beamPixels}");
                 open ??= $"the imp at ({foot.X:F0}, {foot.Y:F0})";
             }
             else if (impPixels == 0 && hidden is null)
             {
-                if (red < 20 || astray > 0)
-                    Fail($"{what}: hidden whole, its marker drew {markerPixels} pixels, {red} red, {astray} off the vertical through its foot or below it");
+                if (chevronRed < 20 || chevronAstray > 0)
+                    Fail($"{what}: hidden whole, its chevron drew {chevronPixels} pixels, {chevronRed} red, {chevronAstray} off the vertical through its foot or below it");
+                if (beamRed < 20 || beamAstray > 0)
+                    Fail($"{what}: hidden whole, its beam drew {beamPixels} pixels, {beamRed} red, {beamAstray} off the vertical through its foot or below it");
                 hidden = $"the imp at ({foot.X:F0}, {foot.Y:F0})";
-                hiddenPixels = markerPixels;
+                (hiddenPixels, hiddenBeamPixels) = (chevronPixels, beamPixels);
             }
             return true;
+
+            // The pixels a marker changed from the imp alone: all, the red ones, and those off the vertical through the foot or below it.
+            (int Pixels, int Red, int Astray) MarkerPixels(byte[] shot)
+            {
+                int pixels = 0, red = 0, astray = 0;
+                for (int y = 0; y < size.Y; y++)
+                {
+                    for (int x = 0; x < size.X; x++)
+                    {
+                        if (Same(new Vector2I(x, y), shot, alone))
+                            continue;
+                        pixels++;
+                        int i = (y * size.X + x) * 4;
+                        if (shot[i] >= 160 && shot[i + 1] <= 90 && shot[i + 2] <= 90)
+                            red++;
+                        if (Math.Abs(x + 0.5f - size.X / 2f) > 16 || y >= footY)
+                            astray++;
+                    }
+                }
+                return (pixels, red, astray);
+            }
         }
     }
 
     private void PrintMonsterMarkers()
     {
-        GD.Print($"Level check: monster markers (T6.13u): {_monsterMarkerMaps} maps: {_monsterMarkerMonsters} monsters in sight marked, as P_CheckSight (monster to player) gives them; none with it off or without the game camera, the world's checksum unchanged");
+        GD.Print($"Level check: monster markers (T6.13u): {_monsterMarkerMaps} maps: {_monsterMarkerMonsters} monsters in sight marked, as P_CheckSight (monster to player) gives them, the same as chevrons and as beams; none with it off or without the game camera, the world's checksum unchanged");
         if (_monsterMarkerMaps == 0)
             Fail("monster markers (T6.13u): no map checked");
     }

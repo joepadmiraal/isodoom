@@ -5,6 +5,14 @@ using IsoDoom.Sim;
 
 namespace IsoDoom.Render;
 
+/// <summary>How the monster markers (T6.13u, <see cref="MonsterMarkers"/>) look: none, a chevron over the hiding wall, or a beam as the item beams' (T6.13r).</summary>
+public enum MonsterMarkerMode
+{
+    Off,
+    Chevron,
+    Beam,
+}
+
 /// <summary>
 /// Monster markers (T6.13u, not vanilla, SPEC §12): under the game camera a
 /// wall hides what stands up to about 0.7 × its height behind it, so a monster
@@ -12,7 +20,9 @@ namespace IsoDoom.Render;
 /// the player, may be hidden whole. Each marked monster (the owner's choice:
 /// drawn, alive, with a line of sight to the player, vanilla's
 /// <c>P_CheckSight</c>, T6.13t) gets a small chevron pointing down at it,
-/// drawn by <see cref="ShaderPath"/> only while its billboard is hidden whole
+/// drawn by <see cref="ShaderPath"/>, or (<see cref="MonsterMarkerMode.Beam"/>)
+/// an item beam in <see cref="MarkerColor"/>, rising from behind the wall
+/// (<see cref="ItemBeams.ShaderPath"/>), only while its billboard is hidden whole
 /// (the item beams' test, <c>shaders/billboard_hidden.gdshaderinc</c>, with
 /// the monster itself left out of the actors near it), on top of what hides
 /// it. One <see cref="MultiMesh"/> instance per marker. Presentation only: the
@@ -33,10 +43,11 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// </summary>
     public readonly record struct Marker(mobj_t Mobj, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector, int Actor);
 
-    private readonly ShaderMaterial _material;
+    private readonly ShaderMaterial _chevron, _beam;
     private readonly NearActors _actors = new();
     private Marker[] _markers = [];
     private SpriteSettings? _sprites;
+    private MonsterMarkerMode _mode = MonsterMarkerMode.Chevron;
 
     /// <summary>The markers as last set.</summary>
     public IReadOnlyList<Marker> Markers => _markers;
@@ -44,9 +55,13 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     public MonsterMarkers()
     {
         CastShadow = ShadowCastingSetting.Off;
-        _material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
-        _material.SetShaderParameter("thing_actors", _actors.Texture);
-        MaterialOverride = _material;
+        _chevron = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
+        _chevron.SetShaderParameter("thing_actors", _actors.Texture);
+        _beam = new ShaderMaterial { Shader = GD.Load<Shader>(ItemBeams.ShaderPath) };
+        _beam.SetShaderParameter("thing_actors", _actors.Texture);
+        _beam.SetShaderParameter("beam_height", ItemBeams.Height);
+        _beam.SetShaderParameter("beam_half_width", ItemBeams.HalfWidth);
+        MaterialOverride = _chevron;
         Multimesh = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
@@ -56,7 +71,22 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         };
     }
 
-    /// <summary>The marker mesh: a quad, x −1…1 across, y 0 (tip) … 1 (top); the shader sizes and places it.</summary>
+    /// <summary>
+    /// The markers' look: a chevron or a beam (the owner sets no markers when
+    /// off). Both shaders take the same instances: the beam's quad is the
+    /// chevron's, x −1…1 across, y 0 (foot) … 1 (top).
+    /// </summary>
+    public MonsterMarkerMode Mode
+    {
+        get => _mode;
+        set
+        {
+            _mode = value;
+            MaterialOverride = value == MonsterMarkerMode.Beam ? _beam : _chevron;
+        }
+    }
+
+    /// <summary>The marker mesh: a quad, x −1…1 across, y 0 (tip, or the beam's foot) … 1 (top); the shader sizes and places it (the chevron up to 320 units above the foot, the beam <see cref="ItemBeams.Height"/>).</summary>
     private static ArrayMesh QuadMesh()
     {
         var arrays = new Godot.Collections.Array();
@@ -73,8 +103,11 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// <summary>Uses <paramref name="atlas"/>'s patches for the hidden test (the things' atlas, <see cref="ThingSprites.Bind"/>).</summary>
     public void Bind(SpriteAtlas atlas)
     {
-        _material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
-        _material.SetShaderParameter("sprite_info", atlas.InfoTexture);
+        foreach (ShaderMaterial material in new[] { _chevron, _beam })
+        {
+            material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
+            material.SetShaderParameter("sprite_info", atlas.InfoTexture);
+        }
     }
 
     /// <summary>Takes the sprites' tilt, tilt depth, wall pull and upright hiding, so the hidden test puts the billboard where it is drawn.</summary>
@@ -83,10 +116,13 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         if (settings == _sprites)
             return;
         _sprites = settings;
-        _material.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
-        _material.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
-        _material.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
-        _material.SetShaderParameter("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
+        foreach (ShaderMaterial material in new[] { _chevron, _beam })
+        {
+            material.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
+            material.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
+            material.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
+            material.SetShaderParameter("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
+        }
     }
 
     /// <summary>
@@ -114,6 +150,18 @@ public partial class MonsterMarkers : MultiMeshInstance3D
             Multimesh.SetInstanceColor(i, MarkerColor);
         }
     }
+
+    /// <summary>The name of <paramref name="mode"/> (the option's value).</summary>
+    public static string ModeName(MonsterMarkerMode mode) => mode.ToString().ToLowerInvariant();
+
+    /// <summary>Parses <c>--level-monster-markers</c>'s and <c>sprites/monster_markers</c>' value (<c>on</c>, before the beam style: the chevron).</summary>
+    public static MonsterMarkerMode Parse(string value, string what) => value switch
+    {
+        "beam" => MonsterMarkerMode.Beam,
+        "chevron" or "on" => MonsterMarkerMode.Chevron,
+        "off" or "vanilla" => MonsterMarkerMode.Off,
+        _ => throw new ArgumentException($"{what}: \"{value}\" (beam, chevron or off)"),
+    };
 
     /// <summary>Removes every marker (a level unloads).</summary>
     public void Clear() => Set([], []);
