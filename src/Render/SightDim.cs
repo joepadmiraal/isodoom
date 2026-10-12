@@ -24,7 +24,7 @@ namespace IsoDoom.Render;
 public sealed class SightDim
 {
     /// <summary>The default amount, in colormap rows.</summary>
-    public const int DefaultRows = 10;
+    public const int DefaultRows = 6;
 
     /// <summary>The largest amount: the 5 bits it has in the sprite's flags (<c>ThingSprites.FlagSightDimShift</c>).</summary>
     public const int MaxRows = 31;

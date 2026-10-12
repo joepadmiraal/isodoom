@@ -93,7 +93,7 @@ namespace IsoDoom.Game;
 /// <c>--level-sight-dim=ROWS|off</c> (T6.13t, <see cref="Render.SightDim"/>:
 /// a live monster without a line of sight to the player, vanilla's
 /// <c>P_CheckSight</c> from the monster, drawn ROWS colormap rows darker under
-/// the game camera; default 10);
+/// the game camera; default 6);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -1173,8 +1173,8 @@ public partial class LevelScene : Node3D, IGameHost
                 ItemBeams = ItemBeams switch { ItemBeamMode.All => ItemBeamMode.Keys, ItemBeamMode.Keys => ItemBeamMode.Off, _ => ItemBeamMode.All };
                 break;
             case Key.Y:
-                // T6.13t: the sight dim's amount, 10, 14, off, 6
-                SightDimRows = SightDimRows switch { 10 => 14, 14 => 0, 0 => 6, _ => 10 };
+                // T6.13t: the sight dim's amount, 6, 10, 14, off
+                SightDimRows = SightDimRows switch { 6 => 10, 10 => 14, 14 => 0, _ => 6 };
                 break;
             case Key.I:
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
