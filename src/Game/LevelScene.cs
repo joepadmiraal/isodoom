@@ -83,6 +83,9 @@ namespace IsoDoom.Game;
 /// <c>--level-switch-markers=on|off</c> (T6.13p, <see cref="SwitchMarkerMode"/>:
 /// a decal of the switch on the floor in front of each switch on a wall facing
 /// away from the camera; default on);
+/// <c>--level-height-cues=edges|shade|both|off</c> (T6.13s, <see cref="HeightCueMode"/>:
+/// a bright line along the top of each ledge, a drop over 24 units, and/or the
+/// floors lit by their height above or below the player's; default edges);
 /// <c>--level-item-beams=off|keys|all</c> (T6.13r, <see cref="ItemBeamMode"/>:
 /// a thin beam rising from each pickup the level hides whole under the game
 /// camera, coloured by its kind; <c>keys</c> beams keys, weapons and power-ups
@@ -201,6 +204,9 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Whether the switches on walls facing away get a marker on the floor (T6.13p, <c>--level-switch-markers</c>, key R); applied to every level.</summary>
     public SwitchMarkerMode SwitchMarkers { get; private set; } = SwitchMarkerMode.On;
+
+    /// <summary>The height cues (T6.13s, <c>--level-height-cues</c>, key Z): the ledge edges, the height shading, both or neither; applied to every level.</summary>
+    public HeightCueMode HeightCues { get; private set; } = HeightCueMode.Edges;
 
     /// <summary>Which pickups get a beam while the level hides them under the game camera (T6.13r, <see cref="Render.ItemBeams"/>, <c>--level-item-beams</c>, key F).</summary>
     public ItemBeamMode ItemBeams { get; set; } = ItemBeamMode.All;
@@ -518,7 +524,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   F item beams   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -667,6 +673,8 @@ public partial class LevelScene : Node3D, IGameHost
                     "off" or "vanilla" => SwitchMarkerMode.Off,
                     _ => throw new ArgumentException($"--level-switch-markers: \"{markers}\" (on or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-height-cues") is string heightCues)
+                HeightCues = LedgeEdges.Parse(heightCues, "--level-height-cues");
             if (WadLocator.GetUserArg("--level-item-beams") is string beams)
                 ItemBeams = ItemKinds.Parse(beams, "--level-item-beams");
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
@@ -1150,6 +1158,10 @@ public partial class LevelScene : Node3D, IGameHost
             case Key.R:
                 SwitchMarkers = SwitchMarkers == SwitchMarkerMode.On ? SwitchMarkerMode.Off : SwitchMarkerMode.On;
                 Mesh?.SetSwitchMarkers(SwitchMarkers);
+                break;
+            case Key.Z:
+                HeightCues = HeightCues switch { HeightCueMode.Edges => HeightCueMode.Shade, HeightCueMode.Shade => HeightCueMode.Both, HeightCueMode.Both => HeightCueMode.Off, _ => HeightCueMode.Edges };
+                Mesh?.SetHeightCues(HeightCues);
                 break;
             case Key.F:
                 ItemBeams = ItemBeams switch { ItemBeamMode.All => ItemBeamMode.Keys, ItemBeamMode.Keys => ItemBeamMode.Off, _ => ItemBeamMode.All };
@@ -2168,6 +2180,10 @@ public partial class LevelScene : Node3D, IGameHost
         Vector3? cursor = on && Cutaway.Cursor && Cursor is { } hit ? hit.MapUnits : null;
         if (Mesh.CutPlayer != player || Mesh.CutCursor != cursor)
             Mesh.SetCutawayCentres(player, cursor);
+        // T6.13s: the height shading is relative to the player's feet, under any camera.
+        float? reference = Player is not null && PlayerMobj is not null ? Player.Z : null;
+        if (Mesh.HeightReference != reference)
+            Mesh.SetHeightReference(reference);
     }
 
     public override void _Input(InputEvent @event)
@@ -2320,6 +2336,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("wall caps: off (U)\n");
         if (Mesh is { MarkerMode: SwitchMarkerMode.Off })
             text.Append("switch markers: off (R)\n");
+        if (Mesh is { HeightCues: not HeightCueMode.Edges } m)
+            text.Append("height cues: ").Append(LedgeEdges.Name(m.HeightCues)).Append(" (Z)\n");
         if (ItemBeams != ItemBeamMode.All)
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
@@ -2525,6 +2543,7 @@ public partial class LevelScene : Node3D, IGameHost
         mesh.SetDoorLids(DoorLids);
         mesh.SetWallCaps(WallCaps);
         mesh.SetSwitchMarkers(SwitchMarkers);
+        mesh.SetHeightCues(HeightCues);
         mesh.SetUpperWalls(UpperWalls);
         mesh.SetFogDim(_fogDim);
         if (WadLocator.GetUserArg("--level-light-near") is string near)

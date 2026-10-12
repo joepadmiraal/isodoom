@@ -121,6 +121,7 @@ public static class Settings
         new("gameplay/upper_walls", "UPPER WALLS", SettingPage.Walls, "doors", ["doors", "all"], "--level-upper-walls"),
         new("gameplay/masked_back", "MASKED WALLS BEHIND", SettingPage.Walls, "mirror", ["mirror", "off"], "--level-masked-back"),
         new("gameplay/switch_markers", "SWITCH MARKERS", SettingPage.Walls, "on", _onOff, "--level-switch-markers"),
+        new("gameplay/height_cues", "HEIGHT CUES", SettingPage.Walls, "edges", ["edges", "shade", "both", "off"], "--level-height-cues"),
 
         // sprites (readability)
         new("sprites/tilt", "TILT", SettingPage.Sprites, "full", ["full", "half", "off"], "--level-sprite-tilt"),

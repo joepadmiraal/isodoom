@@ -39,13 +39,14 @@
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
 //              4 a floor's cutaway cap, 5 a lid, 6 a wall cap, 7 a wall cap's cutaway cap, 8 an
-//              island's wall above its ceiling, 9 a switch marker), side
+//              island's wall above its ceiling, 9 a switch marker, 10 a ledge edge), side
 //              part (walls and wall caps: the side_textures texel; floors 0, their slot is the
 //              sector's), front sector, back sector (-1: none; for a cap its cut centre, 0
-//              player, 1 cursor; for kind 8 its island)
+//              player, 1 cursor; for kind 8 its island; for kind 10 the sector across its line)
 //   floors:    UV = (map x, -map y): the flat texel is floor(UV) & 63 (r_draw.c R_DrawSpan)
 //   wall caps: UV = (texture column, distance behind the wall); CUSTOM1.x the wall's island
 //              (-1: none); CUSTOM2.w the wall's direction
+//   ledge edges: UV = (distance along the line, distance in from it)
 //   switch markers: UV = (texture column, texture row); CUSTOM1 the switch section's planes
 //              as walls'; CUSTOM2.w its direction
 //   walls:     UV.x = texture column (textureoffset at the build + distance from V1; the
@@ -153,6 +154,20 @@
 // back onto the floor, mirrored so that it reads from behind the wall), lit as
 // a floor of the sector (v_kind 3, not a wall cap: v_wall_normal zero).
 //
+// Height cues (T6.13s; IsoDoom.Render.LedgeEdges, `height_cues` a bit mask: 1
+// edges, 2 shade): kind 10 is a piece of the strip along one side of a
+// two-sided line, placed LEDGE_LIFT above its sector's floor and drawn while
+// that floor is more than LEDGE_MIN_DROP above the floor across the line (a
+// ledge the player could not step back up). It shows palette index
+// LEDGE_INDEX lit at least LEDGE_BRIGHTEN light levels above its floor and at
+// least LEDGE_MIN_LIGHT, its innermost LEDGE_RIM units index 0 (a dark rim, so
+// it reads on a bright floor too); v_kind 4, lit as a floor and cut as one.
+// With shade, every surface lit as a floor (floors, their caps, lids, wall
+// caps, switch markers, ledge edges) gains a light level per SHADE_STEP units
+// it is above `height_reference` (the player's feet), and loses one per
+// SHADE_STEP below, at most SHADE_MAX either way (none while
+// `height_reference_on` is 0).
+//
 // Fog of war (T6.13l; IsoDoom.Render.FogOfWar, `fog_mode` 0 off, 1 dim, 2
 // hide): `sector_fog` (R8, one texel per sector, the same layout) holds each
 // sector's IsoDoom.Render.SectorSight (0 unseen, 1 discovered, 2 visible).
@@ -181,6 +196,16 @@ const float CUT_PLANE_MARGIN = 1.0;
 const int CAP_DARKEN = 4;
 // IsoDoom.Render.SwitchMarkers.Lift: a switch marker's height above its floor (map units).
 const float SWITCH_MARKER_LIFT = 1.0;
+// IsoDoom.Render.LedgeEdges (T6.13s): MinDrop, Lift, Width, ShadeStep, ShadeMax, ColourIndex, Brighten, MinLight, Rim.
+const float LEDGE_MIN_DROP = 24.0;
+const float LEDGE_LIFT = 0.5;
+const float LEDGE_WIDTH = 3.0;
+const float SHADE_STEP = 24.0;
+const int SHADE_MAX = 5;
+const int LEDGE_INDEX = 80;
+const int LEDGE_BRIGHTEN = 4;
+const int LEDGE_MIN_LIGHT = 10;
+const float LEDGE_RIM = 1.0;
 
 uniform sampler2D atlas : filter_nearest, repeat_disable;
 uniform sampler2D texture_info : filter_nearest, repeat_disable;
@@ -230,6 +255,10 @@ uniform int wall_caps = 1;
 uniform int switch_markers = 1;
 // The upper walls: 0 all, 1 only over the sectors that keep them.
 uniform int upper_walls = 1;
+// T6.13s: the height cues (IsoDoom.Render.HeightCueMode, a bit mask: 1 ledge edges, 2 height shading) and the shading's reference height.
+uniform int height_cues = 1;
+uniform float height_reference = 0.0;
+uniform int height_reference_on = 0;
 // The fog of war (T6.13l): 0 off, 1 dim, 2 hide.
 uniform int fog_mode = 0;
 uniform sampler2D sector_fog : filter_nearest, repeat_disable;
@@ -237,7 +266,7 @@ uniform sampler2D fog_dim : filter_nearest, repeat_disable;
 uniform int fog_dither = 0;
 
 varying flat ivec4 v_rect;
-// 0 floor, 1 solid wall, 2 masked middle, 3 wall cap (a wall's texture, a floor's light).
+// 0 floor, 1 solid wall, 2 masked middle, 3 wall cap (a wall's texture, a floor's light), 4 ledge edge (T6.13s).
 varying flat int v_kind;
 varying flat int v_lightnum;
 // The cut centre whose cap this is (kind 4, T3.4a): 0 player, 1 cursor; -1 not a cap.
@@ -271,6 +300,14 @@ float plane_height(int plane, vec4 front, vec4 back) {
 	}
 }
 
+// T6.13s: the light levels the height shading adds to a surface lit as a floor at height z (IsoDoom.Render.LedgeEdges.ShadeLevels).
+int height_shade(float z) {
+	if ((height_cues & 2) == 0 || height_reference_on == 0) {
+		return 0;
+	}
+	return clamp(int(floor((z - height_reference) / SHADE_STEP + 0.5)), -SHADE_MAX, SHADE_MAX);
+}
+
 // T6.13l: the sector's IsoDoom.Render.SectorSight (2, visible, with the fog off).
 int fog_state(int sector) {
 	return fog_mode == 0 ? 2 : int(data_texel(sector_fog, sector).r * 255.0 + 0.5);
@@ -297,7 +334,28 @@ void vertex() {
 	bool unseen = max(fog_state(front_id), fog_back) == 0;
 	v_fog = unseen && fog_mode == 1 ? 1 : 0;
 	bool fog_hides = unseen && fog_mode == 2;
-	if (kind == 9) {
+	if (kind == 10) {
+		// T6.13s: a ledge edge, on its sector's floor while it is a ledge's top.
+		vec4 l_front = data_texel(sector_data, front_id);
+		vec4 l_back = data_texel(sector_data, int(CUSTOM0.w));
+		bool l_collapse = (height_cues & 1) == 0 || l_front.r - l_back.r <= LEDGE_MIN_DROP;
+		v_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
+		v_rect = ivec4(0);
+		v_kind = 4;
+		v_cap = -1;
+		v_lightnum = max((clamp(int(l_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight + height_shade(l_front.r);
+		v_texcoord = UV;
+		v_normal = vec3(0.0, 0.0, 1.0);
+		v_wall_normal = vec2(0.0);
+		if (l_collapse || fog_hides) {
+			VERTEX.xz = vec2(0.0);
+		}
+		float l_z = l_front.r + LEDGE_LIFT;
+		VERTEX.y = l_z / MAP_UNITS_PER_METRE;
+		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+		v_height = l_z;
+		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+	} else if (kind == 9) {
 		// T6.13p: a switch marker, on its sector's floor.
 		vec4 m_front = data_texel(sector_data, front_id);
 		int m_back_id = int(CUSTOM0.w);
@@ -323,6 +381,7 @@ void vertex() {
 			VERTEX.xz = vec2(0.0);
 		}
 		float m_z = m_front.r + SWITCH_MARKER_LIFT;
+		v_lightnum += height_shade(m_front.r);
 		VERTEX.y = m_z / MAP_UNITS_PER_METRE;
 		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
 		v_height = m_z;
@@ -357,6 +416,7 @@ void vertex() {
 		v_rect = cap_slot >= 0 ? ivec4(data_texel(texture_info, cap_slot) + 0.5) : ivec4(0);
 		v_kind = 3;
 		v_lightnum = (clamp(int(cap_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
+		v_lightnum += height_shade(cap_z);
 		v_texcoord = vec2(UV.x + cap_side.g, UV.y);
 		v_normal = vec3(0.0, 0.0, 1.0);
 		if (cap_collapse || fog_hides) {
@@ -415,6 +475,7 @@ void vertex() {
 			if (v_cap >= 0 && cut_cap == 2) {
 				v_lightnum -= CAP_DARKEN;
 			}
+			v_lightnum += height_shade(z);
 		} else {
 			// WallSection.Span: clipped to the front sector, empty when top <= bottom.
 			float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);
@@ -462,7 +523,7 @@ int light_colormap() {
 	float d = light_mode == 0 ? light_reference : light_mode == 1 ? max(length(v_map - light_origin), light_near) : v_depth;
 	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
 	int lightnum = clamp(v_lightnum, 0, LIGHTLEVELS - 1);
-	if (v_kind == 0 || v_kind == 3) {
+	if (v_kind == 0 || v_kind == 3 || v_kind == 4) {
 		int z = dist <= 0 ? 0 : min(dist >> LIGHTZSHIFT, MAXLIGHTZ - 1);
 		return int(texelFetch(light_tables, ivec2(z, lightnum), 0).r * 255.0 + 0.5);
 	}
@@ -554,38 +615,44 @@ void fragment() {
 			}
 		}
 	}
-	ivec2 t = ivec2(floor(v_texcoord));
-	int w = v_rect.z;
-	int h = v_rect.w;
-	int col;
-	int row;
-	if (v_kind == 0) {
-		col = t.x & 63;
-		row = t.y & 63;
-	} else if (v_kind == 2) {
-		// IsoDoom.Map.TextureWrap.MaskedTexel: columns as solid walls, rows not repeated.
-		col = wall_tiling == 0 ? t.x & ((1 << findMSB(w)) - 1) : floor_mod(t.x, w);
-		row = clamp(t.y, 0, h - 1);
-	} else if (wall_tiling == 0) {
-		// IsoDoom.Map.TextureWrap.WallTexel (Vanilla)
-		col = t.x & ((1 << findMSB(w)) - 1);
-		row = t.y & 127;
-		if (row >= h) {
-			int i = (col * h + row) % (w * h);
-			col = i / h;
-			row = i % h;
-		}
+	int index;
+	if (v_kind == 4) {
+		// T6.13s: a ledge edge, bright with a dark rim inside.
+		index = v_texcoord.y >= LEDGE_WIDTH - LEDGE_RIM ? 0 : LEDGE_INDEX;
 	} else {
-		col = floor_mod(t.x, w);
-		row = floor_mod(t.y, h);
-	}
-	vec2 texel = texelFetch(atlas, v_rect.xy + ivec2(col, row), 0).rg;
+		ivec2 t = ivec2(floor(v_texcoord));
+		int w = v_rect.z;
+		int h = v_rect.w;
+		int col;
+		int row;
+		if (v_kind == 0) {
+			col = t.x & 63;
+			row = t.y & 63;
+		} else if (v_kind == 2) {
+			// IsoDoom.Map.TextureWrap.MaskedTexel: columns as solid walls, rows not repeated.
+			col = wall_tiling == 0 ? t.x & ((1 << findMSB(w)) - 1) : floor_mod(t.x, w);
+			row = clamp(t.y, 0, h - 1);
+		} else if (wall_tiling == 0) {
+			// IsoDoom.Map.TextureWrap.WallTexel (Vanilla)
+			col = t.x & ((1 << findMSB(w)) - 1);
+			row = t.y & 127;
+			if (row >= h) {
+				int i = (col * h + row) % (w * h);
+				col = i / h;
+				row = i % h;
+			}
+		} else {
+			col = floor_mod(t.x, w);
+			row = floor_mod(t.y, h);
+		}
+		vec2 texel = texelFetch(atlas, v_rect.xy + ivec2(col, row), 0).rg;
 #ifdef MASKED_PASS
-	if (texel.g < 0.5) {
-		discard;
-	}
+		if (texel.g < 0.5) {
+			discard;
+		}
 #endif
-	int index = int(texel.r * 255.0 + 0.5);
+		index = int(texel.r * 255.0 + 0.5);
+	}
 	int mapped = v_fog == 1
 		? int(texelFetch(fog_dim, ivec2(index, 0), 0).r * 255.0 + 0.5)
 		: int(texelFetch(colormap, ivec2(index, light_colormap()), 0).r * 255.0 + 0.5);

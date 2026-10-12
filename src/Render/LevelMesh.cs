@@ -86,6 +86,13 @@ namespace IsoDoom.Render;
 /// wall faces away from the camera and has a height, showing the switch's
 /// texture (its current one, from <c>side_textures</c>) laid back onto the
 /// floor. <see cref="SetSwitchMarkers"/> turns them off.</item>
+/// <item><b>Height cues</b> (T6.13s): a strip on each side of every two-sided
+/// line (<see cref="LedgeEdges"/>; <see cref="KindLedge"/>), which the vertex
+/// shader places just above its sector's floor while that floor is more than
+/// <see cref="LedgeEdges.MinDrop"/> above the floor across the line, drawn in
+/// a bright colour: the top edge of a ledge. The floors can also be shaded
+/// by their height above the player's (<see cref="SetHeightCues"/>,
+/// <see cref="SetHeightReference"/>).</item>
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
@@ -120,9 +127,11 @@ public sealed class LevelMesh
     /// the island), textured as the wall goes on.
     /// <see cref="KindSwitchMarker"/> (T6.13p) is a piece of a switch side's marker
     /// (<see cref="SwitchMarkers"/>), placed on its sector's floor.
+    /// <see cref="KindLedge"/> (T6.13s) is a piece of a ledge edge (<see cref="LedgeEdges"/>),
+    /// placed on its sector's floor (<c>CUSTOM0.w</c> the sector across its line).
     /// </summary>
     public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7,
-        KindWallExtension = 8, KindSwitchMarker = 9;
+        KindWallExtension = 8, KindSwitchMarker = 9, KindLedge = 10;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -169,9 +178,10 @@ public sealed class LevelMesh
     private bool _infoDirty;
     private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
 
-    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, WallCaps caps, SwitchMarkers markers, Textures textures,
-        int[] textureSlot, List<string> slotNames, TextureAtlas atlas, Image sectorImage)
+    private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, WallCaps caps, SwitchMarkers markers, LedgeEdges ledges,
+        Textures textures, int[] textureSlot, List<string> slotNames, TextureAtlas atlas, Image sectorImage)
     {
+        Ledges = ledges;
         Level = level;
         Walls = walls;
         Floors = floors;
@@ -224,6 +234,9 @@ public sealed class LevelMesh
 
     /// <summary>The switch markers (T6.13p), in their sectors' chunks.</summary>
     public SwitchMarkers Markers { get; }
+
+    /// <summary>The ledge edges (T6.13s), in their sectors' chunks.</summary>
+    public LedgeEdges Ledges { get; }
 
     /// <summary>The quads of every side (per seg, on the floor's corners, with each seg's fake contrast; T2.9): one wall quad per piece of each drawn section.</summary>
     public WallPieces Pieces { get; }
@@ -313,6 +326,9 @@ public sealed class LevelMesh
     /// <summary>Number of switch marker triangles (T6.13p, <see cref="KindSwitchMarker"/>).</summary>
     public int SwitchMarkerTriangleCount { get; private set; }
 
+    /// <summary>Number of ledge edge triangles (T6.13s, <see cref="KindLedge"/>).</summary>
+    public int LedgeTriangleCount { get; private set; }
+
     /// <summary>Number of quads that draw the islands' walls on above their ceilings (T6.13e, <see cref="KindWallExtension"/>).</summary>
     public int WallExtensionQuads { get; private set; }
 
@@ -360,6 +376,7 @@ public sealed class LevelMesh
         var lids = DoorLids.Build(level, floors);
         var caps = WallCaps.Build(level, polygons);
         var markers = SwitchMarkers.Build(walls, polygons, SwitchRows(textures, walls, switchPairs, compositeMode));
+        var ledges = LedgeEdges.Build(level, polygons);
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
         var images = new List<IndexedImage>();
@@ -440,7 +457,7 @@ public sealed class LevelMesh
             throw new WadFormatException($"{level.Name}: nothing to draw");
         var atlas = TextureAtlas.Build(images);
 
-        var mesh = new LevelMesh(level, walls, floors, lids, caps, markers, textures, textureSlot, names, atlas,
+        var mesh = new LevelMesh(level, walls, floors, lids, caps, markers, ledges, textures, textureSlot, names, atlas,
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
         foreach ((string? name, int slot) in flatSlot)
             mesh._flatSlot[name] = slot;
@@ -634,6 +651,27 @@ public sealed class LevelMesh
     {
         MarkerMode = mode;
         SetParameter("switch_markers", (int)mode);
+    }
+
+    /// <summary>The height cues (T6.13s), as last set (<see cref="SetHeightCues"/>; <see cref="HeightCueMode.Edges"/> until set).</summary>
+    public HeightCueMode HeightCues { get; private set; } = HeightCueMode.Edges;
+
+    /// <summary>Draws the ledge edges (<see cref="Ledges"/>), the height shading of the floors, both or neither (T6.13s).</summary>
+    public void SetHeightCues(HeightCueMode mode)
+    {
+        HeightCues = mode;
+        SetParameter("height_cues", (int)mode);
+    }
+
+    /// <summary>The height the shading (<see cref="HeightCueMode.Shade"/>) is relative to, map units, as last set (<see cref="SetHeightReference"/>): the player's floor; null shades nothing.</summary>
+    public float? HeightReference { get; private set; }
+
+    /// <summary>Sets the height the floors are shaded against (T6.13s): the player's feet, map units; null, none (no shading).</summary>
+    public void SetHeightReference(float? height)
+    {
+        HeightReference = height;
+        SetParameter("height_reference", height ?? 0f);
+        SetParameter("height_reference_on", height is null ? 0 : 1);
     }
 
     /// <summary>Which upper walls are drawn, as last set (<see cref="SetUpperWalls"/>; <see cref="UpperWallMode.Doors"/> until set).</summary>
@@ -1076,6 +1114,8 @@ public sealed class LevelMesh
         SetDoorLids(LidMode);
         SetWallCaps(CapMode);
         SetSwitchMarkers(MarkerMode);
+        SetHeightCues(HeightCues);
+        SetHeightReference(null);
         SetUpperWalls(UpperMode);
         SetFog(FogMode);
         SetFogDim(FogDimLook);
@@ -1260,6 +1300,26 @@ public sealed class LevelMesh
                 for (int i = 1; i + 1 < piece.Length; i++)
                     c.Indices.AddRange([first, first + i, first + i + 1]);
                 SwitchMarkerTriangleCount += piece.Length - 2;
+            }
+        }
+
+        // T6.13s: each side's ledge edge, on its sector's floor.
+        foreach (LedgeEdge edge in Ledges.Edges)
+        {
+            Chunk c = ChunkOf(edge.Sector);
+            var c0 = new Vector4(KindLedge, 0, edge.Sector, edge.Other);
+            foreach ((double X, double Y)[] piece in edge.Pieces)
+            {
+                int first = c.Vertices.Count;
+                foreach ((double x, double y) in piece)
+                {
+                    var uv = new Vector2((float)edge.Along(x, y), (float)edge.Inside(x, y));
+                    c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, Vector4.Zero, Vector4.Zero);
+                }
+                // A fan, clockwise in map space as the floors.
+                for (int i = 1; i + 1 < piece.Length; i++)
+                    c.Indices.AddRange([first, first + i, first + i + 1]);
+                LedgeTriangleCount += piece.Length - 2;
             }
         }
 
