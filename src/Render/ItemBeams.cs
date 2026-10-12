@@ -65,9 +65,7 @@ public partial class ItemBeams : MultiMeshInstance3D
 
     private readonly ShaderMaterial _material;
     private Beam[] _beams = [];
-    private Image _actorImage = Image.CreateEmpty(ActorsPerBeam, 1, false, Image.Format.Rgbaf);
-    private readonly ImageTexture _actorTexture;
-    private readonly (float Distance, int Index)[] _nearest = new (float, int)[ActorsPerBeam];
+    private readonly NearActors _actors = new();
     private SpriteSettings? _sprites;
 
     /// <summary>The beams as last set.</summary>
@@ -79,9 +77,7 @@ public partial class ItemBeams : MultiMeshInstance3D
         _material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         _material.SetShaderParameter("beam_height", Height);
         _material.SetShaderParameter("beam_half_width", HalfWidth);
-        _actorImage.Fill(new Color(0, 0, 0, -1));
-        _actorTexture = ImageTexture.CreateFromImage(_actorImage);
-        _material.SetShaderParameter("beam_actors", _actorTexture);
+        _material.SetShaderParameter("thing_actors", _actors.Texture);
         MaterialOverride = _material;
         Multimesh = new MultiMesh
         {
@@ -133,7 +129,7 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// </summary>
     public void Set(IReadOnlyList<Beam> beams, IReadOnlyList<Actor>? actors = null)
     {
-        SetActors(beams, actors ?? []);
+        _actors.Set(beams.Count, i => beams[i].MapPosition, actors ?? []);
         bool resized = beams.Count != _beams.Length;
         if (resized)
         {
@@ -151,48 +147,6 @@ public partial class ItemBeams : MultiMeshInstance3D
             (float r, float g, float bl) = ItemKinds.ColorOf(b.Kind);
             Multimesh.SetInstanceColor(i, new Color(r, g, bl));
         }
-    }
-
-    /// <summary>The actors' texture: texel (k, beam) the k-th actor nearest the beam's item (its foot from the item's, Godot space, and its radius; radius −1: none).</summary>
-    private void SetActors(IReadOnlyList<Beam> beams, IReadOnlyList<Actor> actors)
-    {
-        int rows = Math.Max(beams.Count, 1);
-        bool resized = _actorImage.GetHeight() != rows;
-        if (resized)
-            _actorImage = Image.CreateEmpty(ActorsPerBeam, rows, false, Image.Format.Rgbaf);
-        _actorImage.Fill(new Color(0, 0, 0, -1));
-        for (int i = 0; i < beams.Count; i++)
-        {
-            int found = 0;
-            Vector3 item = beams[i].MapPosition;
-            for (int a = 0; a < actors.Count; a++)
-            {
-                Vector3 p = actors[a].MapPosition;
-                float d = new Vector2(p.X - item.X, p.Y - item.Y).LengthSquared();
-                if (d > ActorReach * ActorReach)
-                    continue;
-                // Insert by distance, the nearest first; when full, the farthest drops out.
-                if (found == ActorsPerBeam && d >= _nearest[found - 1].Distance)
-                    continue;
-                int k = found < ActorsPerBeam ? found++ : ActorsPerBeam - 1;
-                while (k > 0 && _nearest[k - 1].Distance > d)
-                {
-                    _nearest[k] = _nearest[k - 1];
-                    k--;
-                }
-                _nearest[k] = (d, a);
-            }
-            for (int k = 0; k < found; k++)
-            {
-                Actor actor = actors[_nearest[k].Index];
-                Vector3 offset = (actor.MapPosition - item) / LevelMesh.MapUnitsPerMetre;
-                _actorImage.SetPixel(k, i, new Color(offset.X, offset.Z, -offset.Y, actor.Radius));
-            }
-        }
-        if (resized)
-            _actorTexture.SetImage(_actorImage);
-        else
-            _actorTexture.Update(_actorImage);
     }
 
     /// <summary>Removes every beam (a level unloads).</summary>

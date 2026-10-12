@@ -102,6 +102,10 @@ namespace IsoDoom.Game;
 /// T6.13r: <c>beams</c> waits for the queued tics and a frame and prints the
 /// item beams' mode and each beamed item (type, kind, position, sector);
 /// whether a beam shows is the GPU's (only while its item is hidden).
+/// T6.13u: <c>markers</c> waits for the queued tics and a frame and prints
+/// the monster markers' state and each marked monster (type, position,
+/// sector); whether a marker shows is the GPU's (only while its monster is
+/// hidden whole).
 /// T6.13t: <c>sight</c> waits for the queued tics and prints the sight dim's
 /// line and each candidate monster (type, position, sector, whether it has a
 /// line of sight to the player, its dim in colormap rows).
@@ -489,6 +493,13 @@ public partial class LevelScript : Node
                         // T6.13l: waits for the queued tics; prints the fog's style and counts
                         await Drain();
                         GD.Print($"Level script: {_scene.FogText()}");
+                        break;
+                    case "markers":
+                        // T6.13u: waits for the queued tics and a frame; prints the marked monsters
+                        await Drain();
+                        await Frames(1);
+                        foreach (string line in _scene.MarkersText())
+                            GD.Print($"Level script: {line}");
                         break;
                     case "sight":
                         // T6.13t: waits for the queued tics; prints each candidate monster's sight and dim

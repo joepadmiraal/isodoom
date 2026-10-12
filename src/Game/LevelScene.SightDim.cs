@@ -56,22 +56,34 @@ public partial class LevelScene
     /// </summary>
     public void SeeSight()
     {
-        if (!SightDimActive || World is not { } world || world.players[world.consoleplayer] is not { playerstate: playerstate_t.PST_LIVE, mo: { } me })
+        bool markers = MarkersActive; // T6.13u: the monster markers take the same checks
+        if (!SightDimActive && !markers || World is not { } world || world.players[world.consoleplayer] is not { playerstate: playerstate_t.PST_LIVE, mo: { } me })
         {
             if (!SightDimActive)
                 SightDims.Clear();
+            if (!markers)
+                _inSight.Clear();
             return;
         }
         long start = Stopwatch.GetTimestamp();
         _sightScratch.Clear();
+        _inSight.Clear();
         foreach (mobj_t mo in world.Mobjs())
         {
             // P_CheckSight between tics changes no outcome of the sim (SPEC §12 T6.13t): it writes
             // validcount (only compared for equality), sightcounts (statistics) and its own globals.
             if (SightCandidate(mo, me) && IsDrawn(mo) && FogShows(mo))
-                _sightScratch.Add((mo, world.P_CheckSight(mo, me)));
+            {
+                bool inSight = world.P_CheckSight(mo, me);
+                _sightScratch.Add((mo, inSight));
+                if (inSight)
+                    _inSight.Add(mo);
+            }
         }
-        SightDims.Update(_sightScratch);
+        if (SightDimActive)
+            SightDims.Update(_sightScratch);
+        else
+            SightDims.Clear();
         SightCost = (_sightScratch.Count, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
     }
 

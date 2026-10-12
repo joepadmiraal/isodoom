@@ -133,6 +133,7 @@ public static class Settings
         new("sprites/player_light", "PLAYER MIN LIGHT", SettingPage.Sprites, "128", ["off", "64", "96", "128", "160", "192", "255"], "--level-player-light"),
         new("sprites/fuzz", "FUZZ", SettingPage.Sprites, "on", _onOff, "--level-fuzz"),
         new("gameplay/item_beams", "ITEM BEAMS", SettingPage.Sprites, "all", ["all", "keys", "off"], "--level-item-beams"), // T6.13r: the gameplay page is full
+        new("sprites/monster_markers", "MONSTER MARKERS", SettingPage.Sprites, "on", _onOff, "--level-monster-markers"), // T6.13u
         new("sprites/sight_dim", "SIGHT DIM", SettingPage.Sprites, "6", ["off", "6", "10", "14"], "--level-sight-dim"), // T6.13t
 
         // HUD (vanilla's screen size, messages and detail too)

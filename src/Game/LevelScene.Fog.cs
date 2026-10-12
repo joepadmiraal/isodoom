@@ -45,6 +45,7 @@ public partial class LevelScene
     {
         Fog = World is null ? null : new FogOfWar(level);
         SightDims.Clear(); // T6.13t: a new level's monsters
+        _inSight.Clear(); // T6.13u
         SeeFog();
     }
 

@@ -228,6 +228,7 @@ public partial class LevelCheck : Godot.Node
             CheckReborn(map); // it reloads the map (T6.12)
             CheckFogReborn(map);
             CheckSightDim(m, map); // T6.13t: after the reborn's reload (it places the player)
+            CheckMonsterMarkers(m, map); // T6.13u
             CheckExit(map); // last: it may load the next map (T5.8)
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
@@ -273,6 +274,7 @@ public partial class LevelCheck : Godot.Node
         PrintFog();
         PrintBeams();
         PrintSightDim();
+        PrintMonsterMarkers();
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
             + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
     }
@@ -1257,6 +1259,8 @@ public partial class LevelCheck : Godot.Node
         m.SetHeightCues(HeightCueMode.Off);
 
         await BeamCheck(m); // T6.13r
+
+        await MonsterMarkerCheck(m); // T6.13u
 
         await UpperWallCheck(m);
 

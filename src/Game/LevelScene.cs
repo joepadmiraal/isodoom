@@ -94,6 +94,9 @@ namespace IsoDoom.Game;
 /// a live monster without a line of sight to the player, vanilla's
 /// <c>P_CheckSight</c> from the monster, drawn ROWS colormap rows darker under
 /// the game camera; default 6);
+/// <c>--level-monster-markers=on|off</c> (T6.13u, <see cref="Render.MonsterMarkers"/>:
+/// a small red chevron over a live monster with a line of sight to the player
+/// while the level hides it whole under the game camera; default on);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -220,6 +223,15 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>The item beams under any camera (the level check's, which has no game camera).</summary>
     public bool BeamsEverywhere { get; set; }
+
+    /// <summary>Whether monsters in sight of the player that the level hides whole get a marker under the game camera (T6.13u, <see cref="Render.MonsterMarkers"/>, <c>--level-monster-markers</c>, key C).</summary>
+    public bool MonsterMarking { get; set; } = true;
+
+    /// <summary>The monster markers (T6.13u) as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
+    public MonsterMarkers Markers { get; } = new() { Name = "MonsterMarkers" };
+
+    private readonly List<MonsterMarkers.Marker> _markerScratch = [];
+    private readonly List<ItemBeams.Actor> _markerActorScratch = [];
 
     private readonly List<ItemBeams.Beam> _beamScratch = [];
     private readonly List<ItemBeams.Actor> _actorScratch = [];
@@ -528,7 +540,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -581,6 +593,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(_shotTracers); // in the tree from the start, so a failed load or the check still frees it at exit
         AddChild(_aimMarker);
         AddChild(Beams);
+        AddChild(Markers);
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
         // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
@@ -683,6 +696,8 @@ public partial class LevelScene : Node3D, IGameHost
                 ItemBeams = ItemKinds.Parse(beams, "--level-item-beams");
             if (WadLocator.GetUserArg("--level-sight-dim") is string sightDim)
                 SightDimRows = SightDim.Parse(sightDim, "--level-sight-dim");
+            if (WadLocator.GetUserArg("--level-monster-markers") is string monsterMarkers)
+                MonsterMarking = ParseMonsterMarkers(monsterMarkers, "--level-monster-markers");
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
@@ -1176,6 +1191,9 @@ public partial class LevelScene : Node3D, IGameHost
                 // T6.13t: the sight dim's amount, 6, 10, 14, off
                 SightDimRows = SightDimRows switch { 6 => 10, 10 => 14, 14 => 0, _ => 6 };
                 break;
+            case Key.C:
+                MonsterMarking = !MonsterMarking; // T6.13u
+                break;
             case Key.I:
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
                 Mesh?.SetUpperWalls(UpperWalls);
@@ -1239,6 +1257,7 @@ public partial class LevelScene : Node3D, IGameHost
                 if (GetViewport().GetCamera3D() is Camera3D current)
                     Things?.UpdateRotations(current);
                 UpdateItemBeams();
+                UpdateMonsterMarkers();
                 Mesh.SetLightOrigin(LightOrigin());
                 UpdateCutaway();
                 UpdateFog();
@@ -2356,6 +2375,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("height cues: ").Append(LedgeEdges.Name(m.HeightCues)).Append(" (Z)\n");
         if (ItemBeams != ItemBeamMode.All)
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
+        if (!MonsterMarking)
+            text.Append("monster markers: off (C)\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");
         text.Append(_status);
@@ -2622,6 +2643,7 @@ public partial class LevelScene : Node3D, IGameHost
         World = null;
         Fog = null;
         SightDims.Clear();
+        _inSight.Clear();
         _hudMobj = null;
         Player?.Visible = false;
         Cursor = null;
@@ -2629,6 +2651,7 @@ public partial class LevelScene : Node3D, IGameHost
         _soundLog.Clear();
         _shotTracers.Clear();
         Beams.Clear();
+        Markers.Clear();
         _planeMoves.Clear();
     }
 
@@ -2735,6 +2758,7 @@ public partial class LevelScene : Node3D, IGameHost
         Things = new ThingSprites { Name = "Things" };
         Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
         Beams.Bind(SpriteAtlas);
+        Markers.Bind(SpriteAtlas);
         _drawn.Clear();
         PresentWorld(); // fills the entries from the mobjs
         Things.Visible = Things.Shadows.Visible = _showThings;
