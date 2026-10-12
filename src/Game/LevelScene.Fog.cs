@@ -44,10 +44,12 @@ public partial class LevelScene
     private void StartFog(Level level)
     {
         Fog = World is null ? null : new FogOfWar(level);
+        SightDims.Clear(); // T6.13t: a new level's monsters
         SeeFog();
     }
 
-    // The sight walk from the console player, after each tic; a dead player keeps its last set.
+    // The sight walk from the console player, after each tic, and the monsters' sight of it (T6.13t);
+    // a dead player keeps its last set.
     private void SeeFog()
     {
         if (Fog is not { } fog || World is not { } world || world.players[world.consoleplayer] is not { playerstate: playerstate_t.PST_LIVE, mo: { } mo })
@@ -55,6 +57,7 @@ public partial class LevelScene
         long start = Stopwatch.GetTimestamp();
         fog.See(mo.x, mo.y);
         FogMilliseconds = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        SeeSight();
     }
 
     /// <summary>The fog's style and sectors' states in the level shader, as <see cref="FogActive"/> says (every frame).</summary>

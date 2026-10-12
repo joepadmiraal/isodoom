@@ -47,6 +47,7 @@
     <Compile Include="../../src/Render/LedgeEdges.cs" Link="Render/LedgeEdges.cs" />
     <Compile Include="../../src/Render/FogOfWar.cs" Link="Render/FogOfWar.cs" />
     <Compile Include="../../src/Render/ItemKinds.cs" Link="Render/ItemKinds.cs" />
+    <Compile Include="../../src/Render/SightDim.cs" Link="Render/SightDim.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />

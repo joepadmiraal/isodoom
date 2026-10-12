@@ -9,8 +9,9 @@
 //   instance transform  the thing's position (Godot space; basis identity)
 //   INSTANCE_CUSTOM     atlas slot (-1: draw nothing), flags (1 flip, 2 full
 //                       bright, 4 actor, 8 the player's own sprite, 16
-//                       MF_SHADOW: fuzz, T6.9), sector (light), radius (map
-//                       units)
+//                       MF_SHADOW: fuzz, T6.9; above them, from bit 5, the
+//                       sight dim's rows, T6.13t), sector (light), radius
+//                       (map units)
 //   VERTEX              sprite space: x 0 left / 1 right; y 0 bottom row,
 //                       1 the patch origin's height, 2 top row; z 1 for the
 //                       lower quad (the rows below the origin)
@@ -104,7 +105,15 @@
 // sector light raised to at least `own_light`, T4.7a: SpriteSettings.PlayerLight), the scale from the distance the walls use
 // (`light_mode`: 0 the reference, 1 the horizontal distance from
 // `light_origin` to the thing, at least `light_near`, 2 the thing's view depth). The CPU reference is
-// IsoDoom.Map.LightTables.WallColormap with contrast 0. The level shader's
+// IsoDoom.Map.LightTables.WallColormap with contrast 0.
+//
+// Sight dim (T6.13t, IsoDoom.Render.SightDim; not vanilla): a monster out of
+// the player's sight (P_CheckSight, monster to player) carries a number of
+// rows in its flags (bit 5 up), and its colormap row (full-bright frames'
+// too) is pushed down by them, to SIGHT_DIM_MAX_ROW at most (never lighter):
+// a dimmed monster in a dark room stays faintly visible. The outline goes
+// through the same row. A fixed colormap still wins; the fuzz (FUZZ) is not
+// dimmed. The level shader's
 // shared uniforms (palette, tables, light settings, sector data) are set on
 // this material by IsoDoom.Render.LevelMesh too.
 const float MAP_UNITS_PER_METRE = 32.0;
@@ -123,6 +132,11 @@ const float MAX_UPRIGHT = 256.0;
 // The longest wall pull along the view ray, in horizontal pulls (T3.5a,
 // IsoDoom.Render.SpriteSettings.MaxWallPullFactor).
 const float MAX_WALL_PULL = 4.0;
+// The sight dim (T6.13t): where its rows sit in the flags
+// (IsoDoom.Render.ThingSprites.FlagSightDimShift), and the darkest row it
+// pushes a sprite to (IsoDoom.Render.SightDim.MaxRow).
+const int SIGHT_DIM_SHIFT = 5;
+const int SIGHT_DIM_MAX_ROW = 29;
 
 uniform sampler2D sprite_atlas : filter_nearest, repeat_disable;
 uniform sampler2D sprite_info : filter_nearest, repeat_disable;
@@ -207,21 +221,29 @@ int sprite_colormap(int flags, int sector, vec3 foot_world, mat4 view) {
 	if (colormap_override >= 0) {
 		return colormap_override;
 	}
-	if ((flags & 2) != 0) {
-		return 0;
+	int row = 0;
+	if ((flags & 2) == 0) {
+		int light = clamp(int(data_texel(sector_data, sector).b + 0.5), 0, 255);
+		if ((flags & 8) != 0) {
+			light = max(light, own_light);
+		}
+		int lightnum = clamp((light >> LIGHTSEGSHIFT) + extralight, 0, LIGHTLEVELS - 1);
+		vec2 map_xy = vec2(foot_world.x, -foot_world.z) * MAP_UNITS_PER_METRE;
+		float d = light_mode == 0 ? light_reference
+			: light_mode == 1 ? max(length(map_xy - light_origin), light_near)
+			: -(view * vec4(foot_world, 1.0)).z * MAP_UNITS_PER_METRE;
+		int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
+		int scale = dist <= 0 ? MAXLIGHTSCALE - 1 : min((light_centerx << 20) / dist, MAXLIGHTSCALE - 1);
+		row = int(texelFetch(light_tables, ivec2(scale, LIGHTLEVELS + lightnum), 0).r * 255.0 + 0.5);
 	}
-	int light = clamp(int(data_texel(sector_data, sector).b + 0.5), 0, 255);
-	if ((flags & 8) != 0) {
-		light = max(light, own_light);
+#ifndef FUZZ
+	// T6.13t: the sight dim (IsoDoom.Render.SightDim.DimmedRow on the CPU).
+	int dim = (flags >> SIGHT_DIM_SHIFT) & 31;
+	if (dim > 0) {
+		row = max(row, min(row + dim, SIGHT_DIM_MAX_ROW));
 	}
-	int lightnum = clamp((light >> LIGHTSEGSHIFT) + extralight, 0, LIGHTLEVELS - 1);
-	vec2 map_xy = vec2(foot_world.x, -foot_world.z) * MAP_UNITS_PER_METRE;
-	float d = light_mode == 0 ? light_reference
-		: light_mode == 1 ? max(length(map_xy - light_origin), light_near)
-		: -(view * vec4(foot_world, 1.0)).z * MAP_UNITS_PER_METRE;
-	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
-	int scale = dist <= 0 ? MAXLIGHTSCALE - 1 : min((light_centerx << 20) / dist, MAXLIGHTSCALE - 1);
-	return int(texelFetch(light_tables, ivec2(scale, LIGHTLEVELS + lightnum), 0).r * 255.0 + 0.5);
+#endif
+	return row;
 }
 
 // How far along a view ray (map units) the wall pull moves a point (T3.5a):

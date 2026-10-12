@@ -642,6 +642,7 @@ public partial class LevelCheck
         m.SetColormapOverride(Colormap.INVERSECOLORMAP);
         compared += await CompareSprite(m, things, atlas, bright, basis, $"{map}: thing {bright}, fixed colormap {Colormap.INVERSECOLORMAP}");
         m.SetColormapOverride(-1);
+        compared += await CheckSightDimPixels(m, things, atlas, lit, bright, basis); // T6.13t
         // T6.8: a palette flash (damage red) on a lit thing.
         m.SetPalette(StStuff.STARTREDPALS + 3);
         compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, palette {StStuff.STARTREDPALS + 3}");
@@ -660,7 +661,7 @@ public partial class LevelCheck
             compared += await CompareSprite(m, things, atlas, i, pitched, $"{map}: thing {i}, full tilt from the game camera's pitch");
         m.SetSprites(settings);
         GD.Print($"Level check: {map}: {picked.Count} things of distinct frames, rotations and mirrors seen side-on ({fullbright} full bright; rotation slots {string.Join(" ", rotations)}"
-            + $"{(flipCompared ? ", mirrored ones among them" : "")}; outline {settings.Outline}), plus two light options, the player's minimum light, no outline, and full tilt from {IsoCamera.DefaultPitch}°: {compared} pixels compared");
+            + $"{(flipCompared ? ", mirrored ones among them" : "")}; outline {settings.Outline}), plus two light options, the player's minimum light, the sight dim (T6.13t), no outline, and full tilt from {IsoCamera.DefaultPitch}°: {compared} pixels compared");
 
         foreach (MeshInstance3D? chunk in _scene.Chunks)
         {
@@ -751,9 +752,10 @@ public partial class LevelCheck
         if (frame is null)
             return 0;
 
+        // T6.13t: a thing out of the player's sight is drawn its dim's rows darker (a fixed colormap wins).
         int colormap = m.ColormapOverride >= 0 ? m.ColormapOverride
-            : e.FullBright ? 0
-            : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, Back, sprite: true);
+            : SightDim.DimmedRow(e.FullBright ? 0
+                : ExpectedColormap(m, true, m.Sprites.SpriteLight(m.Level.Sectors[e.Sector].LightLevel, e.Own), 0, e.MapPosition.X, e.MapPosition.Y, Back, sprite: true), e.SightDim);
         Vector2I size = ViewSize();
         int left = fx - patch.LeftOffset, top = fy - patch.TopOffset;
         // T3.6: the outline (in the sprite light) on transparent texels next to an opaque one, one texel around the rectangle too.

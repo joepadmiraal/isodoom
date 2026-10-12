@@ -41,7 +41,9 @@ namespace IsoDoom.Render;
 /// full bright, 4 actor (T3.4b: the cutaway keeps it whole unless
 /// <see cref="CutawayThings.All"/>), 8 the player's own sprite (T4.7a: its
 /// minimum light, <see cref="SpriteSettings.PlayerLight"/>), 16 <c>MF_SHADOW</c>
-/// (T6.9: the fuzz, <see cref="Fuzz"/>); sector; radius in map units (T3.5a)). Positions and frames are set by the owner
+/// (T6.9: the fuzz, <see cref="Fuzz"/>), and above them the rows the sprite
+/// is dimmed by out of the player's sight (T6.13t, <see cref="SightDim"/>,
+/// <see cref="FlagSightDimShift"/>); sector; radius in map units (T3.5a)). Positions and frames are set by the owner
 /// (<see cref="SetEntries"/>, <see cref="SetEntry"/>).
 /// </summary>
 public partial class ThingSprites : MultiMeshInstance3D
@@ -63,6 +65,9 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// <summary>Custom data flags.</summary>
     public const int FlagFlip = 1, FlagFullBright = 2, FlagActor = 4, FlagOwn = 8, FlagShadow = 16;
 
+    /// <summary>Where the sight dim's rows (0–31, T6.13t, <see cref="Entry.SightDim"/>) sit in the flags.</summary>
+    public const int FlagSightDimShift = 5;
+
     /// <summary>
     /// One thing: map position (x, y, z in map units), facing (BAM), sector
     /// index (light), sprite (<c>spritenum_t</c>), frame (0 = A), full bright,
@@ -77,9 +82,11 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// player's own sprite (T4.7a: lit at least at
     /// <see cref="SpriteSettings.PlayerLight"/>; <see cref="PlayerSprite"/>
     /// sets it), and whether it has <c>MF_SHADOW</c> (T6.9: drawn with the
-    /// fuzz, <see cref="Fuzz"/>, unless <see cref="SpriteSettings.Fuzz"/> is off).
+    /// fuzz, <see cref="Fuzz"/>, unless <see cref="SpriteSettings.Fuzz"/> is off),
+    /// and the colormap rows it is dimmed by (T6.13t: a monster out of the
+    /// player's sight, <see cref="SightDim"/>; 0–31).
     /// </summary>
-    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null, bool Own = false, bool Shadow = false);
+    public readonly record struct Entry(Vector3 MapPosition, uint Angle, int Sector, int Sprite, int Frame, bool FullBright, float ShadowRadius = 0, bool Actor = false, float Radius = 0, float? FloorZ = null, bool Own = false, bool Shadow = false, int SightDim = 0);
 
     public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
 
@@ -348,7 +355,8 @@ public partial class ThingSprites : MultiMeshInstance3D
             return;
         _shown[i] = shown;
         bool hidden = (_isolated is int only && only != i) || (_isolatedSet is { } set && !set.Contains(i));
-        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0) | (e.Own ? FlagOwn : 0) | (e.Shadow ? FlagShadow : 0);
+        int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0) | (e.Own ? FlagOwn : 0) | (e.Shadow ? FlagShadow : 0)
+            | (Math.Clamp(e.SightDim, 0, SightDim.MaxRows) << FlagSightDimShift);
         _custom[i] = new Color(hidden ? -1 : shown.Slot, flags, e.Sector, e.Radius);
         Multimesh.SetInstanceCustomData(i, _custom[i]);
         Shadows.Multimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));

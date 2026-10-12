@@ -663,6 +663,7 @@ public partial class LevelScene : ISetupHost
                 _playerLight = SpriteOptions.PlayerLight; // what the B key turns back on
         });
         Add("sprites/fuzz", () => OnOff(SpriteOptions.Fuzz), s => SpriteOptions = SpriteOptions with { Fuzz = SpriteSettings.ParseFuzz(s) });
+        Add("sprites/sight_dim", () => SightDim.Name(SightDimRows), s => SightDimRows = SightDim.Parse(s, "sprites/sight_dim"));
 
         // HUD
         Add("hud/mode", () => Hud.Mode.ToString().ToLowerInvariant(), s => Hud.Mode = Choice(s, "hud/mode", "bar", "full", "off") switch

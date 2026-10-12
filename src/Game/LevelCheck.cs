@@ -227,6 +227,7 @@ public partial class LevelCheck : Godot.Node
             CheckFogDoor(m, map); // T6.13l: it opens and closes a door in the sim
             CheckReborn(map); // it reloads the map (T6.12)
             CheckFogReborn(map);
+            CheckSightDim(m, map); // T6.13t: after the reborn's reload (it places the player)
             CheckExit(map); // last: it may load the next map (T5.8)
             sectors += m.Level.Sectors.Length;
             if (_failures > failures)
@@ -271,6 +272,7 @@ public partial class LevelCheck : Godot.Node
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         PrintFog();
         PrintBeams();
+        PrintSightDim();
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
             + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
     }

@@ -90,6 +90,10 @@ namespace IsoDoom.Game;
 /// a thin beam rising from each pickup the level hides whole under the game
 /// camera, coloured by its kind; <c>keys</c> beams keys, weapons and power-ups
 /// only; default all);
+/// <c>--level-sight-dim=ROWS|off</c> (T6.13t, <see cref="Render.SightDim"/>:
+/// a live monster without a line of sight to the player, vanilla's
+/// <c>P_CheckSight</c> from the monster, drawn ROWS colormap rows darker under
+/// the game camera; default 10);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -524,7 +528,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
@@ -677,6 +681,8 @@ public partial class LevelScene : Node3D, IGameHost
                 HeightCues = LedgeEdges.Parse(heightCues, "--level-height-cues");
             if (WadLocator.GetUserArg("--level-item-beams") is string beams)
                 ItemBeams = ItemKinds.Parse(beams, "--level-item-beams");
+            if (WadLocator.GetUserArg("--level-sight-dim") is string sightDim)
+                SightDimRows = SightDim.Parse(sightDim, "--level-sight-dim");
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
@@ -1165,6 +1171,10 @@ public partial class LevelScene : Node3D, IGameHost
                 break;
             case Key.F:
                 ItemBeams = ItemBeams switch { ItemBeamMode.All => ItemBeamMode.Keys, ItemBeamMode.Keys => ItemBeamMode.Off, _ => ItemBeamMode.All };
+                break;
+            case Key.Y:
+                // T6.13t: the sight dim's amount, 10, 14, off, 6
+                SightDimRows = SightDimRows switch { 10 => 14, 14 => 0, 0 => 6, _ => 10 };
                 break;
             case Key.I:
                 UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
@@ -2063,13 +2073,16 @@ public partial class LevelScene : Node3D, IGameHost
             _drawn.AddRange(_scratch);
             var entries = new ThingSprites.Entry[_drawn.Count];
             for (int i = 0; i < entries.Length; i++)
-                entries[i] = ThingEntry(_drawn[i], Interpolated(_drawn[i]));
+                entries[i] = DrawnEntry(_drawn[i]);
             Things.SetEntries(entries);
             return;
         }
         for (int i = 0; i < _drawn.Count; i++)
-            Things.SetEntry(i, ThingEntry(_drawn[i], Interpolated(_drawn[i])));
+            Things.SetEntry(i, DrawnEntry(_drawn[i]));
     }
+
+    // A drawn mobj's billboard this frame: where it is interpolated to, dimmed out of the player's sight (T6.13t).
+    private ThingSprites.Entry DrawnEntry(mobj_t mo) => ThingEntry(mo, Interpolated(mo)) with { SightDim = SightDimOf(mo) };
 
     /// <summary>
     /// T6.6: the level's <c>extralight</c> (<see cref="LevelMesh.SetExtraLight"/>)
@@ -2313,7 +2326,10 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append(hit.OnFloor ? $"floor of sector {hit.Sector}\n" : "no floor (plane at the player's height)\n");
         }
         if (Mesh is not null)
+        {
             text.Append(FogText() + "\n"); // T6.13l
+            text.Append(SightText() + "\n"); // T6.13t
+        }
         if (Iso is { Current: true })
             text.Append(Cutaway.Style == CutawayStyle.Off
                 ? "cutaway: off\n"
@@ -2605,6 +2621,7 @@ public partial class LevelScene : Node3D, IGameHost
         _drawn.Clear();
         World = null;
         Fog = null;
+        SightDims.Clear();
         _hudMobj = null;
         Player?.Visible = false;
         Cursor = null;
