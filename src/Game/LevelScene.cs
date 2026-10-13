@@ -176,7 +176,8 @@ namespace IsoDoom.Game;
 /// and, with a real renderer, drawn pixels: <see cref="LevelCheck"/>).
 /// </para>
 /// <para>
-/// Keys (T2.7, T3.3; not under <c>--level-check</c>): Tab cycles the game
+/// Keys (T2.7, T3.3; not under <c>--level-check</c>): ` (backquote; Tab
+/// until T7.9, now the automap's) cycles the game
 /// camera, the overview and the free-fly camera (<see cref="FreeFlyCamera"/>,
 /// which has its own keys); with the game camera the game's input actions
 /// drive the player (T4.6: W/A/S/D relative to the screen, Shift runs, the
@@ -555,9 +556,10 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "Tab game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "` (backquote) game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
+        + "Automap: Tab (pad Y) opens and closes, =/- (D-pad up/down) zoom, 0 (D-pad right) whole map, F (D-pad left) follow, arrows (right stick) pan when not following, G (stick click) grid, M (X) mark, C (B) clear marks, iddt cheat\n"
         + "Free-fly: click captures the mouse (Esc releases), mouse look, W/A/S/D move, E/Space up, Q/C down,\n"
         + "Shift x4, Alt x1/4, wheel speed, Ctrl+wheel FOV / ortho size, O perspective/orthographic";
 
@@ -610,6 +612,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(Glow);
         AddChild(Beams);
         AddChild(Markers);
+        AddChild(AutomapScreen); // T7.9: over the level, under the pause graphic and the HUD
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
         // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
@@ -662,6 +665,7 @@ public partial class LevelScene : Node3D, IGameHost
             InitSaves(); // T7.6: the save slots' directory
             _graphics = new ScreenGraphics(Wad, MessageLine);
             InitMenus(); // T7.2
+            InitAutomap(); // T7.9
             if (IsCheckRun)
             {
                 InitSettings(); // T7.3: the defaults (no file), for the check's settings round trip
@@ -745,6 +749,10 @@ public partial class LevelScene : Node3D, IGameHost
                     "off" => HudMode.Off,
                     _ => throw new ArgumentException($"--level-hud: \"{hud}\" (bar, full or off)"),
                 };
+            if (WadLocator.GetUserArg("--level-automap") is string automapStyle)
+                AutomapOverlay = ParseAutomapStyle(automapStyle, "--level-automap"); // T7.9
+            if (WadLocator.GetUserArg("--level-automap-detail") is string automapDetail)
+                AutomapHighDetail = ParseAutomapDetail(automapDetail, "--level-automap-detail");
             if (WadLocator.GetUserArg("--level-wipe") is string wipe)
                 ScreenWipes = ParseWipe(wipe, "--level-wipe");
             if (WadLocator.GetUserArg("--level-fullscreen") is string fullscreen)
@@ -1128,7 +1136,8 @@ public partial class LevelScene : Node3D, IGameHost
             return; // T7.3: a key rebound to a game action is the game's, not a debug key
         switch (key.PhysicalKeycode)
         {
-            case Key.Tab:
+            case Key.Quoteleft:
+                // T7.9: was Tab, now the automap's (vanilla's key_map_toggle)
                 var next = (CameraMode)(((int)CurrentCamera + 1) % 3);
                 if (next == CameraMode.Iso && Iso is null)
                     next = CameraMode.Overview;
@@ -1284,6 +1293,7 @@ public partial class LevelScene : Node3D, IGameHost
                 if (Mesh.Sprites != SpriteOptions)
                     Mesh.SetSprites(SpriteOptions);
             }
+            UpdateAutomap(); // T7.9: before the HUD, which shows the bar and the title with it
             UpdateHud();
             UpdateScreens();
             WipeLayer.Show(flow.Wipe, _wipeStartPending);
@@ -1503,6 +1513,7 @@ public partial class LevelScene : Node3D, IGameHost
         // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents); the HUD is drawn by D_Display (T7.1a)
         StartHud();
         StatusBar?.ST_Ticker();
+        AutomapTicker(); // T7.9: AM_Ticker
         TakeEvents();
     }
 
@@ -1568,7 +1579,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
         StatusBar?.ConsolePlayer = world.consoleplayer;
-        MessageLine?.HU_Start();
+        MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap); // T7.9: the map's title too
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }
 
@@ -2284,8 +2295,17 @@ public partial class LevelScene : Node3D, IGameHost
         }
         // T7.2: the menus before anything else (d_main.c D_ProcessEvents: M_Responder first; on the title loop
         // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
-        if (!IsCheckRun && (MenuEvent(@event) || CheatEvent(@event)))
+        if (IsCheckRun)
+            return;
+        if (MenuEvent(@event))
             GetViewport().SetInputAsHandled();
+        else
+        {
+            // vanilla's G_Responder: ST_Responder (the cheats) then AM_Responder (T7.9), each sees the key
+            bool cheat = CheatEvent(@event);
+            if (AutomapEvent(@event) | cheat)
+                GetViewport().SetInputAsHandled();
+        }
     }
 
     /// <summary>
@@ -2301,7 +2321,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public ticcmd_t BuildTiccmd(Tweaks tweaks)
     {
-        TiccmdInput input = MenuFilter(GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null)); // T7.2: none under the menus
+        TiccmdInput input = AutomapFilter(MenuFilter(GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null))); // T7.2: none under the menus; T7.9: the automap's pan keys
         if (!IsoActive && GameState == gamestate_t.GS_LEVEL)
             input = new TiccmdInput { Pause = input.Pause }; // T7.1: the pause key works under every camera
         mobj_t? mo = PlayerMobj;
@@ -2359,7 +2379,7 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append(CultureInfo.InvariantCulture, $"focus x {fx}  y {fy}  z {fz}\n");
         }
         else
-            text.Append(FreeFly is null ? "overview\n" : "overview (Tab: free-fly)\n");
+            text.Append(FreeFly is null ? "overview\n" : "overview (`: free-fly)\n");
         if (Player is { } p && PlayerMobj is { } mo && Mesh is not null && !FreeFlyActive)
         {
             Vector2 at = p.MapPosition;
@@ -2375,6 +2395,8 @@ public partial class LevelScene : Node3D, IGameHost
                 + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
         if (HudMessage is not null)
             text.Append(CultureInfo.InvariantCulture, $"message: {HudMessage}\n");
+        if (Automap is { automapactive: true })
+            text.Append(AutomapText()).Append('\n'); // T7.9
         if (World is { } sw && _soundLog.Count > 0 && _soundLog[^1].Tic >= sw.leveltime - SimInfo.TICRATE)
             text.Append("sounds: " + string.Join(", ", _soundLog.Where(l => l.Tic >= sw.leveltime - SimInfo.TICRATE).Select(l => SoundText(l.Sound))) + "\n");
         if (Sound is { } snd && snd.channels.Any(c => c.sfxinfo is not null))
@@ -2685,6 +2707,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     private void UnloadLevel()
     {
+        CloseAutomap(); // T7.9: g_game.c's automapactive = false (a new game, a load, the next level, a reborn)
         foreach (MeshInstance3D chunk in _chunks)
             chunk.QueueFree();
         _chunks.Clear();

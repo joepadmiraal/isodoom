@@ -168,6 +168,15 @@ public sealed class VanillaRoute
         return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds, route);
     }
 
+    /// <summary>The directory of DOOM1.WAD's dumps: <see cref="DumpDirEnvVar"/>, default <c>~/.cache/isodoom/vanilla-routes</c>.</summary>
+    public static string DumpDir()
+    {
+        string? dir = Environment.GetEnvironmentVariable(DumpDirEnvVar);
+        return string.IsNullOrEmpty(dir)
+            ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes")
+            : dir;
+    }
+
     /// <summary>
     /// The reference dump's lines: the committed one for the synthetic IWAD,
     /// DOOM1.WAD's from <see cref="DumpDirEnvVar"/> (skips the test when DOOM1.WAD or the dump is absent).
@@ -182,10 +191,7 @@ public sealed class VanillaRoute
         else
         {
             TestWads.RequireDoom1();
-            string? dir = Environment.GetEnvironmentVariable(DumpDirEnvVar);
-            if (string.IsNullOrEmpty(dir))
-                dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes");
-            path = System.IO.Path.Combine(dir, Name + ".vanilla");
+            path = System.IO.Path.Combine(DumpDir(), Name + ".vanilla");
             if (!System.IO.File.Exists(path))
                 Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/routes.sh (or set {DumpDirEnvVar}).");
         }

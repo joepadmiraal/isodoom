@@ -19,22 +19,32 @@ public sealed class HudScreen
     /// <summary>doomdef.h <c>SCREENHEIGHT</c>.</summary>
     public const int SCREENHEIGHT = 200;
 
-    public HudScreen(int top, int height)
+    public HudScreen(int top, int height) : this(top, height, SCREENWIDTH)
+    {
+    }
+
+    /// <summary>
+    /// A strip <paramref name="width"/> pixels wide (T7.9: the automap's
+    /// frame, vanilla's <c>f_w</c> × <c>f_h</c>, as wide as the window's
+    /// pixels at the HUD's scale); the other strips are the screen's 320.
+    /// </summary>
+    public HudScreen(int top, int height, int width)
     {
         Top = top;
         Height = height;
-        Pixels = new byte[SCREENWIDTH * height];
-        Opaque = new byte[SCREENWIDTH * height];
+        Width = width;
+        Pixels = new byte[width * height];
+        Opaque = new byte[width * height];
     }
 
     /// <summary>The screen row of the strip's first row.</summary>
     public int Top { get; }
 
-    [SuppressMessage("Performance", "CA1822", Justification = "The strip's size, with Height; always the screen's width")]
-    public int Width => SCREENWIDTH;
+    /// <summary>The strip's width (<see cref="SCREENWIDTH"/> but for the automap's frame, T7.9).</summary>
+    public int Width { get; }
     public int Height { get; }
 
-    /// <summary>Palette indices, <c>y * 320 + x</c> (y from <see cref="Top"/>).</summary>
+    /// <summary>Palette indices, <c>y * Width + x</c> (y from <see cref="Top"/>).</summary>
     public byte[] Pixels { get; }
 
     /// <summary>1 where something is drawn, 0 where the strip is see-through.</summary>
@@ -68,10 +78,10 @@ public sealed class HudScreen
             for (int px = 0; px < patch.Width; px++)
             {
                 int sx = x + px;
-                if (sx < 0 || sx >= SCREENWIDTH || !patch.IsOpaque(px, py))
+                if (sx < 0 || sx >= Width || !patch.IsOpaque(px, py))
                     continue;
-                Pixels[sy * SCREENWIDTH + sx] = patch[px, py];
-                Opaque[sy * SCREENWIDTH + sx] = 1;
+                Pixels[sy * Width + sx] = patch[px, py];
+                Opaque[sy * Width + sx] = 1;
             }
         }
     }
@@ -87,10 +97,10 @@ public sealed class HudScreen
     {
         for (int sy = Math.Max(y - Top, 0); sy < Math.Min(y - Top + height, Height); sy++)
         {
-            for (int sx = Math.Max(x, 0); sx < Math.Min(x + width, SCREENWIDTH); sx++)
+            for (int sx = Math.Max(x, 0); sx < Math.Min(x + width, Width); sx++)
             {
-                Pixels[sy * SCREENWIDTH + sx] = source.Pixels[sy * SCREENWIDTH + sx];
-                Opaque[sy * SCREENWIDTH + sx] = source.Opaque[sy * SCREENWIDTH + sx];
+                Pixels[sy * Width + sx] = source.Pixels[sy * Width + sx];
+                Opaque[sy * Width + sx] = source.Opaque[sy * Width + sx];
             }
         }
     }

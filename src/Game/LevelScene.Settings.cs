@@ -67,7 +67,7 @@ public partial class LevelScene : ISetupHost
 
     /// <summary>Every setting key: <see cref="Settings.Defs"/>' and each rebindable action's.</summary>
     public static IEnumerable<string> SettingKeys() =>
-        Settings.Defs.Select(d => d.Key).Concat(Settings.GameActions.Concat(Settings.MenuActions).Select(Settings.BindingKey));
+        Settings.Defs.Select(d => d.Key).Concat(Settings.BoundActions.Select(Settings.BindingKey));
 
     /// <summary>
     /// T7.3: reads the settings file and applies its values but those the
@@ -97,7 +97,7 @@ public partial class LevelScene : ISetupHost
         SettingsValues = new SettingValues(loaded);
         foreach (SettingDef def in Settings.Defs)
             SettingsValues.SetDefault(def.Key, def.Default);
-        foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
+        foreach (string action in Settings.BoundActions)
             SettingsValues.SetDefault(Settings.BindingKey(action), Binding.FormatList(DefaultBindings(action)));
 
         foreach (string key in SettingKeys())
@@ -142,7 +142,7 @@ public partial class LevelScene : ISetupHost
             dirty |= SettingsValues.Observe(def.Key, _settingAccess[def.Key].Get());
         if (bindings)
         {
-            foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
+            foreach (string action in Settings.BoundActions)
                 dirty |= SettingsValues.Observe(Settings.BindingKey(action), _settingAccess[Settings.BindingKey(action)].Get());
         }
         if (_flow is not null)
@@ -231,7 +231,7 @@ public partial class LevelScene : ISetupHost
     /// <inheritdoc/>
     public void ResetControls()
     {
-        foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
+        foreach (string action in Settings.BoundActions)
             SetBindings(action, DefaultBindings(action));
         SyncSettings(bindings: true);
         GD.Print("Settings: controls reset");
@@ -242,7 +242,7 @@ public partial class LevelScene : ISetupHost
     {
         foreach (SettingDef def in Settings.Defs)
             _settingAccess[def.Key].Set(def.Default);
-        foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
+        foreach (string action in Settings.BoundActions)
             SetBindings(action, DefaultBindings(action));
         SyncSettings(bindings: true);
         GD.Print("Settings: every setting reset");
@@ -324,7 +324,7 @@ public partial class LevelScene : ISetupHost
     /// </summary>
     public void BindAction(string action, Binding input)
     {
-        string[] group = Settings.MenuActions.Contains(action) ? Settings.MenuActions : Settings.GameActions;
+        string[] group = Settings.GroupOf(action);
         Dictionary<string, List<Binding>> table = group.ToDictionary(a => a, BindingsOf);
         List<string> lost = Binding.Rebind(table, group, action, input);
         SetBindings(action, table[action]);
@@ -678,6 +678,8 @@ public partial class LevelScene : ISetupHost
             s => Hud.FixedScale = s == "auto" ? 0 : ParseInt(s, "hud/scale", 1, 16));
         Add("hud/messages", () => OnOff(Menu.showMessages != 0), s => Menu.showMessages = ParseOnOff(s, "hud/messages") ? 1 : 0);
         Add("hud/detail", () => Menu.detailLevel == 0 ? "high" : "low", s => Menu.detailLevel = Choice(s, "hud/detail", "high", "low") == "high" ? 0 : 1);
+        Add("hud/automap", () => AutomapOverlay ? "overlay" : "opaque", s => AutomapOverlay = ParseAutomapStyle(s, "hud/automap")); // T7.9
+        Add("hud/automap_detail", () => AutomapHighDetail ? "high" : "low", s => AutomapHighDetail = ParseAutomapDetail(s, "hud/automap_detail"));
 
         // controls and sound
         Add("controls/mouse_sensitivity", () => Menu.mouseSensitivity.ToString(CultureInfo.InvariantCulture),
@@ -690,7 +692,7 @@ public partial class LevelScene : ISetupHost
             MusicDevice?.SetOpl3(MusicOpl3); // at once: the song again from its start on the other chip (T7.8g)
         });
 
-        foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
+        foreach (string action in Settings.BoundActions)
         {
             string a = action;
             Add(Settings.BindingKey(a), () => Binding.FormatList(BindingsOf(a)),

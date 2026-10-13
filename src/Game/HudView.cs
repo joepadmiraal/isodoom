@@ -19,9 +19,10 @@ public partial class HudView : CanvasLayer
 {
     private readonly TextureRect _bar = NewRect("StatusBar");
     private readonly TextureRect _message = NewRect("MessageLine");
-    private Image? _barImage, _messageImage;
-    private ImageTexture? _barTexture, _messageTexture;
-    private byte[] _barRgba = [], _messageRgba = [];
+    private readonly TextureRect _title = NewRect("MapTitle");
+    private Image? _barImage, _messageImage, _titleImage;
+    private ImageTexture? _barTexture, _messageTexture, _titleTexture;
+    private byte[] _barRgba = [], _messageRgba = [], _titleRgba = [];
 
     /// <summary>What shows (<c>--level-hud</c>; = and - keys).</summary>
     public HudMode Mode { get; set; } = HudMode.Bar;
@@ -32,8 +33,15 @@ public partial class HudView : CanvasLayer
     /// <summary>The scale in use (screen pixels per HUD pixel).</summary>
     public int PixelScale { get; private set; } = 1;
 
+    /// <summary>
+    /// T7.9: the automap shows: the status bar shows whatever the
+    /// <see cref="Mode"/> (st_stuff.c's <c>st_statusbaron = !fullscreen || automapactive</c>),
+    /// and the map's title over its bottom left (hu_stuff.c's <c>w_title</c>).
+    /// </summary>
+    public bool AutomapShown { get; set; }
+
     /// <summary>The viewport pixels the status bar covers at the bottom (0 unless <see cref="HudMode.Bar"/> shows).</summary>
-    public float BottomInset => Visible && Mode == HudMode.Bar ? StStuff.ST_HEIGHT * PixelScale : 0;
+    public float BottomInset => Visible && (Mode == HudMode.Bar || AutomapShown) ? StStuff.ST_HEIGHT * PixelScale : 0;
 
     /// <summary>The viewport pixels the message line's rows take at the top (where the debug overlay starts below).</summary>
     public float TopInset => Visible ? HuStuff.ScreenRows * PixelScale / 2 + 8 : 0;
@@ -51,6 +59,7 @@ public partial class HudView : CanvasLayer
         Layer = 1; // over the debug overlay
         AddChild(_bar);
         AddChild(_message);
+        AddChild(_title);
     }
 
     private static TextureRect NewRect(string name) => new()
@@ -78,7 +87,7 @@ public partial class HudView : CanvasLayer
         PixelScale = FixedScale > 0 ? FixedScale : ScaleFor(size);
         float left = MathF.Floor((size.X - HudScreen.SCREENWIDTH * PixelScale) / 2);
 
-        HudScreen? strip = st is null || Mode == HudMode.Off ? null : Mode == HudMode.Bar ? st.Screen : st.FullScreen;
+        HudScreen? strip = st is null ? null : AutomapShown || Mode == HudMode.Bar ? st.Screen : Mode == HudMode.Full ? st.FullScreen : null;
         _bar.Visible = strip is not null;
         if (strip is not null)
         {
@@ -93,7 +102,19 @@ public partial class HudView : CanvasLayer
             _message.Position = new Vector2(Math.Max(left, 0), hu.Screen.Top * PixelScale);
             _message.Size = new Vector2(HudScreen.SCREENWIDTH, hu.Screen.Height) * PixelScale;
         }
+        _title.Visible = AutomapShown && hu is not null;
+        if (AutomapShown && hu is not null)
+        {
+            // T7.9: vanilla's screen rows from the title's down, laid out as the bar's (row 168 at the bar's top)
+            HudScreen title = hu.TitleScreen;
+            Upload(title, pal, ref _titleImage, ref _titleTexture, ref _titleRgba, _title);
+            _title.Position = new Vector2(Math.Max(left, 0), size.Y - (HudScreen.SCREENHEIGHT - title.Top) * PixelScale);
+            _title.Size = new Vector2(HudScreen.SCREENWIDTH, title.Height) * PixelScale;
+        }
     }
+
+    /// <summary>T7.9: the map title's texture rectangle.</summary>
+    public TextureRect Title => _title;
 
     private static void Upload(HudScreen screen, ReadOnlySpan<byte> pal, ref Image? image, ref ImageTexture? texture, ref byte[] rgba, TextureRect rect)
     {

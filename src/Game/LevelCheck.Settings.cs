@@ -30,7 +30,7 @@ public partial class LevelCheck
 
         foreach (string action in GameInput.Actions())
         {
-            if (!Settings.GameActions.Contains(action) && !Settings.MenuActions.Contains(action))
+            if (!Settings.BoundActions.Contains(action))
                 Fail($"settings (T7.3): the action {action} is on no controls page");
         }
 
@@ -41,7 +41,7 @@ public partial class LevelCheck
             if (now != def.Default)
                 Fail($"settings (T7.3): {def.Key} starts at \"{now}\", its default is \"{def.Default}\"");
         }
-        foreach (string action in Settings.GameActions.Concat(Settings.MenuActions))
+        foreach (string action in Settings.BoundActions)
         {
             string now = s.GetSetting(Settings.BindingKey(action)), project = Binding.FormatList(LevelScene.DefaultBindings(action));
             if (now != project || project.Length == 0)
@@ -177,7 +177,7 @@ public partial class LevelCheck
             menu.M_ClearMenus();
         }
         if (_failures == failures)
-            GD.Print($"Level check: settings (T7.3): {Settings.Defs.Length} settings and {Settings.GameActions.Length + Settings.MenuActions.Length} actions' bindings at their defaults; each changed applied at once; a page changed by the keys; Use, Attack and the menu key rebound through the menus; all kept through a file and a reset");
+            GD.Print($"Level check: settings (T7.3): {Settings.Defs.Length} settings and {Settings.BoundActions.Length} actions' bindings at their defaults; each changed applied at once; a page changed by the keys; Use, Attack and the menu key rebound through the menus; all kept through a file and a reset");
     }
 
     /// <summary>On the current menu item, <paramref name="start"/> starts the wait and <paramref name="input"/> binds to <paramref name="action"/>.</summary>

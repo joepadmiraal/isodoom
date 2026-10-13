@@ -188,7 +188,7 @@ namespace IsoDoom.Game;
 /// <c>episode</c>, <c>skill</c>, <c>options</c>, <c>sound</c>, <c>load</c>,
 /// <c>save</c>, <c>readthis1</c>, <c>readthis2</c>; T7.3: <c>setup</c>, <c>video</c>,
 /// <c>gameplay</c>, <c>sprites</c>, <c>hud</c>, T7.8g: <c>soundsetup</c>, <c>controls</c>, <c>movement</c>,
-/// <c>actions</c>, <c>menukeys</c>, <c>binding</c> while one waits for an input to
+/// <c>actions</c>, <c>menukeys</c>, T7.9: <c>automap</c>, <c>binding</c> while one waits for an input to
 /// bind) with the skull (or the cursor) on item ITEM.
 /// </para>
 /// <para>
@@ -210,6 +210,15 @@ namespace IsoDoom.Game;
 /// <c>load SLOT refused</c> fails unless it is. A script saves to a
 /// directory of its own (removed at the end) unless <c>--savedir=DIR</c>
 /// names one: <c>route …; tics 600; save 0; checksum; load 0; checksum</c>.
+/// </para>
+/// <para>
+/// The automap (T7.9, <see cref="AmMap"/>): <c>tap Tab</c> opens and
+/// closes it (its other keys and the pad's as a person's, <c>type iddt</c>
+/// its cheat); <c>automap [on|off]</c> waits for the queued tics and a frame,
+/// prints its state and fails unless it is on or off as asked;
+/// <c>amline LINE drawn|hidden</c> waits for the queued tics and fails
+/// unless the open automap draws line LINE or not (vanilla's rules: seen,
+/// <c>ML_DONTDRAW</c>, the computer map, <c>iddt</c>).
 /// </para>
 /// </summary>
 public partial class LevelScript : Node
@@ -497,6 +506,35 @@ public partial class LevelScript : Node
                             if (w.Length > 2 && _scene.LevelsCompleted != Int(w[2]))
                             {
                                 GD.PrintErr($"Level script: map: expected {Int(w[2])} map(s) completed by exits, there were {_scene.LevelsCompleted}");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "automap":
+                        {
+                            // T7.9: waits for the queued tics; prints the automap's state, failing unless it is on or off as asked
+                            await Drain();
+                            await Frames(1);
+                            GD.Print($"Level script: {_scene.AutomapText()}");
+                            bool on = _scene.Automap is { automapactive: true };
+                            if (w.Length > 1 && (w[1] == "on") != on)
+                            {
+                                GD.PrintErr($"Level script: automap: {(on ? "on" : "off")}, expected {w[1]}");
+                                exit = 1;
+                            }
+                            break;
+                        }
+                    case "amline":
+                        {
+                            // T7.9: waits for the queued tics; fails unless the automap draws line N (drawn) or not (hidden)
+                            await Drain();
+                            int line = Int(w[1]);
+                            int color = _scene.Automap is { automapactive: true } am && _scene.World is { } lw && line >= 0 && line < lw.lines.Length
+                                ? am.LineColor(line) : -2;
+                            GD.Print($"Level script: amline {line}: {(color == -2 ? "no automap or no such line" : color < 0 ? "hidden" : $"drawn in colour {color}")}");
+                            if (color == -2 || (w[2] == "drawn") != (color >= 0))
+                            {
+                                GD.PrintErr($"Level script: amline {line}: expected {w[2]}");
                                 exit = 1;
                             }
                             break;

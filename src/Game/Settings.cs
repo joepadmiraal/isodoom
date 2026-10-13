@@ -142,6 +142,9 @@ public static class Settings
         new("hud/scale", "SCALE", SettingPage.Hud, "auto", ["auto", "1", "2", "3", "4", "5", "6", "7", "8"], "--level-hud-scale"),
         new("hud/messages", "MESSAGES", SettingPage.Hud, "on", _onOff),
         new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", ["high", "low"]),
+        // T7.9: the automap's look (not vanilla's: a black screen at its 320x200 pixels)
+        new("hud/automap", "AUTOMAP", SettingPage.Hud, "opaque", ["opaque", "overlay"], "--level-automap"),
+        new("hud/automap_detail", "AUTOMAP DETAIL", SettingPage.Hud, "low", ["low", "high"], "--level-automap-detail"),
 
         // controls and sound (vanilla's options)
         new("controls/mouse_sensitivity", "MOUSE SENSITIVITY", SettingPage.Controls, "5", Range(0, 9, 1)),
@@ -192,6 +195,13 @@ public static class Settings
             ("menu_open", "OPEN/CLOSE MENU"), ("menu_up", "UP"), ("menu_down", "DOWN"), ("menu_left", "LEFT"), ("menu_right", "RIGHT"),
             ("menu_select", "SELECT"), ("menu_back", "BACK"), ("menu_yes", "YES"), ("menu_no", "NO"),
         }),
+        // T7.9: Chocolate Doom's key_map_* (am_map.c's keys), rebindable
+        ("AUTOMAP", new[]
+        {
+            ("map_toggle", "OPEN/CLOSE"), ("map_north", "PAN UP"), ("map_south", "PAN DOWN"), ("map_west", "PAN LEFT"),
+            ("map_east", "PAN RIGHT"), ("map_zoomin", "ZOOM IN"), ("map_zoomout", "ZOOM OUT"), ("map_maxzoom", "WHOLE MAP"),
+            ("map_follow", "FOLLOW"), ("map_grid", "GRID"), ("map_mark", "MARK"), ("map_clearmark", "CLEAR MARKS"),
+        }),
     ];
 
     /// <summary>The menus' input actions (Chocolate Doom's <c>key_menu_*</c>, rebindable since T7.3).</summary>
@@ -199,6 +209,16 @@ public static class Settings
 
     /// <summary>The game's input actions on the controls pages.</summary>
     public static readonly string[] GameActions = [.. ControlPages.Take(2).SelectMany(p => p.Actions).Select(a => a.Action)];
+
+    /// <summary>T7.9: the automap's input actions (Chocolate Doom's <c>key_map_*</c>), a group of their own when rebound.</summary>
+    public static readonly string[] AutomapActions = [.. ControlPages[3].Actions.Select(a => a.Action)];
+
+    /// <summary>Every rebindable action: the game's, the menus' and (T7.9) the automap's.</summary>
+    public static readonly string[] BoundActions = [.. GameActions, .. MenuActions, .. AutomapActions];
+
+    /// <summary>The group <paramref name="action"/> is rebound in (an input it takes leaves the others of its group).</summary>
+    public static string[] GroupOf(string action) =>
+        MenuActions.Contains(action) ? MenuActions : AutomapActions.Contains(action) ? AutomapActions : GameActions;
 
     /// <summary>The settings key of action <paramref name="action"/>'s bindings.</summary>
     public static string BindingKey(string action) => "controls/" + action;

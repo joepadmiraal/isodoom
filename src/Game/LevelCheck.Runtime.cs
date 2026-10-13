@@ -64,11 +64,13 @@ public partial class LevelCheck
         p.cards[(int)card_t.it_bluecard] = true;
         p.weaponowned[(int)weapontype_t.wp_shotgun] = true;
         p.armorpoints = 50;
+        OpenAutomapForDeath(); // T7.9: the death closes it
         world.P_DamageMobj(me, null, null, 10000);
         int x = me.x, y = me.y;
         var cmd = new ticcmd_t { forwardmove = 50 };
         for (int i = 0; i < 4; i++)
             _scene.Tic(cmd);
+        CheckAutomapClosedByDeath(map);
         bool deathFrame = me.state is >= statenum_t.S_PLAY_DIE1 and <= statenum_t.S_PLAY_XDIE9;
         if (p.playerstate != playerstate_t.PST_DEAD || p.health > 0 || !deathFrame || (me.x, me.y) != (x, y) || _scene.PlayerMobj != me
             || world.gameaction != gameaction_t.ga_nothing)

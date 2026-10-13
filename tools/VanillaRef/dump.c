@@ -94,6 +94,8 @@
 #include "hu_lib.h"
 #include "wi_stuff.h"
 #include "sounds.h"
+#include "am_map.h"
+#include "doomkeys.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -393,10 +395,12 @@ void dump_tic(void)
 // Called by the patched g_game.c after HU_Ticker in every G_Ticker of a level
 // (T6.11): the HUD column, then the exit, ending the tic's line.
 static void dump_wipetic(void);
+static void dump_amtic(void);
 
 void dump_posttic(void)
 {
     dump_wipetic();
+    dump_amtic();
     if (!ticfile)
         return;
     // The status bar and the message line (T6.11): drawn now as in play
@@ -641,6 +645,132 @@ void dump_fitic(void)
         fclose(fifile);
         exit(0);
     }
+}
+
+// The automap (T7.9): with $DUMP_AM set (a drawn run, -timedemo: D_Display
+// renders the view after every tic, which maps the lines it draws,
+// ML_MAPPED), at the end of each level tic of $DUMP_AM_TICS ("N,M,...",
+// leveltime) it appends a line "am TIC X Y ANGLE MAPPED NAME:HASH..." to the
+// file $DUMP_AM: the console player's mobj x, y (fixed_t) and angle, the
+// lines' ML_MAPPED as hex (line 4i+k is bit k of digit i, in line order),
+// then the automap opened, worked and closed through AM_Responder's keys
+// (Chocolate Doom's default key_map_* codes, the character typed as data2)
+// and AM_Ticker, each NAME a shot: AM_Drawer and the map title
+// (HUlib_drawTextLine(&w_title)) over it, HASH the 32-bit FNV-1a (bytewise,
+// 8 hex digits) of the frame (rows 0-167): "map" (Tab), "allmap"
+// (pw_allmap set for the shot), "iddt1" and "iddt2" (iddt typed), "whole"
+// (g, 0: the grid and the whole map; then 0, g back), "zoom" (= held 10
+// tics), "pan" (f, right held 8 tics, m, up held 5 tics, m), after which -
+// is held 10 tics, f pressed, iddt typed and Tab pressed (the marks stay).
+// With $DUMP_AM_DIR the shots also go there as amTIC-NAME.ppm (palette 0).
+// AmMapTests replays the same keys on its world, with these mapped lines.
+static void am_key(int key, int down)
+{
+    event_t ev = { down ? ev_keydown : ev_keyup, key, key, 0 };
+    AM_Responder(&ev);
+}
+
+static void am_press(int key)
+{
+    am_key(key, 1);
+    am_key(key, 0);
+}
+
+static void am_hold(int key, int tics)
+{
+    am_key(key, 1);
+    for (int i = 0; i < tics; i++)
+        AM_Ticker();
+    am_key(key, 0);
+}
+
+static void am_shot(FILE *f, const char *name)
+{
+    extern hu_textline_t w_title;
+    AM_Drawer();
+    HUlib_drawTextLine(&w_title, false);
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < SCREENWIDTH * (SCREENHEIGHT - ST_HEIGHT); i++)
+        hash = (hash ^ I_VideoBuffer[i]) * 16777619u;
+    fprintf(f, " %s:%08x", name, hash);
+    char *dir = getenv("DUMP_AM_DIR");
+    if (!dir || !*dir)
+        return;
+    char path[1024];
+    snprintf(path, sizeof path, "%s/am%d-%s.ppm", dir, leveltime, name);
+    FILE *ppm = fopen(path, "wb");
+    if (!ppm)
+    {
+        perror(path);
+        exit(1);
+    }
+    byte *pal = (byte *)W_CacheLumpName("PLAYPAL", PU_CACHE);
+    fprintf(ppm, "P6\n%d %d\n255\n", SCREENWIDTH, SCREENHEIGHT - ST_HEIGHT);
+    for (int i = 0; i < SCREENWIDTH * (SCREENHEIGHT - ST_HEIGHT); i++)
+        fwrite(pal + 3 * I_VideoBuffer[i], 1, 3, ppm);
+    fclose(ppm);
+}
+
+static void dump_amtic(void)
+{
+    static FILE *amfile;
+    char *path = getenv("DUMP_AM"), *tics = getenv("DUMP_AM_TICS");
+    if (!path || !*path || !tics)
+        return;
+    char want[16];
+    snprintf(want, sizeof want, "%d", leveltime);
+    int hit = 0;
+    for (char *t = strtok(strdup(tics), ","); t && !hit; t = strtok(NULL, ","))
+        hit = !strcmp(t, want);
+    if (!hit)
+        return;
+    if (!amfile && !(amfile = fopen(path, "w")))
+    {
+        perror(path);
+        exit(1);
+    }
+    player_t *pl = &players[consoleplayer];
+    fprintf(amfile, "am %d %d %d %u ", leveltime, pl->mo->x, pl->mo->y, pl->mo->angle);
+    for (int i = 0; i < numlines; i += 4)
+    {
+        int digit = 0;
+        for (int k = 0; k < 4 && i + k < numlines; k++)
+            digit |= (lines[i + k].flags & ML_MAPPED) ? 1 << k : 0;
+        fputc("0123456789abcdef"[digit], amfile);
+    }
+    am_press(KEY_TAB);
+    am_shot(amfile, "map");
+    int allmap = pl->powers[pw_allmap];
+    pl->powers[pw_allmap] = 1;
+    am_shot(amfile, "allmap");
+    pl->powers[pw_allmap] = allmap;
+    const char *iddt = "iddt";
+    for (const char *c = iddt; *c; c++)
+        am_press(*c);
+    am_shot(amfile, "iddt1");
+    for (const char *c = iddt; *c; c++)
+        am_press(*c);
+    am_shot(amfile, "iddt2");
+    am_press('g');
+    am_press('0');
+    am_shot(amfile, "whole");
+    am_press('0');
+    am_press('g');
+    am_hold('=', 10);
+    am_shot(amfile, "zoom");
+    am_press('f');
+    am_hold(KEY_RIGHTARROW, 8);
+    am_press('m');
+    am_hold(KEY_UPARROW, 5);
+    am_press('m');
+    am_shot(amfile, "pan");
+    am_hold('-', 10);
+    am_press('f');
+    for (const char *c = iddt; *c; c++)
+        am_press(*c);
+    am_press(KEY_TAB);
+    fputc('\n', amfile);
+    fflush(amfile);
 }
 
 // The screen wipes (T7.1a): with $DUMP_WIPE set (and not $DUMP_TICS: the

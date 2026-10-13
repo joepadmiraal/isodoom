@@ -81,10 +81,18 @@ index 9954d78..cba0443 100644
  	G_CheckDemoStatus (); 
  	return; 
 diff --git a/doomgeneric/hu_stuff.c b/doomgeneric/hu_stuff.c
-index b63cac7..03d5b0b 100644
+index b63cac7..f6730f5 100644
 --- a/doomgeneric/hu_stuff.c
 +++ b/doomgeneric/hu_stuff.c
-@@ -93,12 +93,12 @@ static boolean		always_off = false;
+@@ -86,19 +86,19 @@ char*	player_names[] =
+ char			chat_char; // remove later.
+ static player_t*	plr;
+ patch_t*		hu_font[HU_FONTSIZE];
+-static hu_textline_t	w_title;
++hu_textline_t	w_title; // IsoDoom reference (T7.9): read by the dump (was static)
+ boolean			chat_on;
+ static hu_itext_t	w_chat;
+ static boolean		always_off = false;
  static char		chat_dest[MAXPLAYERS];
  static hu_itext_t w_inputbuffer[MAXPLAYERS];
  
@@ -195,7 +203,7 @@ index ea1611c..6053e51 100644
  	    continue;
  
 diff --git a/doomgeneric/s_sound.c b/doomgeneric/s_sound.c
-index f6d8be1..dfea6a7 100644
+index f6d8be1..f57275f 100644
 --- a/doomgeneric/s_sound.c
 +++ b/doomgeneric/s_sound.c
 @@ -397,6 +397,7 @@ void S_StartSound(void *origin_p, int sfx_id)

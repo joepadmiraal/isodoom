@@ -129,6 +129,7 @@ public partial class LevelCheck : Godot.Node
             CheckSound(); // T7.7: the sound effects through the scene
             CheckMusic(); // T7.8c: the music changes through the scene
             CheckCheats(); // T7.9a: the cheats typed through the input glue
+            CheckAutomap(); // T7.9: the automap through the input glue
             await CheckMusicPlayback(); // T7.8e: a song played for a few seconds on the OPL player's thread
             // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
             await _scene.AudioSettled();
@@ -226,6 +227,7 @@ public partial class LevelCheck : Godot.Node
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
             CheckFogDoor(m, map); // T6.13l: it opens and closes a door in the sim
+            CheckAutomapData(map); // T7.9: on the fog's mapped lines
             CheckReborn(map); // it reloads the map (T6.12)
             CheckFogReborn(map);
             CheckSightDim(m, map); // T6.13t: after the reborn's reload (it places the player)
@@ -276,6 +278,7 @@ public partial class LevelCheck : Godot.Node
         PrintBeams();
         PrintSightDim();
         PrintMonsterMarkers();
+        PrintAutomap();
         GD.Print($"Level check: load times: WAD opened in {_scene.OpenWadMilliseconds:F0} ms; slowest map {slowestMap}, "
             + $"{slowest:F0} ms (budget {LoadBudgetMilliseconds} ms, SPEC §9)");
     }
@@ -1282,6 +1285,8 @@ public partial class LevelCheck : Godot.Node
         await FogDrawnCheck(m); // T6.13l (before the HUD's, which leaves the message line drawn)
 
         await CheckHudDrawn();
+
+        await CheckAutomapDrawn(); // T7.9
 
         GD.Print($"Level check: {map}: light compared at sector light levels {string.Join(" ", _lightLevels)} (>> 4), "
             + $"wall contrasts {string.Join(" ", _contrasts)}, colormaps {string.Join(" ", _colormaps)}; "

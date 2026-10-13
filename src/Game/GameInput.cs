@@ -35,6 +35,11 @@ public sealed class GameInput
     public const string MenuOpen = "menu_open", MenuUp = "menu_up", MenuDown = "menu_down", MenuLeft = "menu_left", MenuRight = "menu_right";
     public const string MenuSelect = "menu_select", MenuBack = "menu_back", MenuYes = "menu_yes", MenuNo = "menu_no";
 
+    /// <summary>T7.9: the automap's actions (Chocolate Doom's <c>key_map_*</c>: Tab, the arrows, = and -, 0, F, G, M, C; the pad's Y, right stick, D-pad, stick click, X and B).</summary>
+    public const string MapToggle = "map_toggle", MapNorth = "map_north", MapSouth = "map_south", MapEast = "map_east", MapWest = "map_west";
+    public const string MapZoomIn = "map_zoomin", MapZoomOut = "map_zoomout", MapMaxZoom = "map_maxzoom", MapFollow = "map_follow";
+    public const string MapGrid = "map_grid", MapMark = "map_mark", MapClearMark = "map_clearmark";
+
     /// <summary>Every action the game reads, the menus' too (the level check fails when one is missing).</summary>
     public static string[] Actions()
     {
@@ -46,6 +51,7 @@ public sealed class GameInput
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
             actions.Add(Weapon(i));
         actions.AddRange([MenuOpen, MenuUp, MenuDown, MenuLeft, MenuRight, MenuSelect, MenuBack, MenuYes, MenuNo]);
+        actions.AddRange([MapToggle, MapNorth, MapSouth, MapEast, MapWest, MapZoomIn, MapZoomOut, MapMaxZoom, MapFollow, MapGrid, MapMark, MapClearMark]);
         return [.. actions];
     }
 
