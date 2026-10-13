@@ -97,7 +97,7 @@ namespace IsoDoom.Game;
 /// <c>--level-monster-markers=beam|chevron|off</c> (T6.13u, <see cref="Render.MonsterMarkers"/>:
 /// a small red chevron over a live monster with a line of sight to the player
 /// while the level hides it whole under the game camera, or a red beam rising
-/// from behind the wall as the item beams'; <c>on</c> = chevron; default chevron);
+/// from behind the wall as the item beams'; <c>on</c> = chevron; default beam);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -226,7 +226,7 @@ public partial class LevelScene : Node3D, IGameHost
     public bool BeamsEverywhere { get; set; }
 
     /// <summary>Which marker monsters in sight of the player that the level hides whole get under the game camera, if any (T6.13u, <see cref="Render.MonsterMarkers"/>, <c>--level-monster-markers</c>, key C).</summary>
-    public MonsterMarkerMode MonsterMarking { get; set; } = MonsterMarkerMode.Chevron;
+    public MonsterMarkerMode MonsterMarking { get; set; } = MonsterMarkerMode.Beam;
 
     /// <summary>The monster markers (T6.13u) as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
     public MonsterMarkers Markers { get; } = new() { Name = "MonsterMarkers" };
@@ -2377,7 +2377,7 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("height cues: ").Append(LedgeEdges.Name(m.HeightCues)).Append(" (Z)\n");
         if (ItemBeams != ItemBeamMode.All)
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
-        if (MonsterMarking != MonsterMarkerMode.Chevron)
+        if (MonsterMarking != MonsterMarkerMode.Beam)
             text.Append("monster markers: ").Append(MonsterMarkers.ModeName(MonsterMarking)).Append(" (C)\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");

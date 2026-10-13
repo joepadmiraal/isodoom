@@ -47,7 +47,7 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     private readonly NearActors _actors = new();
     private Marker[] _markers = [];
     private SpriteSettings? _sprites;
-    private MonsterMarkerMode _mode = MonsterMarkerMode.Chevron;
+    private MonsterMarkerMode _mode = MonsterMarkerMode.Beam;
 
     /// <summary>The markers as last set.</summary>
     public IReadOnlyList<Marker> Markers => _markers;
