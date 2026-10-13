@@ -190,15 +190,29 @@ public partial class LevelScene : ICheatAutomap
         _automapDirty = true;
     }
 
-    /// <summary>The frame's size for the window: the HUD's scale (or one window pixel, high detail) above the status bar's rows.</summary>
-    private (int Width, int Height, int Scale, int PixelScale) AutomapFrame()
+    /// <summary>The frame's size for the window: the HUD's scale (or one window pixel, high detail) above the status bar's rows, and its viewport rectangle.</summary>
+    private (int Width, int Height, int PixelScale, (int X, int Y, int W, int H) Rect) AutomapFrame() =>
+        AutomapFrameFor(Hud.LayoutFor(GetViewport().GetVisibleRect().Size), GetViewport().GetVisibleRect().Size, AutomapHighDetail);
+
+    /// <summary>
+    /// T7.11: <see cref="AutomapFrame"/> for the HUD's <paramref name="hud"/>
+    /// layout in a viewport of <paramref name="size"/>: in low detail a frame
+    /// pixel is a HUD pixel (1.2 times taller than wide with 4:3, as the bar's
+    /// under it: the map's lines stretched as vanilla's on a CRT), the frame
+    /// as many as fit across and above the bar, centred across, its bottom on
+    /// the bar's top; in high detail one window pixel each (true to the map),
+    /// the pan step and line widths at the HUD's scale across.
+    /// </summary>
+    public static (int Width, int Height, int PixelScale, (int X, int Y, int W, int H) Rect) AutomapFrameFor(ScreenLayout hud, Vector2 size, bool highDetail)
     {
-        Vector2 size = GetViewport().GetVisibleRect().Size;
-        int hud = Hud.FixedScale > 0 ? Hud.FixedScale : HudView.ScaleFor(size);
-        int above = Math.Max((int)size.Y - StStuff.ST_HEIGHT * hud, 1);
-        return AutomapHighDetail
-            ? ((int)size.X, above, 1, hud)
-            : (Math.Max((int)size.X / hud, 1), Math.Max(above / hud, 1), hud, 1);
+        int k = (int)hud.ScaleX;
+        int barTop = hud.Rect(0, StStuff.ST_Y, HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT).Y;
+        int above = Math.Max(barTop, 1);
+        if (highDetail)
+            return ((int)size.X, above, k, (0, barTop - above, (int)size.X, above));
+        int width = Math.Max((int)size.X / k, 1), height = Math.Max((int)(above / hud.ScaleY), 1);
+        int h = (int)MathF.Floor(height * hud.ScaleY + 0.5f);
+        return (width, height, 1, ((int)MathF.Floor((size.X - width * k) / 2), Math.Max(barTop - h, 0), width * k, h));
     }
 
     /// <summary>
@@ -220,7 +234,7 @@ public partial class LevelScene : ICheatAutomap
             AutomapScreen.Visible = false;
             return;
         }
-        (int width, int height, int scale, int pixelScale) = AutomapFrame();
+        (int width, int height, int pixelScale, (int X, int Y, int W, int H) rect) = AutomapFrame();
         if (am.f_w != width || am.f_h != height || am.PixelScale != pixelScale)
         {
             am.SetFrame(width, height, pixelScale);
@@ -233,19 +247,16 @@ public partial class LevelScene : ICheatAutomap
             MessageLine?.HU_DrawTitle();
             _automapDirty = false;
         }
-        Vector2 size = GetViewport().GetVisibleRect().Size;
-        float barTop = size.Y - StStuff.ST_HEIGHT * Hud.PixelScale;
-        var at = new Vector2(MathF.Floor((size.X - am.f_w * scale) / 2), Math.Max(barTop - am.f_h * scale, 0));
         (int Row, int Palette, int Strength) palette = LevelScreenPalette;
-        var key = (palette, at, scale, AutomapOverlay);
+        var key = (palette, rect, AutomapOverlay);
         if (!drawn && _automapShown == key)
             return; // the frame and its palette as shown
         _automapShown = key;
-        AutomapScreen.Show(am.fb, ScreenPalette(palette.Row), at, scale, backdrop: !AutomapOverlay);
+        AutomapScreen.Show(am.fb, ScreenPalette(palette.Row), rect, backdrop: !AutomapOverlay);
     }
 
-    // What the automap's frame was last shown with (its palette, place, scale and style): unchanged, no upload.
-    private ((int, int, int) Palette, Vector2 At, int Scale, bool Overlay)? _automapShown;
+    // What the automap's frame was last shown with (its palette, rectangle and style): unchanged, no upload.
+    private ((int, int, int) Palette, (int X, int Y, int W, int H) Rect, bool Overlay)? _automapShown;
 
     /// <summary>
     /// The input the automap took from the game (vanilla's <c>rc</c>): while

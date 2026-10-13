@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
@@ -111,17 +110,17 @@ public partial class LevelCheck
             if (await Capture(what) is not byte[] frame)
                 continue;
             Vector2I size = ViewSize();
-            int scale = view.PixelScale, left = (int)MathF.Floor((size.X - HudScreen.SCREENWIDTH * scale) / 2f);
+            ScreenLayout layout = view.Layout, top = HudView.MessageLayout(layout);
             byte[] pal = Playpal.GetPalette(palette).ToArray();
             int bad = 0;
             string first = "";
-            void Compare(HudScreen screen, int x0, int y0, string part)
+            void Compare(HudScreen screen, ScreenLayout at, string part)
             {
                 for (int y = 0; y < screen.Height; y++)
                 {
                     for (int x = 0; x < screen.Width; x++)
                     {
-                        int sx = x0 + x * scale + scale / 2, sy = y0 + y * scale + scale / 2;
+                        (int sx, int sy) = BlockCentre(at, x, screen.Top + y);
                         if (sx < 0 || sy < 0 || sx >= size.X || sy >= size.Y)
                             continue;
                         int i = (sy * size.X + sx) * 4, k = y * screen.Width + x;
@@ -134,8 +133,8 @@ public partial class LevelCheck
                     }
                 }
             }
-            Compare(m == HudMode.Bar ? st.Screen : st.FullScreen, left, size.Y - StStuff.ST_HEIGHT * scale, m == HudMode.Bar ? "status bar" : "fullscreen HUD");
-            Compare(hu.Screen, Math.Max(left, 0), 0, "message line");
+            Compare(m == HudMode.Bar ? st.Screen : st.FullScreen, layout, m == HudMode.Bar ? "status bar" : "fullscreen HUD");
+            Compare(hu.Screen, top, "message line");
             if (bad > 0)
                 Fail($"{what}: {bad} pixels differ; first: {first}");
         }

@@ -676,6 +676,7 @@ public partial class LevelScene : ISetupHost
         });
         Add("hud/scale", () => Hud.FixedScale == 0 ? "auto" : Hud.FixedScale.ToString(CultureInfo.InvariantCulture),
             s => Hud.FixedScale = s == "auto" ? 0 : ParseInt(s, "hud/scale", 1, 16));
+        Add("hud/aspect", () => HudAspect43 ? "4:3" : "square", s => HudAspect43 = ParseAspect(s, "hud/aspect")); // T7.11
         Add("hud/messages", () => OnOff(Menu.showMessages != 0), s => Menu.showMessages = ParseOnOff(s, "hud/messages") ? 1 : 0);
         Add("hud/detail", () => Menu.detailLevel == 0 ? "high" : "low", s => Menu.detailLevel = Choice(s, "hud/detail", "high", "low") == "high" ? 0 : 1);
         Add("hud/automap", () => AutomapOverlay ? "overlay" : "opaque", s => AutomapOverlay = ParseAutomapStyle(s, "hud/automap")); // T7.9

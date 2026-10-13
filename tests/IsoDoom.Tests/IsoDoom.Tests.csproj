@@ -23,6 +23,8 @@
     <Compile Include="../../src/Game/StStuff.cs" Link="Game/StStuff.cs" />
     <Compile Include="../../src/Game/HuStuff.cs" Link="Game/HuStuff.cs" />
     <Compile Include="../../src/Game/HudScreen.cs" Link="Game/HudScreen.cs" />
+    <Compile Include="../../src/Game/ScreenLayout.cs" Link="Game/ScreenLayout.cs" />
+    <Compile Include="../../src/Game/SharpBilinear.cs" Link="Game/SharpBilinear.cs" />
     <Compile Include="../../src/Game/GameFlow.cs" Link="Game/GameFlow.cs" />
     <Compile Include="../../src/Game/WiStuff.cs" Link="Game/WiStuff.cs" />
     <Compile Include="../../src/Game/FFinale.cs" Link="Game/FFinale.cs" />

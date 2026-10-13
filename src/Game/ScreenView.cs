@@ -8,22 +8,16 @@ namespace IsoDoom.Game;
 /// Shows a whole 320×200 screen of the game states (T7.1,
 /// <see cref="ScreenGraphics"/>): the title loop's pages, the intermission
 /// and the finale over a black backdrop that hides the level, or the pause
-/// graphic over the level (see-through elsewhere). Square pixels at an
-/// integer scale (<see cref="HudView.ScaleFor"/>, as the HUD), centred,
-/// nearest filtered, through the palette given (vanilla's
+/// graphic over the level (see-through elsewhere), centred, at
+/// <see cref="ScreenLayout.ForScreen"/>'s layout (T7.11: with 4:3, the
+/// whole screen at 320×240's proportions, sharp bilinear; square, a whole
+/// scale as the HUD's), through the palette given (vanilla's
 /// <c>D_Display</c> sets palette 0 for every state but the level).
 /// </summary>
 public partial class ScreenView : CanvasLayer
 {
     private readonly ColorRect _backdrop = new() { Name = "Backdrop", Color = Colors.Black, MouseFilter = Control.MouseFilterEnum.Ignore };
-    private readonly TextureRect _rect = new()
-    {
-        Name = "Screen",
-        TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
-        ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-        StretchMode = TextureRect.StretchModeEnum.Scale,
-        MouseFilter = Control.MouseFilterEnum.Ignore,
-    };
+    private readonly TextureRect _rect = ScreenRects.New("Screen");
     private Image? _image;
     private ImageTexture? _texture;
     private byte[] _rgba = [];
@@ -31,8 +25,8 @@ public partial class ScreenView : CanvasLayer
     /// <summary>The screen drawn into (vanilla's whole 320×200 screen).</summary>
     public HudScreen Screen { get; } = new(0, HudScreen.SCREENHEIGHT);
 
-    /// <summary>The scale in use (screen pixels per screen pixel of vanilla's).</summary>
-    public int PixelScale { get; private set; } = 1;
+    /// <summary>T7.11: the layout shown last (the screen's rectangle, <see cref="ScreenLayout.FromRect"/>).</summary>
+    public ScreenLayout Layout { get; private set; } = new(1, 1, 0, 0);
 
     public ScreenView()
     {
@@ -46,20 +40,20 @@ public partial class ScreenView : CanvasLayer
     /// Uploads <see cref="Screen"/> through <paramref name="playpal"/>'s
     /// palette <paramref name="palette"/> and shows it, with the black
     /// backdrop when <paramref name="opaque"/> (a full screen) and at
-    /// <paramref name="fixedScale"/> (0: the largest that fits), centred
+    /// <paramref name="fixedScale"/> (0: the largest that fits), vanilla's
+    /// pixels 1.2 times taller than wide with <paramref name="aspect43"/>, centred
     /// (by default only <paramref name="opaque"/>, else at the top, as the
     /// pause graphic over the level) when <paramref name="centre"/>.
     /// </summary>
-    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool? centre = null) =>
-        Show(playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)), opaque, fixedScale, centre);
+    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool aspect43, bool? centre = null) =>
+        Show(playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)), opaque, fixedScale, aspect43, centre);
 
-    /// <summary>As <see cref="Show(Playpal, int, bool, int, bool?)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
-    public void Show(ReadOnlySpan<byte> pal, bool opaque, int fixedScale, bool? centre = null)
+    /// <summary>As <see cref="Show(Playpal, int, bool, int, bool, bool?)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
+    public void Show(ReadOnlySpan<byte> pal, bool opaque, int fixedScale, bool aspect43, bool? centre = null)
     {
         Visible = true;
         _backdrop.Visible = opaque;
         Vector2 size = GetViewport().GetVisibleRect().Size;
-        PixelScale = fixedScale > 0 ? fixedScale : HudView.ScaleFor(size);
         if (_rgba.Length != Screen.Pixels.Length * 4)
             _rgba = new byte[Screen.Pixels.Length * 4];
         Screen.ToRgba(pal, _rgba);
@@ -74,15 +68,16 @@ public partial class ScreenView : CanvasLayer
             _image.SetData(Screen.Width, Screen.Height, false, Image.Format.Rgba8, _rgba);
             _texture.Update(_image);
         }
-        _rect.Size = new Vector2(Screen.Width, Screen.Height) * PixelScale;
-        _rect.Position = new Vector2(MathF.Floor((size.X - _rect.Size.X) / 2), centre ?? opaque ? MathF.Floor((size.Y - _rect.Size.Y) / 2) : 0);
+        (int X, int Y, int W, int H) rect = ScreenLayout.ForScreen(size.X, size.Y, fixedScale, aspect43, centre ?? opaque).Rect(0, 0, Screen.Width, Screen.Height);
+        ScreenRects.Place(_rect, rect, Screen.Width, Screen.Height);
+        Layout = ScreenLayout.FromRect(rect, Screen.Width, Screen.Height);
     }
 
     /// <summary>
     /// T7.1a: draws what this view showed last into <paramref name="image"/>
     /// (RGBA8, the viewport's size) as the renderer does: the black backdrop,
-    /// then each drawn pixel of the screen as a square of <see cref="PixelScale"/>
-    /// at the screen's place. Nothing when hidden.
+    /// then the screen at its rectangle (T7.11: <see cref="SharpBilinear"/>,
+    /// nearest at a whole scale). Nothing when hidden.
     /// </summary>
     public void ComposeInto(Image image)
     {
@@ -90,28 +85,19 @@ public partial class ScreenView : CanvasLayer
             return;
         if (_backdrop.Visible)
             image.Fill(Colors.Black);
-        int scale = PixelScale;
-        var at = new Vector2I((int)_rect.Position.X, (int)_rect.Position.Y);
         int w = image.GetWidth(), h = image.GetHeight();
-        for (int y = 0; y < Screen.Height; y++)
-        {
-            for (int x = 0; x < Screen.Width; x++)
-            {
-                int i = (y * Screen.Width + x) * 4;
-                if (_rgba[i + 3] == 0)
-                    continue;
-                var c = Color.Color8(_rgba[i], _rgba[i + 1], _rgba[i + 2]);
-                Rect2I block = new Rect2I(at.X + x * scale, at.Y + y * scale, scale, scale).Intersection(new Rect2I(0, 0, w, h));
-                if (block.Size.X > 0 && block.Size.Y > 0)
-                    image.FillRect(block, c);
-            }
-        }
+        byte[] data = image.GetData();
+        SharpBilinear.Draw(data, w, h, _rgba, Screen.Width, Screen.Height, ScreenRects.RectOf(_rect));
+        image.SetData(w, h, false, Image.Format.Rgba8, data);
     }
 
     /// <summary>The screen's texture rectangle (checks read it back).</summary>
     public TextureRect Rect => _rect;
 
     /// <summary>The point of vanilla's 320×200 screen under viewport point <paramref name="at"/> (where it was shown last).</summary>
-    public Vector2I ToScreen(Vector2 at) =>
-        new((int)MathF.Floor((at.X - _rect.Position.X) / PixelScale), (int)MathF.Floor((at.Y - _rect.Position.Y) / PixelScale));
+    public Vector2I ToScreen(Vector2 at)
+    {
+        (int x, int y) = Layout.ToScreen(at.X, at.Y);
+        return new Vector2I(x, y);
+    }
 }

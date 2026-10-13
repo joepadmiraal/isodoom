@@ -5,7 +5,8 @@
 # (the intermission skipped and the next level, or the finale) in the vanilla
 # reference drawn (wipes.py with --images: dump.c writes DIR/NAME.wipe and
 # DIR/wipeN-sS.ppm, the 320x200 screen after melt step S of wipe N) and in
-# the game scene offscreen (Xvfb + lavapipe, 1280x800: `wipe STEP WIPE; shot`
+# the game scene offscreen (Xvfb + lavapipe, 1280x800, square pixels as
+# vanilla's, T7.11: `wipe STEP WIPE; shot`
 # holds the melt at each STEP of the same wipe: DIR/oSTEP.png), then compares the
 # pixels the melt takes from a full screen in both (wipe.py; --images writes
 # DIR/cSTEP.png). The game starts the route's map as a new game from the
@@ -54,6 +55,6 @@ for s in "${list[@]}"; do shots+="wipe $s $wipe; shot $dir/o$s.png; "; done
 if [ "$wipe" -le 2 ]; then script="${tail}${shots}wipe; ${next}"; else script="${tail}${next}${shots}wipe"; fi
 (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
     godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$doom1" --level-tweaks=vanilla \
-    --level-monsters=$monsters --level-skill="$skill" --level-wipe=melt \
+    --level-monsters=$monsters --level-skill="$skill" --level-wipe=melt --level-hud-aspect=square \
     --level-script="tap F3; newgame $skill 1 $mapnum; wipehold ${list[0]} $wipe; route $route; ${script}" >/dev/null 2>&1)
 python3 "$here/wipe.py" "$dir" "$name" "$wipe" "${list[@]}" "$@"

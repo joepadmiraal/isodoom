@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Sim;
@@ -22,8 +23,15 @@ public partial class LevelCheck
     /// <summary>The viewport point of vanilla's screen point <paramref name="x"/>, <paramref name="y"/> on the menu screen (its pixel's centre).</summary>
     private Vector2 MenuPoint(int x, int y)
     {
-        ScreenView s = _scene.MenuScreens;
-        return s.Rect.Position + new Vector2(x * s.PixelScale + s.PixelScale / 2f, y * s.PixelScale + s.PixelScale / 2f);
+        (float vx, float vy) = _scene.MenuScreens.Layout.ToViewport(x + 0.5f, y + 0.5f);
+        return new Vector2(vx, vy);
+    }
+
+    /// <summary>T7.11: the viewport pixel at the centre of screen pixel <paramref name="x"/>, <paramref name="y"/>'s block in <paramref name="layout"/>.</summary>
+    private static (int X, int Y) BlockCentre(ScreenLayout layout, int x, int y)
+    {
+        (float vx, float vy) = layout.ToViewport(x + 0.5f, y + 0.5f);
+        return ((int)MathF.Floor(vx), (int)MathF.Floor(vy));
     }
 
     private void CheckMenus()
@@ -129,8 +137,7 @@ public partial class LevelCheck
             return;
         Vector2I size = ViewSize();
         HudScreen screen = _scene.MenuScreens.Screen;
-        int scale = _scene.MenuScreens.PixelScale;
-        Vector2 at = _scene.MenuScreens.Rect.Position;
+        ScreenLayout layout = _scene.MenuScreens.Layout;
         byte[] pal = Playpal.GetPalette(0).ToArray();
         int bad = 0, here = 0;
         string firstBad = "";
@@ -141,7 +148,7 @@ public partial class LevelCheck
                 int k = y * screen.Width + x;
                 if (screen.Opaque[k] == 0)
                     continue;
-                int sx = (int)at.X + x * scale + scale / 2, sy = (int)at.Y + y * scale + scale / 2;
+                (int sx, int sy) = BlockCentre(layout, x, y);
                 if (sx < 0 || sy < 0 || sx >= size.X || sy >= size.Y)
                     continue;
                 int i = (sy * size.X + sx) * 4;
@@ -163,6 +170,6 @@ public partial class LevelCheck
             Fail("the menu screen still shows with the menus closed");
         _scene.Overlay.Visible = overlay;
         _pixels += here;
-        GD.Print($"Level check: menus (T7.2): the main menu over the title page at scale {scale}, {here} pixels compared");
+        GD.Print($"Level check: menus (T7.2): the main menu over the title page at scale {layout.ScaleX}, {here} pixels compared");
     }
 }

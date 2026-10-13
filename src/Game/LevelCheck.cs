@@ -123,6 +123,8 @@ public partial class LevelCheck : Godot.Node
             CheckAllMaps();
             CheckGameFlow(); // T7.1: the title loop, a new game, the pause
             CheckMenus(); // T7.2: the menus through the input glue
+            CheckAspectLayouts(); // T7.11: vanilla's screen at 4:3 (the rest of the check runs square)
+            CheckAspectMouse();
             CheckSettings(); // T7.3: every setting applies at once and survives a restart (through a file of its own)
             CheckWipes(); // T7.1a: the screen wipes' timing and M_Random
             CheckSaves(); // T7.6: quicksave, quickload, the loaded game going on as the saved one, a damaged save refused
@@ -148,6 +150,7 @@ public partial class LevelCheck : Godot.Node
                 await CheckScreensDrawn(); // T7.1: last, it drops the level for the title loop and starts a new game
                 await CheckMenuDrawn(); // T7.2: the main menu over the title page
                 await CheckWipeDrawn(); // T7.1a: the melt from the title page into a new game
+                await CheckAspectDrawn(); // T7.11: the title page, the menu, the bar and the automap at 4:3
             }
             else if (move is { } mv)
                 MoveCheckData(m, mv.Sector);

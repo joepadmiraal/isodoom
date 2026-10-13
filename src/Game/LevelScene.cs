@@ -122,8 +122,11 @@ namespace IsoDoom.Game;
 /// <c>--level-hud=bar|full|off</c> (T6.11, <see cref="HudView"/>: under the
 /// game camera, vanilla's status bar at the bottom, the minimal fullscreen
 /// HUD, or neither; the message line shows with all; default bar) and
-/// <c>--level-hud-scale=N|auto</c> (its scale; default auto, the largest
-/// whole scale vanilla's 320×200 screen fits: 4 at 1280×800);
+/// <c>--level-hud-scale=N|auto</c> (its scale across; default auto, the
+/// largest whole scale vanilla's 320×200 screen fits: 4 at 1280×800) and
+/// <c>--level-hud-aspect=4:3|square</c> (T7.11, <see cref="HudAspect43"/>:
+/// vanilla's screen at 4:3, its pixels 1.2 times taller than wide, or square;
+/// default 4:3);
 /// <c>--level-wipe=melt|off</c> (T7.1a, <see cref="ScreenWipes"/>: f_wipe.c's
 /// melt at each game state change, the game holding still meanwhile; default melt);
 /// <c>--level-palette-effects=screen|player|off</c> (T6.8, T6.13v, <see cref="PaletteFlashes"/>:
@@ -373,6 +376,57 @@ public partial class LevelScene : Node3D, IGameHost
     }
 
     private bool _screenWipes = true;
+
+    /// <summary>
+    /// T7.11: vanilla's screen (the HUD, the full screens, the menus, the
+    /// automap's frame) with pixels 1.2 times taller than wide, as on the 4:3
+    /// CRTs it was drawn for (<see cref="ScreenLayout"/>; <c>--level-hud-aspect=4:3|square</c>,
+    /// the option <c>hud/aspect</c>; default 4:3), or square. Under the level
+    /// check only <see cref="CheckAspect43"/> counts (square but for its 4:3 checks).
+    /// </summary>
+    public bool HudAspect43
+    {
+        get => _hudAspect43;
+        set
+        {
+            _hudAspect43 = value;
+            ApplyAspect();
+        }
+    }
+
+    private bool _hudAspect43 = true;
+
+    /// <summary>T7.11: the level check's aspect, square for its pixel comparisons (the option is ignored under the check).</summary>
+    public bool CheckAspect43
+    {
+        get => _checkAspect43;
+        set
+        {
+            _checkAspect43 = value;
+            ApplyAspect();
+        }
+    }
+
+    private bool _checkAspect43;
+
+    /// <summary>T7.11: the aspect in use.</summary>
+    public bool Aspect43 => IsCheckRun ? _checkAspect43 : _hudAspect43;
+
+    private void ApplyAspect()
+    {
+        Hud.Aspect43 = Aspect43;
+        _screenKey = null; // the screens, the menus and the automap's frame shown again
+        _menuKey = null;
+        _automapShown = null;
+    }
+
+    /// <summary>T7.11: <c>--level-hud-aspect</c>'s and the option's value: <c>4:3</c> (true) or <c>square</c>.</summary>
+    public static bool ParseAspect(string value, string what) => value switch
+    {
+        "4:3" or "43" => true,
+        "square" or "1:1" => false,
+        _ => throw new ArgumentException($"{what}: \"{value}\" (4:3 or square)"),
+    };
 
     /// <summary>
     /// T7.1a: the level script's <c>wipe STEP [N]</c>: the melt under way (with
@@ -662,6 +716,7 @@ public partial class LevelScene : Node3D, IGameHost
             OpenWad();
             _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission); // T7.1: g_game.c's flow, d_main.c's title loop
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
+            ApplyAspect(); // T7.11: square under the check but for its 4:3 checks
             InitSaves(); // T7.6: the save slots' directory
             _graphics = new ScreenGraphics(Wad, MessageLine);
             InitMenus(); // T7.2
@@ -761,6 +816,8 @@ public partial class LevelScene : Node3D, IGameHost
                 _fullscreen = Choice(fullscreen, "--level-fullscreen", "off", "on", "exclusive");
             if (WadLocator.GetUserArg("--level-opl") is string opl)
                 MusicOpl3 = ParseOpl(opl, "--level-opl"); // T7.8g
+            if (WadLocator.GetUserArg("--level-hud-aspect") is string hudAspect)
+                HudAspect43 = ParseAspect(hudAspect, "--level-hud-aspect"); // T7.11
             if (WadLocator.GetUserArg("--level-hud-scale") is string hudScale)
                 Hud.FixedScale = hudScale == "auto" ? 0
                     : int.TryParse(hudScale, out int n) && n >= 1 && n <= 16 ? n
@@ -1655,7 +1712,7 @@ public partial class LevelScene : Node3D, IGameHost
         }
         if (pause)
             g.DrawPause(screen);
-        Screens.Show(ScreenPalette(palette.Row), state != gamestate_t.GS_LEVEL, Hud.FixedScale);
+        Screens.Show(ScreenPalette(palette.Row), state != gamestate_t.GS_LEVEL, Hud.FixedScale, Aspect43);
     }
 
     /// <summary>
@@ -2393,7 +2450,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (World is { } w && w.players[w.consoleplayer] is { mo: not null } pl)
             text.Append(StatusText(w, pl) + "\n");
         if (StatusBar is { plyr: not null } st)
-            text.Append(CultureInfo.InvariantCulture, $"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", scale {Hud.PixelScale}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
+            text.Append(CultureInfo.InvariantCulture, $"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", {(Hud.Aspect43 ? "4:3" : "square")}, scale {Hud.Layout.ScaleX:0.##}×{Hud.Layout.ScaleY:0.##}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
                 + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
         if (HudMessage is not null)
             text.Append(CultureInfo.InvariantCulture, $"message: {HudMessage}\n");

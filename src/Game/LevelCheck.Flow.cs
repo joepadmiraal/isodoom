@@ -299,7 +299,7 @@ public partial class LevelCheck
             await CompareScreen(what, title);
         }
         _scene.Overlay.Visible = overlay;
-        GD.Print($"Level check: screens (T7.1, T7.4, T7.5): the title page, the intermission (counting, the next location), the finale (text, end picture) and the pause graphic at scale {_scene.Screens.PixelScale}, {_screenPixels} pixels compared");
+        GD.Print($"Level check: screens (T7.1, T7.4, T7.5): the title page, the intermission (counting, the next location), the finale (text, end picture) and the pause graphic at scale {_scene.Screens.Layout.ScaleX}, {_screenPixels} pixels compared");
     }
 
     private int _screenPixels;
@@ -320,8 +320,7 @@ public partial class LevelCheck
             return;
         Vector2I size = ViewSize();
         HudScreen screen = _scene.Screens.Screen;
-        int scale = _scene.Screens.PixelScale;
-        Vector2 at = _scene.Screens.Rect.Position;
+        ScreenLayout layout = _scene.Screens.Layout;
         byte[] pal = Playpal.GetPalette(0).ToArray();
         int bad = 0, here = 0;
         string firstBad = "";
@@ -332,7 +331,7 @@ public partial class LevelCheck
                 int k = y * screen.Width + x;
                 if (screen.Opaque[k] == 0)
                     continue; // the backdrop (black) or the level shows
-                int sx = (int)at.X + x * scale + scale / 2, sy = (int)at.Y + y * scale + scale / 2;
+                (int sx, int sy) = BlockCentre(layout, x, y);
                 if (sx < 0 || sy < 0 || sx >= size.X || sy >= size.Y)
                     continue;
                 int i = (sy * size.X + sx) * 4;
@@ -344,10 +343,11 @@ public partial class LevelCheck
                     firstBad = $"pixel ({x}, {y}) at ({sx}, {sy}): drawn ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}), expected ({r}, {g}, {b})";
             }
         }
-        if (title && at.Y > 0)
+        int top = (int)_scene.Screens.Rect.Position.Y;
+        if (title && top > 0)
         {
             // the backdrop above the page
-            int i = ((int)at.Y / 2 * size.X + size.X / 2) * 4;
+            int i = (top / 2 * size.X + size.X / 2) * 4;
             if (frame[i] != 0 || frame[i + 1] != 0 || frame[i + 2] != 0)
                 Fail($"{what}: the backdrop above the page is ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}), not black");
         }

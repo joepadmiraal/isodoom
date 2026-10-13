@@ -6,7 +6,8 @@
 # tic at the finale tics of --presses (default 52: skips nothing before Doom
 # II), in the vanilla reference (finales.py with --images: dump.c writes
 # DIR/fiTIC.ppm, the 320x200 screen after finale tic TIC) and in the game
-# scene offscreen (Xvfb + lavapipe, 1280x800: the screen at scale 4; `route
+# scene offscreen (Xvfb + lavapipe, 1280x800: the screen at scale 4, square
+# pixels as vanilla's, T7.11; `route
 # FILE; gamestate finale; cmd ...; gamestate finale; shot` with the overlay
 # hidden and no wipes, T7.1a: vanilla's run is not drawn: DIR/oTIC.png),
 # then compares every pixel (wi.py --prefix fi;
@@ -47,7 +48,7 @@ for tic in "${list[@]}"; do
     if [ "$tic" -gt "$last" ]; then cmds+="cmd 0 0 0 0 $((tic - last)); "; fi
     (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
         godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$doom1" --level "$map" --level-tweaks=vanilla \
-        --level-monsters=$monsters --level-skill="$skill" --level-wipe=off \
+        --level-monsters=$monsters --level-skill="$skill" --level-wipe=off --level-hud-aspect=square \
         --level-script="route $route; gamestate finale; ${cmds}gamestate finale; tap F3; shot $dir/o$tic.png" >/dev/null 2>&1)
 done
 python3 "$here/wi.py" "$dir" "${list[@]}" --prefix fi "$@"

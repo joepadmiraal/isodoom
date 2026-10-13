@@ -333,14 +333,15 @@ public partial class LevelCheck
         foreach (bool overlay in new[] { false, true })
         {
             Vector2I size = ViewSize();
-            int scale = HudView.ScaleFor(size);
+            ScreenLayout hud = _scene.Hud.LayoutFor(size);
+            (int width, int height, int pixelScale, (int X, int Y, int W, int H) rect) = LevelScene.AutomapFrameFor(hud, size, false);
             am.Overlay = overlay;
-            am.SetFrame(size.X / scale, (size.Y - StStuff.ST_HEIGHT * scale) / scale, 1);
+            am.SetFrame(width, height, pixelScale);
             am.AM_Drawer();
             hu.HU_DrawTitle();
-            var at = new Vector2(MathF.Floor((size.X - am.f_w * scale) / 2f), size.Y - StStuff.ST_HEIGHT * scale - am.f_h * scale);
+            ScreenLayout frameLayout = ScreenLayout.FromRect(rect, am.f_w, am.f_h), titleLayout = HudView.MessageLayout(hud) with { OriginY = hud.OriginY };
             byte[] pal = Playpal.GetPalette(0).ToArray();
-            _scene.AutomapScreen.Show(am.fb, pal, at, scale, backdrop: !overlay);
+            _scene.AutomapScreen.Show(am.fb, pal, rect, backdrop: !overlay);
             _scene.Hud.AutomapShown = true;
             _scene.Hud.Visible = true;
             _scene.Hud.Show(_scene.StatusBar, hu, Playpal, 0);
@@ -350,17 +351,17 @@ public partial class LevelCheck
             int bad = 0;
             string first = "";
             HudScreen title = hu.TitleScreen;
-            int titleLeft = (int)MathF.Floor((size.X - HudScreen.SCREENWIDTH * scale) / 2f), titleTop = size.Y - (HudScreen.SCREENHEIGHT - title.Top) * scale;
             for (int fy = 0; fy < am.f_h; fy++)
             {
                 for (int fx = 0; fx < am.f_w; fx++)
                 {
-                    int sx = (int)at.X + fx * scale + scale / 2, sy = (int)at.Y + fy * scale + scale / 2;
+                    (int sx, int sy) = BlockCentre(frameLayout, fx, fy);
                     if (sx < 0 || sy < 0 || sx >= size.X || sy >= size.Y)
                         continue;
                     // the title over it
-                    int tx = (sx - Math.Max(titleLeft, 0)) / scale, ty = (sy - titleTop) / scale;
-                    if (sx >= Math.Max(titleLeft, 0) && ty >= 0 && tx < title.Width && ty < title.Height && title.Opaque[ty * title.Width + tx] != 0)
+                    (int tx, int ty) = titleLayout.ToScreen(sx + 0.5f, sy + 0.5f);
+                    ty -= title.Top;
+                    if (tx >= 0 && ty >= 0 && tx < title.Width && ty < title.Height && title.Opaque[ty * title.Width + tx] != 0)
                         continue;
                     int k = fy * am.f_w + fx, i = (sy * size.X + sx) * 4;
                     (int r, int g, int b) = am.fb.Opaque[k] != 0 ? (pal[am.fb.Pixels[k] * 3], pal[am.fb.Pixels[k] * 3 + 1], pal[am.fb.Pixels[k] * 3 + 2]) : (ur, ug, ub);

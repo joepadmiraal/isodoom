@@ -140,6 +140,8 @@ public static class Settings
         // HUD (vanilla's screen size, messages and detail too)
         new("hud/mode", "SCREEN", SettingPage.Hud, "bar", ["bar", "full", "off"], "--level-hud"),
         new("hud/scale", "SCALE", SettingPage.Hud, "auto", ["auto", "1", "2", "3", "4", "5", "6", "7", "8"], "--level-hud-scale"),
+        // T7.11: vanilla's screen at 4:3 (its pixels 1.2 times taller than wide, as on a CRT) or square
+        new("hud/aspect", "ASPECT", SettingPage.Hud, "4:3", ["4:3", "square"], "--level-hud-aspect"),
         new("hud/messages", "MESSAGES", SettingPage.Hud, "on", _onOff),
         new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", ["high", "low"]),
         // T7.9: the automap's look (not vanilla's: a black screen at its 320x200 pixels)

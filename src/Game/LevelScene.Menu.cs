@@ -462,7 +462,7 @@ public partial class LevelScene : IMenuHost
             _helpShown = true;
         else
             HelpGone();
-        MenuScreens.Show(ScreenPalette(palette.Row), menu.inhelpscreens, Hud.FixedScale, centre: true);
+        MenuScreens.Show(ScreenPalette(palette.Row), menu.inhelpscreens, Hud.FixedScale, Aspect43, centre: true);
     }
 
     private void HelpGone()
