@@ -1182,10 +1182,15 @@ public partial class LevelCheck : Godot.Node
         m.SetColormapOverride(1);
         await CheckFloorsTopDown(m, "fixed colormap 1", 1);
         m.SetColormapOverride(-1);
-        foreach (int palette in new[] { StStuff.STARTREDPALS + 3, StStuff.STARTBONUSPALS + 1, StStuff.RADIATIONPAL })
+        // T6.13v: blended by the strength (every pixel the blend row's colour), and on the player only (the floors palette 0's).
+        foreach ((int palette, int strength, bool playerOnly) in new[]
         {
-            m.SetPalette(palette);
-            await CheckFloorsTopDown(m, $"palette {palette}", 1);
+            (StStuff.STARTREDPALS + 3, 100, false), (StStuff.STARTBONUSPALS + 1, 100, false), (StStuff.RADIATIONPAL, 100, false),
+            (StStuff.STARTREDPALS + 3, 50, false), (StStuff.RADIATIONPAL, 30, false), (StStuff.STARTREDPALS + 7, 100, true),
+        })
+        {
+            m.SetPalette(palette, strength, playerOnly);
+            await CheckFloorsTopDown(m, $"palette {palette}{(strength < 100 ? $" at {strength}%" : "")}{(playerOnly ? ", on the player only" : "")}", 1);
         }
         m.SetPalette(0);
 
@@ -1261,6 +1266,8 @@ public partial class LevelCheck : Godot.Node
         await BeamCheck(m); // T6.13r
 
         await MonsterMarkerCheck(m); // T6.13u
+
+        await FlashGlowCheck(m); // T6.13v
 
         await UpperWallCheck(m);
 
@@ -1422,7 +1429,7 @@ public partial class LevelCheck : Godot.Node
                             if (fog is not null && fog.State(s) == SectorSight.Unseen && m.FogMode == FogStyle.Dim)
                             {
                                 // T6.13l: the dim mapping, whatever the light.
-                                (byte r, byte g, byte b) = Playpal.GetColor(m.Palette, m.FogDimMap[texel]);
+                                (byte r, byte g, byte b) = m.DrawnColor(m.ScreenRow, m.FogDimMap[texel]);
                                 expected = (r, g, b);
                                 _fogDimPixels++;
                             }
@@ -1966,11 +1973,16 @@ public partial class LevelCheck : Godot.Node
         return colormap;
     }
 
-    /// <summary>The colour the level shader draws for palette index <paramref name="index"/> through COLORMAP row <paramref name="colormap"/> (in the mesh's PLAYPAL palette, T6.8).</summary>
-    private (int R, int G, int B) Shade(byte index, int colormap)
+    /// <summary>
+    /// The colour the level shader draws for palette index <paramref name="index"/>
+    /// through COLORMAP row <paramref name="colormap"/> (in the mesh's palette
+    /// row, T6.8: a PLAYPAL palette, T6.13v: or the blended flash; with
+    /// <paramref name="own"/>, the player's own sprite's row).
+    /// </summary>
+    private (int R, int G, int B) Shade(byte index, int colormap, bool own = false)
     {
         byte mapped = Colormap.GetMap(colormap)[index];
-        (byte r, byte g, byte b) = Playpal.GetColor(_scene.Mesh?.Palette ?? 0, mapped);
+        (byte r, byte g, byte b) = _scene.Mesh is { } m ? m.DrawnColor(own ? m.OwnRow : m.ScreenRow, mapped) : Playpal.GetColor(0, mapped);
         return (r, g, b);
     }
 

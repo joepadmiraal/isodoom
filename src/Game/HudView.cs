@@ -68,11 +68,14 @@ public partial class HudView : CanvasLayer
     /// <paramref name="playpal"/>'s palette <paramref name="palette"/>, and
     /// lays them out for the viewport.
     /// </summary>
-    public void Show(StStuff? st, HuStuff? hu, Playpal playpal, int palette)
+    public void Show(StStuff? st, HuStuff? hu, Playpal playpal, int palette) =>
+        Show(st, hu, playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)));
+
+    /// <summary>As <see cref="Show(StStuff?, HuStuff?, Playpal, int)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
+    public void Show(StStuff? st, HuStuff? hu, ReadOnlySpan<byte> pal)
     {
         Vector2 size = GetViewport().GetVisibleRect().Size;
         PixelScale = FixedScale > 0 ? FixedScale : ScaleFor(size);
-        ReadOnlySpan<byte> pal = playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1));
         float left = MathF.Floor((size.X - HudScreen.SCREENWIDTH * PixelScale) / 2);
 
         HudScreen? strip = st is null || Mode == HudMode.Off ? null : Mode == HudMode.Bar ? st.Screen : st.FullScreen;

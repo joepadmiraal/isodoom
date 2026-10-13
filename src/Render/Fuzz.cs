@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics.CodeAnalysis;
 using IsoDoom.Wad.Graphics;
 
@@ -11,7 +12,7 @@ namespace IsoDoom.Render;
 /// one patch row below or above it on screen (<see cref="fuzzoffset"/> at
 /// <c>fuzzpos</c> = (<see cref="Phase"/> + column × height + row) mod 50;
 /// runs of rows above compound, <see cref="Source"/>), matched to its nearest
-/// palette index (<see cref="NearestIndex"/>) and mapped through COLORMAP row
+/// palette index (<see cref="NearestIndex(Playpal, int, int, int, int)"/>) and mapped through COLORMAP row
 /// <see cref="FuzzColormap"/>. The level check
 /// compares the drawn pixels with this.
 /// </summary>
@@ -81,12 +82,15 @@ public static class Fuzz
     }
 
     /// <summary>The index of palette <paramref name="palette"/>'s colour nearest to (<paramref name="r"/>, <paramref name="g"/>, <paramref name="b"/>); the lowest of equals, as the shader's <c>nearest_index</c>.</summary>
-    public static int NearestIndex(Playpal playpal, int palette, int r, int g, int b)
+    public static int NearestIndex(Playpal playpal, int palette, int r, int g, int b) => NearestIndex(playpal.GetPalette(palette), r, g, b);
+
+    /// <summary>As <see cref="NearestIndex(Playpal, int, int, int, int)"/>, in <paramref name="palette"/> (768 bytes; T6.13v: a blended flash).</summary>
+    public static int NearestIndex(ReadOnlySpan<byte> palette, int r, int g, int b)
     {
         int best = 0, bestD = int.MaxValue;
         for (int i = 0; i < 256; i++)
         {
-            (byte pr, byte pg, byte pb) = playpal.GetColor(palette, i);
+            (byte pr, byte pg, byte pb) = (palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2]);
             int d = (pr - r) * (pr - r) + (pg - g) * (pg - g) + (pb - b) * (pb - b);
             if (d < bestD)
             {

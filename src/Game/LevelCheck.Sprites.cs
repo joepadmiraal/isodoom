@@ -328,9 +328,10 @@ public partial class LevelCheck
     /// <c>damagecount</c> 20 is palette 4, a radiation suit picked up
     /// (<c>P_TouchSpecialThing</c>) the gold palette 10 and, its flash over,
     /// the suit's 13, a fresh berserk palette 3; <c>fixedcolormap</c> 32 and 1
-    /// the colormap override; nothing with <see cref="LevelScene.PaletteEffects"/>
+    /// the colormap override; nothing with <see cref="LevelScene.PaletteFlashes"/>
     /// off. The void (unless <c>--level-background</c>) and the blob shadows
-    /// take the palette's colour 0. The player's state is restored.
+    /// take the palette's colour 0. T6.13v (<see cref="CheckGentleFlashes"/>):
+    /// the styles and strengths. The player's state is restored.
     /// </summary>
     private void CheckPaletteEffects(string map)
     {
@@ -377,15 +378,104 @@ public partial class LevelCheck
         p.fixedcolormap = 1;
         Expect(0, 1, "the light amplification visor (fixedcolormap 1)");
         p.damagecount = 20;
-        _scene.PaletteEffects = false;
+        _scene.PaletteFlashes = PaletteFlashStyle.Off;
         Expect(0, -1, "the effects off");
-        _scene.PaletteEffects = true;
+        _scene.PaletteFlashes = PaletteFlashStyle.Screen;
         p.damagecount = 0;
         p.fixedcolormap = 0;
         Expect(0, -1, "no effect again");
+        CheckGentleFlashes(map, p, tintsVoid);
         (p.health, me.health, p.itemcount, p.message) = (health, mohealth, itemcount, message);
         (p.damagecount, p.bonuscount, p.fixedcolormap) = (damagecount, bonuscount, fixedcolormap);
         powers.CopyTo(p.powers, 0); // (the mesh stays at palette 0 for the checks after this one)
+    }
+
+    /// <summary>
+    /// T6.13v: the gentler flashes. For each style (screen, player, off) at
+    /// strength 100 and 50, after a <c>damagecount</c> (red palette 4) and a
+    /// <c>bonuscount</c> (gold 10) and with invulnerability's colormap: the
+    /// palette, strength and player-only flag the mesh draws with, the rows
+    /// the level and the player's own sprite are drawn in (the flash's
+    /// own at 100, the blend row below, holding exactly
+    /// <see cref="PaletteFlash.Blend(Playpal, int, int)"/>), the colormap
+    /// override (kept by screen and player), the void (the flash's colour 0
+    /// lerped from black by the strength; black with the player style), the
+    /// blob shadows (the screen row's colour 0) and the glow (with the player
+    /// style only, its colour and alpha from <see cref="PaletteFlash.GlowOf"/>
+    /// and the strength). The player style without the game camera falls back
+    /// to the screen. Leaves the screen style at 100, no flash.
+    /// </summary>
+    private void CheckGentleFlashes(string map, player_t p, bool tintsVoid)
+    {
+        if (_scene.Mesh is not { } m)
+            return;
+        (PaletteFlashStyle style, int strength, bool everywhere) = (_scene.PaletteFlashes, _scene.FlashStrength, _scene.FlashOnPlayerEverywhere);
+        bool shown = _scene.Player?.Visible ?? false;
+        _scene.FlashOnPlayerEverywhere = true;
+        _scene.Player?.Visible = true;
+        foreach (PaletteFlashStyle s in new[] { PaletteFlashStyle.Screen, PaletteFlashStyle.Player, PaletteFlashStyle.Off })
+        {
+            foreach (int strong in new[] { PaletteFlash.FullStrength, 50 })
+            {
+                foreach ((int Damage, int Bonus, int Fixed, int Palette) c in new[]
+                {
+                    (20, 0, 0, StStuff.STARTREDPALS + 3),
+                    (0, 6, 0, StStuff.STARTBONUSPALS + 1),
+                    (0, 0, World.INVERSECOLORMAP, 0),
+                })
+                {
+                    (_scene.PaletteFlashes, _scene.FlashStrength) = (s, strong);
+                    (p.damagecount, p.bonuscount, p.fixedcolormap) = (c.Damage, c.Bonus, c.Fixed);
+                    _scene.UpdatePaletteEffects();
+                    string what = $"{map}: flashes {PaletteFlash.Name(s)} {strong}%, damagecount {c.Damage}, bonuscount {c.Bonus}, fixedcolormap {c.Fixed}";
+                    int palette = s == PaletteFlashStyle.Off ? 0 : c.Palette;
+                    int colormap = s == PaletteFlashStyle.Off || c.Fixed == 0 ? -1 : c.Fixed;
+                    bool white = s == PaletteFlashStyle.Player && PaletteFlash.IsBonus(palette); // (a pickup on the player: white, always the blend row)
+                    int row = palette != 0 && (strong < PaletteFlash.FullStrength || white) ? m.BlendRow : palette;
+                    int screenRow = s == PaletteFlashStyle.Player ? 0 : row;
+                    if (m.Palette != palette || m.PaletteStrength != strong || m.PalettePlayerOnly != (s == PaletteFlashStyle.Player) || m.ColormapOverride != colormap)
+                        Fail($"{what}: drawn with palette {m.Palette} at {m.PaletteStrength}%{(m.PalettePlayerOnly ? " on the player" : "")}, colormap override {m.ColormapOverride}; expected {palette}, {colormap}");
+                    if (m.ScreenRow != screenRow || m.OwnRow != row)
+                        Fail($"{what}: the level in palette row {m.ScreenRow} and the player in {m.OwnRow}, expected {screenRow} and {row}");
+                    if (row == m.BlendRow && !m.DrawnPalette(row).SequenceEqual(white ? PaletteFlash.PlayerPalette(Playpal, palette, strong) : PaletteFlash.Blend(Playpal, palette, strong)))
+                        Fail($"{what}: the blend row is not palette {palette} {(white ? "in white" : "blended")} {strong}% from palette 0");
+                    (byte r, byte g, byte b) = Playpal.GetColor(s == PaletteFlashStyle.Screen ? palette : 0, 0);
+                    Color zero = strong >= PaletteFlash.FullStrength ? Color.Color8(r, g, b) : Colors.Black.Lerp(Color.Color8(r, g, b), strong / 100f);
+                    if (tintsVoid && !_scene.Environment.BackgroundColor.IsEqualApprox(zero))
+                        Fail($"{what}: the void is {_scene.Environment.BackgroundColor.ToHtml(false)}, expected {zero.ToHtml(false)}");
+                    (byte sr, byte sg, byte sb) = m.DrawnColor(screenRow, 0);
+                    if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(Color.Color8(sr, sg, sb).SrgbToLinear()))
+                        Fail($"{what}: the blob shadows are {shadow}, expected palette row {screenRow}'s colour 0");
+                    PaletteFlash.Glow glow = s == PaletteFlashStyle.Player ? PaletteFlash.GlowOf(Playpal, palette) : default;
+                    bool glows = glow.Level > 0 && _scene.Player is not null;
+                    if (_scene.Glow.Visible != glows)
+                        Fail($"{what}: the glow {(_scene.Glow.Visible ? "shows" : "does not show")}");
+                    var tint = Color.Color8(glow.R, glow.G, glow.B) with { A = glow.Level * strong / 100f * FlashGlow.MaxAlpha };
+                    if (glows && !_scene.Glow.GlowColor.IsEqualApprox(tint))
+                        Fail($"{what}: the glow is {_scene.Glow.GlowColor}, expected {tint}");
+                    if (s == PaletteFlashStyle.Player && c.Damage > 0 && glow.R <= glow.G)
+                        Fail($"{what}: the damage glow is not red ({glow})");
+                    if (white && (glow.R, glow.G, glow.B) != PaletteFlash.PickupTint)
+                        Fail($"{what}: the pickup glow is not white ({glow})");
+                }
+            }
+        }
+        // The player style without the game camera: the screen's, at the strength.
+        (_scene.PaletteFlashes, _scene.FlashStrength, _scene.FlashOnPlayerEverywhere) = (PaletteFlashStyle.Player, 50, false);
+        (p.damagecount, p.bonuscount, p.fixedcolormap) = (20, 0, 0);
+        _scene.UpdatePaletteEffects();
+        if (!_scene.IsoActive && (m.PalettePlayerOnly || m.ScreenRow != m.BlendRow || _scene.Glow.Visible))
+            Fail($"{map}: flashes player 50% without the game camera: the level in palette row {m.ScreenRow}{(m.PalettePlayerOnly ? ", on the player only" : "")}{(_scene.Glow.Visible ? ", the glow shows" : "")}; expected the screen's blend row {m.BlendRow}");
+        // The player's sprite hidden: no glow either.
+        (_scene.PaletteFlashes, _scene.FlashOnPlayerEverywhere) = (PaletteFlashStyle.Player, true);
+        _scene.Player?.Visible = false;
+        _scene.UpdatePaletteEffects();
+        if (_scene.Glow.Visible)
+            Fail($"{map}: flashes player 50%, the player's sprite hidden: the glow shows");
+        _scene.Player?.Visible = shown;
+        (_scene.PaletteFlashes, _scene.FlashStrength, _scene.FlashOnPlayerEverywhere) = (style, strength, everywhere);
+        (p.damagecount, p.bonuscount, p.fixedcolormap) = (0, 0, 0);
+        _scene.UpdatePaletteEffects();
     }
 
     private int _fuzzMaps;
@@ -646,6 +736,17 @@ public partial class LevelCheck
         // T6.8: a palette flash (damage red) on a lit thing.
         m.SetPalette(StStuff.STARTREDPALS + 3);
         compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, palette {StStuff.STARTREDPALS + 3}");
+        // T6.13v: blended by the strength; on the player only, another thing in palette 0, the player's own sprite in the flash.
+        m.SetPalette(StStuff.STARTREDPALS + 3, 50);
+        compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, palette {StStuff.STARTREDPALS + 3} at 50%");
+        m.SetPalette(StStuff.STARTREDPALS + 3, 100, playerOnly: true);
+        compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit}, palette {StStuff.STARTREDPALS + 3} on the player only");
+        ThingSprites.Entry litEntry = things.Entries[lit];
+        things.SetEntry(lit, litEntry with { Own = true });
+        compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit} as the player's own sprite, palette {StStuff.STARTREDPALS + 3} on the player only");
+        m.SetPalette(StStuff.STARTBONUSPALS + 3, 50, playerOnly: true);
+        compared += await CompareSprite(m, things, atlas, lit, basis, $"{map}: thing {lit} as the player's own sprite, palette {StStuff.STARTBONUSPALS + 3} at 50% on the player only");
+        things.SetEntry(lit, litEntry);
         m.SetPalette(0);
         // T6.9: the fuzz of MF_SHADOW things.
         compared += await CheckFuzz(m, things, atlas, lit, picked, basis);
@@ -782,14 +883,14 @@ public partial class LevelCheck
                 if (Opaque(c, r))
                 {
                     byte texel = patch[shown.Flip ? patch.Width - 1 - c : c, r];
-                    ok = colormap < 0 ? !NearBackground(got) : got == Shade(texel, colormap);
-                    expected = colormap < 0 ? "a texel" : $"{Shade(texel, colormap)} (colormap {colormap})";
+                    ok = colormap < 0 ? !NearBackground(got) : got == Shade(texel, colormap, e.Own);
+                    expected = colormap < 0 ? "a texel" : $"{Shade(texel, colormap, e.Own)} (colormap {colormap})";
                 }
                 else if (grow > 0 && (Opaque(c - 1, r) || Opaque(c + 1, r) || Opaque(c, r - 1) || Opaque(c, r + 1)))
                 {
                     outlined++;
-                    ok = colormap < 0 ? !NearBackground(got) : got == Shade((byte)outline, colormap);
-                    expected = colormap < 0 ? "the outline" : $"the outline {Shade((byte)outline, colormap)}";
+                    ok = colormap < 0 ? !NearBackground(got) : got == Shade((byte)outline, colormap, e.Own);
+                    expected = colormap < 0 ? "the outline" : $"the outline {Shade((byte)outline, colormap, e.Own)}";
                 }
                 else
                 {
@@ -845,13 +946,18 @@ public partial class LevelCheck
         int compared = 0;
         SpriteSettings settings = m.Sprites;
         int phase = m.FuzzPhase;
-        foreach ((int Phase, int Palette, bool Own) c in new[] { (17, 0, false), (0, StStuff.STARTREDPALS + 3, true) })
+        // (T6.13v: in a blended palette, the screen's, which the fuzz matches against; and on the player only, whose fuzz shows the screen's)
+        foreach ((int Phase, int Palette, int Strength, bool PlayerOnly, bool Own) c in new[]
+        {
+            (17, 0, 100, false, false), (0, StStuff.STARTREDPALS + 3, 100, false, true),
+            (5, StStuff.STARTREDPALS + 3, 50, false, false), (9, StStuff.STARTREDPALS + 5, 50, true, true),
+        })
         {
             m.SetFuzzPhase(c.Phase);
-            m.SetPalette(c.Palette);
+            m.SetPalette(c.Palette, c.Strength, c.PlayerOnly);
             things.SetEntry(i, original with { Shadow = true, Own = c.Own });
             compared += await CompareFuzz(m, things, atlas, i, j, basis,
-                $"{map}: thing {i} fuzzed in front of thing {j}, phase {c.Phase}, palette {c.Palette}{(c.Own ? ", the player's own sprite" : "")}");
+                $"{map}: thing {i} fuzzed in front of thing {j}, phase {c.Phase}, palette {c.Palette}{(c.Strength < 100 ? $" at {c.Strength}%" : "")}{(c.PlayerOnly ? " on the player only" : "")}{(c.Own ? ", the player's own sprite" : "")}");
         }
         m.SetPalette(0);
         m.SetFuzzPhase(phase);
@@ -914,7 +1020,7 @@ public partial class LevelCheck
                         voids++;
                         continue;
                     }
-                    int index = Fuzz.NearestIndex(Playpal, m.Palette, source.R, source.G, source.B);
+                    int index = Fuzz.NearestIndex(m.DrawnPalette(m.ScreenRow), source.R, source.G, source.B);
                     for (int n = 1; n < darkenings; n++)
                         index = fuzzMap[index];
                     expected = Shade((byte)index, Fuzz.FuzzColormap);
@@ -924,7 +1030,7 @@ public partial class LevelCheck
                 }
                 else if (grow > 0 && (Opaque(c - 1, r) || Opaque(c + 1, r) || Opaque(c, r - 1) || Opaque(c, r + 1)))
                 {
-                    expected = Shade((byte)outline, ownMap);
+                    expected = Shade((byte)outline, ownMap, own: true);
                     outlined++;
                 }
                 else

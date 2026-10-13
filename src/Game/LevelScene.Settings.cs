@@ -631,7 +631,8 @@ public partial class LevelScene : ISetupHost
             Mesh?.SetMaskedBackFaces(MaskedBacks);
         });
         Add("gameplay/weapon_light", () => OnOff(WeaponLight), s => WeaponLight = ParseOnOff(s, "gameplay/weapon_light"));
-        Add("gameplay/palette_effects", () => OnOff(PaletteEffects), s => PaletteEffects = ParseOnOff(s, "gameplay/palette_effects"));
+        Add("gameplay/palette_effects", () => PaletteFlash.Name(PaletteFlashes), s => PaletteFlashes = PaletteFlash.Parse(s, "gameplay/palette_effects"));
+        Add("gameplay/flash_strength", () => FlashStrength.ToString(CultureInfo.InvariantCulture), s => FlashStrength = PaletteFlash.ParseStrength(s, "gameplay/flash_strength"));
         Add("gameplay/tracers", () => Tracers.ToString().ToLowerInvariant(), s => Tracers = ParseTracers(s, "gameplay/tracers"));
         Add("gameplay/aim_marker", () => AimMarkerShown.ToString().ToLowerInvariant(), s => AimMarkerShown = ParseAimMarker(s, "gameplay/aim_marker"));
         Add("gameplay/fog", () => FogStyle.ToString().ToLowerInvariant(), s => FogStyle = ParseFog(s, "gameplay/fog"));

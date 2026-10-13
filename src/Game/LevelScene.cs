@@ -126,10 +126,14 @@ namespace IsoDoom.Game;
 /// whole scale vanilla's 320×200 screen fits: 4 at 1280×800);
 /// <c>--level-wipe=melt|off</c> (T7.1a, <see cref="ScreenWipes"/>: f_wipe.c's
 /// melt at each game state change, the game holding still meanwhile; default melt);
-/// <c>--level-palette-effects=on|off</c> (T6.8, <see cref="PaletteEffects"/>:
+/// <c>--level-palette-effects=screen|player|off</c> (T6.8, T6.13v, <see cref="PaletteFlashes"/>:
 /// the console player's palette flashes, st_stuff.c's red, gold and green,
-/// and its power-ups' fixed colormaps, invulnerability's inverse map and the
-/// light amplification visor's; default on);
+/// over the whole view or, with <c>player</c>, on the player's sprite and a
+/// glow at its feet only, and its power-ups' fixed colormaps,
+/// invulnerability's inverse map and the light amplification visor's; off
+/// drops both; <c>on</c> is <c>screen</c>; default screen) and
+/// <c>--level-flash-strength=10-100</c> (T6.13v, <see cref="FlashStrength"/>:
+/// the flashes blended from palette 0 by this percentage; default 100, vanilla's);
 /// <c>--level-skill=1-5</c> (the skill whose things are drawn, T3.5; default 3);
 /// <c>--level-monsters=on|off</c> (T5.7: off spawns no monsters, vanilla's
 /// <c>-nomonsters</c>, e.g. so the light specials' <c>P_Random</c> calls match
@@ -252,9 +256,19 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>
     /// T6.8: whether the console player's palette flashes and power-up
     /// colormaps show (<see cref="UpdatePaletteEffects"/>, <c>--level-palette-effects</c>;
-    /// SPEC §12 T6.8).
+    /// SPEC §12 T6.8) and, T6.13v, where the flashes show: over the whole
+    /// view, or on and around the player only.
     /// </summary>
-    public bool PaletteEffects { get; set; } = true;
+    public PaletteFlashStyle PaletteFlashes { get; set; } = PaletteFlashStyle.Screen;
+
+    /// <summary>T6.13v: the palette flashes' strength in percent (<see cref="PaletteFlash"/>, <c>--level-flash-strength</c>; 100: vanilla's palettes).</summary>
+    public int FlashStrength { get; set; } = PaletteFlash.FullStrength;
+
+    /// <summary>T6.13v: the player style's flashes under every camera, not the game camera's only (the level check).</summary>
+    public bool FlashOnPlayerEverywhere { get; set; }
+
+    /// <summary>T6.13v: the player style's glow at the player's feet (<see cref="UpdatePaletteEffects"/>).</summary>
+    public FlashGlow Glow { get; } = new() { Name = "FlashGlow", Visible = false };
 
     /// <summary>
     /// Which hitscans draw a tracer from the shooter to where the shot stopped
@@ -377,7 +391,7 @@ public partial class LevelScene : Node3D, IGameHost
     public bool TicsCanRun => _flow is { } flow && (flow.CanTic || flow.Wipe.go && !WipeHeld);
 
     // What the screens showed last (redrawn when it changes).
-    private (gamestate_t State, int Tic, bool Pause, Vector2 Size, int Palette)? _screenKey;
+    private (gamestate_t State, int Tic, bool Pause, Vector2 Size, (int, int, int) Palette)? _screenKey;
 
     /// <summary>
     /// T7.1: the window lost the focus: nothing runs until it is back (not
@@ -401,7 +415,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>The void's colour as set at start (<c>--level-background</c>, else black); a palette flash tints it unless it was set.</summary>
     private Color _background = Colors.Black;
     private bool _backgroundSet;
-    private int _voidPalette;
+    private int _voidPalette, _voidStrength = PaletteFlash.FullStrength;
 
     /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
     public CutawaySettings Cutaway { get; set; } = new();
@@ -593,6 +607,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(new WorldEnvironment { Environment = Environment });
         AddChild(_shotTracers); // in the tree from the start, so a failed load or the check still frees it at exit
         AddChild(_aimMarker);
+        AddChild(Glow);
         AddChild(Beams);
         AddChild(Markers);
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
@@ -709,12 +724,9 @@ public partial class LevelScene : Node3D, IGameHost
                     _ => throw new ArgumentException($"--level-weapon-light: \"{weaponLight}\" (on or off)"),
                 };
             if (WadLocator.GetUserArg("--level-palette-effects") is string paletteEffects)
-                PaletteEffects = paletteEffects switch
-                {
-                    "on" or "vanilla" => true,
-                    "off" => false,
-                    _ => throw new ArgumentException($"--level-palette-effects: \"{paletteEffects}\" (on or off)"),
-                };
+                PaletteFlashes = PaletteFlash.Parse(paletteEffects, "--level-palette-effects");
+            if (WadLocator.GetUserArg("--level-flash-strength") is string flashStrength)
+                FlashStrength = PaletteFlash.ParseStrength(flashStrength, "--level-flash-strength");
             if (WadLocator.GetUserArg("--level-tracers") is string tracers)
                 Tracers = ParseTracers(tracers, "--level-tracers");
             if (WadLocator.GetUserArg("--level-aim-marker") is string aimMarker)
@@ -1574,7 +1586,7 @@ public partial class LevelScene : Node3D, IGameHost
     {
         Hud.Visible = IsoActive && PlayerMobj is not null && StatusBar is not null && GameState == gamestate_t.GS_LEVEL;
         if (Hud.Visible && Playpal is not null)
-            Hud.Show(StatusBar, MessageLine, Playpal, Mesh?.Palette ?? 0);
+            Hud.Show(StatusBar, MessageLine, ScreenPalette(LevelScreenPalette.Row));
         Iso?.BottomInset = Hud.BottomInset;
         _message.Position = new Vector2(8, 8 + Hud.TopInset);
     }
@@ -1593,7 +1605,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         bool pause = flow.paused || FocusPaused;
         gamestate_t state = flow.gamestate;
-        int palette = state == gamestate_t.GS_LEVEL ? Mesh?.Palette ?? 0 : 0;
+        (int Row, int Palette, int Strength) palette = state == gamestate_t.GS_LEVEL ? LevelScreenPalette : (0, 0, PaletteFlash.FullStrength);
         UpdateMenuScreens(flow, palette, pause); // T7.2: M_Drawer, last (over the pause graphic), on its own layer
         if (state == gamestate_t.GS_LEVEL && (!pause || Mesh is null))
         {
@@ -1601,7 +1613,7 @@ public partial class LevelScene : Node3D, IGameHost
             _screenKey = null;
             return;
         }
-        (gamestate_t state, int gametic, bool pause, Vector2 Size, int palette) key = (state, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
+        (gamestate_t state, int gametic, bool pause, Vector2 Size, (int, int, int) palette) key = (state, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
         if (_screenKey == key && Screens.Visible)
             return;
         _screenKey = key;
@@ -1624,7 +1636,7 @@ public partial class LevelScene : Node3D, IGameHost
         }
         if (pause)
             g.DrawPause(screen);
-        Screens.Show(Playpal, palette, state != gamestate_t.GS_LEVEL, Hud.FixedScale);
+        Screens.Show(ScreenPalette(palette.Row), state != gamestate_t.GS_LEVEL, Hud.FixedScale);
     }
 
     /// <summary>
@@ -2129,32 +2141,63 @@ public partial class LevelScene : Node3D, IGameHost
     /// (r_main.c <c>R_SetupFrame</c>: 32 for invulnerability, 1 for the light
     /// amplification visor, 0 none) as <see cref="LevelMesh.SetColormapOverride"/>;
     /// stepped per tic as vanilla's. Palette 0 and no override with
-    /// <see cref="PaletteEffects"/> off or without a world. Sets only what
-    /// changed, so a debug override stays until the player's state changes.
+    /// <see cref="PaletteFlashes"/> off or without a world. T6.13v: the flash
+    /// blended from palette 0 by <see cref="FlashStrength"/> (the void too,
+    /// from its own colour), and with <see cref="PaletteFlashStyle.Player"/>
+    /// under the game camera (or <see cref="FlashOnPlayerEverywhere"/>) the
+    /// view on palette 0, the flash on the player's own sprite and in the
+    /// <see cref="Glow"/> at its feet. Sets only what changed, so a debug
+    /// override stays until the player's state changes.
     /// </summary>
     public void UpdatePaletteEffects()
     {
         if (Mesh is not { } mesh)
             return;
         int palette = 0, colormap = -1;
-        if (PaletteEffects && World is { } world && world.players[world.consoleplayer] is { mo: not null } p)
+        player_t? p = World is { } world ? world.players[world.consoleplayer] : null;
+        if (PaletteFlashes != PaletteFlashStyle.Off && p is { mo: not null })
         {
             palette = StStuff.ST_doPaletteStuff(p);
             if (p.fixedcolormap != 0)
                 colormap = p.fixedcolormap;
         }
-        if (mesh.Palette != palette)
-            mesh.SetPalette(palette);
+        bool playerOnly = PaletteFlashes == PaletteFlashStyle.Player && (IsoActive || FlashOnPlayerEverywhere);
+        int strength = Math.Clamp(FlashStrength, PaletteFlash.MinStrength, PaletteFlash.FullStrength);
+        if (mesh.Palette != palette || mesh.PaletteStrength != strength || mesh.PalettePlayerOnly != playerOnly)
+            mesh.SetPalette(palette, strength, playerOnly);
         // (tracked apart from the mesh's: a new map's mesh starts at palette 0)
-        if (_voidPalette != palette && !_backgroundSet && Playpal is { } playpal && palette < playpal.Count)
+        int voidPalette = playerOnly ? 0 : palette;
+        if ((_voidPalette, _voidStrength) != (voidPalette, strength) && !_backgroundSet && Playpal is { } playpal && voidPalette < playpal.Count)
         {
-            _voidPalette = palette;
-            (byte r, byte g, byte b) = playpal.GetColor(palette, 0);
-            Environment.BackgroundColor = palette == 0 ? _background : Color.Color8(r, g, b);
+            (_voidPalette, _voidStrength) = (voidPalette, strength);
+            (byte r, byte g, byte b) = playpal.GetColor(voidPalette, 0);
+            Environment.BackgroundColor = voidPalette == 0 ? _background
+                : strength >= PaletteFlash.FullStrength ? Color.Color8(r, g, b)
+                : _background.Lerp(Color.Color8(r, g, b), strength / (float)PaletteFlash.FullStrength);
         }
         if (mesh.ColormapOverride != colormap)
             mesh.SetColormapOverride(colormap);
+
+        PaletteFlash.Glow glow = playerOnly && Playpal is { } pal ? PaletteFlash.GlowOf(pal, palette) : default;
+        Glow.Visible = glow.Level > 0 && Player is { Visible: true } && PlayerMobj is not null; // (with the player's sprite)
+        if (Glow.Visible)
+        {
+            Glow.SetGlow(glow.R, glow.G, glow.B, glow.Level * strength / PaletteFlash.FullStrength * FlashGlow.MaxAlpha);
+            Glow.Place(Interpolated(PlayerMobj!).Position);
+        }
     }
+
+    /// <summary>
+    /// T6.13v: the palette the HUD, the pause graphic and the menus show over
+    /// a level: the level's (a flash blended by its strength), palette 0 when
+    /// the flashes show on the player only.
+    /// </summary>
+    private ReadOnlySpan<byte> ScreenPalette(int row) =>
+        Mesh is { } m && row != 0 ? m.DrawnPalette(row) : Playpal!.GetPalette(0);
+
+    // T6.13v: the screens' palette row in a level, with what a blended row holds (so the screens' keys change with it).
+    private (int Row, int Palette, int Strength) LevelScreenPalette =>
+        Mesh is { } m ? (m.ScreenRow, m.Palette, m.PaletteStrength) : (0, 0, PaletteFlash.FullStrength);
 
     /// <summary>
     /// T5.6: whether a tic moved the player mobj without interpolation (a
@@ -2379,6 +2422,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
         if (MonsterMarking != MonsterMarkerMode.Beam)
             text.Append("monster markers: ").Append(MonsterMarkers.ModeName(MonsterMarking)).Append(" (C)\n");
+        if (PaletteFlashes != PaletteFlashStyle.Screen || FlashStrength != PaletteFlash.FullStrength)
+            text.Append("palette flashes: ").Append(PaletteFlash.Name(PaletteFlashes)).Append(' ').Append(FlashStrength).Append("%\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");
         text.Append(_status);

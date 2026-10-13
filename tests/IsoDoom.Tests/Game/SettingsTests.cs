@@ -66,6 +66,23 @@ public class SettingsTests
         Assert.Equal("0", outline.Step("off", 1)); // two choices toggle
     }
 
+    [Fact]
+    public void ThePaletteFlashesHaveAStyleAndAStrength()
+    {
+        // T6.13v: screen at 100 is vanilla's; the strength stops at its ends in steps of 10.
+        SettingDef style = Settings.Find("gameplay/palette_effects")!, strength = Settings.Find("gameplay/flash_strength")!;
+        Assert.Equal(("screen", "100"), (style.Default, strength.Default));
+        Assert.Equal(["screen", "player", "off"], style.Choices);
+        Assert.Equal("player", style.Step("screen", 1));
+        Assert.Equal("90", strength.Step("100", -1));
+        Assert.Equal("100", strength.Step("100", 1));
+        Assert.Equal("10", strength.Step("10", -1));
+        Assert.Equal("60", strength.Step("55", 1));
+        Assert.Equal(["--level-flash-strength"], strength.Args);
+        Assert.Equal(SettingPage.Gameplay, strength.Page);
+        Assert.Equal(Array.IndexOf(Settings.Defs, style) + 1, Array.IndexOf(Settings.Defs, strength)); // next to each other
+    }
+
     // ---- the values and the file ----
 
     [Fact]

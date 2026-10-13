@@ -16,7 +16,7 @@ public partial class LevelScene : IMenuHost
     public ScreenView MenuScreens { get; } = new() { Name = "MenuScreens", Layer = 2 };
 
     // What the menu screen showed last (redrawn when it changes).
-    private (int Changes, gamestate_t State, int Tic, bool Pause, Vector2 Size, int Palette)? _menuKey;
+    private (int Changes, gamestate_t State, int Tic, bool Pause, Vector2 Size, (int, int, int) Palette)? _menuKey;
 
     // The menus' message for the next HU_Ticker (players[consoleplayer].message).
     private (string Text, bool DontFuckWithMe)? _menuMessage;
@@ -410,7 +410,7 @@ public partial class LevelScene : IMenuHost
     /// the status bar is redrawn whole (d_main.c <c>D_Display</c>'s
     /// <c>redrawsbar</c>).
     /// </summary>
-    private void UpdateMenuScreens(GameFlow flow, int palette, bool pause)
+    private void UpdateMenuScreens(GameFlow flow, (int Row, int Palette, int Strength) palette, bool pause)
     {
         MMenu menu = flow.Menu;
         if (!menu.Active || Playpal is null)
@@ -420,7 +420,7 @@ public partial class LevelScene : IMenuHost
             HelpGone();
             return;
         }
-        (int Changes, gamestate_t gamestate, int gametic, bool pause, Vector2 Size, int palette) key = (menu.Changes, flow.gamestate, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
+        (int Changes, gamestate_t gamestate, int gametic, bool pause, Vector2 Size, (int, int, int) palette) key = (menu.Changes, flow.gamestate, flow.gametic, pause, GetViewport().GetVisibleRect().Size, palette);
         if (_menuKey == key && MenuScreens.Visible)
             return;
         _menuKey = key;
@@ -431,7 +431,7 @@ public partial class LevelScene : IMenuHost
             _helpShown = true;
         else
             HelpGone();
-        MenuScreens.Show(Playpal, palette, menu.inhelpscreens, Hud.FixedScale, centre: true);
+        MenuScreens.Show(ScreenPalette(palette.Row), menu.inhelpscreens, Hud.FixedScale, centre: true);
     }
 
     private void HelpGone()

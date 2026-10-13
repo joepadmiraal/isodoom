@@ -769,18 +769,76 @@ public sealed class LevelMesh
     /// <summary>
     /// Selects the PLAYPAL palette (0 normal, 1–8 red, 9–12 gold, 13 radiation
     /// suit; T6.8: st_stuff.c's flashes) for the level and its sprites; the
-    /// blob shadows take its colour 0 (black in palette 0).
+    /// blob shadows take its colour 0 (black in palette 0). T6.13v: below
+    /// <see cref="PaletteFlash.FullStrength"/>, <paramref name="strength"/>
+    /// percent of the way from palette 0 (<see cref="PaletteFlash.Blend(Playpal, int, int)"/>,
+    /// written to the texture's <see cref="BlendRow"/>); with
+    /// <paramref name="playerOnly"/> the level stays on palette 0 and only the
+    /// player's own sprite (<see cref="ThingSprites.FlagOwn"/>) shows it, a
+    /// pickup's in white (<see cref="PaletteFlash.PlayerPalette"/>, always in
+    /// the <see cref="BlendRow"/>).
     /// </summary>
-    public void SetPalette(int palette)
+    public void SetPalette(int palette, int strength = PaletteFlash.FullStrength, bool playerOnly = false)
     {
         Palette = palette;
-        SetParameter("palette_index", palette);
-        if (_playpal is { } playpal && palette >= 0 && palette < playpal.Count)
+        PaletteStrength = strength;
+        PalettePlayerOnly = playerOnly;
+        int row = palette;
+        bool white = playerOnly && PaletteFlash.IsBonus(palette);
+        if (_playpal is { } playpal && palette > 0 && palette < playpal.Count && (strength < PaletteFlash.FullStrength || white))
         {
-            (byte r, byte g, byte b) = playpal.GetColor(palette, 0);
+            row = BlendRow;
+            if (_blendRow != palette || _blendStrength != strength || _blendWhite != white)
+            {
+                (_blendRow, _blendStrength, _blendWhite) = (palette, strength, white);
+                if (white)
+                    PaletteFlash.PlayerPalette(playpal, palette, strength).CopyTo(_blend, 0);
+                else
+                    PaletteFlash.Blend(playpal.GetPalette(0), playpal.GetPalette(palette), strength, _blend);
+                _blend.CopyTo(_playpalRows.AsSpan(row * Playpal.PaletteSize));
+                _playpalImage!.SetData(256, playpal.Count + 1, false, Image.Format.Rgb8, _playpalRows);
+                _playpalTexture!.Update(_playpalImage);
+            }
+        }
+        ScreenRow = playerOnly ? 0 : row;
+        OwnRow = row;
+        SetParameter("palette_index", ScreenRow);
+        SetParameter("own_palette_index", OwnRow);
+        if (_playpal is not null && ScreenRow >= 0 && ScreenRow <= BlendRow)
+        {
+            (byte r, byte g, byte b) = DrawnColor(ScreenRow, 0);
             ShadowMaterial.SetShaderParameter("shadow_colour", Color.Color8(r, g, b).SrgbToLinear());
         }
     }
+
+    /// <summary>The flash's strength as last set (<see cref="SetPalette"/>, T6.13v), in percent.</summary>
+    public int PaletteStrength { get; private set; } = PaletteFlash.FullStrength;
+
+    /// <summary>Whether the flash shows on the player's own sprite only (<see cref="SetPalette"/>, T6.13v).</summary>
+    public bool PalettePlayerOnly { get; private set; }
+
+    /// <summary>The palette texture's row of the blended flash palette (T6.13v): the one after PLAYPAL's.</summary>
+    public int BlendRow => _playpal?.Count ?? Playpal.NumPalettes;
+
+    /// <summary>The palette texture's row the level and its sprites are drawn in (<c>palette_index</c>; <see cref="BlendRow"/> for a blended flash).</summary>
+    public int ScreenRow { get; private set; }
+
+    /// <summary>The palette texture's row the player's own sprite is drawn in (<c>own_palette_index</c>, T6.13v).</summary>
+    public int OwnRow { get; private set; }
+
+    /// <summary>The colour of <paramref name="index"/> in the palette texture's row <paramref name="row"/> (a PLAYPAL palette, or the <see cref="BlendRow"/>).</summary>
+    public (byte R, byte G, byte B) DrawnColor(int row, int index) =>
+        row == BlendRow ? (_blend[index * 3], _blend[index * 3 + 1], _blend[index * 3 + 2]) : _playpal!.GetColor(row, index);
+
+    /// <summary>The 768 bytes of the palette texture's row <paramref name="row"/> (<see cref="DrawnColor"/>).</summary>
+    public ReadOnlySpan<byte> DrawnPalette(int row) => row == BlendRow ? _blend : _playpal!.GetPalette(row);
+
+    private byte[] _playpalRows = [];
+    private Image? _playpalImage;
+    private ImageTexture? _playpalTexture;
+    private readonly byte[] _blend = new byte[Playpal.PaletteSize];
+    private int _blendRow = -1, _blendStrength;
+    private bool _blendWhite;
 
     /// <summary>The fuzz's phase (T6.9, <see cref="Fuzz.Phase"/>, 0–49) as last set (<see cref="SetFuzzPhase"/>).</summary>
     public int FuzzPhase { get; private set; }
@@ -1095,7 +1153,14 @@ public sealed class LevelMesh
         SetParameter("side_textures", SideTexturesTexture);
         SetParameter("sector_fog", FogDataTexture);
         SetParameter("fog_dim", _fogDimTexture);
-        SetParameter("playpal", IndexedTextures.CreatePlaypalTexture(playpal));
+        // PLAYPAL and, after its palettes, a row for the blended flash palette (T6.13v, BlendRow).
+        _playpalRows = new byte[(playpal.Count + 1) * Playpal.PaletteSize];
+        playpal.Data.CopyTo(_playpalRows);
+        playpal.GetPalette(0).CopyTo(_playpalRows.AsSpan(playpal.Count * Playpal.PaletteSize));
+        _playpalImage = Image.CreateFromData(256, playpal.Count + 1, false, Image.Format.Rgb8, _playpalRows);
+        _playpalTexture = ImageTexture.CreateFromImage(_playpalImage);
+        _blendRow = -1;
+        SetParameter("playpal", _playpalTexture);
         SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
         LightTablesTexture = ImageTexture.CreateFromImage(
             Image.CreateFromData(LightTables.TableWidth, LightTables.TableHeight, false, Image.Format.R8, Lights.ToBytes()));

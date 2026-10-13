@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
@@ -52,6 +53,8 @@ public partial class LevelCheck
         foreach (SettingDef def in Settings.Defs)
         {
             string value = def.Step(def.Default, 1);
+            if (value == def.Default)
+                value = def.Step(def.Default, -1); // (a number at its top: T6.13v's flash strength)
             s.SetSetting(def.Key, value);
             changed[def.Key] = value;
             string now = s.GetSetting(def.Key);
@@ -158,6 +161,13 @@ public partial class LevelCheck
                     Fail($"settings (T7.3): {key} was \"{value}\" before the restart, \"{now}\" after it (the file: \"{(loaded.TryGetValue(key, out string? f) ? f : "none")}\")");
             }
             CheckApplied(changed);
+
+            // T6.13v: a file from before the flash styles, palette_effects = "on", reads as the screen style, the default, and is dropped from the file.
+            s.ApplySettings(new Dictionary<string, string> { ["gameplay/palette_effects"] = "on" }, pin: false);
+            s.SyncSettings();
+            if (s.PaletteFlashes != PaletteFlashStyle.Screen || s.GetSetting("gameplay/palette_effects") != "screen"
+                || s.SettingsValues.ToSave().Keep.Exists(k => k.Key == "gameplay/palette_effects"))
+                Fail($"settings (T6.13v): gameplay/palette_effects = \"on\" in a file reads \"{s.GetSetting("gameplay/palette_effects")}\" ({s.PaletteFlashes}), expected \"screen\", not kept in the file");
         }
         finally
         {
@@ -223,5 +233,12 @@ public partial class LevelCheck
             Expect("sound/opl", music.Opl3 == opl3 && driver == opl3, $"the player's OPL3 {music.Opl3}, its driver's {driver}");
         }
         Expect("hud/messages", (s.Menu.showMessages != 0 ? "on" : "off") == changed["hud/messages"], $"showMessages {s.Menu.showMessages}");
+        // T6.13v: the flashes' style and strength reach the mesh at its next update
+        if (s.Mesh is { } m)
+        {
+            s.UpdatePaletteEffects();
+            Expect("gameplay/palette_effects", PaletteFlash.Name(s.PaletteFlashes) == changed["gameplay/palette_effects"], $"the scene's {s.PaletteFlashes}");
+            Expect("gameplay/flash_strength", m.PaletteStrength.ToString(CultureInfo.InvariantCulture) == changed["gameplay/flash_strength"], $"the mesh's {m.PaletteStrength}%");
+        }
     }
 }

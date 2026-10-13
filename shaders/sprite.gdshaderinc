@@ -88,7 +88,7 @@
 // more per row of a run of rows above, as vanilla reads the row above after
 // fuzzing it, which makes its dark streaks): the
 // screen texture's colour is matched to its nearest index in the current
-// palette (`palette_index`, so the flashes apply; exact for palette colours,
+// palette (`palette_index`, so the flashes apply, blended ones too, T6.13v; exact for palette colours,
 // which is all the level and sprites draw), mapped through COLORMAP row 6 and
 // drawn through the palette. A texel is a texel at any zoom: the offset is
 // one patch row on screen. An MF_SHADOW thing has no outline (vanilla's
@@ -144,6 +144,10 @@ uniform sampler2D sector_data : filter_nearest, repeat_disable;
 uniform sampler2D playpal : filter_nearest, repeat_disable;
 uniform sampler2D colormap : filter_nearest, repeat_disable;
 uniform int palette_index = 0;
+// The palette row the player's own sprite (flag 8) is drawn in (T6.13v: the
+// flash palette, or its blend, while the rest of the view stays on
+// `palette_index` 0 with the flashes on the player only; else the same row).
+uniform int own_palette_index = 0;
 uniform int colormap_override = -1;
 uniform sampler2D light_tables : filter_nearest, repeat_disable;
 uniform int light_mode = 1;
@@ -492,6 +496,8 @@ void fragment() {
 	int index = 0;
 	// The colormap the index is drawn through (T6.9: the fuzz's own).
 	int light = v_colormap;
+	// The palette row (T6.13v): the player's own sprite's, but a fuzzed pixel shows the screen behind it in the screen's.
+	int pal = v_own != 0 ? own_palette_index : palette_index;
 	if (outline < 0) {
 		col = clamp(col, 0, w - 1);
 		row = clamp(row, 0, h - 1);
@@ -528,6 +534,7 @@ void fragment() {
 			index = int(texelFetch(colormap, ivec2(index, FUZZ_COLORMAP), 0).r * 255.0 + 0.5);
 		}
 		light = FUZZ_COLORMAP;
+		pal = palette_index;
 	} else if (v_own != 0 && outline >= 0 && (opaque_at(col - 1, row) || opaque_at(col + 1, row) || opaque_at(col, row - 1) || opaque_at(col, row + 1))) {
 		// The player's own sprite keeps its solid outline.
 		index = outline;
@@ -545,5 +552,5 @@ void fragment() {
 	}
 #endif
 	int mapped = int(texelFetch(colormap, ivec2(index, light), 0).r * 255.0 + 0.5);
-	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb);
+	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, pal), 0).rgb);
 }

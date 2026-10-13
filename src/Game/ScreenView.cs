@@ -50,7 +50,11 @@ public partial class ScreenView : CanvasLayer
     /// (by default only <paramref name="opaque"/>, else at the top, as the
     /// pause graphic over the level) when <paramref name="centre"/>.
     /// </summary>
-    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool? centre = null)
+    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool? centre = null) =>
+        Show(playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)), opaque, fixedScale, centre);
+
+    /// <summary>As <see cref="Show(Playpal, int, bool, int, bool?)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
+    public void Show(ReadOnlySpan<byte> pal, bool opaque, int fixedScale, bool? centre = null)
     {
         Visible = true;
         _backdrop.Visible = opaque;
@@ -58,7 +62,7 @@ public partial class ScreenView : CanvasLayer
         PixelScale = fixedScale > 0 ? fixedScale : HudView.ScaleFor(size);
         if (_rgba.Length != Screen.Pixels.Length * 4)
             _rgba = new byte[Screen.Pixels.Length * 4];
-        Screen.ToRgba(playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)), _rgba);
+        Screen.ToRgba(pal, _rgba);
         if (_image is null || _texture is null)
         {
             _image = Image.CreateFromData(Screen.Width, Screen.Height, false, Image.Format.Rgba8, _rgba);

@@ -405,7 +405,7 @@ public sealed class FogOfWar
     /// the texel through COLORMAP row <paramref name="row"/> (a fixed dark one,
     /// whatever its light), then towards its grey by <paramref name="grey"/>
     /// percent (0 keeps the colour, 100 grey), to the nearest colour of
-    /// PLAYPAL's first palette (<see cref="Fuzz.NearestIndex"/>). The shader
+    /// PLAYPAL's first palette (<see cref="Fuzz.NearestIndex(Playpal, int, int, int, int)"/>). The shader
     /// looks it up in <c>fog_dim</c>; the level check compares with it.
     /// </summary>
     public static byte[] DimMap(Playpal playpal, Colormap colormap, int row, int grey)
