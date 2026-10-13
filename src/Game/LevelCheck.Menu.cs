@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 
@@ -111,6 +112,50 @@ public partial class LevelCheck
         else
             GD.Print($"Level check: menus (T7.2): opened by a key, Escape and the pad's Start; the pad's A{(commercial ? "" : ", Enter")}{(_scene.GameMode == GameMode.shareware ? ", the shareware message" : "")} and a click on Hurt Me Plenty started {first}; the world held under the menu");
         _scene.UpdateScreens();
+        CheckCrosshairPointer(flow);
+    }
+
+    /// <summary>
+    /// T7.12: the crosshair pointer's image (a white centre dot and arms with a
+    /// gap, outlined black, transparent elsewhere, whole at scale 2) and when it
+    /// shows: on the level under the game camera, not under the menu, not with
+    /// the option off, not under the other cameras.
+    /// </summary>
+    private void CheckCrosshairPointer(GameFlow flow)
+    {
+        int c = CrosshairPointer.BaseSize / 2;
+        foreach (int scale in new[] { 1, 2 })
+        {
+            Image image = CrosshairPointer.Build(scale);
+            Color At(int x, int y) => image.GetPixel(x * scale + scale - 1, y * scale + scale - 1);
+            Vector2 hotspot = CrosshairPointer.Hotspot(scale);
+            string? wrong =
+                image.GetWidth() != CrosshairPointer.BaseSize * scale || image.GetHeight() != image.GetWidth() ? $"size {image.GetSize()}"
+                : (int)hotspot.X / scale != c || (int)hotspot.Y / scale != c ? $"hotspot {hotspot}"
+                : At(c, c) != Colors.White ? $"centre {At(c, c)}"
+                : At(c + 1, c).A != 1 || At(c + 1, c) != Colors.Black ? $"the gap's outline {At(c + 1, c)}"
+                : At(c + 2, c).A != 0 ? $"the gap {At(c + 2, c)}"
+                : At(c + 3, c) != Colors.Black ? $"the arm's outline {At(c + 3, c)}"
+                : At(c + CrosshairPointer.ArmStart, c) != Colors.White || At(c, c - CrosshairPointer.ArmEnd) != Colors.White ? "an arm"
+                : At(c + CrosshairPointer.ArmEnd + 1, c) != Colors.Black || At(c + 1, c + CrosshairPointer.ArmStart) != Colors.Black ? "the outline"
+                : At(0, 0).A != 0 || At(c + 3, c + 3).A != 0 ? "the background"
+                : null;
+            if (wrong is not null)
+                Fail($"the crosshair pointer (T7.12): at scale {scale}: {wrong}");
+        }
+
+        // the rule with the menus as they are (the check has no game camera of its own)
+        bool Wanted(bool option, bool gameCamera) => LevelScene.CrosshairWanted(option, gameCamera, flow.gamestate, flow.Menu.Active);
+        bool level = flow.gamestate == gamestate_t.GS_LEVEL && Wanted(true, true);
+        bool off = Wanted(false, true), noCamera = Wanted(true, false);
+        _scene.MenuEvent(KeyEvent(Key.Escape));
+        bool menu = !flow.Menu.Active || Wanted(true, true);
+        _scene.MenuEvent(KeyEvent(Key.Escape));
+        bool scene = _scene.CrosshairWanted(flow) != (_scene.PointerCrosshair && _scene.IsoActive);
+        if (!level || menu || off || noCamera || scene)
+            Fail($"the crosshair pointer (T7.12): shown on the level {level} (expected true), under the menu {menu}, with the option off {off}, without the game camera {noCamera}, the scene's own rule differing {scene} (expected false)");
+        else
+            GD.Print("Level check: crosshair pointer (T7.12): its image at scales 1 and 2; shown on the level under the game camera, not under the menu, with the option off or under another camera");
     }
 
     /// <summary>

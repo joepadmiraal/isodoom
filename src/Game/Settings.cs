@@ -144,6 +144,8 @@ public static class Settings
         new("hud/aspect", "ASPECT", SettingPage.Hud, "4:3", ["4:3", "square"], "--level-hud-aspect"),
         new("hud/messages", "MESSAGES", SettingPage.Hud, "on", _onOff),
         new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", ["high", "low"]),
+        // T7.12: the mouse pointer a crosshair on a level, or the system's arrow
+        new("hud/crosshair", "CROSSHAIR", SettingPage.Hud, "on", _onOff, "--level-crosshair"),
         // T7.9: the automap's look (not vanilla's: a black screen at its 320x200 pixels)
         new("hud/automap", "AUTOMAP", SettingPage.Hud, "opaque", ["opaque", "overlay"], "--level-automap"),
         new("hud/automap_detail", "AUTOMAP DETAIL", SettingPage.Hud, "low", ["low", "high"], "--level-automap-detail"),

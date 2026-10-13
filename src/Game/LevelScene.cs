@@ -111,6 +111,8 @@ namespace IsoDoom.Game;
 /// <c>--level-aim-marker=pad|on|off</c> (<see cref="AimMarkerMode"/>: a ring
 /// around the player's feet with a chevron along its facing, unless the
 /// mouse cursor aims, always, or never; default pad);
+/// <c>--level-crosshair=on|off</c> (T7.12, <see cref="PointerCrosshair"/>: the
+/// mouse pointer a crosshair on a level under the game camera; default on);
 /// <c>--level-fog=hide|dim|off</c> (T6.13l, <see cref="FogStyle"/>: under the
 /// game camera, the sectors the player has not seen not drawn or dimmed,
 /// and their things hidden; default hide),
@@ -291,6 +293,16 @@ public partial class LevelScene : Node3D, IGameHost
     public AimMarkerMode AimMarkerShown { get; set; } = AimMarkerMode.Pad;
 
     private readonly AimMarker _aimMarker = new() { Name = "AimMarker", Visible = false };
+
+    /// <summary>
+    /// The mouse pointer is a crosshair while it aims on a level (T7.12,
+    /// <see cref="CrosshairPointer"/>, <c>--level-crosshair</c>; not vanilla,
+    /// SPEC §12); off, the system's arrow.
+    /// </summary>
+    public bool PointerCrosshair { get; set; } = true;
+
+    // T7.12: the crosshair pointer's scale as last applied, 0 for the system's arrow.
+    private int _crosshairScale;
 
     // T6.13l: the dim look (--level-fog-dim).
     private FogDim _fogDim = FogDim.Default;
@@ -790,6 +802,8 @@ public partial class LevelScene : Node3D, IGameHost
                 Tracers = ParseTracers(tracers, "--level-tracers");
             if (WadLocator.GetUserArg("--level-aim-marker") is string aimMarker)
                 AimMarkerShown = ParseAimMarker(aimMarker, "--level-aim-marker");
+            if (WadLocator.GetUserArg("--level-crosshair") is string crosshair)
+                PointerCrosshair = ParseOnOff(crosshair, "--level-crosshair");
             if (WadLocator.GetUserArg("--level-fog") is string fog)
                 FogStyle = ParseFog(fog, "--level-fog");
             if (WadLocator.GetUserArg("--level-fog-things") is string fogThings)
@@ -1897,7 +1911,23 @@ public partial class LevelScene : Node3D, IGameHost
             Input.MouseMode = Input.MouseModeEnum.Hidden;
         else if (!hide && Input.MouseMode == Input.MouseModeEnum.Hidden)
             Input.MouseMode = Input.MouseModeEnum.Visible;
+        int scale = CrosshairWanted(flow) ? CrosshairPointer.ScaleFor(DisplayServer.WindowGetSize().Y) : 0;
+        if (scale != _crosshairScale && !IsCheckRun)
+            CrosshairPointer.Apply(scale);
+        _crosshairScale = scale;
     }
+
+    /// <summary>
+    /// Whether the pointer is the crosshair (T7.12, <see cref="CrosshairPointer"/>):
+    /// with the option on, on a level under the game camera, menus closed;
+    /// the system's arrow on the title loop, the intermission, the finale, the
+    /// menus and the other cameras.
+    /// </summary>
+    public bool CrosshairWanted(GameFlow flow) => CrosshairWanted(PointerCrosshair, IsoActive, flow.gamestate, flow.Menu.Active);
+
+    /// <inheritdoc cref="CrosshairWanted(GameFlow)"/>
+    public static bool CrosshairWanted(bool option, bool gameCamera, gamestate_t gamestate, bool menu) =>
+        option && gameCamera && gamestate == gamestate_t.GS_LEVEL && !menu;
 
     private static AimMarkerMode ParseAimMarker(string value, string name) => value switch
     {
