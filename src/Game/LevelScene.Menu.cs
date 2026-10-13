@@ -85,6 +85,7 @@ public partial class LevelScene : IMenuHost
     {
         Menu.Host = this;
         Menu.SetupHost = this; // T7.3: the options' text pages
+        Flow.AutomapCheats = this; // T7.9b: the cheats page's iddt
         if (_graphics is not null)
             Menu.Graphics = _graphics;
         // T7.3: yes and no come from their actions (menu_yes, menu_no), so a rebound Y is only a letter
@@ -334,7 +335,7 @@ public partial class LevelScene : IMenuHost
     /// stick, any pad): a press moves once, holding repeats after
     /// <see cref="PadDelaySeconds"/> every <see cref="PadRepeatSeconds"/>.
     /// </summary>
-    private void PollMenuPad(double delta)
+    internal void PollMenuPad(double delta)
     {
         _menuClock += delta;
         if (_flow is { } f)

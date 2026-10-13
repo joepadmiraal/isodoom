@@ -95,9 +95,11 @@ public sealed partial class MMenu
             SettingDefs[page] = def;
             setupItems.Add(new menuitem_t(1, "", _ => M_SetupNextMenu(def), key, title + "..."));
         }
+        setupItems.Add(new menuitem_t(1, "", Cheats, 'e', "CHEATS...")); // T7.9b: the cheats for a pad
         setupItems.Add(new menuitem_t(-1, "", null, '\0'));
         setupItems.Add(new menuitem_t(1, "", _ => M_StartMessage(RESETALL, ResetAllResponse, true), 'r', "RESET ALL TO DEFAULTS"));
         SetTextItems(SetupDef, [.. setupItems]);
+        CheatMenus(); // T7.9b
 
         var controls = new List<menuitem_t>(SettingItems(SettingPage.Controls));
         ControlsDef = TextMenu("controls", "CONTROLS", SetupDef, []);
@@ -231,7 +233,7 @@ public sealed partial class MMenu
     {
         M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(title) / 2, 16, title);
         bool bindings = BindingDefs.Exists(b => b.Def == def);
-        string hint = bindings ? "ENTER: BIND   DEL / PAD X: CLEAR" : def.menuitems.Length > 0 && Array.Exists(def.menuitems, i => i.status == 2) ? "LEFT / RIGHT: CHANGE" : "";
+        string hint = bindings ? "ENTER: BIND   DEL / PAD X: CLEAR" : def == CheatsDef ? CheatsHint() : def.menuitems.Length > 0 && Array.Exists(def.menuitems, i => i.status == 2) ? "LEFT / RIGHT: CHANGE" : "";
         if (hint.Length > 0)
             M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(hint) / 2, TEXTHINTY, hint);
     }

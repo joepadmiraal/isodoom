@@ -580,6 +580,24 @@ public sealed class AmMap
     /// </summary>
     public void Deactivate() => automapactive = false;
 
+    /// <summary>
+    /// Not vanilla (T7.9b, the cheats page): types <paramref name="keys"/>
+    /// into <see cref="AM_Responder"/> as keys bound to no automap action,
+    /// <see cref="cheat_amap"/> started afresh first (keys typed before don't
+    /// spoil it). Read only while the automap shows and not in deathmatch, as
+    /// vanilla's. Returns whether <c>iddt</c> matched (<see cref="cheating"/> stepped).
+    /// </summary>
+    public bool TypeCheat(string keys)
+    {
+        if (!automapactive)
+            return false;
+        int before = cheating;
+        cheat_amap.p = 0;
+        foreach (char k in keys)
+            AM_Responder(evtype_t.ev_keydown, 0, k);
+        return cheating != before;
+    }
+
     /// <summary>set the window scale to the maximum size</summary>
     public void AM_minOutWindowScale()
     {

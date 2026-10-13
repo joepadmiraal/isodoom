@@ -12,7 +12,7 @@ namespace IsoDoom.Game;
 // shows with it whatever the HUD's mode, and the map title), and vanilla's
 // stops: the console player's death (p_inter.c), a level's end, a new game, a
 // load and a level loaded (g_game.c). Under the game camera only.
-public partial class LevelScene
+public partial class LevelScene : ICheatAutomap
 {
     /// <summary>The automap (am_map.c), or null without a WAD.</summary>
     public AmMap? Automap { get; private set; }
@@ -244,6 +244,27 @@ public partial class LevelScene
         "low" or "vanilla" => false,
         _ => throw new ArgumentException($"{name}: \"{value}\" (low or high)"),
     };
+
+    bool ICheatAutomap.AutomapShown
+    {
+        get
+        {
+            SyncAutomapWorld(World);
+            return Automap is { automapactive: true } && GameState == gamestate_t.GS_LEVEL && PlayerMobj is not null && (IsoActive || IsCheckRun); // as AutomapEvent reads keys
+        }
+    }
+
+    int ICheatAutomap.AutomapCheating => Automap?.cheating ?? 0;
+
+    // T7.9b: the cheats page's iddt, read by the automap's responder only while it shows (as typed keys are)
+    bool ICheatAutomap.TypeAutomapCheat(string keys)
+    {
+        if (Automap is not { } am || !((ICheatAutomap)this).AutomapShown || !am.TypeCheat(keys))
+            return false;
+        GD.Print($"Level: automap: iddt from the cheats page, step {am.cheating}");
+        _automapDirty = true;
+        return true;
+    }
 
     /// <summary>The overlay's and the script's <c>automap</c> line.</summary>
     public string AutomapText() =>

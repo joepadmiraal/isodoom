@@ -237,7 +237,7 @@ public class SettingsTests
     {
         // T6.13p: the gameplay page had grown past the screen's bottom (18 rows from y 36).
         (MMenu menu, _) = NewMenu();
-        foreach (MMenu.menu_t def in menu.SettingDefs.Values.Append(menu.SetupDef).Append(menu.ControlsDef).Concat(menu.BindingDefs.Select(b => b.Def)))
+        foreach (MMenu.menu_t def in menu.SettingDefs.Values.Append(menu.SetupDef).Append(menu.CheatsDef).Append(menu.ControlsDef).Concat(menu.BindingDefs.Select(b => b.Def)))
             Assert.True(def.y + def.numitems * def.lineHeight <= MMenu.TEXTHINTY, $"{def.Name}: {def.numitems} rows from y {def.y}");
     }
 
@@ -257,7 +257,7 @@ public class SettingsTests
             pages.Add(menu.StateName);
             Keys(menu, Back);
         }
-        Assert.Equal(new[] { "controls", "video", "gameplay", "walls", "sprites", "hud", "soundsetup" }, pages);
+        Assert.Equal(new[] { "controls", "video", "gameplay", "walls", "sprites", "hud", "soundsetup", "cheats" }, pages);
 
         // gameplay: the cutaway steps right and left (and Enter steps on), at once through the host
         Keys(menu, 'g', Enter);

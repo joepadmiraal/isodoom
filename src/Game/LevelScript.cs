@@ -188,7 +188,7 @@ namespace IsoDoom.Game;
 /// <c>episode</c>, <c>skill</c>, <c>options</c>, <c>sound</c>, <c>load</c>,
 /// <c>save</c>, <c>readthis1</c>, <c>readthis2</c>; T7.3: <c>setup</c>, <c>video</c>,
 /// <c>gameplay</c>, <c>sprites</c>, <c>hud</c>, T7.8g: <c>soundsetup</c>, <c>controls</c>, <c>movement</c>,
-/// <c>actions</c>, <c>menukeys</c>, T7.9: <c>automap</c>, <c>binding</c> while one waits for an input to
+/// <c>actions</c>, <c>menukeys</c>, T7.9: <c>automap</c>, T7.9b: <c>cheats</c>, <c>binding</c> while one waits for an input to
 /// bind) with the skull (or the cursor) on item ITEM.
 /// </para>
 /// <para>

@@ -166,6 +166,9 @@ public sealed partial class MMenu
         /// <summary>Not vanilla (T7.3): a text menu's item shows this value right of its text.</summary>
         public Func<string>? value;
 
+        /// <summary>Not vanilla (T7.9b): a slider's select (Enter, the pad's A, a click) calls this instead of stepping it right (the cheats page's pickers).</summary>
+        public Action? select;
+
         public menuitem_t(short status, string name, Action<int>? routine, char alphaKey, string text = "")
         {
             this.status = status;
@@ -1134,7 +1137,13 @@ public sealed partial class MMenu
             if (currentMenu.menuitems[itemOn].routine is { } routine && currentMenu.menuitems[itemOn].status != 0)
             {
                 currentMenu.lastOn = itemOn;
-                if (currentMenu.menuitems[itemOn].status == 2)
+                _itemSound = null;
+                if (currentMenu.menuitems[itemOn].status == 2 && currentMenu.menuitems[itemOn].select is { } select)
+                {
+                    select(); // T7.9b: a picker's choice
+                    S_StartSound(_itemSound ?? sfxenum_t.sfx_pistol);
+                }
+                else if (currentMenu.menuitems[itemOn].status == 2)
                 {
                     routine(1); // right arrow
                     S_StartSound(sfxenum_t.sfx_stnmov);
@@ -1142,7 +1151,7 @@ public sealed partial class MMenu
                 else
                 {
                     routine(itemOn);
-                    S_StartSound(sfxenum_t.sfx_pistol);
+                    S_StartSound(_itemSound ?? sfxenum_t.sfx_pistol); // T7.9b: a refused cheat's sound in its place
                 }
             }
             return true;

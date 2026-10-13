@@ -420,6 +420,56 @@ public sealed class GameFlow
     /// <summary>T7.9a: the cheats typed that wait for a tic (the level script's, the checks').</summary>
     public int CheatsPending => _cheats.Count;
 
+    /// <summary>T7.9b: the automap's <c>iddt</c> for the cheats page (the game scene's automap), or null.</summary>
+    public ICheatAutomap? AutomapCheats { get; set; }
+
+    /// <summary>
+    /// T7.9b: the cheats page types <paramref name="keys"/> (a cheat's
+    /// letters and digits) as the keyboard would, through
+    /// <see cref="ST_Responder"/> with each key, the sequences started afresh
+    /// first (<see cref="MCheat.Reset"/>: keys typed before don't spoil it);
+    /// so vanilla's refusals hold. Returns whether a cheat matched (it goes in
+    /// the next tic's <c>ticcmd</c>, as typed). Not <c>iddt</c>: the automap's
+    /// (<see cref="AutomapCheats"/>).
+    /// </summary>
+    public bool TypeCheat(string keys)
+    {
+        if (gamestate != gamestate_t.GS_LEVEL || host.World is not { } world || world.players[world.consoleplayer].mo is null)
+            return false;
+        Cheats.Reset();
+        bool matched = false;
+        foreach (char k in keys)
+            matched |= ST_Responder(k).Count > 0;
+        return matched;
+    }
+
+    /// <summary>T7.9b: <c>idclev</c>'s maps for the cheats page's picker: each two digits <see cref="ST_ClevMap"/> takes, with the map's name, in order.</summary>
+    public System.Collections.Generic.List<(string Digits, string Name)> CheatMaps()
+    {
+        var maps = new System.Collections.Generic.List<(string, string)>();
+        for (byte p = 0; p < 100; p++)
+        {
+            if (ST_ClevMap(p) is (int epsd, int map))
+                maps.Add((p.ToString("00", System.Globalization.CultureInfo.InvariantCulture), World.MapName(gamemode, epsd, map)));
+        }
+        return maps;
+    }
+
+    /// <summary>T7.9b: <c>idmus</c>'s songs for the cheats page's picker: each two digits <see cref="ST_MusSong"/> takes whose lump the WAD has, with the song's name (upper case), in order, each song once.</summary>
+    public System.Collections.Generic.List<(string Digits, string Name)> CheatSongs()
+    {
+        var songs = new System.Collections.Generic.List<(string, string)>();
+        for (byte p = 0; p < 100; p++)
+        {
+            if (ST_MusSong(p) is not { } song)
+                continue;
+            string name = MusicInfo.S_music[(int)song].name.ToUpperInvariant();
+            if (host.HasLump(MusicInfo.LumpName(song)) && !songs.Exists(s => s.Item2 == name)) // "20" is E1M9's again
+                songs.Add((p.ToString("00", System.Globalization.CultureInfo.InvariantCulture), name));
+        }
+        return songs;
+    }
+
     /// <summary>
     /// T7.9a: the cheat <paramref name="cmd"/> carries, before its tic (as
     /// vanilla's <c>ST_Responder</c> acts before the tic after the key): on a
@@ -468,6 +518,19 @@ public sealed class GameFlow
             return;
         player_t plyr = world.players[world.consoleplayer];
         plyr.message = World.STSTR_MUS;
+        if (ST_MusSong(param) is not { } musnum)
+            plyr.message = World.STSTR_NOMUS;
+        else
+            S_ChangeMusic(musnum, true);
+    }
+
+    /// <summary>
+    /// <c>idmus</c>'s song for its two digits (<paramref name="param"/>, 0–99,
+    /// or <see cref="MCheat.NOTDIGITS"/>), or null for <c>IMPOSSIBLE SELECTION</c>
+    /// (<see cref="ST_CheatMus"/>; T7.9b's picker offers those it gives).
+    /// </summary>
+    public musicenum_t? ST_MusSong(byte param)
+    {
         int d0 = param / 10, d1 = param % 10;
         int musnum;
         bool ok;
@@ -481,10 +544,8 @@ public sealed class GameFlow
             musnum = (int)musicenum_t.mus_e1m1 + (d0 - 1) * 9 + (d1 - 1);
             ok = (d0 - 1) * 9 + d1 - 1 <= 31;
         }
-        if (param == MCheat.NOTDIGITS || !ok || musnum <= (int)musicenum_t.mus_None || musnum >= (int)musicenum_t.NUMMUSIC)
-            plyr.message = World.STSTR_NOMUS;
-        else
-            S_ChangeMusic((musicenum_t)musnum, true);
+        return param == MCheat.NOTDIGITS || !ok || musnum <= (int)musicenum_t.mus_None || musnum >= (int)musicenum_t.NUMMUSIC
+            ? null : (musicenum_t)musnum;
     }
 
     /// <summary>
@@ -498,8 +559,23 @@ public sealed class GameFlow
     /// </summary>
     private void ST_CheatClev(World world, byte param)
     {
-        if (world.netgame || param == MCheat.NOTDIGITS)
+        if (world.netgame || ST_ClevMap(param) is not (int epsd, int map))
             return;
+
+        // So be it.
+        world.players[world.consoleplayer].message = World.STSTR_CLEV;
+        G_DeferedInitNew(gameskill, epsd, map);
+    }
+
+    /// <summary>
+    /// <c>idclev</c>'s episode and map for its two digits (<paramref name="param"/>),
+    /// or null where <see cref="ST_CheatClev"/> refuses them (T7.9b's picker
+    /// offers those it gives).
+    /// </summary>
+    public (int Episode, int Map)? ST_ClevMap(byte param)
+    {
+        if (param == MCheat.NOTDIGITS)
+            return null;
         int epsd, map;
         if (gamemode == GameMode.commercial)
         {
@@ -514,32 +590,30 @@ public sealed class GameFlow
 
         // Catch invalid maps.
         if (epsd < 1)
-            return;
+            return null;
 
         if (map < 1)
-            return;
+            return null;
 
         // Ohmygod - this is not going to work.
         if (gamemode == GameMode.retail && (epsd > 4 || map > 9))
-            return;
+            return null;
 
         if (gamemode == GameMode.registered && (epsd > 3 || map > 9))
-            return;
+            return null;
 
         if (gamemode == GameMode.shareware && (epsd > 1 || map > 9))
-            return;
+            return null;
 
         // The source release has this check as map > 34. However, Vanilla
         // Doom allows IDCLEV up to MAP40 even though it normally crashes.
         if (gamemode == GameMode.commercial && (epsd > 1 || map > 40))
-            return;
+            return null;
 
         if (!host.HasLump(World.MapName(gamemode, epsd, map)))
-            return;
+            return null;
 
-        // So be it.
-        world.players[world.consoleplayer].message = World.STSTR_CLEV;
-        G_DeferedInitNew(gameskill, epsd, map);
+        return (epsd, map);
     }
 
     /// <summary>g_game.c <c>savegameslot</c> and <c>savedescription</c>: the save the menu asked for last.</summary>
