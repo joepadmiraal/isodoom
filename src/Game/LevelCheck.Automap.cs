@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
@@ -172,6 +173,7 @@ public partial class LevelCheck
         if (!_scene.AutomapEvent(y) || !am.automapactive)
             Fail(Step("the pad's Y did not open it"));
         _scene.AutomapEvent(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = false });
+        CheckAutomapTurn();
 
         // following: the arrows are the game's; not following, the automap's
         if (_scene.AutomapEvent(KeyEvent(Key.Right)))
@@ -232,6 +234,64 @@ public partial class LevelCheck
         if (am.automapactive || ReferenceEquals(_scene.World, world))
             Fail(Step("a new game left it open"));
         GD.Print($"Level check: automap (T7.9): the pad's Y, follow, the right stick's pan, = and the D-pad's zoom, the grid's and the marks' messages, iddt's keys and a new game checked");
+    }
+
+    /// <summary>
+    /// T7.9c: turned (the default), the player's arrow points where the game
+    /// camera shows its facing (the tip's pixel in the frame, its direction
+    /// within 10° of the facing projected through the camera at its default
+    /// pitch, which foreshortens it); north up (vanilla's), as vanilla's.
+    /// </summary>
+    private void CheckAutomapTurn()
+    {
+        if (_scene.Automap is not { } am || _scene.PlayerMobj is not { } me)
+            return;
+        string Step(string what) => $"automap turn (T7.9c): {what}: {_scene.AutomapText()}";
+        if (!_scene.AutomapTurned || am.Rotation != 0xe0000000u)
+            Fail(Step($"not turned by the camera's yaw by default (rotation {am.Rotation:x8})"));
+        Basis view = GameBasis(IsoCamera.DefaultPitch);
+        uint angle = me.angle;
+        int scale = am.scale_mtof;
+        am.scale_mtof = am.max_scale_mtof / 3; // an arrow about 60 pixels long at vanilla's frame
+        am.scale_ftom = Fixed.FixedDiv(Fixed.FRACUNIT, am.scale_mtof);
+        am.AM_activateNewScale();
+        am.AM_doFollowPlayer();
+        int tip = (int)((long)(8 * AmMap.PLAYERRADIUS / 7) * am.scale_mtof >> 32);
+        int checkedAngles = 0;
+        foreach (bool turned in new[] { true, false })
+        {
+            _scene.AutomapTurned = turned;
+            foreach (int degrees in new[] { 0, 45, 135, 200, 290 })
+            {
+                me.angle = (uint)((long)degrees * 0x100000000L / 360);
+                am.AM_Drawer();
+                // where the frame should show the tip: the facing turned by the automap's rotation (y down on screen)
+                double turn = am.Rotation * (Math.PI * 2 / 4294967296.0), a = degrees * Math.PI / 180 + turn;
+                int tx = am.f_w / 2 + (int)Math.Round(tip * Math.Cos(a)), ty = am.f_h / 2 - (int)Math.Round(tip * Math.Sin(a));
+                bool white = false;
+                for (int y = ty - 1; y <= ty + 1; y++)
+                {
+                    for (int x = tx - 1; x <= tx + 1; x++)
+                        white |= x >= 0 && x < am.f_w && y >= 0 && y < am.f_h && am.fb.Pixels[y * am.f_w + x] == AmMap.WHITE;
+                }
+                if (!white)
+                    Fail(Step($"facing {degrees}°{(turned ? "" : ", north up")}: no arrow tip at ({tx}, {ty})"));
+                // the game camera's (orthographic, the check has none of its own): the facing on its right and up axes
+                Vector3 facing = LevelMesh.ToGodot((int)(64 * 65536 * Math.Cos(degrees * Math.PI / 180)), (int)(64 * 65536 * Math.Sin(degrees * Math.PI / 180)), 0);
+                double onScreen = Math.Atan2(facing.Dot(view.Y), facing.Dot(view.X));
+                double off = Math.Abs(Math.IEEERemainder(onScreen - a, Math.PI * 2)) * 180 / Math.PI;
+                if (turned && off > 10)
+                    Fail(Step($"facing {degrees}°: the arrow is {off:0.#}° off the game camera's"));
+                checkedAngles++;
+            }
+        }
+        _scene.AutomapTurned = true;
+        me.angle = angle;
+        am.scale_mtof = scale;
+        am.scale_ftom = Fixed.FixedDiv(Fixed.FRACUNIT, am.scale_mtof);
+        am.AM_activateNewScale();
+        am.AM_doFollowPlayer();
+        GD.Print($"Level check: automap turn (T7.9c): the player's arrow where the game camera shows its facing ({checkedAngles / 2} facings, within 10°), and north up");
     }
 
     private void PrintAutomap()

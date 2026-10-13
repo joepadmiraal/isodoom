@@ -145,6 +145,8 @@ public static class Settings
         // T7.9: the automap's look (not vanilla's: a black screen at its 320x200 pixels)
         new("hud/automap", "AUTOMAP", SettingPage.Hud, "opaque", ["opaque", "overlay"], "--level-automap"),
         new("hud/automap_detail", "AUTOMAP DETAIL", SettingPage.Hud, "low", ["low", "high"], "--level-automap-detail"),
+        // T7.9c: turned to the game camera's view, or vanilla's north up
+        new("hud/automap_turn", "AUTOMAP TURN", SettingPage.Hud, "camera", ["camera", "north"], "--level-automap-turn"),
 
         // controls and sound (vanilla's options)
         new("controls/mouse_sensitivity", "MOUSE SENSITIVITY", SettingPage.Controls, "5", Range(0, 9, 1)),

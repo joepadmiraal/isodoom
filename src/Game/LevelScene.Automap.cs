@@ -26,6 +26,31 @@ public partial class LevelScene : ICheatAutomap
     /// <summary>T7.9's detail (<c>--level-automap-detail</c>, <c>hud/automap_detail</c>): one window pixel per frame pixel (not vanilla), or the HUD's scale.</summary>
     public bool AutomapHighDetail { get; set; }
 
+    /// <summary>
+    /// T7.9c's turn (<c>--level-automap-turn</c>, <c>hud/automap_turn</c>):
+    /// the automap turned to the game camera's view, its up the screen's up
+    /// (not vanilla), or vanilla's north up.
+    /// </summary>
+    public bool AutomapTurned
+    {
+        get => _automapTurned;
+        set
+        {
+            _automapTurned = value;
+            Automap?.Rotation = AutomapRotation;
+            _automapDirty = true;
+        }
+    }
+
+    private bool _automapTurned = true;
+
+    /// <summary>
+    /// The automap's turn (BAM): the game camera looks along map angle
+    /// 90° + <see cref="Render.IsoCamera.Yaw"/> (Godot's yaw 0 looks north),
+    /// so the map turns by −yaw to put that direction up; 0 north up.
+    /// </summary>
+    public uint AutomapRotation => AutomapTurned ? unchecked((uint)(long)Math.Round(-Render.IsoCamera.Yaw / 360.0 * 4294967296.0)) : 0;
+
     /// <summary>Whether the automap shows: open, on a level, under the game camera.</summary>
     public bool AutomapActive => Automap is { automapactive: true } && GameState == gamestate_t.GS_LEVEL && IsoActive && PlayerMobj is not null;
 
@@ -55,6 +80,7 @@ public partial class LevelScene : ICheatAutomap
     {
         Automap = new AmMap(Wad)
         {
+            Rotation = AutomapRotation,
             Message = text => _menuMessage = (text, false), // plr->message: the next HU_Ticker shows it
             Entered = () => StatusBar?.st_firsttime = true, // ST_Responder's AM_MSGENTERED: the bar redraws whole
         };
@@ -238,6 +264,13 @@ public partial class LevelScene : ICheatAutomap
         _ => throw new ArgumentException($"{name}: \"{value}\" (opaque or overlay)"),
     };
 
+    private static bool ParseAutomapTurn(string value, string name) => value switch
+    {
+        "camera" => true,
+        "north" or "vanilla" => false,
+        _ => throw new ArgumentException($"{name}: \"{value}\" (camera or north)"),
+    };
+
     private static bool ParseAutomapDetail(string value, string name) => value switch
     {
         "high" => true,
@@ -269,6 +302,6 @@ public partial class LevelScene : ICheatAutomap
     /// <summary>The overlay's and the script's <c>automap</c> line.</summary>
     public string AutomapText() =>
         Automap is not { } am ? "automap: none"
-            : am.StateText() + (AutomapOverlay ? ", overlay" : "") + (AutomapHighDetail ? ", high detail" : "")
+            : am.StateText() + (AutomapOverlay ? ", overlay" : "") + (AutomapHighDetail ? ", high detail" : "") + (AutomapTurned ? "" : ", north up")
                 + (am.automapactive && !AutomapActive ? " (game camera only)" : "");
 }

@@ -10,6 +10,7 @@ using IsoDoom.Sim;
 using IsoDoom.Tests.Sim;
 using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
+using IsoDoom.Wad.Graphics;
 using Xunit;
 using static IsoDoom.Game.AmMap;
 
@@ -459,6 +460,155 @@ public class AutomapTests
         am.World = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, deathmatch: 1, nomonsters: true), Tweaks.Vanilla);
         Type(am, "iddt");
         Assert.Equal(0, am.cheating);
+    }
+
+    // ---- T7.9c: turned to the game camera ----
+
+    // The game camera's turn: it looks north-west (map angle 135°), so the map turns by −45°.
+    private const uint CameraTurn = unchecked(0u - Tables.ANG45);
+
+    // Whether a white pixel (the arrow's) is within a pixel of (x, y).
+    private static bool WhiteNear(AmMap am, int x, int y)
+    {
+        for (int yy = y - 1; yy <= y + 1; yy++)
+        {
+            for (int xx = x - 1; xx <= x + 1; xx++)
+            {
+                if (am.fb.Pixels[yy * am.f_w + xx] == WHITE)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    [Fact]
+    public void TurnedThePlayersArrowPointsUpTheScreenAlongTheCamerasView()
+    {
+        (World world, AmMap am, _) = Synthetic();
+        foreach (line_t l in world.lines)
+            l.flags &= ~Line.ML_MAPPED;
+        mobj_t mo = world.players[0].mo!;
+        mo.angle = Tables.ANG90 + Tables.ANG45; // facing north-west, as the camera looks
+        Down(am, KEY_TAB);
+        for (int i = 0; i < 200; i++)
+            am.AM_Ticker();
+        Down(am, '=');
+        for (int i = 0; i < 400; i++)
+            am.AM_Ticker(); // zoomed in all the way
+        Up(am, '=');
+        Down(am, '-');
+        for (int i = 0; i < 70; i++)
+            am.AM_Ticker(); // and out to a quarter: an arrow about 45 pixels long, within the frame
+        Up(am, '-');
+
+        // the arrow's tip, R ahead of the player: north up, up and left of the centre; turned, straight above it
+        int tip = 8 * PLAYERRADIUS / 7;
+        int Px(int units) => (int)((long)units * am.scale_mtof >> 32);
+        int d = Px((int)(tip * 0.7071));
+        am.AM_Drawer();
+        Assert.True(WhiteNear(am, am.f_w / 2 - d, am.f_h / 2 - d), "north up: no tip up and left");
+        Assert.False(WhiteNear(am, am.f_w / 2, am.f_h / 2 - Px(tip)), "north up: a tip straight up");
+
+        am.Rotation = CameraTurn;
+        Assert.Contains("turned 315°", am.StateText(), StringComparison.Ordinal);
+        am.AM_Drawer();
+        Assert.True(WhiteNear(am, am.f_w / 2, am.f_h / 2 - Px(tip)), "turned: no tip straight up");
+        Assert.False(WhiteNear(am, am.f_w / 2 - d, am.f_h / 2 - d), "turned: a tip up and left");
+
+        // a point north-west of the centre turns to straight up; the centre stays
+        int cx = am.m_x + am.m_w / 2, cy = am.m_y + am.m_h / 2;
+        int x = cx - (100 << 16), y = cy + (100 << 16);
+        am.TurnPoint(ref x, ref y);
+        Assert.InRange(x - cx, -6554, 6554); // within 0.1 unit: the tables sample half a step off
+        Assert.InRange(y - cy, (int)(141.32 * 65536), (int)(141.52 * 65536));
+        x = cx;
+        y = cy;
+        am.TurnPoint(ref x, ref y);
+        Assert.Equal((cx, cy), (x, y));
+    }
+
+    [Fact]
+    public void TurnedThePanKeysPanAlongTheScreen()
+    {
+        (_, AmMap am, _) = Synthetic();
+        am.Rotation = CameraTurn;
+        Down(am, KEY_TAB);
+        Down(am, 'f');
+        int x = am.m_x, y = am.m_y;
+        Down(am, MMenu.KEY_UPARROW); // up the screen: north-west on the map
+        am.AM_Ticker();
+        Up(am, MMenu.KEY_UPARROW);
+        int dx = am.m_x - x, dy = am.m_y - y;
+        Assert.True(dx < 0 && dy > 0, $"pan ({dx}, {dy}), paninc {am.m_paninc.y}");
+        Assert.True(Math.Abs(dx + dy) <= -dx / 500, $"pan ({dx}, {dy})"); // the tables' rounding
+    }
+
+    [Fact]
+    public void TurnedTheWholeMapFitsTheTurnedLevel()
+    {
+        (World world, AmMap am, _) = Synthetic();
+        Down(am, KEY_TAB);
+        int north = am.min_scale_mtof;
+        am.Rotation = CameraTurn; // changed while open: the zoom range again
+        Assert.NotEqual(north, am.min_scale_mtof);
+        Assert.InRange(am.scale_mtof, am.min_scale_mtof, am.max_scale_mtof);
+        Down(am, '0');
+        Assert.Equal(am.min_scale_mtof, am.scale_mtof);
+        // every vertex turned spans no more than the frame at the whole map's scale
+        double cos = Math.Cos(-Math.PI / 4), sin = Math.Sin(-Math.PI / 4);
+        double[] xs = [.. world.level.Vertexes.Select(v => v.X * cos - v.Y * sin)];
+        double[] ys = [.. world.level.Vertexes.Select(v => v.X * sin + v.Y * cos)];
+        double scale = am.scale_mtof / 65536.0;
+        Assert.True((xs.Max() - xs.Min()) * scale <= am.f_w * 65536 + 65536 && (ys.Max() - ys.Min()) * scale <= am.f_h * 65536 + 65536);
+        am.Rotation = 0;
+        Assert.Equal(north, am.min_scale_mtof);
+    }
+
+    [Fact]
+    public void TurnedTheGridCoversTheFrame()
+    {
+        (_, AmMap am, _) = Synthetic();
+        am.Rotation = CameraTurn;
+        Down(am, KEY_TAB);
+        Down(am, 'g');
+        am.AM_Drawer();
+        // a grid line in each corner's quarter of the frame
+        foreach ((int x0, int y0) in new[] { (0, 0), (am.f_w * 3 / 4, 0), (0, am.f_h * 3 / 4), (am.f_w * 3 / 4, am.f_h * 3 / 4) })
+        {
+            bool found = false;
+            for (int y = y0; y < y0 + am.f_h / 4 && !found; y++)
+            {
+                for (int x = x0; x < x0 + am.f_w / 4 && !found; x++)
+                    found = am.fb.Pixels[y * am.f_w + x] == GRIDCOLORS;
+            }
+            Assert.True(found, $"no grid near ({x0}, {y0})");
+        }
+    }
+
+    [Fact]
+    public void TurnedTheMarksTurnWithTheMap()
+    {
+        (World world, AmMap am, _) = Synthetic();
+        foreach (line_t l in world.lines)
+            l.flags &= ~Line.ML_MAPPED;
+        am.marknums[0] = new IndexedImage(5, 6, 0, 0, Enumerable.Repeat((byte)WHITE, 30).ToArray(), Enumerable.Repeat((byte)1, 30).ToArray()); // the synthetic IWAD has no AMMNUM0
+        am.Rotation = CameraTurn;
+        am.Overlay = true; // see-through: only what is drawn is opaque
+        Down(am, KEY_TAB);
+        Down(am, 'm');
+        int cx = am.m_x + am.m_w / 2, cy = am.m_y + am.m_h / 2;
+        int far = am.FTOM(60);
+        am.markpoints[0].x = cx - far; // 60 pixels west of the centre
+        am.markpoints[0].y = cy;
+        int x = am.markpoints[0].x, y = am.markpoints[0].y;
+        am.TurnPoint(ref x, ref y);
+        Assert.True(Math.Abs(x - cx + (y - cy)) < (cx - x) / 500, $"({x - cx}, {y - cy})"); // west turned clockwise: up-left (the tables' rounding)
+        am.AM_Drawer();
+        // drawn up and left (42 pixels each way), not to the west
+        int mx = am.f_w / 2 - 42, my = am.f_h / 2 - 42, wx = am.f_w / 2 - 60;
+        bool Drawn(int x0, int y0) => Enumerable.Range(y0 - 2, 10).Any(yy => Enumerable.Range(x0 - 2, 10).Any(xx => am.fb.Opaque[yy * am.f_w + xx] != 0));
+        Assert.True(Drawn(mx, my), "no mark up and left");
+        Assert.False(Drawn(wx, am.f_h / 2), "a mark to the west");
     }
 
     // ---- the title ----

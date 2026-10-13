@@ -753,6 +753,8 @@ public partial class LevelScene : Node3D, IGameHost
                 AutomapOverlay = ParseAutomapStyle(automapStyle, "--level-automap"); // T7.9
             if (WadLocator.GetUserArg("--level-automap-detail") is string automapDetail)
                 AutomapHighDetail = ParseAutomapDetail(automapDetail, "--level-automap-detail");
+            if (WadLocator.GetUserArg("--level-automap-turn") is string automapTurn)
+                AutomapTurned = ParseAutomapTurn(automapTurn, "--level-automap-turn"); // T7.9c
             if (WadLocator.GetUserArg("--level-wipe") is string wipe)
                 ScreenWipes = ParseWipe(wipe, "--level-wipe");
             if (WadLocator.GetUserArg("--level-fullscreen") is string fullscreen)

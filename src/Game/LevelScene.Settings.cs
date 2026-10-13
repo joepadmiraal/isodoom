@@ -680,6 +680,7 @@ public partial class LevelScene : ISetupHost
         Add("hud/detail", () => Menu.detailLevel == 0 ? "high" : "low", s => Menu.detailLevel = Choice(s, "hud/detail", "high", "low") == "high" ? 0 : 1);
         Add("hud/automap", () => AutomapOverlay ? "overlay" : "opaque", s => AutomapOverlay = ParseAutomapStyle(s, "hud/automap")); // T7.9
         Add("hud/automap_detail", () => AutomapHighDetail ? "high" : "low", s => AutomapHighDetail = ParseAutomapDetail(s, "hud/automap_detail"));
+        Add("hud/automap_turn", () => AutomapTurned ? "camera" : "north", s => AutomapTurned = ParseAutomapTurn(s, "hud/automap_turn")); // T7.9c
 
         // controls and sound
         Add("controls/mouse_sensitivity", () => Menu.mouseSensitivity.ToString(CultureInfo.InvariantCulture),

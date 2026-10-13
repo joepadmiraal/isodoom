@@ -307,6 +307,30 @@ public sealed class AmMap
     /// <summary>T7.9's overlay style: <see cref="AM_clearFB"/> leaves the frame see-through, the level shows under the lines (not vanilla).</summary>
     public bool Overlay { get; set; }
 
+    /// <summary>
+    /// Not vanilla (T7.9c): the angle (BAM, counterclockwise) the map turns
+    /// by around the window's centre on its way to the frame, so its
+    /// directions can be the game camera's on screen (the lines, the grid,
+    /// the arrows, the things and the marks with it; the pan keys pan along
+    /// the screen). 0, north up, is vanilla's. Changing it works the zoom
+    /// range out again (<see cref="AM_findMinMaxBoundaries"/>: the turned
+    /// map's extent) once a level was set up.
+    /// </summary>
+    public uint Rotation
+    {
+        get => _rotation;
+        set
+        {
+            if (_rotation == value)
+                return;
+            _rotation = value;
+            if (leveljuststarted == 0 && World is not null)
+                RescaleForFrame();
+        }
+    }
+
+    private uint _rotation;
+
     // doomkeys.h's codes of Chocolate Doom's default automap keys (m_controls.c); the game scene's glue sends them for the actions
     public const int KEY_TAB = 9;
     public int key_map_north = MMenu.KEY_UPARROW;
@@ -342,7 +366,7 @@ public sealed class AmMap
     }
 
     // translates between frame-buffer and map distances
-    private int FTOM(int x) => Fixed.FixedMul(x << 16, scale_ftom);
+    public int FTOM(int x) => Fixed.FixedMul(x << 16, scale_ftom);
     private int MTOF(int x) => Fixed.FixedMul(x, scale_mtof) >> 16;
 
     // translates between frame-buffer and map coordinates
@@ -446,8 +470,9 @@ public sealed class AmMap
         min_w = 2 * PLAYERRADIUS; // const? never changed?
         min_h = 2 * PLAYERRADIUS;
 
-        int a = Fixed.FixedDiv(f_w << FRACBITS, max_w);
-        int b = Fixed.FixedDiv(f_h << FRACBITS, max_h);
+        (int extent_w, int extent_h) = Rotation == 0 ? (max_w, max_h) : TurnedExtent(); // T7.9c: the turned map's
+        int a = Fixed.FixedDiv(f_w << FRACBITS, extent_w);
+        int b = Fixed.FixedDiv(f_h << FRACBITS, extent_h);
 
         min_scale_mtof = a < b ? a : b;
         max_scale_mtof = Fixed.FixedDiv(f_h << FRACBITS, 2 * PLAYERRADIUS);
@@ -461,8 +486,12 @@ public sealed class AmMap
             f_oldloc.x = int.MaxValue;
         }
 
-        m_x += m_paninc.x;
-        m_y += m_paninc.y;
+        // T7.9c: the pan is along the screen, so along the map turned back
+        int panx = m_paninc.x, pany = m_paninc.y;
+        if (Rotation != 0)
+            AM_rotate(ref panx, ref pany, unchecked(0u - Rotation));
+        m_x += panx;
+        m_y += pany;
 
         if (m_x + m_w / 2 > max_x)
             m_x = max_x - m_w / 2;
@@ -1034,7 +1063,13 @@ public sealed class AmMap
     public void AM_drawMline(in mline_t ml, int color)
     {
         fline_t fl = default;
-        if (AM_clipMline(ml, ref fl))
+        mline_t turned = ml;
+        if (Rotation != 0) // T7.9c
+        {
+            TurnPoint(ref turned.a.x, ref turned.a.y);
+            TurnPoint(ref turned.b.x, ref turned.b.y);
+        }
+        if (AM_clipMline(turned, ref fl))
             AM_drawFline(fl, color); // draws it on frame buffer using fb coords
     }
 
@@ -1044,16 +1079,26 @@ public sealed class AmMap
         World world = World!;
         const int units = Blockmap.MAPBLOCKUNITS << FRACBITS;
 
+        // T7.9c: turned, the grid covers the square the turned window fits in
+        int gx = m_x, gy = m_y, gw = m_w, gh = m_h;
+        if (Rotation != 0)
+        {
+            int half = (int)Math.Min(((long)m_w + m_h) / 2, int.MaxValue / 4);
+            gx = m_x + m_w / 2 - half;
+            gy = m_y + m_h / 2 - half;
+            gw = gh = 2 * half;
+        }
+
         // Figure out start of vertical gridlines
-        int start = m_x;
+        int start = gx;
         if ((start - world.bmaporgx) % units != 0)
             start += units - ((start - world.bmaporgx) % units);
-        int end = m_x + m_w;
+        int end = gx + gw;
 
         // draw vertical gridlines
         mline_t ml = default;
-        ml.a.y = m_y;
-        ml.b.y = m_y + m_h;
+        ml.a.y = gy;
+        ml.b.y = gy + gh;
         for (int x = start; x < end; x += units)
         {
             ml.a.x = x;
@@ -1062,14 +1107,14 @@ public sealed class AmMap
         }
 
         // Figure out start of horizontal gridlines
-        start = m_y;
+        start = gy;
         if ((start - world.bmaporgy) % units != 0)
             start += units - ((start - world.bmaporgy) % units);
-        end = m_y + m_h;
+        end = gy + gh;
 
         // draw horizontal gridlines
-        ml.a.x = m_x;
-        ml.b.x = m_x + m_w;
+        ml.a.x = gx;
+        ml.b.x = gx + gw;
         for (int y = start; y < end; y += units)
         {
             ml.a.y = y;
@@ -1217,8 +1262,10 @@ public sealed class AmMap
                 //      h = SHORT(marknums[i]->height);
                 int w = 5 * scale; // because something's wrong with the wad, i guess
                 int h = 6 * scale; // because something's wrong with the wad, i guess
-                int fx = CXMTOF(markpoints[i].x);
-                int fy = CYMTOF(markpoints[i].y);
+                int mx = markpoints[i].x, my = markpoints[i].y;
+                TurnPoint(ref mx, ref my); // T7.9c
+                int fx = CXMTOF(mx);
+                int fy = CYMTOF(my);
                 if (fx >= f_x && fx <= f_w - w && fy >= f_y && fy <= f_h - h)
                     V_DrawPatch(fx, fy, marknums[i], scale);
             }
@@ -1294,6 +1341,12 @@ public sealed class AmMap
         f_w = width;
         f_h = height;
         fb = new HudScreen(0, f_h, f_w);
+        RescaleForFrame();
+    }
+
+    // The zoom range worked out again (a new frame, a new turn), the scale kept within it and the window centred where it was.
+    private void RescaleForFrame()
+    {
         AM_findMinMaxBoundaries();
         if (scale_mtof < min_scale_mtof)
             scale_mtof = min_scale_mtof;
@@ -1301,6 +1354,44 @@ public sealed class AmMap
             scale_mtof = max_scale_mtof;
         scale_ftom = Fixed.FixedDiv(FRACUNIT, scale_mtof);
         AM_activateNewScale();
+    }
+
+    // ---- not vanilla's: the turn (T7.9c) ----
+
+    /// <summary>
+    /// Turns map point (<paramref name="x"/>, <paramref name="y"/>) by
+    /// <see cref="Rotation"/> around the window's centre (the frame's centre:
+    /// the player when following). In 64-bit, a point turned beyond the
+    /// fixed-point range clamped to it (only on a map over 32768 units across).
+    /// </summary>
+    public void TurnPoint(ref int x, ref int y)
+    {
+        if (Rotation == 0)
+            return;
+        long cx = m_x + (long)m_w / 2, cy = m_y + (long)m_h / 2;
+        long dx = x - cx, dy = y - cy;
+        int fine = (int)(Rotation >> Tables.ANGLETOFINESHIFT);
+        long cos = Tables.finecosine[fine], sin = Tables.finesine[fine];
+        x = (int)Math.Clamp(cx + ((dx * cos - dy * sin) >> FRACBITS), -int.MaxValue, int.MaxValue);
+        y = (int)Math.Clamp(cy + ((dx * sin + dy * cos) >> FRACBITS), -int.MaxValue, int.MaxValue);
+    }
+
+    // The width and height of the level's vertexes turned by Rotation (the whole map's zoom).
+    private (int Width, int Height) TurnedExtent()
+    {
+        int fine = (int)(Rotation >> Tables.ANGLETOFINESHIFT);
+        long cos = Tables.finecosine[fine], sin = Tables.finesine[fine];
+        long minx = long.MaxValue, maxx = long.MinValue, miny = long.MaxValue, maxy = long.MinValue;
+        foreach (Vertex v in World!.level.Vertexes)
+        {
+            long x = ((long)v.X * cos - (long)v.Y * sin) >> FRACBITS;
+            long y = ((long)v.X * sin + (long)v.Y * cos) >> FRACBITS;
+            minx = Math.Min(minx, x);
+            maxx = Math.Max(maxx, x);
+            miny = Math.Min(miny, y);
+            maxy = Math.Max(maxy, y);
+        }
+        return ((int)Math.Clamp(maxx - minx, 1, int.MaxValue), (int)Math.Clamp(maxy - miny, 1, int.MaxValue));
     }
 
     /// <summary>The frame's FNV-1a hash (the reference dump's: every pixel's palette index, row by row).</summary>
@@ -1325,7 +1416,7 @@ public sealed class AmMap
         }
         int marks = Array.FindAll(markpoints, m => m.x != -1).Length;
         return FormattableString.Invariant(
-            $"automap: on, {(followplayer != 0 ? "follow" : "free")}, {(grid != 0 ? "grid, " : "")}{(cheating != 0 ? $"iddt {cheating}, " : "")}{(bigstate != 0 ? "whole map, " : "")}")
+            $"automap: on, {(followplayer != 0 ? "follow" : "free")}, {(grid != 0 ? "grid, " : "")}{(cheating != 0 ? $"iddt {cheating}, " : "")}{(bigstate != 0 ? "whole map, " : "")}{(Rotation != 0 ? $"turned {Rotation * (360.0 / 4294967296.0):0.#}°, " : "")}")
             + FormattableString.Invariant($"scale {scale_mtof / 65536.0:0.###} px/unit, window ({m_x >> FRACBITS}, {m_y >> FRACBITS}) {m_w >> FRACBITS}x{m_h >> FRACBITS}, {drawn} lines drawn, {marks} marks, frame {f_w}x{f_h}");
     }
 }
