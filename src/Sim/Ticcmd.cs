@@ -58,6 +58,18 @@ public static class buttoncode_t
     /// <summary>Savegame slot numbers occupy the second byte of buttons.</summary>
     public const byte BTS_SAVEMASK = 4 + 8 + 16;
     public const int BTS_SAVESHIFT = 2;
+
+    /// <summary>
+    /// Not vanilla's (T7.9a, SPEC §12): a cheat typed (vanilla's
+    /// <c>ST_Responder</c> changes the player between the tics). The
+    /// <see cref="cheat_t"/> is in <see cref="BTS_CHEATMASK"/>, its parameter
+    /// (<c>idclev</c>'s and <c>idmus</c>'s two digits) in <see cref="ticcmd_t.chatchar"/>.
+    /// </summary>
+    public const byte BTS_CHEAT = 3;
+
+    /// <summary>The cheat's number (<see cref="cheat_t"/>) in the buttons with <see cref="BTS_CHEAT"/>.</summary>
+    public const byte BTS_CHEATMASK = 4 + 8 + 16 + 32 + 64;
+    public const int BTS_CHEATSHIFT = 2;
 }
 
 /// <summary>

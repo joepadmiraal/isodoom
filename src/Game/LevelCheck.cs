@@ -128,6 +128,7 @@ public partial class LevelCheck : Godot.Node
             CheckSaves(); // T7.6: quicksave, quickload, the loaded game going on as the saved one, a damaged save refused
             CheckSound(); // T7.7: the sound effects through the scene
             CheckMusic(); // T7.8c: the music changes through the scene
+            CheckCheats(); // T7.9a: the cheats typed through the input glue
             await CheckMusicPlayback(); // T7.8e: a song played for a few seconds on the OPL player's thread
             // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
             await _scene.AudioSettled();

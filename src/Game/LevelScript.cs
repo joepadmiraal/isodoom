@@ -133,7 +133,10 @@ namespace IsoDoom.Game;
 /// facing, aimed as vanilla) before the next tic queued after it (scripted tics) or the next
 /// tic (<c>sim live</c>); e.g. <c>place X Y ANGLE; missile; cmd 0 0 0 0 10; shot FILE.png</c>
 /// with <c>--level-tweaks=vanilla</c> (a twin-stick <c>cmd</c>'s ANGLETURN sets the facing).
-/// <c>power NAME [TICS]</c> (T6.8, a debug power-up until the cheats, T7.9) gives the
+/// <c>type TEXT</c> (T7.9a) taps each letter and digit of TEXT, a frame each, as
+/// typed keys: the cheats (<c>type iddqd; cmd 0 0 0 0 1</c>: a cheat goes with
+/// the next tic, its message on the message line and in the log).
+/// <c>power NAME [TICS]</c> (T6.8, a debug power-up; T7.9a's <c>idbehold</c> types one) gives the
 /// player power-up <c>pw_NAME</c> (<c>invulnerability</c>, <c>strength</c>,
 /// <c>invisibility</c>, <c>ironfeet</c>, <c>allmap</c>, <c>infrared</c>) as its
 /// pickup does (<c>P_GivePower</c>), optionally with TICS left, and <c>flash damage|bonus COUNT</c>
@@ -251,6 +254,15 @@ public partial class LevelScript : Node
                     case "down": Key(w[1], true); break;
                     case "up": Key(w[1], false); break;
                     case "tap": Key(w[1], true); await Frames(1); Key(w[1], false); break;
+                    case "type":
+                        // T7.9a: taps each letter or digit of TEXT, a frame each (the cheats: "type iddqd")
+                        foreach (char c in w[1])
+                        {
+                            Key(c.ToString(), true);
+                            await Frames(1);
+                            Key(c.ToString(), false);
+                        }
+                        break;
                     case "hold": Key(w[1], true); await Frames(Int(w[2])); Key(w[1], false); break;
                     case "wait": await Frames(Int(w[1])); break;
                     case "click": Click(MouseButton.Left); break;

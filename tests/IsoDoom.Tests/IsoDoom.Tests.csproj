@@ -29,6 +29,7 @@
     <Compile Include="../../src/Game/FWipe.cs" Link="Game/FWipe.cs" />
     <Compile Include="../../src/Game/FFinale.Texts.cs" Link="Game/FFinale.Texts.cs" />
     <Compile Include="../../src/Game/ScreenGraphics.cs" Link="Game/ScreenGraphics.cs" />
+    <Compile Include="../../src/Game/MCheat.cs" Link="Game/MCheat.cs" />
     <Compile Include="../../src/Game/MMenu.cs" Link="Game/MMenu.cs" />
     <Compile Include="../../src/Game/MMenu.Setup.cs" Link="Game/MMenu.Setup.cs" />
     <Compile Include="../../src/Game/Settings.cs" Link="Game/Settings.cs" />

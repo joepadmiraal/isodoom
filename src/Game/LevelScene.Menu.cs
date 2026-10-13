@@ -256,6 +256,36 @@ public partial class LevelScene : IMenuHost
         return false;
     }
 
+    /// <summary>
+    /// T7.9a: st_stuff.c <c>ST_Responder</c> for a key the menus did not take
+    /// (<see cref="MenuEvent"/> first, as vanilla's <c>M_Responder</c>): every
+    /// key pressed (not its repeats) goes to the cheat sequences
+    /// (<see cref="GameFlow.ST_Responder"/>) as a doomkeys.h code, and also
+    /// works as it does in the game (W/A/S/D move, digits pick weapons: as
+    /// vanilla's). Not the debug keys, though: a key typed into a cheat past
+    /// its "id" is taken (returns true), so <c>idclip</c> doesn't cycle the
+    /// monster markers, light, upper walls and wall pull; and the I that
+    /// started it, which toggled the upper walls, toggles them back once the D
+    /// follows. No pad: the cheats are typed (SPEC §12 T7.9a).
+    /// </summary>
+    public bool CheatEvent(InputEvent e)
+    {
+        if (_flow is not { } flow || e is not InputEventKey { Pressed: true, Echo: false } key)
+            return false;
+        int typedBefore = flow.Cheats.Typed();
+        IReadOnlyList<(cheat_t Cheat, byte Param)> matched = flow.ST_Responder(MenuKeyOf(key));
+        foreach ((cheat_t cheat, byte param) in matched)
+            GD.Print($"Level: cheat {cheat}{(cheat is cheat_t.cht_mus or cheat_t.cht_clev ? $" {param}" : "")} typed");
+        int typed = flow.Cheats.Typed();
+        if (typedBefore == 1 && typed == 2 && _upperWallsToggledBy == 1)
+            ToggleUpperWalls(); // the I that started "id" was a cheat's, not the debug key
+        _upperWallsToggledBy = 0;
+        return typedBefore >= 2 && (typed > 2 || matched.Count > 0);
+    }
+
+    // T7.9a: 1 when the last key was the I that toggled the upper walls (CheatEvent's undo)
+    private int _upperWallsToggledBy;
+
     /// <summary>Whether a mouse click is the right trigger's echo (Steam Input's click): the trigger is held, or was pressed <see cref="GameInput.StickEchoMs"/> ago.</summary>
     private bool TriggerEcho() => _triggerHeld || _triggerAt is ulong at && Time.GetTicksMsec() - at < GameInput.StickEchoMs;
 

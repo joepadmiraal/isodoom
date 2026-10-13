@@ -313,7 +313,7 @@ dotnet_diagnostic.IDE0066.severity = none
 dotnet_diagnostic.IDE0180.severity = none
 dotnet_diagnostic.IDE0031.severity = none
 
-[src/Game/{FFinale,FFinale.Texts,FWipe,GameFlow,HuStuff,MMenu,StStuff,WiStuff}.cs]
+[src/Game/{FFinale,FFinale.Texts,FWipe,GameFlow,HuStuff,MCheat,MMenu,StStuff,WiStuff}.cs]
 dotnet_diagnostic.IDE1006.severity = none
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1051.severity = none

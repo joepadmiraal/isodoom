@@ -270,6 +270,15 @@ public sealed class GameFlow
             sendsave = false;
             cmd.buttons = (byte)(buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_SAVEGAME | (savegameslot << buttoncode_t.BTS_SAVESHIFT));
         }
+        else if (_cheats.Count > 0 && (cmd.buttons & buttoncode_t.BT_SPECIAL) == 0)
+        {
+            // T7.9a: a cheat typed goes with the next tic free of other special buttons
+            (cheat_t cheat, byte param) = _cheats.Dequeue();
+            World.ST_CheatTiccmd(ref cmd, cheat, param);
+        }
+
+        // T7.9a: st_stuff.c ST_Responder's cheats, which vanilla's responder runs between the tics, before this one
+        ST_DoCheat(cmd);
 
         if (advancedemo)
             D_DoAdvanceDemo();
@@ -379,6 +388,159 @@ public sealed class GameFlow
     /// intermission's, T7.4): to the menus' host, whose UI sounds play from T7.7.
     /// </summary>
     public void S_StartSound(sfxenum_t sfx) => Menu.Host?.StartSound(sfx);
+
+    /// <summary>The cheat sequences (m_cheat.c, T7.9a): <see cref="ST_Responder"/> reads the keys through them.</summary>
+    public MCheat Cheats { get; } = new();
+
+    // T7.9a: the cheats typed, each for the next tic free of other special buttons
+    private readonly System.Collections.Generic.Queue<(cheat_t Cheat, byte Param)> _cheats = new();
+    private readonly System.Collections.Generic.List<(cheat_t Cheat, byte Param)> _matched = [];
+
+    /// <summary>
+    /// st_stuff.c <c>ST_Responder</c> for a key pressed (T7.9a; a doomkeys.h
+    /// code, <see cref="MCheat.KeyCode"/>): on a level only (g_game.c
+    /// <c>G_Responder</c>; the menus take the keys first, the game scene's
+    /// glue only passes those they didn't), through the cheat sequences
+    /// (<see cref="MCheat.Check"/>, with vanilla's refusals: the cheats on
+    /// the player and <c>idmus</c> not on nightmare, none in a net game but
+    /// those); a cheat matched goes in the next tic's <c>ticcmd</c> (<see cref="G_Ticker"/>,
+    /// SPEC §12 T7.9a). Returns the cheats matched (the level script prints them).
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyList<(cheat_t Cheat, byte Param)> ST_Responder(int key)
+    {
+        _matched.Clear();
+        if (gamestate != gamestate_t.GS_LEVEL || host.World is not { } world)
+            return _matched;
+        Cheats.Check(MCheat.KeyCode(key), world.ST_CheatsAllowed, !world.netgame, gamemission, _matched);
+        foreach ((cheat_t, byte) cheat in _matched)
+            _cheats.Enqueue(cheat);
+        return _matched;
+    }
+
+    /// <summary>T7.9a: the cheats typed that wait for a tic (the level script's, the checks').</summary>
+    public int CheatsPending => _cheats.Count;
+
+    /// <summary>
+    /// T7.9a: the cheat <paramref name="cmd"/> carries, before its tic (as
+    /// vanilla's <c>ST_Responder</c> acts before the tic after the key): on a
+    /// level with a player mobj, the console player's (<see cref="World.ST_Cheat"/>),
+    /// <c>idmus</c> (<see cref="ST_CheatMus"/>) and <c>idclev</c>
+    /// (<see cref="ST_CheatClev"/>); its message is the player's, which the
+    /// tic's <see cref="World.HU_TakeMessages"/> takes (unless a pickup's
+    /// replaces it, as vanilla's); paused, it is taken at once, as vanilla's
+    /// <c>HU_Ticker</c> runs paused.
+    /// </summary>
+    private void ST_DoCheat(in ticcmd_t cmd)
+    {
+        cheat_t cheat = World.ST_TiccmdCheat(cmd);
+        if (cheat == cheat_t.cht_none || gamestate != gamestate_t.GS_LEVEL || host.World is not { } world
+            || world.players[world.consoleplayer].mo is null)
+            return;
+        switch (cheat)
+        {
+            case cheat_t.cht_mus:
+                ST_CheatMus(world, cmd.chatchar);
+                break;
+            case cheat_t.cht_clev:
+                ST_CheatClev(world, cmd.chatchar);
+                break;
+            default:
+                world.ST_Cheat(world.consoleplayer, cheat);
+                break;
+        }
+        Log?.Invoke($"Cheat: {cheat}{(cheat is cheat_t.cht_mus or cheat_t.cht_clev ? $" {cmd.chatchar}" : "")} at tic {world.leveltime}");
+        if (paused || MenuHolds(world))
+            world.HU_TakeMessages(); // no world tic to take it
+    }
+
+    /// <summary>
+    /// st_stuff.c's <c>idmus</c> (T7.9a): Doom II's song <c>mus_runnin</c> +
+    /// the number − 1 (none above 35); the others' episode and map's
+    /// (<c>mus_e1m1</c> + (episode − 1)·9 + map − 1, none past the 32nd song;
+    /// linuxdoom's and the Ultimate Doom's: v1.9's Doom played Doom II's songs).
+    /// A number that gives no song (vanilla's <c>I_Error</c>) or a parameter
+    /// not two digits is refused as the others (SPEC §12 T7.9a). Only where
+    /// the cheats on the player work (not on nightmare).
+    /// </summary>
+    private void ST_CheatMus(World world, byte param)
+    {
+        if (!world.ST_CheatsAllowed)
+            return;
+        player_t plyr = world.players[world.consoleplayer];
+        plyr.message = World.STSTR_MUS;
+        int d0 = param / 10, d1 = param % 10;
+        int musnum;
+        bool ok;
+        if (gamemode == GameMode.commercial)
+        {
+            musnum = (int)musicenum_t.mus_runnin + d0 * 10 + d1 - 1;
+            ok = d0 * 10 + d1 <= 35;
+        }
+        else
+        {
+            musnum = (int)musicenum_t.mus_e1m1 + (d0 - 1) * 9 + (d1 - 1);
+            ok = (d0 - 1) * 9 + d1 - 1 <= 31;
+        }
+        if (param == MCheat.NOTDIGITS || !ok || musnum <= (int)musicenum_t.mus_None || musnum >= (int)musicenum_t.NUMMUSIC)
+            plyr.message = World.STSTR_NOMUS;
+        else
+            S_ChangeMusic((musicenum_t)musnum, true);
+    }
+
+    /// <summary>
+    /// st_stuff.c's <c>idclev</c> (T7.9a, Chocolate Doom's: up to Doom II's
+    /// MAP40): a new game (<see cref="G_DeferedInitNew"/>) on the skill
+    /// played, episode and map the two digits (Doom II: map the number),
+    /// refused without a message (vanilla's) for a map the game mode has not
+    /// and, not vanilla's (an <c>I_Error</c>), one the WAD lacks or a
+    /// parameter not two digits (SPEC §12 T7.9a). On nightmare too. The game
+    /// actions that follow at once start the game, so this tic runs on the new level, as vanilla's.
+    /// </summary>
+    private void ST_CheatClev(World world, byte param)
+    {
+        if (world.netgame || param == MCheat.NOTDIGITS)
+            return;
+        int epsd, map;
+        if (gamemode == GameMode.commercial)
+        {
+            epsd = 1;
+            map = param;
+        }
+        else
+        {
+            epsd = param / 10;
+            map = param % 10;
+        }
+
+        // Catch invalid maps.
+        if (epsd < 1)
+            return;
+
+        if (map < 1)
+            return;
+
+        // Ohmygod - this is not going to work.
+        if (gamemode == GameMode.retail && (epsd > 4 || map > 9))
+            return;
+
+        if (gamemode == GameMode.registered && (epsd > 3 || map > 9))
+            return;
+
+        if (gamemode == GameMode.shareware && (epsd > 1 || map > 9))
+            return;
+
+        // The source release has this check as map > 34. However, Vanilla
+        // Doom allows IDCLEV up to MAP40 even though it normally crashes.
+        if (gamemode == GameMode.commercial && (epsd > 1 || map > 40))
+            return;
+
+        if (!host.HasLump(World.MapName(gamemode, epsd, map)))
+            return;
+
+        // So be it.
+        world.players[world.consoleplayer].message = World.STSTR_CLEV;
+        G_DeferedInitNew(gameskill, epsd, map);
+    }
 
     /// <summary>g_game.c <c>savegameslot</c> and <c>savedescription</c>: the save the menu asked for last.</summary>
     public int savegameslot = -1;

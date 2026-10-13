@@ -1209,8 +1209,8 @@ public partial class LevelScene : Node3D, IGameHost
                 MonsterMarking = MonsterMarking switch { MonsterMarkerMode.Beam => MonsterMarkerMode.Chevron, MonsterMarkerMode.Chevron => MonsterMarkerMode.Off, _ => MonsterMarkerMode.Beam };
                 break;
             case Key.I:
-                UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
-                Mesh?.SetUpperWalls(UpperWalls);
+                ToggleUpperWalls();
+                _upperWallsToggledBy = 1; // T7.9a: undone if it starts a cheat (CheatEvent)
                 break;
             case Key.N:
                 FogStyle = FogStyle switch { FogStyle.Hide => FogStyle.Dim, FogStyle.Dim => FogStyle.Off, _ => FogStyle.Hide };
@@ -1232,6 +1232,12 @@ public partial class LevelScene : Node3D, IGameHost
                 return;
         }
         GetViewport().SetInputAsHandled();
+    }
+
+    private void ToggleUpperWalls()
+    {
+        UpperWalls = UpperWalls == UpperWallMode.Doors ? UpperWallMode.All : UpperWallMode.Doors;
+        Mesh?.SetUpperWalls(UpperWalls);
     }
 
     /// <summary>
@@ -2278,7 +2284,7 @@ public partial class LevelScene : Node3D, IGameHost
         }
         // T7.2: the menus before anything else (d_main.c D_ProcessEvents: M_Responder first; on the title loop
         // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
-        if (!IsCheckRun && MenuEvent(@event))
+        if (!IsCheckRun && (MenuEvent(@event) || CheatEvent(@event)))
             GetViewport().SetInputAsHandled();
     }
 
