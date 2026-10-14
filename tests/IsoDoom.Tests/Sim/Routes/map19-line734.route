@@ -1,0 +1,11 @@
+# Doom II MAP19 (T10.6): started beside line 734 (special 68, tag 6), on its
+# front, the player uses it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (map19-line734).
+iwad doom2
+map MAP19
+start 1000 -552 0
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x122

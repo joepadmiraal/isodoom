@@ -444,8 +444,11 @@ public sealed partial class World
         door.type = vldoor_e.vld_normal;
         door.speed = VDoor.VDOORSPEED;
         door.topcountdown = 30 * 35;
-        // (vanilla leaves topheight and topwait as Z_Malloc found them; a
-        // closing raise door reads neither, 0 here.)
+        // (vanilla leaves topheight and topwait as Z_Malloc found them, 0
+        // here: a closing raise door reads neither, but one that closes onto
+        // a thing goes back up to that topheight, garbage in vanilla (T10.6:
+        // the reference's rose past the sector's height); here it stays where
+        // it was stopped. Undefined, so no route stands in such a sector.)
     }
 
     /// <summary>

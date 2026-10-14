@@ -1,0 +1,8 @@
+# Doom II MAP19 (T10.6): started in sector 216 (special 4), the player stands
+# there for 210 tics. Written by tools/RouteGen (map19-sector216).
+iwad doom2
+map MAP19
+start 1272 -496 0
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x210

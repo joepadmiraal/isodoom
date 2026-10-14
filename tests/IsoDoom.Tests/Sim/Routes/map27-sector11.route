@@ -1,0 +1,8 @@
+# Doom II MAP27 (T10.6): started beside sector 11 (special 10), the player stands
+# there for 1190 tics. Written by tools/RouteGen (map27-sector11).
+iwad doom2
+map MAP27
+start -1120 -288 0
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x1190

@@ -1,0 +1,11 @@
+# Doom II MAP14 (T10.6): started beside line 1500 (special 60, tag 26), on its
+# front, the player uses it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (map14-line1500).
+iwad doom2
+map MAP14
+start 248 -248 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x98

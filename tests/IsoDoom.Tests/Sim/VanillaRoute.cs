@@ -147,13 +147,14 @@ public sealed class VanillaRoute
     /// route (<see cref="RouteFile.FromDemo"/>, the vanilla-input adapter),
     /// named after the lump in lower case: its dump is <c>demo1.vanilla</c> in
     /// <see cref="DumpDirEnvVar"/>, written by <c>tools/VanillaRef/demos.sh</c>.
-    /// Skips without DOOM1.WAD.
+    /// Skips without DOOM1.WAD. T10.6: with <paramref name="doom2"/>, Doom II's
+    /// lump (its dump <c>doom2-demo1.vanilla</c>); skips without Doom II's IWAD.
     /// </summary>
-    public static VanillaRoute Demo(string lump)
+    public static VanillaRoute Demo(string lump, bool doom2 = false)
     {
-        var wad = WadArchive.Open(TestWads.RequireDoom1());
-        var route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump);
-        return new VanillaRoute(lump.ToLowerInvariant(), "doom1", route.Map!, (skill_t)(route.Skill - 1), null, 0, route.Cmds, route);
+        var wad = WadArchive.Open(doom2 ? TestWads.RequireDoom2() : TestWads.RequireDoom1());
+        var route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump, commercial: doom2);
+        return new VanillaRoute((doom2 ? "doom2-" : "") + lump.ToLowerInvariant(), doom2 ? "doom2" : "doom1", route.Map!, (skill_t)(route.Skill - 1), null, 0, route.Cmds, route);
     }
 
     /// <summary>Parses a route file with the game's <see cref="RouteFile"/> (T5.10: the level script plays routes too) and checks its header.</summary>

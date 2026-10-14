@@ -1,0 +1,11 @@
+# Doom II MAP02 (T10.6): started beside line 485 (special 117, tag 14), on its
+# front, the player uses it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (map02-line485).
+iwad doom2
+map MAP02
+start 3336 2904 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x183

@@ -291,6 +291,9 @@ public sealed class Steer
         return $"({x}, {y}): {(c.Ok ? "fits" : "blocked")} floor {c.Floor / FU} ceiling {c.Ceil / FU}";
     }
 
+    /// <summary>T10.6: whether the player fits at (x, y) (units): no wall, thing or low ceiling in the way.</summary>
+    public bool Fits(double x, double y) => ProbeAt((int)(x * FU), (int)(y * FU)).Ok;
+
     private Cell ProbeAt(int x, int y)
     {
         if (Avoid.Count > 0)

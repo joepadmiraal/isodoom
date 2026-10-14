@@ -227,11 +227,34 @@ public partial class LevelCheck
                 break;
             }
         }
+        bool uncovered = false;
+        if (shown is null)
+        {
+            // T10.5b: a marker can be hidden whole by what stands between it and the camera (Doom II
+            // MAP01's only one, line 75's, a switch on the riser of a 64-unit block that hides it from
+            // the camera's side): then it must draw once the cutaway cuts all of that away, to just
+            // above the marker, with no cap.
+            foreach (SwitchMarker k in largest.Where(k => SwitchMarkers.Shows(k, flat.X, flat.Y)).Take(10))
+            {
+                double cx = k.Pieces.Average(p => p.Average(v => v.X)), cy = k.Pieces.Average(p => p.Average(v => v.Y));
+                m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Doors = CutawayDoors.Cut, Height = 2 * SwitchMarkers.Lift });
+                m.SetCutawayCentres(new Vector3((float)cx, (float)cy, k.Section.FrontSector.FloorHeight / 65536f), null);
+                changed = await CompareMarkerFromGameCamera(m, k, basis, toCamera, true);
+                m.SetCutawayCentres(null, null);
+                m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
+                if (changed >= 50)
+                {
+                    (shown, uncovered) = (k, true);
+                    break;
+                }
+            }
+        }
         if (shown is null && largest.Any(k => SwitchMarkers.Shows(k, flat.X, flat.Y)))
-            Fail($"{map}: no switch marker of a wall facing away from the game camera drew 50 pixels (of the ten largest)");
+            Fail($"{map}: no switch marker of a wall facing away from the game camera drew 50 pixels (of the ten largest), also with what is in front of them cut away");
         SwitchMarker? facing = largest.FirstOrDefault(k => !SwitchMarkers.Shows(k, flat.X, flat.Y));
         int facingPixels = facing is null ? 0 : await CompareMarkerFromGameCamera(m, facing, basis, toCamera, false);
-        string away = shown is null ? "none facing away" : $"line {shown.Section.Line.Index}'s (facing away) changed {changed} pixels";
+        string away = shown is null ? "none facing away"
+            : $"line {shown.Section.Line.Index}'s (facing away) changed {changed} pixels{(uncovered ? " (hidden whole by what stands in front of it: drawn with that cut away to just above it)" : "")}";
         string towards = facing is null ? "none facing the camera" : $"line {facing.Section.Line.Index}'s (facing the camera) none of the {facingPixels} it alone covers";
         GD.Print($"Level check: {map}: switch markers from the game camera: {away}; {towards}");
     }

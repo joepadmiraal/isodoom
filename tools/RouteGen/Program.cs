@@ -2081,6 +2081,20 @@ exit normal
             return MapInfo.PrintMonsters(IwadOf(args[1]), args[1], args.Length == 3 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
             return MapInfo.Print(IwadOf(args[1]), args[1], args.Length == 3 ? [.. args[2].Split(',').Select(int.Parse)] : null);
+        if (args.Length is 2 or 3 && args[0] == "--specials")
+            return SpecialRoutes.Find(Doom2, args[1], args.Length == 3 ? args[2] : null);
+        if (args.Length is 1 or 2 && SpecialRoutes.IsName(args[0]))
+        {
+            // T10.6: a special's route (mapNN-lineK, mapNN-sectorK), started beside it
+            (string specialHeader, (int X, int Y, int Angle) specialStart, Action<Steer, Action<string>> specialRun) = SpecialRoutes.Make(Doom2, args[0]);
+            _scripts[args[0]] = new Script(Doom2, "MAP" + args[0][3..5], specialHeader, specialRun, specialStart);
+        }
+        if (args.Length is 1 or 2 && SpecialRoutes.IsExitName(args[0]))
+        {
+            // T10.6: a map walked from its start to the exit (mapNN-walk-exit)
+            (string exitHeader, Action<Steer, Action<string>> exitRun) = SpecialRoutes.MakeExit(args[0]);
+            _scripts[args[0]] = new Script(Doom2, "MAP" + args[0][3..5], exitHeader, exitRun);
+        }
         if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))
         {
             Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", _scripts.Keys)}");

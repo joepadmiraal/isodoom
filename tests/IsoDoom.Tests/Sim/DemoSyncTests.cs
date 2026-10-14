@@ -21,6 +21,15 @@ public class DemoSyncTests
     [MemberData(nameof(Demos))]
     public void StaysInSyncWithVanilla(string demo) => VanillaRoute.Demo(demo).Check();
 
+    /// <summary>
+    /// T10.6: Doom II's demos (any version's IWAD: v1.666's are version 106, played by
+    /// the reference with <c>-gameversion 1.666</c>), to their end; dumps
+    /// <c>doom2-demoN.vanilla</c> (<c>tools/VanillaRef/demos.sh --doom2</c>).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Demos))]
+    public void Doom2StaysInSyncWithVanilla(string demo) => VanillaRoute.Demo(demo, doom2: true).Check();
+
     /// <summary>DOOM1.WAD v1.9's demos: their maps, Hurt Me Plenty, monsters, and their lengths.</summary>
     [Theory]
     [InlineData("DEMO1", "E1M5", 5026)]
@@ -55,6 +64,10 @@ public class DemoSyncTests
         byte[] old = (byte[])lump.Clone();
         old[0] = 110;
         Assert.Throws<FormatException>(() => RouteFile.FromDemo(old, "version"));
+        old[0] = 105;
+        Assert.Throws<FormatException>(() => RouteFile.FromDemo(old, "version"));
+        old[0] = 106; // T10.6: v1.666's (Doom II v1.666's demos), read as v1.9's
+        Assert.Equal(2, RouteFile.FromDemo(old, "v1.666").Cmds.Count);
         foreach (int i in new[] { 4, 5, 6, 8, 10 })
         {
             byte[] other = (byte[])lump.Clone();

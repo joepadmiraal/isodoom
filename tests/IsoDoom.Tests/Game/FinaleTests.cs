@@ -56,10 +56,10 @@ public class FinaleTests
     public void Episode1sEndHasAFinaleToCompare() =>
         Assert.Contains(EndRoutes(), r => r.Map == "E1M8" && r.Exit == 1);
 
-    /// <summary>T10.1: every Doom II text screen has a route to compare (T10.5: MAP30's, then the cast call).</summary>
+    /// <summary>T10.1: every Doom II text screen has a route to compare (T10.5: MAP30's, then the cast call; T10.6: MAP15's W1 secret exit too).</summary>
     [Fact]
     public void DoomIIsTextScreensHaveRoutesToCompare() =>
-        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:2"],
+        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:2"],
             EndRoutes().Where(r => r.Iwad == "doom2").Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
 
     [Theory]

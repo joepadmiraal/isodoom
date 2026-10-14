@@ -1,0 +1,11 @@
+# Doom II MAP20 (T10.6): started beside line 300 (special 83, tag 16), on its
+# front, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (map20-line300).
+iwad doom2
+map MAP20
+start 3488 160 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0
+0 0 0 0 x11

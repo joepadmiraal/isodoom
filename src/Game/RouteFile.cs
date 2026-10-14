@@ -133,12 +133,21 @@ public sealed class RouteFile
     /// <summary>The demo version <see cref="FromDemo"/> reads: v1.9's (g_game.c <c>VERSION</c>).</summary>
     public const int DemoVersion = 109;
 
+    /// <summary>
+    /// T10.6: the oldest demo version <see cref="FromDemo"/> also reads: v1.666's
+    /// (Doom II v1.666's IWAD has its demos in it). v1.666 to v1.9 write the same
+    /// header and ticcmds, and Chocolate Doom plays them alike (<c>-gameversion</c>
+    /// changes only the version byte it expects for these), so the sim plays them as v1.9's.
+    /// </summary>
+    public const int OldestDemoVersion = 106;
+
     /// <summary>g_game.c <c>DEMOMARKER</c>: the byte that ends a demo's ticcmds.</summary>
     public const byte DEMOMARKER = 0x80;
 
     /// <summary>
     /// T6.13, the vanilla-input adapter: a v1.9 demo lump (e.g. DOOM1.WAD's
-    /// <c>DEMO1</c>) as a route, as g_game.c's <c>G_DoPlayDemo</c> reads its
+    /// <c>DEMO1</c>; T10.6: or v1.666's to v1.8's, <see cref="OldestDemoVersion"/>)
+    /// as a route, as g_game.c's <c>G_DoPlayDemo</c> reads its
     /// header (version 109, skill, episode, map, deathmatch, respawn, fast,
     /// nomonsters, consoleplayer, playeringame[4]) and <c>G_ReadDemoTiccmd</c>
     /// each tic's <c>ticcmd</c> (<c>forwardmove</c>, <c>sidemove</c>, the
@@ -152,8 +161,8 @@ public sealed class RouteFile
     {
         if (lump.Length < 13)
             throw new FormatException($"{name}: a demo of {lump.Length} bytes (the header has 13)");
-        if (lump[0] != DemoVersion)
-            throw new FormatException($"{name}: demo version {lump[0]} (only v1.9's {DemoVersion})");
+        if (lump[0] is < OldestDemoVersion or > DemoVersion)
+            throw new FormatException($"{name}: demo version {lump[0]} (only v1.666's to v1.9's, {OldestDemoVersion}-{DemoVersion})");
         int skill = lump[1] + 1, episode = lump[2], map = lump[3];
         if (skill < 1 || skill > 5)
             throw new FormatException($"{name}: skill {lump[1]} (0-4)");

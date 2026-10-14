@@ -96,13 +96,14 @@ public class IntermissionTests
     /// T10.1: Doom II's flow has its intermissions to compare: MAP01's exit
     /// (to MAP02), the maps before a text screen (MAP06, MAP11, MAP20, and,
     /// T10.4, MAP30's after the Icon's death), the secret maps' way in (MAP15's and
-    /// MAP31's secret exits) and out (MAP31's and MAP32's exits, to MAP16).
+    /// MAP31's secret exits) and out (MAP31's and MAP32's exits, to MAP16);
+    /// T10.6: also MAP12's W1 exit, MAP15's W1 secret exit and MAP31 walked from its start.
     /// </summary>
     [Fact]
     public void DoomIIsFlowHasIntermissionsToCompare()
     {
         List<VanillaRoute> routes = [.. ExitRoutes().Where(r => r.Iwad == "doom2")];
-        Assert.Equal(["MAP01:1", "MAP06:1", "MAP07:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:1", "MAP31:2", "MAP32:1"],
+        Assert.Equal(["MAP01:1", "MAP06:1", "MAP07:1", "MAP11:1", "MAP12:1", "MAP15:2", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:1", "MAP31:1", "MAP31:2", "MAP32:1"],
             routes.Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
     }
 
