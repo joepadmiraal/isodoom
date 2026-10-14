@@ -7,7 +7,8 @@ namespace IsoDoom.Sim;
 // named in its summary; the player's pain and death ones are ported (T5.8),
 // the sound alert and P_LookForPlayers (T6.2; sight in World.Sight.cs), and
 // the monsters' movement, decisions, the shareware monsters' attacks, the
-// death actions, the barrel's explosion and A_BossDeath (T6.4).
+// death actions, the barrel's explosion and A_BossDeath (T6.4); the other
+// monsters' attacks and special deaths are in World.Enemy.Attacks.cs (T10.3).
 
 /// <summary>p_enemy.c <c>dirtype_t</c>: a monster's eight movement directions (<see cref="mobj_t.movedir"/>), counter-clockwise from east.</summary>
 public enum dirtype_t
@@ -1176,146 +1177,6 @@ public sealed partial class World
 
     /// <summary>p_pspr.c <c>A_BFGSpray</c>: the BFG ball's 40 tracers. A stub until T9.3.</summary>
     public void A_BFGSpray(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_VileChase</c>: the arch-vile's chase, raising corpses. A stub until T10.3.</summary>
-    public void A_VileChase(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_VileStart</c>: the arch-vile's attack sound. A stub until T10.3.</summary>
-    public void A_VileStart(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_VileTarget</c>: the arch-vile's fire on its target. A stub until T10.3.</summary>
-    public void A_VileTarget(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_VileAttack</c>: the arch-vile's blast. A stub until T10.3.</summary>
-    public void A_VileAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_StartFire</c>: the arch-vile's fire starting. A stub until T10.3.</summary>
-    public void A_StartFire(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Fire</c>: the arch-vile's fire following its target. A stub until T10.3.</summary>
-    public void A_Fire(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_FireCrackle</c>: the arch-vile's fire crackling. A stub until T10.3.</summary>
-    public void A_FireCrackle(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Tracer</c>: the revenant's homing missile. A stub until T10.3.</summary>
-    public void A_Tracer(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SkelWhoosh</c>: the revenant's punch swing. A stub until T10.3.</summary>
-    public void A_SkelWhoosh(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SkelFist</c>: the revenant's punch. A stub until T10.3.</summary>
-    public void A_SkelFist(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SkelMissile</c>: the revenant's missile. A stub until T10.3.</summary>
-    public void A_SkelMissile(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_FatRaise</c>: the mancubus' attack sound. A stub until T10.3.</summary>
-    public void A_FatRaise(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_FatAttack1</c>: the mancubus' first volley. A stub until T10.3.</summary>
-    public void A_FatAttack1(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_FatAttack2</c>: the mancubus' second volley. A stub until T10.3.</summary>
-    public void A_FatAttack2(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_FatAttack3</c>: the mancubus' third volley. A stub until T10.3.</summary>
-    public void A_FatAttack3(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_CPosAttack</c>: the chaingunner's shot. A stub until T10.3.</summary>
-    public void A_CPosAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_CPosRefire</c>: the chaingunner's refire. A stub until T10.3.</summary>
-    public void A_CPosRefire(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_HeadAttack</c>: the cacodemon's bite or ball. A stub until T9.2.</summary>
-    public void A_HeadAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SkullAttack</c>: the lost soul's charge. A stub until T9.2.</summary>
-    public void A_SkullAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Metal</c>: the Cyberdemon's and Spider Mastermind's steps. A stub until T9.2.</summary>
-    public void A_Metal(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SpidRefire</c>: the Spider Mastermind's refire. A stub until T9.2.</summary>
-    public void A_SpidRefire(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BabyMetal</c>: the arachnotron's steps. A stub until T10.3.</summary>
-    public void A_BabyMetal(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BspiAttack</c>: the arachnotron's plasma. A stub until T10.3.</summary>
-    public void A_BspiAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_Hoof</c>: the Cyberdemon's hoof. A stub until T9.2.</summary>
-    public void A_Hoof(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_CyberAttack</c>: the Cyberdemon's rocket. A stub until T9.2.</summary>
-    public void A_CyberAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_PainAttack</c>: the pain elemental's lost soul. A stub until T10.3.</summary>
-    public void A_PainAttack(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_PainDie</c>: the pain elemental's death souls. A stub until T10.3.</summary>
-    public void A_PainDie(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_KeenDie</c>: Commander Keen's death, opening tag 666. A stub until T10.3.</summary>
-    public void A_KeenDie(mobj_t actor)
     {
     }
 

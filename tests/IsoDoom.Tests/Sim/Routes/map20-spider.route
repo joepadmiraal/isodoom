@@ -1,0 +1,39 @@
+# Doom II MAP20 on skill 1 with monsters (T10.3): a duel with the Spider Mastermind at
+# (1952, -2656) (every other monster killed asleep with route events on
+# the first tic, a hurt of 1 wakes it): it walks (A_Metal) and fires
+# (A_SPosAttack, A_SpidRefire) at the player, then is hurt and killed
+# with route events (A_Scream at full volume).
+# Written by tools/RouteGen (map20-spider).
+iwad doom2
+map MAP20
+skill 1
+monsters
+start 1790 -2818 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 2432 -2688 4000
+damage 2240 -1920 1000
+damage 1376 -1040 400
+damage 2240 -1120 400
+damage 3040 -1056 400
+damage 2240 -3584 70
+damage 3488 160 70
+damage 1328 -3568 400
+damage 848 -3104 30
+damage 3568 480 400
+damage 3968 -2912 60
+damage 3840 -2656 70
+damage 544 -224 700
+damage 608 -384 60
+damage 3136 -3520 70
+damage 2384 -4448 30
+damage 4064 -928 400
+damage 2240 -3776 30
+damage 2240 -1568 700
+0 0 0 0
+damage 1952 -2656 1
+0 0 0 0 x54
+damage 1952 -2656 1500
+0 0 0 0 x40
+damage 1952 -2656 1499
+0 0 0 0 x80

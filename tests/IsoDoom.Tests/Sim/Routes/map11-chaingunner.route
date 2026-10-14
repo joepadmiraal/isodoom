@@ -1,0 +1,39 @@
+# Doom II MAP11 on skill 1 with monsters (T10.3): a duel with the chaingunner at (-448, -2336)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it fires bursts (A_CPosAttack, A_CPosRefire) at
+# the player, then is hurt and killed with route events.
+# Written by tools/RouteGen (map11-chaingunner).
+iwad doom2
+map MAP11
+skill 1
+monsters
+start -226 2366 180
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 1504 1216 60
+damage 2336 1312 700
+damage 1472 2704 60
+damage 1472 2480 60
+damage -64 1264 20
+damage -16 1536 20
+damage 352 1824 20
+damage 800 1808 20
+damage 992 1248 30
+damage 1792 928 60
+damage 2256 1280 60
+damage 784 1568 60
+damage -192 608 30
+damage 720 368 150
+damage -736 2592 60
+damage 224 2368 300
+damage -32 2512 100
+damage 32 2608 100
+damage 1376 2880 400
+damage 1792 2592 30
+0 0 0 0
+damage -448 2336 1
+0 0 0 0 x84
+damage -448 2336 35
+0 0 0 0 x40
+damage -448 2336 34
+0 0 0 0 x80

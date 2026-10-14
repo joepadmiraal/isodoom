@@ -353,9 +353,13 @@ public sealed partial class World
     /// <see cref="GRAVITY"/> (twice as fast on the first tic) or hits the
     /// ceiling. Missiles explode on floors and ceilings.
     /// <para>
-    /// The lost soul's floor bounce comes before the landing, as in
-    /// linuxdoom-1.10 and Ultimate Doom's executable (Doom II v1.9's bounces
-    /// after; Chocolate Doom picks by version: T9.2).
+    /// The charging lost soul's floor bounce (Chocolate Doom's
+    /// <c>correct_lost_soul_bounce</c>, by <c>gameversion</c>; T10.3): The
+    /// Ultimate Doom's executable (<see cref="IsoDoom.Wad.GameMode.retail"/>,
+    /// as Chocolate Doom's default version for it; Final Doom's too, T10.7)
+    /// reverses <see cref="mobj_t.momz"/> before the landing zeroes it, as
+    /// linuxdoom-1.10: it bounces; registered Doom 1.9's and Doom II's (every
+    /// other mode) after: no bounce, but a soul a rising floor hits is sent down.
     /// </para>
     /// </summary>
     public void P_ZMovement(mobj_t mo)
@@ -395,7 +399,14 @@ public sealed partial class World
             // Note (id):
             //  somebody left this after the setting momz to 0,
             //  kinda useless there.
-            if ((mo.flags & mobjflag_t.MF_SKULLFLY) != 0)
+            //
+            // Chocolate Doom: there are three versions of Doom 1.9:
+            //  * The version used in registered doom 1.9 + doom2 - no bounce
+            //  * The version used in ultimate doom - has bounce
+            //  * The version used in final doom - has bounce
+            bool correct_lost_soul_bounce = gamemode == IsoDoom.Wad.GameMode.retail; // gameversion >= exe_ultimate (Final Doom: T10.7)
+
+            if (correct_lost_soul_bounce && (mo.flags & mobjflag_t.MF_SKULLFLY) != 0)
             {
                 // the skull slammed into something
                 mo.momz = -mo.momz;
@@ -415,6 +426,13 @@ public sealed partial class World
                 mo.momz = 0;
             }
             mo.z = mo.floorz;
+
+            // cph 2001/05/26 (Chocolate Doom) -
+            // See lost soul bouncing comment above. We need this here for bug
+            // compatibility with original Doom2 v1.9 - if a soul is charging and
+            // hit by a raising floor this incorrectly reverses its Y momentum.
+            if (!correct_lost_soul_bounce && (mo.flags & mobjflag_t.MF_SKULLFLY) != 0)
+                mo.momz = -mo.momz;
 
             if ((mo.flags & mobjflag_t.MF_MISSILE) != 0 && (mo.flags & mobjflag_t.MF_NOCLIP) == 0)
             {

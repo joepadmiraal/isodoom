@@ -1,0 +1,31 @@
+# Doom II MAP32 on skill 1 with monsters (T10.3): started south of the
+# Keens' ring, every other monster (the Cyberdemon, the SS) killed asleep
+# with route events on the first tic; each Commander Keen is hurt (its
+# pain) and killed with route events; the last one's A_KeenDie opens the
+# door ring (sector 16, tag 666) around the exit switch (map32-exit's).
+# Written by tools/RouteGen (map32-keens).
+iwad doom2
+map MAP32
+skill 1
+monsters
+start 446 7710 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 448 7040 4000
+0 0 0 0
+damage 448 8000 50
+0 0 0 0 x20
+damage 448 8000 50
+0 0 0 0 x40
+damage 320 8128 50
+0 0 0 0 x20
+damage 320 8128 50
+0 0 0 0 x40
+damage 576 8128 50
+0 0 0 0 x20
+damage 576 8128 50
+0 0 0 0 x40
+damage 448 8256 50
+0 0 0 0 x20
+damage 448 8256 50
+0 0 0 0 x117

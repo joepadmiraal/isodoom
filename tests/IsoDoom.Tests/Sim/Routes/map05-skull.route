@@ -1,0 +1,71 @@
+# Doom II MAP05 on skill 1 with monsters (T10.3): a duel with the lost soul at (2896, -352)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it charges the player (A_SkullAttack,
+# MF_SKULLFLY) and bites, then is hurt and killed with route events.
+# Written by tools/RouteGen (map05-skull).
+iwad doom2
+map MAP05
+skill 1
+monsters
+start 2894 -130 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 352 -144 60
+damage 144 304 60
+damage 656 304 60
+damage 1664 96 60
+damage 1664 -32 60
+damage 1792 -464 60
+damage 1712 -464 60
+damage 1632 -464 60
+damage 1552 -464 60
+damage 1792 -208 60
+damage 1712 -208 60
+damage 1632 -208 60
+damage 1056 224 30
+damage 1056 304 30
+damage 1392 224 60
+damage 1296 320 60
+damage 1440 448 60
+damage -128 144 30
+damage 752 -256 30
+damage -96 -384 30
+damage 1104 -272 30
+damage 1456 -512 60
+damage 2416 -768 20
+damage 2464 -768 20
+damage 2512 -768 20
+damage 2560 -768 20
+damage 2848 -496 100
+damage 2576 -16 60
+damage 1744 224 20
+damage 1744 288 20
+damage 1952 448 20
+damage 2240 432 20
+damage 2528 272 20
+damage 1888 160 30
+damage 2448 -96 30
+damage 608 -1440 400
+damage 432 -1568 60
+damage 320 -1568 60
+damage 624 -1056 20
+damage 144 -1056 20
+damage 608 -768 30
+damage 608 -848 30
+damage 752 -368 60
+damage -16 -400 60
+damage 1920 -288 30
+damage 2496 -1072 30
+damage 1680 -768 30
+damage 2112 -960 30
+damage 2304 -432 60
+damage 1104 432 60
+damage 576 -1216 150
+damage 240 -1216 150
+0 0 0 0
+damage 2896 -352 1
+0 0 0 0 x76
+damage 2896 -352 50
+0 0 0 0 x40
+damage 2896 -352 49
+0 0 0 0 x80

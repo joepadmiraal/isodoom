@@ -1,0 +1,50 @@
+# Doom II MAP28 on skill 1 with monsters (T10.3): every monster but the
+# arch-vile at (224, -1888) killed asleep with route events on the first
+# tic. The player stands south-west of it in its sight and hurts it by 1
+# to wake it (deaf): it attacks (A_VileStart, A_VileTarget's fire with
+# A_StartFire, A_FireCrackle and A_Fire keeping in front of the player,
+# then A_VileAttack's blast: the player thrown up, the fire's
+# P_RadiusAttack), then it is hurt and killed with route events.
+# Written by tools/RouteGen (map28-vile-attack).
+iwad doom2
+map MAP28
+skill 1
+monsters
+start 44 -2196 60
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -192 -1664 150
+damage -896 -512 60
+damage -768 -576 60
+damage 352 -608 60
+damage -64 -1888 60
+damage 800 -3872 500
+damage 1184 -3488 500
+damage 912 -160 100
+damage 976 -160 100
+damage 1632 32 60
+damage 1632 -32 60
+damage 1632 -96 60
+damage 800 672 70
+damage 1568 -32 60
+damage -992 -2560 500
+damage -256 -2656 20
+damage -256 -2592 20
+damage -256 -2720 20
+damage -848 -704 400
+damage 1984 -1600 500
+damage 1792 -1408 500
+damage 1984 -1344 500
+damage 2432 -2880 3000
+damage 1408 -1312 400
+damage -416 -224 300
+damage 608 32 300
+damage 608 -288 300
+damage -1408 -2704 700
+0 0 0 0
+damage 224 -1888 1
+0 0 0 0 x164
+damage 224 -1888 350
+0 0 0 0 x40
+damage 224 -1888 333
+0 0 0 0 x80

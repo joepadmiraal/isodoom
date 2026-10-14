@@ -102,7 +102,7 @@ public class IntermissionTests
     public void DoomIIsFlowHasIntermissionsToCompare()
     {
         List<VanillaRoute> routes = [.. ExitRoutes().Where(r => r.Iwad == "doom2")];
-        Assert.Equal(["MAP01:1", "MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP31:1", "MAP31:2", "MAP32:1"],
+        Assert.Equal(["MAP01:1", "MAP06:1", "MAP07:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP31:1", "MAP31:2", "MAP32:1"],
             routes.Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
     }
 
@@ -159,7 +159,7 @@ public class IntermissionTests
 
     /// <summary>T10.1: whether Doom II's <c>G_WorldDone</c> shows a text screen after the route's exit (maps 6, 11, 20, 30, and the secret exits of 15 and 31).</summary>
     internal static bool TextScreenAfter(VanillaRoute route) =>
-        route.GameMode == GameMode.commercial && (route.Exit == 2 ? route.Map is "MAP15" or "MAP31" : route.Map is "MAP06" or "MAP11" or "MAP20" or "MAP30");
+        route.GameMode == GameMode.commercial && route.Exit != 0 && (route.Exit == 2 ? route.Map is "MAP15" or "MAP31" : route.Map is "MAP06" or "MAP11" or "MAP20" or "MAP30");
 
     /// <summary>dump.c's <c>wminfo</c> line: the stats and par the intermission starts with.</summary>
     private static string WminfoLine(wbstartstruct_t w)

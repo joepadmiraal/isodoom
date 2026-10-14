@@ -1,0 +1,75 @@
+# Doom II MAP09 on skill 1 with monsters (T10.3): a duel with the pain
+# elemental at (864, -480) (T10.3's Duel: every other monster killed
+# asleep with route events on the first tic, a hurt of 1 wakes it): it
+# spits lost souls (A_PainAttack, A_PainShootSkull) that charge the player
+# (A_SkullAttack, MF_SKULLFLY) and bite; it is hurt and killed with route
+# events, its death spitting three more (A_PainDie). Written by
+# tools/RouteGen (map09-pain).
+iwad doom2
+map MAP09
+skill 1
+monsters
+start 588 -468 0
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 800 1056 60
+damage 736 1056 60
+damage 576 1280 60
+damage 576 1216 60
+damage 256 1504 60
+damage 256 1568 60
+damage 240 1632 60
+damage 240 1696 60
+damage 96 1248 60
+damage 80 1120 30
+damage 96 1056 30
+damage 224 672 20
+damage 608 416 20
+damage 352 32 20
+damage -32 288 20
+damage 544 1632 60
+damage -32 1888 60
+damage 96 1760 60
+damage -128 896 400
+damage 1376 1856 60
+damage 1440 1600 60
+damage 1504 1584 100
+damage 1504 1632 100
+damage 1504 1680 100
+damage 1504 1728 100
+damage 1408 1472 60
+damage 1440 2016 60
+damage 1568 1472 30
+damage 1504 2016 30
+damage 1440 1952 30
+damage 1488 1952 30
+damage 1392 1952 30
+damage 1424 1776 100
+damage -928 928 30
+damage -608 768 30
+damage -1008 288 70
+damage -1248 736 70
+damage -1536 1792 60
+damage -1600 1760 60
+damage -1568 1712 60
+damage -1008 1200 60
+damage -1024 1152 60
+damage -1072 1136 60
+damage -1648 1296 60
+damage -1600 1216 60
+damage -1536 1152 60
+damage -288 3088 30
+damage -80 3312 30
+damage 160 3360 30
+damage 352 3360 30
+damage 544 3360 30
+damage -288 800 30
+damage -288 672 30
+damage -288 544 30
+0 0 0 0
+damage 864 -480 1
+0 0 0 0 x135
+damage 864 -480 200
+0 0 0 0 x40
+damage 864 -480 199
+0 0 0 0 x80

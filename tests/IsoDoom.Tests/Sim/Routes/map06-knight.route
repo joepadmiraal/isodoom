@@ -1,0 +1,73 @@
+# Doom II MAP06 on skill 1 with monsters (T10.3): a duel with the Hell knight at (-224, 1120)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it throws its balls (A_BruisAttack's
+# MT_BRUISERSHOT) at the player below, then is hurt and killed with route
+# events.
+# Written by tools/RouteGen (map06-knight).
+iwad doom2
+map MAP06
+skill 1
+monsters
+start -482 830 45
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 1152 1200 60
+damage 1200 1232 60
+damage 1248 1200 60
+damage 992 1360 30
+damage 1248 2032 60
+damage 272 1696 60
+damage 592 1312 60
+damage 336 1696 60
+damage 400 1696 60
+damage 96 1680 60
+damage 96 1952 30
+damage 288 1568 30
+damage 512 1376 100
+damage 336 1424 150
+damage 2064 1072 30
+damage 2192 1104 30
+damage 2416 992 70
+damage 1968 816 100
+damage 1312 2032 60
+damage -416 96 60
+damage -160 96 60
+damage 96 96 60
+damage -864 896 60
+damage -416 1136 60
+damage -912 608 60
+damage 2224 1856 150
+damage -608 768 150
+damage 736 1248 30
+damage 656 1184 70
+damage 608 1056 30
+damage 608 928 30
+damage 1248 1072 30
+damage 1248 560 30
+damage 32 1936 70
+damage 2240 -128 150
+damage 1920 304 60
+damage 2176 384 60
+damage 2240 128 60
+damage 1984 48 60
+damage 1984 384 30
+damage 2176 64 30
+damage 720 1680 300
+damage 1504 1376 30
+damage 1504 1824 60
+damage 1696 1648 60
+damage 1120 1888 30
+damage 1712 976 30
+damage 2560 -192 30
+damage -272 1952 20
+damage -272 1824 20
+damage -352 1824 70
+damage -352 1952 30
+damage -224 1696 60
+0 0 0 0
+damage -224 1120 1
+0 0 0 0 x223
+damage -224 1120 250
+0 0 0 0 x40
+damage -224 1120 249
+0 0 0 0 x80

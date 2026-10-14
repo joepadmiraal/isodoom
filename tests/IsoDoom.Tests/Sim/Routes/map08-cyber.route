@@ -1,0 +1,85 @@
+# Doom II MAP08 on skill 1 with monsters (T10.3): a duel with the Cyberdemon at (1344, 2016)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it walks (A_Hoof, A_Metal) and fires rockets
+# (A_CyberAttack) at the player, then is hurt and killed with route
+# events.
+# Written by tools/RouteGen (map08-cyber).
+iwad doom2
+map MAP08
+skill 1
+monsters
+start 1630 1822 150
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 1696 3936 400
+damage 1696 3712 400
+damage 2336 4000 400
+damage 2336 3840 400
+damage 3168 2656 150
+damage 3232 2656 150
+damage 3296 2656 150
+damage 2720 2656 150
+damage 2784 2656 150
+damage 2848 2656 150
+damage 3872 2016 150
+damage 3216 1920 60
+damage 3120 2000 60
+damage 3120 1840 60
+damage 3136 1760 60
+damage 3136 2080 60
+damage 3136 1920 60
+damage 3184 1984 60
+damage 3232 2032 60
+damage 3200 2096 60
+damage 3248 2144 60
+damage 3184 1856 60
+damage 3232 1808 60
+damage 3200 1744 60
+damage 3248 1696 60
+damage 1472 2096 1000
+damage 1472 1936 1000
+damage 1440 2032 1000
+damage 1504 2000 1000
+damage 1568 2080 1000
+damage 1632 2048 1000
+damage 1696 2016 1000
+damage 1632 1952 1000
+damage 1568 1920 1000
+damage 1616 2160 1000
+damage 1680 2144 1000
+damage 1744 2192 1000
+damage 1552 2160 1000
+damage 1584 1840 1000
+damage 1648 1888 1000
+damage 1728 1888 1000
+damage 1792 1856 1000
+damage 3488 2656 400
+damage 3552 1952 400
+damage 3424 4576 150
+damage 3488 4512 150
+damage 3488 4320 150
+damage 3424 4256 150
+damage 2592 4576 150
+damage 2528 4512 150
+damage 2528 4320 150
+damage 2592 4256 150
+damage 784 2384 400
+damage 1056 3488 60
+damage 992 3424 60
+damage 928 3744 60
+damage 864 3680 60
+damage 1056 3872 60
+damage 992 3808 60
+damage 1248 3872 60
+damage 1184 3808 60
+damage 1376 3808 60
+damage 1440 3872 60
+damage 1568 3744 60
+damage 1504 3680 60
+0 0 0 0
+damage 1344 2016 1
+0 0 0 0 x95
+damage 1344 2016 2000
+0 0 0 0 x40
+damage 1344 2016 1999
+0 0 0 0 x80

@@ -55,6 +55,45 @@ public static class Program
     private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null,
         IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false);
 
+    /// <summary>
+    /// T10.3: a duel with the monster spawned at (<paramref name="x"/>,
+    /// <paramref name="y"/>): every other monster is killed asleep with route
+    /// events on the first tic, a hurt of 1 wakes it (the deaf too), it fights
+    /// the standing player until <paramref name="done"/> (on its
+    /// <see cref="Brawler"/>'s attack log) or <paramref name="max"/> tics,
+    /// then <paramref name="after"/> more tics; a route event takes half its
+    /// health, 40 tics later another the rest, and 80 tics of its death end the route.
+    /// </summary>
+    private static Action<Steer, Action<string>> Duel(int x, int y, Func<Brawler, bool> done, int after = 30, int max = 1500) => (g, log) =>
+    {
+        var b = new Brawler(g) { Firing = false };
+        b.KillAllBut(m => m.spawnpoint.X == x && m.spawnpoint.Y == y);
+        g.Wait(1);
+        IsoDoom.Sim.mobj_t mon = g.Spawned(x, y) ?? throw new InvalidOperationException($"nothing spawned at {x}, {y}");
+        g.Damage(x, y, 1); // (deaf or not: wakes to the hurt)
+        for (int t = 0; t < max && !done(b); t++)
+        {
+            g.Wait(1);
+            if (t % 50 == 0)
+                log($"h{g.Mo.health} {mon.type} {mon.state} ({mon.x >> 16},{mon.y >> 16}) h{mon.health}; {b}");
+        }
+        if (!done(b))
+            throw new InvalidOperationException("the duel's attacks never all came: " + b);
+        g.Wait(after);
+        log("fought " + b);
+        g.Damage(x, y, System.Math.Max(1, mon.info.spawnhealth / 2));
+        g.Wait(40);
+        log($"hurt h{g.Mo.health} {mon.state} h{mon.health}");
+        if (mon.health > 0)
+            g.Damage(x, y, mon.health);
+        g.Wait(80);
+        log($"done h{g.Mo.health} {mon.state}; {b}");
+    };
+
+    /// <summary>T10.3: whether a <see cref="Brawler"/> logged every action of <paramref name="actions"/> for monster <paramref name="type"/> (<c>mobjtype_t</c> without <c>MT_</c>).</summary>
+    private static Func<Brawler, bool> Seen(string type, params string[] actions) =>
+        b => b.Attacks.TryGetValue(type, out SortedSet<string>? a) && actions.All(a.Contains);
+
     /// <summary>The steering scripts by route name.</summary>
     private static readonly SortedDictionary<string, Script> _scripts = new(StringComparer.Ordinal)
     {
@@ -1391,6 +1430,368 @@ monsters
             g.Wait(35);
             log("done " + State());
         }, (3520, 2904, 180), Skill: IsoDoom.Sim.skill_t.sk_medium, Monsters: true),
+        ["map07-bosses"] = new(Doom2, "MAP07", """
+# Doom II MAP07 on skill 1 with monsters (T10.3): the start room's switch
+# (line 162, S1 lower tag 1) opens it. All but one mancubus and one
+# arachnotron are killed asleep with route events on the first tic; a
+# noise wakes those two, each fires its volleys (A_FatRaise, A_FatAttack1-3) or
+# plasma (A_BspiAttack, A_BabyMetal's steps) for a while, then is hurt and
+# killed with route events (T10.3's Brawler). The last mancubus'
+# A_BossDeath lowers the walls tagged 666, the last arachnotron's raises
+# the exit's sector 667 to its texture; the player climbs it to the exit
+# switch (line 149), the last tic. Written by tools/RouteGen (map07-bosses).
+iwad doom2
+map MAP07
+skill 1
+monsters
+exit normal
+
+""", (g, log) =>
+        {
+            var b = new Brawler(g) { Delay = m => m.type == IsoDoom.Sim.mobjtype_t.MT_BABY ? 40 : 75, Hits = m => m.type == IsoDoom.Sim.mobjtype_t.MT_BABY ? 2 : 1 };
+            // one mancubus and one arachnotron fight; the others die asleep at once (their A_BossDeath: not the last)
+            foreach (IsoDoom.Sim.mobj_t m in g.World.Mobjs().Where(m => (m.type == IsoDoom.Sim.mobjtype_t.MT_FATSO && m.spawnpoint.X != -352)
+                || (m.type == IsoDoom.Sim.mobjtype_t.MT_BABY && !(m.spawnpoint.X == 352 && m.spawnpoint.Y == -256))).ToList())
+                g.Damage(m.spawnpoint.X, m.spawnpoint.Y, 1000);
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            log("asleep dead " + g.Monsters());
+            g.Use(24, -224);
+            log("switch " + g.Heights(19));
+            g.Alert();
+            g.Wait(1);
+            bool Bosses() => g.World.Mobjs().Any(m => (m.type == IsoDoom.Sim.mobjtype_t.MT_FATSO || m.type == IsoDoom.Sim.mobjtype_t.MT_BABY) && m.health > 0);
+            for (int t = 0; t < 40 && Bosses() && g.Mo.health > 0; t++)
+            {
+                b.Until(() => !Bosses() || g.Mo.health <= 0, 100);
+                log(g.Monsters());
+            }
+            log("bosses " + g.Monsters());
+            g.WaitUntil(() => g.World.sectors[1].specialdata != null, 200);
+            g.WaitIdle(1);
+            log("raised " + g.Heights(1, 11, 15, 20, 25, 28) + "; " + b);
+            g.GoTo(-608, -215, 4);
+            log("at the exit");
+            g.Exit(-608, -180);
+        }, Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map10-revenant"] = new(Doom2, "MAP10", """
+# Doom II MAP10 on skill 1 with monsters (T10.3): every monster but the
+# revenant at (1184, -32) killed asleep with route events on the first
+# tic; the player, south-west of it in the open (sector 62), makes a
+# noise: the revenant closes in and punches (A_SkelWhoosh, A_SkelFist);
+# the player runs away south-east and turns: it fires homing missiles
+# (A_SkelMissile; A_Tracer on gametic, its puffs and smoke); it is hurt
+# and killed with route events. Written by tools/RouteGen (map10-revenant).
+iwad doom2
+map MAP10
+skill 1
+monsters
+
+""", (g, log) =>
+        {
+            var b = new Brawler(g) { Firing = false };
+            b.KillAllBut(m => m.spawnpoint.X == 1184 && m.spawnpoint.Y == -32);
+            g.Wait(1);
+            g.Alert();
+            g.Wait(1);
+            IsoDoom.Sim.mobj_t rev = g.Spawned(1184, -32)!;
+            bool Seen(string action) => b.Attacks.TryGetValue("UNDEAD", out var a) && a.Contains(action);
+            // it closes in: the fist
+            g.WaitUntil(() => Seen("A_SkelFist") || g.Mo.health <= 0, 600);
+            log("punched " + g.Monsters());
+            // away: the missiles
+            g.GoTo(1700, -700, 16, 50);
+            log("away " + g.Monsters());
+            g.Face(rev.x / 65536.0, rev.y / 65536.0);
+            g.WaitUntil(() => Seen("A_SkelMissile") || g.Mo.health <= 0, 600);
+            g.Wait(60);
+            log("missile " + g.Monsters());
+            g.Damage(1184, -32, 150);
+            g.Wait(40);
+            log("hurt " + g.Monsters());
+            g.Damage(1184, -32, rev.health);
+            g.Wait(70);
+            log("done " + g.Monsters() + "; " + b);
+        }, (1000, -250, 45), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map28-vile"] = new(Doom2, "MAP28", """
+# Doom II MAP28 on skill 1 with monsters (T10.3): every monster but the
+# arch-vile at (224, -1888) and the imp west of it killed asleep with
+# route events on the first tic. The player stands west of them, out of
+# their sight, and hurts both by 1 to wake them (the arch-vile is deaf):
+# both hunt it; the imp is killed with a route event once it walks
+# beside the arch-vile, which raises its corpse when its next step
+# touches it (A_VileChase, PIT_VileCheck, S_VILE_HEAL); the imp hunts
+# again and is killed again; the arch-vile is hurt and killed with route
+# events. Its attacks are map28-vile-attack's. Written by tools/RouteGen
+# (map28-vile).
+iwad doom2
+map MAP28
+skill 1
+monsters
+
+""", (g, log) =>
+        {
+            var b = new Brawler(g) { Firing = false };
+            b.KillAllBut(m => (m.spawnpoint.X == 224 && m.spawnpoint.Y == -1888) || (m.spawnpoint.X == -64 && m.spawnpoint.Y == -1888));
+            g.Wait(1);
+            IsoDoom.Sim.mobj_t vile = g.Spawned(224, -1888)!;
+            IsoDoom.Sim.mobj_t imp = g.Spawned(-64, -1888)!;
+            g.Damage(224, -1888, 1); // (deaf: wakes to the hurt)
+            g.Damage(-64, -1888, 1);
+            double D(IsoDoom.Sim.mobj_t p, IsoDoom.Sim.mobj_t q) => System.Math.Sqrt(System.Math.Pow((p.x - q.x) / 65536.0, 2) + System.Math.Pow((p.y - q.y) / 65536.0, 2));
+            int raised = 0;
+            void Tic()
+            {
+                g.Wait(1);
+                if (vile.state == IsoDoom.Sim.statenum_t.S_VILE_HEAL1 && vile.tics == Info.states[(int)IsoDoom.Sim.statenum_t.S_VILE_HEAL1].tics - 1)
+                    raised++;
+            }
+            // both hunt the player, out of sight: the imp dies beside the arch-vile, which raises it
+            bool killed = false;
+            for (int t = 0; t < 1500 && raised == 0; t++)
+            {
+                if (!killed && D(imp, vile) < 60)
+                {
+                    g.Damage(-64, -1888, imp.health);
+                    killed = true;
+                }
+                Tic();
+                if (t % 25 == 0)
+                    log($"h{g.Mo.health} vile {vile.state} ({vile.x >> 16},{vile.y >> 16}) imp {imp.state} h{imp.health} ({imp.x >> 16},{imp.y >> 16}) raised {raised}");
+            }
+            if (raised == 0)
+                throw new InvalidOperationException("no raise");
+            for (int t = 0; t < 60; t++)
+                Tic();
+            log("raised " + g.Monsters());
+            g.Damage(-64, -1888, imp.health);
+            for (int t = 0; t < 60; t++)
+                Tic();
+            log("imp again " + g.Monsters());
+            g.Damage(224, -1888, 350);
+            g.Wait(40);
+            log("hurt " + g.Monsters());
+            g.Damage(224, -1888, vile.health);
+            g.Wait(80);
+            log($"done raised {raised}; " + g.Monsters());
+        }, (-500, -1950, 0), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map28-vile-attack"] = new(Doom2, "MAP28", """
+# Doom II MAP28 on skill 1 with monsters (T10.3): every monster but the
+# arch-vile at (224, -1888) killed asleep with route events on the first
+# tic. The player stands south-west of it in its sight and hurts it by 1
+# to wake it (deaf): it attacks (A_VileStart, A_VileTarget's fire with
+# A_StartFire, A_FireCrackle and A_Fire keeping in front of the player,
+# then A_VileAttack's blast: the player thrown up, the fire's
+# P_RadiusAttack), then it is hurt and killed with route events.
+# Written by tools/RouteGen (map28-vile-attack).
+iwad doom2
+map MAP28
+skill 1
+monsters
+
+""", (g, log) =>
+        {
+            var b = new Brawler(g) { Firing = false };
+            b.KillAllBut(m => m.spawnpoint.X == 224 && m.spawnpoint.Y == -1888);
+            g.Wait(1);
+            IsoDoom.Sim.mobj_t vile = g.Spawned(224, -1888)!;
+            g.Damage(224, -1888, 1); // (deaf: wakes to the hurt)
+            bool Seen(string action) => b.Attacks.TryGetValue("VILE", out var a) && a.Contains(action);
+            g.WaitUntil(() => Seen("A_VileAttack"), 600);
+            log("attacked " + g.Monsters());
+            g.Wait(20);
+            g.Damage(224, -1888, 350);
+            g.Wait(40);
+            log("hurt " + g.Monsters());
+            g.Damage(224, -1888, vile.health);
+            g.Wait(80);
+            log("done " + g.Monsters() + "; " + b);
+        }, (44, -2196, 60), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map09-pain"] = new(Doom2, "MAP09", """
+# Doom II MAP09 on skill 1 with monsters (T10.3): a duel with the pain
+# elemental at (864, -480) (T10.3's Duel: every other monster killed
+# asleep with route events on the first tic, a hurt of 1 wakes it): it
+# spits lost souls (A_PainAttack, A_PainShootSkull) that charge the player
+# (A_SkullAttack, MF_SKULLFLY) and bite; it is hurt and killed with route
+# events, its death spitting three more (A_PainDie). Written by
+# tools/RouteGen (map09-pain).
+iwad doom2
+map MAP09
+skill 1
+monsters
+
+""", Duel(864, -480, Seen("PAIN", "A_PainAttack"), after: 120), (588, -468, 0), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map11-chaingunner"] = new(Doom2, "MAP11", """
+# Doom II MAP11 on skill 1 with monsters (T10.3): a duel with the chaingunner at (-448, -2336)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it fires bursts (A_CPosAttack, A_CPosRefire) at
+# the player, then is hurt and killed with route events.
+# Written by tools/RouteGen (map11-chaingunner).
+iwad doom2
+map MAP11
+skill 1
+monsters
+
+""", Duel(-448, 2336, Seen("CHAINGUY", "A_CPosAttack", "A_CPosRefire"), after: 60), (-226, 2366, 180), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map06-knight"] = new(Doom2, "MAP06", """
+# Doom II MAP06 on skill 1 with monsters (T10.3): a duel with the Hell knight at (-224, 1120)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it throws its balls (A_BruisAttack's
+# MT_BRUISERSHOT) at the player below, then is hurt and killed with route
+# events.
+# Written by tools/RouteGen (map06-knight).
+iwad doom2
+map MAP06
+skill 1
+monsters
+
+""", Duel(-224, 1120, Seen("KNIGHT", "A_BruisAttack"), after: 60), (-482, 830, 45), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map31-wolfss"] = new(Doom2, "MAP31", """
+# Doom II MAP31 on skill 1 with monsters (T10.3): a duel with the Wolfenstein SS at (-1184, -416)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it fires bursts (A_CPosAttack, A_CPosRefire),
+# then is hurt and killed with route events; it drops a clip.
+# Written by tools/RouteGen (map31-wolfss).
+iwad doom2
+map MAP31
+skill 1
+monsters
+
+""", Duel(-1184, -416, Seen("WOLFSS", "A_CPosAttack", "A_CPosRefire"), after: 60), (-1186, -834, 90), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map05-skull"] = new(Doom2, "MAP05", """
+# Doom II MAP05 on skill 1 with monsters (T10.3): a duel with the lost soul at (2896, -352)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it charges the player (A_SkullAttack,
+# MF_SKULLFLY) and bites, then is hurt and killed with route events.
+# Written by tools/RouteGen (map05-skull).
+iwad doom2
+map MAP05
+skill 1
+monsters
+
+""", Duel(2896, -352, Seen("SKULL", "A_SkullAttack"), after: 60), (2894, -130, 270), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map08-caco"] = new(Doom2, "MAP08", """
+# Doom II MAP08 on skill 1 with monsters (T10.3): a duel with the cacodemon at (1696, 3936)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it spits balls (A_HeadAttack's MT_HEADSHOT) at
+# the player, then is hurt and killed with route events.
+# Written by tools/RouteGen (map08-caco).
+iwad doom2
+map MAP08
+skill 1
+monsters
+
+""", Duel(1696, 3936, Seen("HEAD", "A_HeadAttack"), after: 60), (2014, 3838, 180), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map20-spider"] = new(Doom2, "MAP20", """
+# Doom II MAP20 on skill 1 with monsters (T10.3): a duel with the Spider Mastermind at
+# (1952, -2656) (every other monster killed asleep with route events on
+# the first tic, a hurt of 1 wakes it): it walks (A_Metal) and fires
+# (A_SPosAttack, A_SpidRefire) at the player, then is hurt and killed
+# with route events (A_Scream at full volume).
+# Written by tools/RouteGen (map20-spider).
+iwad doom2
+map MAP20
+skill 1
+monsters
+
+""", Duel(1952, -2656, Seen("SPIDER", "A_Metal", "A_SPosAttack", "A_SpidRefire"), after: 20), (1790, -2818, 90), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map08-cyber"] = new(Doom2, "MAP08", """
+# Doom II MAP08 on skill 1 with monsters (T10.3): a duel with the Cyberdemon at (1344, 2016)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it walks (A_Hoof, A_Metal) and fires rockets
+# (A_CyberAttack) at the player, then is hurt and killed with route
+# events.
+# Written by tools/RouteGen (map08-cyber).
+iwad doom2
+map MAP08
+skill 1
+monsters
+
+""", Duel(1344, 2016, Seen("CYBORG", "A_Hoof", "A_Metal", "A_CyberAttack"), after: 20), (1630, 1822, 150), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map32-keens"] = new(Doom2, "MAP32", """
+# Doom II MAP32 on skill 1 with monsters (T10.3): started south of the
+# Keens' ring, every other monster (the Cyberdemon, the SS) killed asleep
+# with route events on the first tic; each Commander Keen is hurt (its
+# pain) and killed with route events; the last one's A_KeenDie opens the
+# door ring (sector 16, tag 666) around the exit switch (map32-exit's).
+# Written by tools/RouteGen (map32-keens).
+iwad doom2
+map MAP32
+skill 1
+monsters
+
+""", (g, log) =>
+        {
+            var b = new Brawler(g) { Firing = false };
+            b.KillAllBut(m => m.type == IsoDoom.Sim.mobjtype_t.MT_KEEN);
+            g.Wait(1);
+            foreach ((int x, int y) in new[] { (448, 8000), (320, 8128), (576, 8128), (448, 8256) })
+            {
+                g.Damage(x, y, 50);
+                g.Wait(20);
+                log($"keen {x},{y} hurt " + g.Heights(16));
+                g.Damage(x, y, 50);
+                g.Wait(40);
+                log($"keen {x},{y} dead " + g.Heights(16));
+            }
+            g.WaitUntil(() => g.World.sectors[16].specialdata != null, 200);
+            g.WaitIdle(16);
+            log("door open " + g.Heights(16) + "; " + b);
+            g.Wait(30);
+        }, (446, 7710, 90), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["map05-skull-floor"] = new(Doom2, "MAP05", """
+# Doom II MAP05 on skill 1 with monsters (T10.3): every monster but the
+# lost soul at (2848, -496) killed asleep with route events on the first
+# tic, a hurt of 1 wakes it. The player stands below it (floor 80, the
+# soul's 176) and steps aside while each charge flies (A_SkullAttack): a
+# charge down from the soul's floor hits that floor at once, where Doom
+# II's P_ZMovement does not bounce it (Chocolate Doom's
+# correct_lost_soul_bounce: only from The Ultimate Doom on), then it is
+# hurt and killed with route events. Written by
+# tools/RouteGen (map05-skull-floor).
+iwad doom2
+map MAP05
+skill 1
+monsters
+
+""", (g, log) =>
+        {
+            var b = new Brawler(g) { Firing = false };
+            b.KillAllBut(m => m.spawnpoint.X == 2848 && m.spawnpoint.Y == -496);
+            g.Wait(1);
+            IsoDoom.Sim.mobj_t skull = g.Spawned(2848, -496)!;
+            g.Damage(2848, -496, 1);
+            int floorHits = 0, charges = 0, side = 1;
+            for (int t = 0; t < 1200 && floorHits < 2 && g.Mo.health > 0; t++)
+            {
+                bool flying = (skull.flags & IsoDoom.Sim.mobjflag_t.MF_SKULLFLY) != 0;
+                if (flying && skull.z <= skull.floorz)
+                    floorHits++;
+                if (flying && t % 1 == 0)
+                {
+                    charges++;
+                    g.Tic(0, 40 * side, 0, 0); // step aside
+                }
+                else
+                {
+                    if (charges > 0)
+                        side = -side;
+                    charges = 0;
+                    g.Tic(0, 0, g.TurnTo(skull.x / 65536.0, skull.y / 65536.0), 0);
+                }
+                if (t % 25 == 0)
+                    log($"h{g.Mo.health} skull {skull.state} z {skull.z >> 16} floor {skull.floorz >> 16} momz {skull.momz} flying {flying} floor hits {floorHits}");
+            }
+            log($"floor hits {floorHits}");
+            if (floorHits == 0)
+                throw new InvalidOperationException("the soul never hit the floor charging");
+            g.Wait(10);
+            g.Damage(2848, -496, 50);
+            g.Wait(40);
+            if (skull.health > 0)
+                g.Damage(2848, -496, skull.health);
+            g.Wait(60);
+            log("done " + b);
+        }, (2686, -786, 45), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
         ["map07-ssg"] = new(Doom2, "MAP07", """
 # Doom II MAP07 without monsters (T10.2), in the start room: the super
 # shotgun north of the start walked over (the pickup switches to it: 8
@@ -1534,6 +1935,34 @@ exit normal
                 Console.WriteLine(probe.ProbeText(double.Parse(pt.Split(',')[0], CultureInfo.InvariantCulture), double.Parse(pt.Split(',')[1], CultureInfo.InvariantCulture)));
             return 0;
         }
+        if (args.Length == 6 && args[0] == "--sight")
+        {
+            // T10.3: --sight MAP SKILL X Y RADIUS: spots within RADIUS of the monster spawned at X, Y where the player fits and that monster sees it
+            int skill = int.Parse(args[2], CultureInfo.InvariantCulture), mx = int.Parse(args[3], CultureInfo.InvariantCulture), my = int.Parse(args[4], CultureInfo.InvariantCulture), r = int.Parse(args[5], CultureInfo.InvariantCulture);
+            var sg = new Steer(IwadOf(args[1]), args[1], (IsoDoom.Sim.skill_t)(skill - 1), monsters: true);
+            IsoDoom.Sim.mobj_t mon = sg.Spawned(mx, my) ?? throw new InvalidOperationException($"no monster spawned at {mx}, {my}");
+            for (int y = my - r; y <= my + r; y += 32)
+            {
+                for (int x = mx - r; x <= mx + r; x += 32)
+                {
+                    RouteStart.Place(sg.World, x, y, 0);
+                    if (sg.World.P_CheckPosition(sg.Mo, sg.Mo.x, sg.Mo.y) && sg.World.P_CheckSight(mon, sg.Mo))
+                        Console.WriteLine($"{x},{y} floor {sg.Mo.floorz >> 16} sector {Array.IndexOf(sg.World.sectors, sg.Mo.subsector.sector)} dist {(int)Math.Sqrt((double)(x - mx) * (x - mx) + (double)(y - my) * (y - my))}");
+                }
+            }
+            // and a map of the spots on stderr, north up: S seen, . fits unseen, # blocked, M the monster
+            for (int y = my + r; y >= my - r; y -= 32)
+            {
+                var row = new System.Text.StringBuilder();
+                for (int x = mx - r; x <= mx + r; x += 32)
+                {
+                    RouteStart.Place(sg.World, x, y, 0);
+                    row.Append(Math.Abs(x - mx) < 16 && Math.Abs(y - my) < 16 ? 'M' : !sg.World.P_CheckPosition(sg.Mo, sg.Mo.x, sg.Mo.y) ? '#' : sg.World.P_CheckSight(mon, sg.Mo) ? 'S' : '.');
+                }
+                Console.Error.WriteLine($"{y,6} {row}");
+            }
+            return 0;
+        }
         if (args.Length is 2 or 3 && args[0] == "--monsters")
             return MapInfo.PrintMonsters(IwadOf(args[1]), args[1], args.Length == 3 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
@@ -1545,6 +1974,12 @@ exit normal
         }
         string name = args[0];
         string path = args.Length > 1 ? args[1] : Path.Combine(RepoRoot(), "tests", "IsoDoom.Tests", "Sim", "Routes", name + ".route");
+        // T10.3: ROUTEGEN_START="X,Y,ANGLE" tries the script from another start (to search for one; the route keeps it)
+        if (Environment.GetEnvironmentVariable("ROUTEGEN_START") is { Length: > 0 } tryStart)
+        {
+            int[] v = [.. tryStart.Split(',').Select(t => int.Parse(t, CultureInfo.InvariantCulture))];
+            script = script with { Start = (v[0], v[1], v[2]) };
+        }
         var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
         void Log(string s) => Console.Error.WriteLine($"[{g.World.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
         script.Run(g, Log);

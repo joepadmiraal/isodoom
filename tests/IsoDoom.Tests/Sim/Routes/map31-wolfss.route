@@ -1,0 +1,55 @@
+# Doom II MAP31 on skill 1 with monsters (T10.3): a duel with the Wolfenstein SS at (-1184, -416)
+# (every other monster killed asleep with route events on the first tic,
+# a hurt of 1 wakes it): it fires bursts (A_CPosAttack, A_CPosRefire),
+# then is hurt and killed with route events; it drops a clip.
+# Written by tools/RouteGen (map31-wolfss).
+iwad doom2
+map MAP31
+skill 1
+monsters
+start -1186 -834 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -544 -2464 50
+damage -1824 1504 50
+damage -672 1120 50
+damage 224 992 150
+damage 1376 -416 150
+damage 1632 -160 150
+damage 2016 -288 150
+damage 608 160 50
+damage 608 -416 50
+damage 1376 864 150
+damage 2016 1376 50
+damage 2272 864 50
+damage -1952 -2592 50
+damage -1568 2528 50
+damage -1184 3168 50
+damage -544 3936 50
+damage -1312 4192 50
+damage -160 3936 50
+damage -3104 3296 50
+damage -2848 3040 50
+damage -3744 2784 50
+damage -3744 3424 50
+damage -4000 3168 50
+damage -4384 2912 50
+damage -4384 3296 50
+damage -4256 1888 50
+damage -4768 1632 50
+damage -4640 1120 50
+damage -3872 608 50
+damage -4640 2016 50
+damage -4896 96 50
+damage -2848 -672 50
+damage -2592 -544 50
+damage -2592 -800 50
+damage -4256 -544 50
+damage -5280 -416 50
+0 0 0 0
+damage -1184 -416 1
+0 0 0 0 x100
+damage -1184 -416 25
+0 0 0 0 x40
+damage -1184 -416 24
+0 0 0 0 x80

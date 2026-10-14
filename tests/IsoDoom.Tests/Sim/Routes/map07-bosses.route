@@ -1,0 +1,80 @@
+# Doom II MAP07 on skill 1 with monsters (T10.3): the start room's switch
+# (line 162, S1 lower tag 1) opens it. All but one mancubus and one
+# arachnotron are killed asleep with route events on the first tic; a
+# noise wakes those two, each fires its volleys (A_FatRaise, A_FatAttack1-3) or
+# plasma (A_BspiAttack, A_BabyMetal's steps) for a while, then is hurt and
+# killed with route events (T10.3's Brawler). The last mancubus'
+# A_BossDeath lowers the walls tagged 666, the last arachnotron's raises
+# the exit's sector 667 to its texture; the player climbs it to the exit
+# switch (line 149), the last tic. Written by tools/RouteGen (map07-bosses).
+iwad doom2
+map MAP07
+skill 1
+monsters
+exit normal
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -608 640 1000
+damage -608 -1088 1000
+damage -1632 -224 1000
+damage -864 96 1000
+0 0 0 0
+0 0 11 2
+0 0 0 0
+alert
+0 0 0 0 x559
+damage -352 -544 600
+0 0 0 0 x171
+damage 352 -256 250
+0 0 0 0 x40
+damage 352 -256 250
+0 0 0 0 x70
+25 2 -11 0
+25 0 0 0
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x23
+25 1 0 0
+25 0 0 0 x3
+25 -5 1 0
+25 1 0 0
+25 0 0 0
+25 1 0 0
+25 0 0 0 x2
+25 1 0 0
+25 0 0 0 x3
+25 1 0 0
+25 0 0 0 x2
+25 1 0 0
+25 0 0 0 x3
+25 1 0 0
+25 0 0 0
+24 0 0 0
+25 1 0 0
+25 0 0 0 x2
+25 1 0 0
+25 0 0 0 x3
+25 1 0 0
+25 0 0 0 x2
+25 1 0 0
+25 0 0 0 x3
+24 1 0 0
+25 0 0 0 x2
+25 1 0 0
+25 0 0 0 x2
+-2 0 0 0 x4
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x3
+-1 0 0 0
+2 0 0 0 x2
+0 0 0 0 x8
+0 0 -64 0
+0 0 0 2

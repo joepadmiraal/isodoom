@@ -1,0 +1,182 @@
+# Doom II MAP10 on skill 1 with monsters (T10.3): every monster but the
+# revenant at (1184, -32) killed asleep with route events on the first
+# tic; the player, south-west of it in the open (sector 62), makes a
+# noise: the revenant closes in and punches (A_SkelWhoosh, A_SkelFist);
+# the player runs away south-east and turns: it fires homing missiles
+# (A_SkelMissile; A_Tracer on gametic, its puffs and smoke); it is hurt
+# and killed with route events. Written by tools/RouteGen (map10-revenant).
+iwad doom2
+map MAP10
+skill 1
+monsters
+start 1000 -250 45
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -704 -800 60
+damage -448 -1232 60
+damage -320 -912 60
+damage -304 -640 60
+damage -464 -992 60
+damage -688 -1440 150
+damage -1136 -608 150
+damage -1232 288 60
+damage 1184 416 150
+damage 1632 416 150
+damage 1568 416 150
+damage 1248 416 150
+damage 1472 -672 500
+damage 1840 -368 300
+damage -1424 -272 60
+damage -1776 -304 60
+damage 1712 -1328 60
+damage 1472 -1472 60
+damage 896 -1280 60
+damage 624 -752 60
+damage 96 -320 60
+damage -1344 1664 150
+damage -1152 1536 150
+damage -1216 1344 150
+damage -1600 1472 150
+damage -896 752 20
+damage -992 400 20
+damage -656 96 20
+damage -560 992 20
+damage 512 208 20
+damage 512 848 20
+damage 544 1280 20
+damage 480 1840 20
+damage 592 1984 20
+damage 1792 1776 20
+damage 1056 1344 20
+damage 1280 992 20
+damage 1312 1344 20
+damage 1632 1344 20
+damage 1888 1152 20
+damage -1488 1536 100
+damage -1312 1408 100
+damage 16 -368 60
+damage 48 -720 60
+damage -32 -656 60
+damage -32 1312 20
+damage -160 1504 20
+damage -224 1568 20
+damage -224 2112 20
+damage 192 2176 20
+damage -80 448 20
+damage -256 384 20
+damage -64 256 20
+damage 96 608 20
+damage 256 704 20
+damage -608 1376 30
+damage -1296 800 20
+damage -1232 960 20
+damage 64 800 20
+damage 16 960 20
+damage -1344 -64 60
+damage -1344 -160 60
+damage -160 608 100
+damage -1056 672 400
+damage -656 272 20
+damage -608 272 20
+damage -560 272 20
+damage -656 224 20
+damage -608 224 20
+damage -560 224 20
+damage -704 608 20
+damage -656 608 20
+damage -608 608 20
+damage -560 608 20
+damage -512 608 20
+damage -608 656 20
+damage 1056 1152 20
+damage 1056 1792 20
+damage 352 1792 20
+damage 352 1600 20
+damage 1472 992 20
+damage 1664 2144 20
+damage 1280 2144 20
+damage 896 2144 20
+damage 512 2144 20
+damage 1888 1984 20
+damage 1888 1344 20
+damage 1472 1696 20
+damage 1472 1248 20
+damage 1472 1888 20
+damage 896 1888 20
+damage 736 1792 20
+damage 1472 2144 30
+damage 704 2144 20
+damage 896 1696 30
+damage 896 1504 30
+damage 1664 992 30
+damage 2144 1504 150
+damage 2208 1504 150
+damage -80 688 100
+damage -1136 688 100
+damage -1408 -1696 1000
+0 0 0 0
+alert
+0 0 0 0 x68
+50 -27 -51 0
+50 0 0 0 x2
+50 -1 0 0
+50 5 1 0
+50 0 0 0
+50 -4 0 0
+50 1 0 0
+50 0 0 0
+50 -5 0 0
+50 5 0 0 x2
+50 1 -1 0
+50 4 0 0
+50 1 -1 0
+50 4 0 0 x2
+50 1 -1 0
+50 4 0 0 x2
+50 5 -1 0
+50 4 0 0 x2
+50 1 -1 0
+50 7 0 0
+50 18 -2 0
+50 2 0 0
+50 4 0 0
+50 3 -1 0
+50 1 0 0
+50 -3 0 0
+50 -11 1 0
+50 0 0 0 x2
+50 -1 0 0
+50 0 0 0
+50 -1 0 0
+50 0 0 0 x2
+50 -1 0 0
+50 0 0 0 x2
+50 -1 0 0
+50 0 0 0 x2
+50 -1 0 0
+50 0 0 0
+50 -1 0 0
+50 0 0 0 x2
+43 -1 0 0
+-4 0 0 0
+-5 0 0 0
+-4 0 0 0
+-3 1 0 0
+-3 0 0 0 x3
+-2 0 0 0 x3
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x7
+0 0 1 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x12
+0 0 -124 0
+0 0 0 0 x60
+damage 1184 -32 150
+0 0 0 0 x40
+damage 1184 -32 150
+0 0 0 0 x70
