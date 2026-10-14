@@ -66,15 +66,24 @@ public static class CrosshairPointer
         return false;
     }
 
+    /// <summary>The texture the pointer shows, kept to free it before the renderer goes (<see cref="Apply"/>).</summary>
+    private static ImageTexture? _texture;
+
     /// <summary>
     /// Shows the crosshair at <paramref name="scale"/> as the pointer, or with
-    /// 0 gives the system's arrow back. Call it when either changes.
+    /// 0 gives the system's arrow back. Call it when either changes, and with
+    /// 0 when the scene leaves the tree: Input and the display server hold the
+    /// texture until it is freed here, so one left at quit outlives the
+    /// RenderingServer and leaks its RID.
     /// </summary>
     public static void Apply(int scale)
     {
-        if (scale <= 0)
+        ImageTexture? old = _texture;
+        _texture = scale > 0 ? ImageTexture.CreateFromImage(Build(scale)) : null;
+        if (_texture is null)
             Input.SetCustomMouseCursor(null);
         else
-            Input.SetCustomMouseCursor(ImageTexture.CreateFromImage(Build(scale)), Input.CursorShape.Arrow, Hotspot(scale));
+            Input.SetCustomMouseCursor(_texture, Input.CursorShape.Arrow, Hotspot(scale));
+        old?.Dispose();
     }
 }

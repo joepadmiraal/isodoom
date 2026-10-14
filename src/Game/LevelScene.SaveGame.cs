@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Godot;
 using IsoDoom.Map;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 
@@ -49,6 +50,8 @@ public partial class LevelScene
     public override void _ExitTree()
     {
         RemoveTempSaves();
+        if (_crosshairScale > 0)
+            CrosshairPointer.Apply(0); // T7.12: free the pointer's texture before the renderer goes
         GetTree().AutoAcceptQuit = true; // T7.8e: CloseRequested's, while the scene is up
     }
 
