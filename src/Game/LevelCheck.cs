@@ -234,6 +234,7 @@ public partial class LevelCheck : Godot.Node
             CheckAutomapData(map); // T7.9: on the fog's mapped lines
             CheckReborn(map); // it reloads the map (T6.12)
             CheckFogReborn(map);
+            m = _scene.Mesh!; // the reborn's (the old one is disposed)
             CheckSightDim(m, map); // T6.13t: after the reborn's reload (it places the player)
             CheckMonsterMarkers(m, map); // T6.13u
             CheckExit(map); // last: it may load the next map (T5.8)

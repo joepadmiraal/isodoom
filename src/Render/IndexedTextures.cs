@@ -37,15 +37,25 @@ public static class IndexedTextures
         Image.CreateFromData(image.Width, image.Height, false, Image.Format.Rg8, ToRg8(image));
 
     /// <summary>The index image as an RG8 texture for the palette shader.</summary>
-    public static ImageTexture CreateTexture(IndexedImage image) => ImageTexture.CreateFromImage(CreateImage(image));
+    public static ImageTexture CreateTexture(IndexedImage image)
+    {
+        using Image img = CreateImage(image);
+        return ImageTexture.CreateFromImage(img);
+    }
 
     /// <summary>PLAYPAL as an RGB8 texture: 256 x <see cref="Playpal.Count"/>.</summary>
-    public static ImageTexture CreatePlaypalTexture(Playpal playpal) =>
-        ImageTexture.CreateFromImage(Image.CreateFromData(256, playpal.Count, false, Image.Format.Rgb8, playpal.Data.ToArray()));
+    public static ImageTexture CreatePlaypalTexture(Playpal playpal)
+    {
+        using Image img = Image.CreateFromData(256, playpal.Count, false, Image.Format.Rgb8, playpal.Data.ToArray());
+        return ImageTexture.CreateFromImage(img);
+    }
 
     /// <summary>COLORMAP as an R8 texture: 256 x <see cref="Colormap.Count"/>.</summary>
-    public static ImageTexture CreateColormapTexture(Colormap colormap) =>
-        ImageTexture.CreateFromImage(Image.CreateFromData(Colormap.MapSize, colormap.Count, false, Image.Format.R8, colormap.Data.ToArray()));
+    public static ImageTexture CreateColormapTexture(Colormap colormap)
+    {
+        using Image img = Image.CreateFromData(Colormap.MapSize, colormap.Count, false, Image.Format.R8, colormap.Data.ToArray());
+        return ImageTexture.CreateFromImage(img);
+    }
 
     /// <summary>
     /// A palette shader material bound to the two lookup textures. Items that

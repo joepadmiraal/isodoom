@@ -144,6 +144,22 @@ public partial class ThingSprites : MultiMeshInstance3D
         AddChild(Shadows);
     }
 
+    /// <summary>
+    /// Disposes the multimeshes and meshes this node made (with
+    /// <see cref="Shadows"/>'), before it is freed: freeing the node leaves
+    /// their C# wrappers to the GC (see <see cref="LevelMesh.Dispose"/>).
+    /// </summary>
+    public void ReleaseResources()
+    {
+        foreach (MultiMeshInstance3D node in new[] { this, Shadows })
+        {
+            MultiMesh? multimesh = node.Multimesh;
+            node.Multimesh = null;
+            multimesh?.Mesh?.Dispose();
+            multimesh?.Dispose();
+        }
+    }
+
     /// <summary>The shadow mesh: a horizontal square, x and z in −1…1 (the shader sizes it).</summary>
     private static ArrayMesh ShadowMesh()
     {

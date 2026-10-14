@@ -2824,7 +2824,9 @@ public partial class LevelScene : Node3D, IGameHost
             chunk.QueueFree();
         _chunks.Clear();
         Chunks = [];
+        Mesh?.Dispose();
         Mesh = null;
+        Things?.ReleaseResources();
         Things?.QueueFree();
         Things = null;
         _drawn.Clear();

@@ -96,7 +96,7 @@ namespace IsoDoom.Render;
 /// </list>
 /// Scale: 1 map unit = 1/32 m (SPEC §7.1); map x → +X, map y → −Z, height → +Y.
 /// </summary>
-public sealed class LevelMesh
+public sealed class LevelMesh : IDisposable
 {
     public const string ShaderPath = "res://shaders/level.gdshader";
 
@@ -734,7 +734,8 @@ public sealed class LevelMesh
     {
         FogDimLook = look;
         FogDimMap = FogOfWar.DimMap(_playpal!, _colormap!, look.Row, look.Grey);
-        _fogDimTexture.Update(Image.CreateFromData(256, 1, false, Image.Format.R8, FogDimMap));
+        using Image dim = Image.CreateFromData(256, 1, false, Image.Format.R8, FogDimMap);
+        _fogDimTexture.Update(dim);
         SetParameter("fog_dither", look.Dither ? 1 : 0);
     }
 
@@ -836,6 +837,7 @@ public sealed class LevelMesh
     private byte[] _playpalRows = [];
     private Image? _playpalImage;
     private ImageTexture? _playpalTexture;
+    private ImageTexture? _colormapTexture;
     private readonly byte[] _blend = new byte[Playpal.PaletteSize];
     private int _blendRow = -1, _blendStrength;
     private bool _blendWhite;
@@ -1138,7 +1140,8 @@ public sealed class LevelMesh
         Array.Fill(_fogBytes, (byte)SectorSight.Visible);
         _fogImage = Image.CreateFromData(DataWidth, Rows(Level.Sectors.Length), false, Image.Format.R8, _fogBytes);
         FogDataTexture = ImageTexture.CreateFromImage(_fogImage);
-        _fogDimTexture = ImageTexture.CreateFromImage(Image.CreateFromData(256, 1, false, Image.Format.R8, new byte[256]));
+        using (Image dim = Image.CreateFromData(256, 1, false, Image.Format.R8, new byte[256]))
+            _fogDimTexture = ImageTexture.CreateFromImage(dim);
 
         Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
@@ -1161,9 +1164,10 @@ public sealed class LevelMesh
         _playpalTexture = ImageTexture.CreateFromImage(_playpalImage);
         _blendRow = -1;
         SetParameter("playpal", _playpalTexture);
-        SetParameter("colormap", IndexedTextures.CreateColormapTexture(colormap));
-        LightTablesTexture = ImageTexture.CreateFromImage(
-            Image.CreateFromData(LightTables.TableWidth, LightTables.TableHeight, false, Image.Format.R8, Lights.ToBytes()));
+        _colormapTexture = IndexedTextures.CreateColormapTexture(colormap);
+        SetParameter("colormap", _colormapTexture);
+        using (Image lights = Image.CreateFromData(LightTables.TableWidth, LightTables.TableHeight, false, Image.Format.R8, Lights.ToBytes()))
+            LightTablesTexture = ImageTexture.CreateFromImage(lights);
         SetParameter("light_tables", LightTablesTexture);
         SetParameter("light_centerx", Lights.CenterX);
         SetPalette(0);
@@ -1188,6 +1192,34 @@ public sealed class LevelMesh
         SetCutawayCentres(null, null);
         SetFuzzPhase(0);
     }
+
+    /// <summary>
+    /// Drops the C# side's references to the Godot resources the level made
+    /// (its chunk meshes, materials, textures and images) at once, rather than
+    /// when the GC gets to their wrappers: it cannot see their native and GPU
+    /// memory, and wrappers left at exit crash Godot's teardown. Nodes still
+    /// drawing with one keep it alive. Safe to call twice.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        foreach (ArrayMesh? mesh in SectorMeshes)
+            mesh?.Dispose();
+        SectorMeshes = [];
+        GodotObject?[] owned =
+        [
+            Material, MaskedMaterial, SpriteMaterial, FuzzMaterial, ShadowMaterial,
+            AtlasTexture, TextureInfoTexture, SectorDataTexture, LidDataTexture, IslandDataTexture, SideTexturesTexture,
+            FogDataTexture, _fogDimTexture, _playpalTexture, _colormapTexture, LightTablesTexture,
+            _sectorImage, _lidImage, _islandImage, _infoImage, _sideImage, _fogImage, _playpalImage,
+        ];
+        foreach (GodotObject? o in owned)
+            o?.Dispose();
+    }
+
+    private bool _disposed;
 
     private sealed class Chunk
     {

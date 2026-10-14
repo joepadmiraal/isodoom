@@ -47,7 +47,7 @@ public partial class MusicPlayer : Node, IMusicDevice
     private readonly OplMusicMixer? _mixer; // the driver, and the OPL2/OPL3 switch (T7.8g)
     private bool _opl3;
     private readonly AudioStreamPlayer _player;
-    private readonly AudioStreamGenerator _stream;
+    private AudioStreamGenerator? _stream;
     private AudioStreamGeneratorPlayback? _playback;
     private Thread? _thread;
     private volatile bool _stop;
@@ -215,6 +215,12 @@ public partial class MusicPlayer : Node, IMusicDevice
             _player.Stop();
         _playback?.Dispose(); // the wrapper's reference, else reported as leaked at exit
         _playback = null;
+        if (_stream is not null)
+        {
+            _player.Stream = null; // as the playback: never played again
+            _stream.Dispose();
+            _stream = null;
+        }
     }
 
     /// <summary>
