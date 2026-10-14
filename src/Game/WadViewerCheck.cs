@@ -58,7 +58,7 @@ public partial class WadViewerCheck : Node
                 await CheckLumps();
             }
             if (WadLocator.GetUserArg("--viewer-screenshots") is string dir)
-                await Screenshots(dir);
+                await Screenshots(WadLocator.ResolveUserPath(dir));
         }
         catch (Exception e)
         {

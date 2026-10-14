@@ -53,7 +53,7 @@ public partial class LevelScene : ISetupHost
     private static string? ChooseSettingsPath()
     {
         if (WadLocator.GetUserArg("--settings") is string arg)
-            return arg == "off" ? null : arg;
+            return arg == "off" ? null : WadLocator.ResolveUserPath(arg);
         bool debugRun = IsCheckRun || WindowedRun || WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots");
         return debugRun || DisplayServer.GetName() == "headless" ? null : DefaultSettingsPath;
     }

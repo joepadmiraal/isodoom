@@ -37,7 +37,7 @@ public partial class LevelScene
     private void InitSaves()
     {
         if (WadLocator.GetUserArg("--savedir") is string arg)
-            Flow.SaveDir = Path.GetFullPath(ProjectSettings.GlobalizePath(arg));
+            Flow.SaveDir = Path.GetFullPath(ProjectSettings.GlobalizePath(WadLocator.ResolveUserPath(arg)));
         else if (IsCheckRun || WadLocator.HasUserArg("--level-script") || WadLocator.HasUserArg("--level-screenshot")
                  || DisplayServer.GetName() == "headless")
             Flow.SaveDir = _tempSaveDir = Path.Combine(Path.GetTempPath(), $"isodoom-saves-{System.Environment.ProcessId}");

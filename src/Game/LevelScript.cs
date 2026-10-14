@@ -971,7 +971,7 @@ public partial class LevelScript : Node
         RouteFile route;
         try
         {
-            route = RouteFile.Parse(path);
+            route = RouteFile.Parse(WadLocator.ResolveUserPath(path));
         }
         catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or FormatException)
         {
@@ -1230,6 +1230,7 @@ public partial class LevelScript : Node
         }
         for (int i = 0; i < 3; i++)
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        path = WadLocator.ResolveUserPath(path);
         Error err = GetViewport().GetTexture().GetImage().SavePng(path);
         GD.Print(err == Error.Ok ? $"Level script: saved {path}" : $"Level script: could not save {path}: {err}");
         return err == Error.Ok ? 0 : 1;

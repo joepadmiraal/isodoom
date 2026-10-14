@@ -875,7 +875,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (WadLocator.GetUserArg("--level-script") is string script)
             AddChild(new LevelScript(this, script));
         else if (WadLocator.GetUserArg("--level-screenshot") is string path)
-            _ = ScreenshotAsync(path);
+            _ = ScreenshotAsync(WadLocator.ResolveUserPath(path));
     }
 
     /// <summary>The level scene's cameras (Tab cycles them in this order).</summary>

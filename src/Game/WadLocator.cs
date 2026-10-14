@@ -39,7 +39,7 @@ public static class WadLocator
     public static IwadSearchContext CreateContext() => new()
     {
         CommandLine = new CommandLine(OS.GetExecutablePath(), OS.GetCmdlineUserArgs()),
-        CurrentDirectory = UserWorkingDirectory(),
+        CurrentDirectory = LaunchDirectory,
         GameDirectories = GameDirectories(),
         ConfiguredIwad = ChosenIwad ?? LoadConfiguredIwad(),
     };
@@ -63,14 +63,29 @@ public static class WadLocator
     }
 
     /// <summary>
-    /// The shell's working directory. Exported builds run with the executable's
-    /// folder as the process working directory, so prefer <c>$PWD</c>.
+    /// T8.4b: the directory the game was launched from, against which relative
+    /// path arguments resolve (<see cref="ResolveUserPath"/>). Godot's export
+    /// templates change the working directory to the executable's folder (the
+    /// bundle's <c>Resources</c> on macOS) before any C# runs, so an export
+    /// takes the shell's <c>$PWD</c> where it is set (Linux, macOS; not
+    /// Windows, where it stays the game's folder); the editor keeps the
+    /// process's working directory, which is the shell's.
     /// </summary>
-    private static string UserWorkingDirectory()
+    public static string LaunchDirectory { get; } = FindLaunchDirectory();
+
+    private static string FindLaunchDirectory()
     {
-        string? pwd = System.Environment.GetEnvironmentVariable("PWD");
-        return !string.IsNullOrEmpty(pwd) && Directory.Exists(pwd) ? pwd : Directory.GetCurrentDirectory();
+        string? pwd = OS.HasFeature("template") ? System.Environment.GetEnvironmentVariable("PWD") : null;
+        return !string.IsNullOrEmpty(pwd) && Path.IsPathFullyQualified(pwd) && Directory.Exists(pwd) ? pwd : Directory.GetCurrentDirectory();
     }
+
+    /// <summary>
+    /// T8.4b: a path argument (<c>--savedir</c>, <c>--settings</c>, a script's
+    /// <c>route FILE</c>, …) made absolute against <see cref="LaunchDirectory"/>;
+    /// Godot's <c>res://</c> and <c>user://</c> paths and absolute ones stay as they are.
+    /// </summary>
+    public static string ResolveUserPath(string path) =>
+        path.Contains("://", StringComparison.Ordinal) || Path.IsPathRooted(path) ? path : Path.GetFullPath(path, LaunchDirectory);
 
     /// <summary>The IWAD path saved by the file picker, or null.</summary>
     public static string? LoadConfiguredIwad()
