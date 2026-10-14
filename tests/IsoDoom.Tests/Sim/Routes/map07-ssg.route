@@ -1,0 +1,36 @@
+# Doom II MAP07 without monsters (T10.2), in the start room: the super
+# shotgun north of the start walked over (the pickup switches to it: 8
+# shells), fired at the west wall with fire held (A_CloseShotgun2's
+# A_ReFire fires again), then once tapped, then until A_CheckReload's
+# P_CheckAmmo switches to the pistol. Written by tools/RouteGen (map07-ssg).
+iwad doom2
+map MAP07
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x15
+25 2 -57 0
+25 0 0 0 x11
+8 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x4
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x4
+1 0 0 0
+2 0 0 0
+0 0 0 0 x11
+0 0 57 1
+0 0 0 1 x59
+0 0 0 0 x54
+0 0 10 1
+0 0 0 0 x62
+0 0 -29 1
+0 0 0 1 x32
+0 0 0 0 x15

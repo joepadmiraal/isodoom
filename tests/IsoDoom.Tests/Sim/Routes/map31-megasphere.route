@@ -1,0 +1,26 @@
+# Doom II MAP31 without monsters (T10.2): started east of the megasphere
+# (2720, -784), walked over it: 200 health and blue armor (P_GiveArmor 2).
+# Written by tools/RouteGen (map31-megasphere).
+iwad doom2
+map MAP31
+start 2840 -784 180
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+25 0 0 0 x15
+2 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x4
+2 0 0 0
+1 0 0 0
+0 0 0 0 x17

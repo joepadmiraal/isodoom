@@ -1,0 +1,57 @@
+# Doom II MAP02 on skill 3 with monsters (T10.2): started on the super
+# shotgun in its secret room (sector 62; the pickup switches to it), which
+# shoots the nearest zombieman or shotgun guy in sight until it dies,
+# turning towards it every tic (BT_ATTACK, held: A_CloseShotgun2's
+# A_ReFire), then the last shells into the south wall until
+# A_CheckReload's P_CheckAmmo switches to the pistol. Written by
+# tools/RouteGen (map02-ssg).
+iwad doom2
+map MAP02
+skill 3
+monsters
+start 3520 2904 180
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+10 0 5 0
+10 0 0 0 x6
+10 0 1 0
+10 0 0 0 x8
+10 0 -1 0
+10 0 83 0
+10 0 0 0 x2
+0 0 0 0 x11
+0 0 7 1
+0 0 1 1
+0 0 0 1 x2
+0 0 -5 1
+0 0 0 1 x3
+0 0 5 1
+0 0 0 1 x3
+0 0 -4 1
+0 0 0 1 x4
+0 0 0 0
+0 0 36 1
+0 0 0 1 x23
+0 0 -5 1
+0 0 0 1 x3
+0 0 -4 1
+0 0 0 1 x9
+0 0 -1 1 x3
+0 0 0 1
+0 0 -1 1 x3
+0 0 0 1 x5
+0 0 0 0
+0 0 -31 1
+0 0 0 1 x5
+0 0 -1 1
+0 0 0 1 x2
+0 0 -1 1
+0 0 0 1 x35
+0 0 -1 1
+0 0 0 1 x2
+0 0 -1 1
+0 0 0 1
+0 0 0 0
+0 0 -14 1
+0 0 0 1 x78
+0 0 0 0 x36

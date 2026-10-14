@@ -193,6 +193,53 @@ public class WeaponTests
     }
 
     [Fact]
+    public void TheSuperShotgunFiresTwentyPelletsForTwoShells()
+    {
+        World world = Armed(weapontype_t.wp_supershotgun, 10);
+        player_t p = P(world);
+        int before = world.random.prndindex;
+        Tics(world, 1 + 3, buttoncode_t.BT_ATTACK); // S_DSGUN1 (3 tics), then S_DSGUN2's A_FireShotgun2
+        Assert.Equal((8, statenum_t.S_DSGUN2, statenum_t.S_DSGUNFLASH1, 1), (p.ammo[1], Weapon(world).state, Flash(world).state, p.extralight));
+        Assert.Equal(statenum_t.S_PLAY_ATK2, p.mo!.state);
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_dshtgn && s.origin == p.mo);
+        // 20 pellets of damage, spread and slope spread (5 P_Random each), and their puffs
+        Assert.Equal(20, world.Mobjs().Count(m => m.type == mobjtype_t.MT_PUFF));
+        Assert.True(((world.random.prndindex - before) & 0xff) >= 20 * 5);
+    }
+
+    [Fact]
+    public void TheSuperShotgunReloadsWithItsSoundsAndRefiresWhileHeld()
+    {
+        World world = Armed(weapontype_t.wp_supershotgun, 10);
+        player_t p = P(world);
+        // fire held: S_DSGUN1 3 + S_DSGUN2..7 6×7 + S_DSGUN8, S_DSGUN9 6 each: A_CloseShotgun2's A_ReFire fires again
+        var heard = new System.Collections.Generic.List<sfxenum_t>();
+        for (int i = 0; i < 3 + 6 * 7 + 6 + 6 + 3; i++)
+        {
+            Tics(world, 1, buttoncode_t.BT_ATTACK); // each tic's sounds
+            heard.AddRange(world.StartedSounds().Where(s => s.origin == p.mo).Select(s => s.sfx));
+        }
+        Assert.Equal([sfxenum_t.sfx_dshtgn, sfxenum_t.sfx_dbopn, sfxenum_t.sfx_dbload, sfxenum_t.sfx_dbcls, sfxenum_t.sfx_dshtgn], heard);
+        Assert.Equal((6, 1), (p.ammo[1], p.refire));
+
+        // released: the second shot reloads, its A_CloseShotgun2 and S_DSGUN10 end the refire, then ready
+        Tics(world, 3 + 6 * 7 + 6 + 6 + 5 + 1);
+        Assert.Equal((statenum_t.S_DSGUN, 0, 6), (Weapon(world).state, p.refire, p.ammo[1]));
+    }
+
+    [Fact]
+    public void ReloadingWithoutTwoShellsChangesWeapon()
+    {
+        World world = Armed(weapontype_t.wp_supershotgun, 3);
+        player_t p = P(world);
+        Tics(world, 1 + 3, buttoncode_t.BT_ATTACK);
+        Assert.Equal(1, p.ammo[1]);
+        Tics(world, 7 + 7); // S_DSGUN2, S_DSGUN3: then S_DSGUN4's A_CheckReload
+        Assert.Equal((statenum_t.S_DSGUNDOWN, weapontype_t.wp_pistol), (Weapon(world).state, p.pendingweapon));
+        UntilReady(world, weapontype_t.wp_pistol);
+    }
+
+    [Fact]
     public void TheChaingunsFlashFollowsItsFrame()
     {
         World world = Armed(weapontype_t.wp_chaingun, 20);

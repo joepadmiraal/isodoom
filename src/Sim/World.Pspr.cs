@@ -681,29 +681,60 @@ public sealed partial class World
         player.extralight = 2;
     }
 
-    /// <summary>p_pspr.c <c>A_FireShotgun2</c>: the super shotgun. A stub until T10.2.</summary>
+    /// <summary>
+    /// p_pspr.c <c>A_FireShotgun2</c>: the super shotgun, twenty pellets of
+    /// 5, 10 or 15 spread by up to ±(255 &lt;&lt; 19) across and ±(255 &lt;&lt; 5)
+    /// in slope, the flash and two shells (T10.2).
+    /// </summary>
     public void A_FireShotgun2(player_t player, pspdef_t psp)
     {
+        mobj_t mo = player.mo!;
+        S_StartSound(mo, sfxenum_t.sfx_dshtgn);
+        P_SetMobjState(mo, statenum_t.S_PLAY_ATK2);
+
+        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo] -= 2;
+
+        P_SetPsprite(player, ps_flash, Info.weaponinfo[(int)player.readyweapon].flashstate);
+
+        // SPEC §12 T6.7: along the aim assist's angle, as P_BulletSlopeAndShoot
+        uint facing = mo.angle;
+        mo.angle = P_AimAssist(mo, 16 * 64 * Fixed.FRACUNIT);
+        P_BulletSlope(mo);
+
+        for (int i = 0; i < 20; i++)
+        {
+            int damage = 5 * (P_Random() % 3 + 1);
+            uint angle = mo.angle;
+            angle = unchecked(angle + (uint)((P_Random() - P_Random()) << 19));
+            P_LineAttack(mo, angle, MISSILERANGE,
+                bulletslope + ((P_Random() - P_Random()) << 5), damage);
+        }
+        mo.angle = facing;
     }
 
-    /// <summary>p_pspr.c <c>A_CheckReload</c>: the super shotgun's ammo check. A stub until T10.2.</summary>
+    /// <summary>p_pspr.c <c>A_CheckReload</c>: the super shotgun's ammo check before it reloads.</summary>
     public void A_CheckReload(player_t player, pspdef_t psp)
     {
+        P_CheckAmmo(player);
     }
 
-    /// <summary>p_pspr.c <c>A_OpenShotgun2</c>: the super shotgun opening. A stub until T10.2.</summary>
+    /// <summary>p_pspr.c <c>A_OpenShotgun2</c>: the super shotgun opening's sound.</summary>
     public void A_OpenShotgun2(player_t player, pspdef_t psp)
     {
+        S_StartSound(player.mo, sfxenum_t.sfx_dbopn);
     }
 
-    /// <summary>p_pspr.c <c>A_LoadShotgun2</c>: the super shotgun loading. A stub until T10.2.</summary>
+    /// <summary>p_pspr.c <c>A_LoadShotgun2</c>: the super shotgun loading's sound.</summary>
     public void A_LoadShotgun2(player_t player, pspdef_t psp)
     {
+        S_StartSound(player.mo, sfxenum_t.sfx_dbload);
     }
 
-    /// <summary>p_pspr.c <c>A_CloseShotgun2</c>: the super shotgun closing. A stub until T10.2.</summary>
+    /// <summary>p_pspr.c <c>A_CloseShotgun2</c>: the super shotgun closing's sound, then <see cref="A_ReFire"/>.</summary>
     public void A_CloseShotgun2(player_t player, pspdef_t psp)
     {
+        S_StartSound(player.mo, sfxenum_t.sfx_dbcls);
+        A_ReFire(player, psp);
     }
 
     /// <summary>

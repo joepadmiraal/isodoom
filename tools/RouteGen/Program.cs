@@ -1350,6 +1350,98 @@ exit normal
             g.Tic(0, 0, 0, 0);
             g.Exit(1240, 224);
         }, (1294, 224, 180)),
+        ["map02-ssg"] = new(Doom2, "MAP02", """
+# Doom II MAP02 on skill 3 with monsters (T10.2): started on the super
+# shotgun in its secret room (sector 62; the pickup switches to it), which
+# shoots the nearest zombieman or shotgun guy in sight until it dies,
+# turning towards it every tic (BT_ATTACK, held: A_CloseShotgun2's
+# A_ReFire), then the last shells into the south wall until
+# A_CheckReload's P_CheckAmmo switches to the pistol. Written by
+# tools/RouteGen (map02-ssg).
+iwad doom2
+map MAP02
+skill 3
+monsters
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            string State() => $"health {p.health} armor {p.armorpoints} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}; " + g.Monsters();
+            double Dist(IsoDoom.Sim.mobj_t m) => System.Math.Sqrt(System.Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + System.Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
+            IsoDoom.Sim.mobj_t? Nearest() => g.World.Mobjs()
+                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.World.P_CheckSight(g.Mo, m))
+                .OrderBy(Dist).FirstOrDefault();
+            g.Walk(3490, 2900, 20);
+            g.WaitUntil(() => p.readyweapon == IsoDoom.Sim.weapontype_t.wp_supershotgun && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange, 200);
+            log("super shotgun " + State());
+            for (int i = 0; i < 40 && p.health > 0; i++)
+            {
+                if (Nearest() is { } m)
+                {
+                    g.FireAt(m, 250);
+                    log("shot " + State());
+                    continue;
+                }
+                break;
+            }
+            // the last shells at the south wall, until A_CheckReload's P_CheckAmmo switches weapons
+            for (int i = 0; i < 200 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_supershotgun; i++)
+                g.Fire(g.X, g.Y - 400);
+            g.Tic(0, 0, 0, 0);
+            g.Wait(35);
+            log("done " + State());
+        }, (3520, 2904, 180), Skill: IsoDoom.Sim.skill_t.sk_medium, Monsters: true),
+        ["map07-ssg"] = new(Doom2, "MAP07", """
+# Doom II MAP07 without monsters (T10.2), in the start room: the super
+# shotgun north of the start walked over (the pickup switches to it: 8
+# shells), fired at the west wall with fire held (A_CloseShotgun2's
+# A_ReFire fires again), then once tapped, then until A_CheckReload's
+# P_CheckAmmo switches to the pistol. Written by tools/RouteGen (map07-ssg).
+iwad doom2
+map MAP07
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            string State() => $"health {p.health} armor {p.armorpoints}/{p.armortype} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}";
+            void Ready(IsoDoom.Sim.weapontype_t wp) => g.WaitUntil(() => p.readyweapon == wp && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange
+                && p.psprites[0].state == IsoDoom.Sim.Info.weaponinfo[(int)wp].readystate, 200);
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            log("pistol up " + State());
+            g.GoTo(64, -112, 4);
+            Ready(IsoDoom.Sim.weapontype_t.wp_supershotgun);
+            log("super shotgun up " + State());
+            // held: two shots (A_CloseShotgun2's A_ReFire)
+            for (int i = 0; i < 60; i++)
+                g.Fire(g.X - 400, g.Y);
+            g.Tic(0, 0, 0, 0);
+            Ready(IsoDoom.Sim.weapontype_t.wp_supershotgun);
+            log("held " + State());
+            g.Fire(g.X - 400, g.Y - 100);
+            Ready(IsoDoom.Sim.weapontype_t.wp_supershotgun);
+            log("tapped " + State());
+            for (int i = 0; i < 200 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_supershotgun; i++)
+                g.Fire(g.X - 400, g.Y + 200);
+            g.Tic(0, 0, 0, 0);
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            log("out of shells " + State());
+        }),
+        ["map31-megasphere"] = new(Doom2, "MAP31", """
+# Doom II MAP31 without monsters (T10.2): started east of the megasphere
+# (2720, -784), walked over it: 200 health and blue armor (P_GiveArmor 2).
+# Written by tools/RouteGen (map31-megasphere).
+iwad doom2
+map MAP31
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            g.GoTo(2720, -784, 4);
+            g.Wait(10);
+            log($"megasphere health {p.health} armor {p.armorpoints}/{p.armortype}");
+            if (p.health != 200)
+                throw new InvalidOperationException("no megasphere");
+        }, (2840, -784, 180)),
         ["map11-exit"] = new(Doom2, "MAP11", """
 # Doom II MAP11 (T10.1): started beside the exit switch (line 832, 11),
 # pressed on the second tic: the intermission, then the text screen C2TEXT
