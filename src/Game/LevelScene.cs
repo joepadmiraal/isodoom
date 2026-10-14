@@ -265,7 +265,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// SPEC §12 T6.8) and, T6.13v, where the flashes show: over the whole
     /// view, or on and around the player only.
     /// </summary>
-    public PaletteFlashStyle PaletteFlashes { get; set; } = PaletteFlashStyle.Screen;
+    public PaletteFlashStyle PaletteFlashes { get; set; } = PaletteFlashStyle.Player; // T6.13w: the default
 
     /// <summary>T6.13v: the palette flashes' strength in percent (<see cref="PaletteFlash"/>, <c>--level-flash-strength</c>; 100: vanilla's palettes).</summary>
     public int FlashStrength { get; set; } = PaletteFlash.FullStrength;
@@ -483,6 +483,9 @@ public partial class LevelScene : Node3D, IGameHost
     private Color _background = Colors.Black;
     private bool _backgroundSet;
     private int _voidPalette, _voidStrength = PaletteFlash.FullStrength;
+
+    // T6.13w: the pickup ripple: the leveltime of the last pickup (bonuscount rising) and the bonuscount seen last.
+    private int _rippleStart = int.MinValue / 2, _rippleBonus;
 
     /// <summary>The cutaway's presentation options (T3.4); applied while the game camera is current.</summary>
     public CutawaySettings Cutaway { get; set; } = new();
@@ -2284,14 +2287,34 @@ public partial class LevelScene : Node3D, IGameHost
         if (mesh.ColormapOverride != colormap)
             mesh.SetColormapOverride(colormap);
 
-        PaletteFlash.Glow glow = playerOnly && Playpal is { } pal ? PaletteFlash.GlowOf(pal, palette) : default;
-        Glow.Visible = glow.Level > 0 && Player is { Visible: true } && PlayerMobj is not null; // (with the player's sprite)
+        // T6.13w: a pickup (bonuscount rising: P_TouchSpecialThing adds BONUSADD) starts the ripple; it runs on the tics, between them on the drawn fraction.
+        int bonus = p?.bonuscount ?? 0;
+        if (bonus > _rippleBonus && World is { } w)
+            _rippleStart = w.leveltime;
+        _rippleBonus = bonus;
+        (float Radius, float Alpha) ripple = playerOnly && World is { } now && PaletteFlashes != PaletteFlashStyle.Off
+            ? FlashGlow.Ripple(now.leveltime - _rippleStart + TicFraction) : default;
+
+        // The damage's and the suit's glows; a pickup's is the ripple (red wins, as ST_doPaletteStuff's palette).
+        PaletteFlash.Glow glow = playerOnly && !PaletteFlash.IsBonus(palette) && Playpal is { } pal ? PaletteFlash.GlowOf(pal, palette) : default;
+        bool rippling = glow.Level <= 0 && ripple.Alpha > 0 && ripple.Radius > 0;
+        PickupRipple = rippling ? (ripple.Radius, ripple.Alpha * strength / PaletteFlash.FullStrength * FlashGlow.RippleAlpha) : default;
+        Glow.Visible = (glow.Level > 0 || rippling) && Player is { Visible: true } && PlayerMobj is not null; // (with the player's sprite)
         if (Glow.Visible)
         {
-            Glow.SetGlow(glow.R, glow.G, glow.B, glow.Level * strength / PaletteFlash.FullStrength * FlashGlow.MaxAlpha);
+            if (rippling)
+                Glow.SetRipple(PickupRipple.Alpha, PickupRipple.Radius);
+            else
+                Glow.SetGlow(glow.R, glow.G, glow.B, glow.Level * strength / PaletteFlash.FullStrength * FlashGlow.MaxAlpha);
             Glow.Place(Interpolated(PlayerMobj!).Position);
         }
     }
+
+    /// <summary>T6.13w: the pickup ripple's radius (map units) and alpha (with the strength) as last updated, shown with the player's sprite; zero when none runs or a damage or suit glow shows instead.</summary>
+    public (float Radius, float Alpha) PickupRipple { get; private set; }
+
+    /// <summary>T6.13w: ends the pickup ripple under way (the level check, between its cases).</summary>
+    public void EndPickupRipple() => _rippleStart = int.MinValue / 2;
 
     /// <summary>
     /// T6.13v: the palette the HUD, the pause graphic and the menus show over
@@ -2539,7 +2562,7 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
         if (MonsterMarking != MonsterMarkerMode.Beam)
             text.Append("monster markers: ").Append(MonsterMarkers.ModeName(MonsterMarking)).Append(" (C)\n");
-        if (PaletteFlashes != PaletteFlashStyle.Screen || FlashStrength != PaletteFlash.FullStrength)
+        if (PaletteFlashes != PaletteFlashStyle.Player || FlashStrength != PaletteFlash.FullStrength)
             text.Append("palette flashes: ").Append(PaletteFlash.Name(PaletteFlashes)).Append(' ').Append(FlashStrength).Append("%\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
             text.Append("upper walls: all, as vanilla (I)\n");

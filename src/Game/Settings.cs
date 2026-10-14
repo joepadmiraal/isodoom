@@ -109,7 +109,7 @@ public static class Settings
         new("gameplay/cutaway_cursor", "CURSOR CUTS TOO", SettingPage.Gameplay, "off", _onOff, "--level-cutaway-cursor"),
         new("gameplay/light", "LIGHT DIMINISHING", SettingPage.Gameplay, "player", ["player", "none", "camera"], "--level-light"),
         new("gameplay/weapon_light", "WEAPON FLASH LIGHT", SettingPage.Gameplay, "on", _onOff, "--level-weapon-light"),
-        new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "screen", ["screen", "player", "off"], "--level-palette-effects"), // T6.13v: was on|off
+        new("gameplay/palette_effects", "PALETTE FLASHES", SettingPage.Gameplay, "player", ["screen", "player", "off"], "--level-palette-effects"), // T6.13v: was on|off; T6.13w: player by default
         new("gameplay/flash_strength", "FLASH STRENGTH", SettingPage.Gameplay, "100", Range(10, 100, 10), "--level-flash-strength"), // T6.13v
         new("gameplay/tracers", "SHOT TRACERS", SettingPage.Gameplay, "player", ["player", "all", "off"], "--level-tracers"),
         new("gameplay/aim_marker", "AIM MARKER", SettingPage.Gameplay, "pad", ["pad", "on", "off"], "--level-aim-marker"),

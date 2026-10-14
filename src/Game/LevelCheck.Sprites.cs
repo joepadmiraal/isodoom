@@ -352,6 +352,8 @@ public partial class LevelCheck
             if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(zero.SrgbToLinear()))
                 Fail($"{map}: {what}: the blob shadows are {shadow}, expected palette {palette}'s colour 0");
         }
+        PaletteFlashStyle style = _scene.PaletteFlashes; // (T6.13w: player by default; the T6.8 checks are the screen's)
+        _scene.PaletteFlashes = PaletteFlashStyle.Screen;
         int health = p.health, mohealth = me.health, itemcount = p.itemcount, damagecount = p.damagecount, bonuscount = p.bonuscount, fixedcolormap = p.fixedcolormap;
         int[] powers = (int[])p.powers.Clone();
         string? message = p.message;
@@ -388,6 +390,8 @@ public partial class LevelCheck
         (p.health, me.health, p.itemcount, p.message) = (health, mohealth, itemcount, message);
         (p.damagecount, p.bonuscount, p.fixedcolormap) = (damagecount, bonuscount, fixedcolormap);
         powers.CopyTo(p.powers, 0); // (the mesh stays at palette 0 for the checks after this one)
+        _scene.PaletteFlashes = style;
+        _scene.UpdatePaletteEffects();
     }
 
     /// <summary>
@@ -425,6 +429,9 @@ public partial class LevelCheck
                 })
                 {
                     (_scene.PaletteFlashes, _scene.FlashStrength) = (s, strong);
+                    (p.damagecount, p.bonuscount, p.fixedcolormap) = (0, 0, 0);
+                    _scene.UpdatePaletteEffects();
+                    _scene.EndPickupRipple();
                     (p.damagecount, p.bonuscount, p.fixedcolormap) = (c.Damage, c.Bonus, c.Fixed);
                     _scene.UpdatePaletteEffects();
                     string what = $"{map}: flashes {PaletteFlash.Name(s)} {strong}%, damagecount {c.Damage}, bonuscount {c.Bonus}, fixedcolormap {c.Fixed}";
@@ -446,20 +453,26 @@ public partial class LevelCheck
                     (byte sr, byte sg, byte sb) = m.DrawnColor(screenRow, 0);
                     if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(Color.Color8(sr, sg, sb).SrgbToLinear()))
                         Fail($"{what}: the blob shadows are {shadow}, expected palette row {screenRow}'s colour 0");
-                    PaletteFlash.Glow glow = s == PaletteFlashStyle.Player ? PaletteFlash.GlowOf(Playpal, palette) : default;
-                    bool glows = glow.Level > 0 && _scene.Player is not null;
-                    if (_scene.Glow.Visible != glows)
-                        Fail($"{what}: the glow {(_scene.Glow.Visible ? "shows" : "does not show")}");
-                    var tint = Color.Color8(glow.R, glow.G, glow.B) with { A = glow.Level * strong / 100f * FlashGlow.MaxAlpha };
+                    // (T6.13w: a pickup's is the ripple, white, its size and alpha as far as the drawn fraction of its first tic)
+                    PaletteFlash.Glow glow = s == PaletteFlashStyle.Player && !white ? PaletteFlash.GlowOf(Playpal, palette) : default;
+                    (float Radius, float Alpha) ripple = white ? FlashGlow.Ripple(_scene.TicFraction) : default;
+                    bool glows = (glow.Level > 0 || ripple.Alpha > 0) && _scene.Player is not null;
+                    if (_scene.Glow.Visible != glows || (glows && _scene.Glow.IsRipple != white))
+                        Fail($"{what}: the glow {(_scene.Glow.Visible ? "shows" : "does not show")}{(_scene.Glow.IsRipple ? " as the ripple" : "")}");
+                    var tint = white ? Colors.White with { A = ripple.Alpha * strong / 100f * FlashGlow.RippleAlpha }
+                        : Color.Color8(glow.R, glow.G, glow.B) with { A = glow.Level * strong / 100f * FlashGlow.MaxAlpha };
                     if (glows && !_scene.Glow.GlowColor.IsEqualApprox(tint))
                         Fail($"{what}: the glow is {_scene.Glow.GlowColor}, expected {tint}");
+                    if (white != _scene.PickupRipple.Alpha > 0 || (white && !Mathf.IsEqualApprox(_scene.PickupRipple.Radius, ripple.Radius)))
+                        Fail($"{what}: the pickup ripple is {_scene.PickupRipple}, expected {(white ? ripple : "none")}");
+                    if (glows && !Mathf.IsEqualApprox(_scene.Glow.CurrentRadius, white ? ripple.Radius : FlashGlow.Radius))
+                        Fail($"{what}: the glow's radius is {_scene.Glow.CurrentRadius}, expected {(white ? ripple.Radius : FlashGlow.Radius)}");
                     if (s == PaletteFlashStyle.Player && c.Damage > 0 && glow.R <= glow.G)
                         Fail($"{what}: the damage glow is not red ({glow})");
-                    if (white && (glow.R, glow.G, glow.B) != PaletteFlash.PickupTint)
-                        Fail($"{what}: the pickup glow is not white ({glow})");
                 }
             }
         }
+        CheckPickupRipple(map, p);
         // The player style without the game camera: the screen's, at the strength.
         (_scene.PaletteFlashes, _scene.FlashStrength, _scene.FlashOnPlayerEverywhere) = (PaletteFlashStyle.Player, 50, false);
         (p.damagecount, p.bonuscount, p.fixedcolormap) = (20, 0, 0);
@@ -475,6 +488,61 @@ public partial class LevelCheck
         _scene.Player?.Visible = shown;
         (_scene.PaletteFlashes, _scene.FlashStrength, _scene.FlashOnPlayerEverywhere) = (style, strength, everywhere);
         (p.damagecount, p.bonuscount, p.fixedcolormap) = (0, 0, 0);
+        _scene.UpdatePaletteEffects();
+    }
+
+    /// <summary>
+    /// T6.13w: the player style's pickup ripple over the tics after a pickup
+    /// (<c>leveltime</c> stepped by hand, the drawn fraction at a tic's end):
+    /// white, growing (never shrinking) to the aim marker's ring by
+    /// <see cref="FlashGlow.RippleGrowTics"/>, fading at that size, gone after
+    /// <see cref="FlashGlow.RippleFadeTics"/> more; a second pickup on the way
+    /// starts it again; a damage flash shows the red glow instead.
+    /// </summary>
+    private void CheckPickupRipple(string map, player_t p)
+    {
+        if (_scene.World is not { } world)
+            return;
+        (PaletteFlashStyle style, int strength, int leveltime, double fraction) = (_scene.PaletteFlashes, _scene.FlashStrength, world.leveltime, _scene.TicFraction);
+        (_scene.PaletteFlashes, _scene.FlashStrength) = (PaletteFlashStyle.Player, PaletteFlash.FullStrength);
+        _scene.SetTicFraction(1);
+        (p.damagecount, p.bonuscount, p.fixedcolormap) = (0, 0, 0);
+        _scene.UpdatePaletteEffects();
+        _scene.EndPickupRipple();
+        string what = $"{map}: the pickup ripple (T6.13w)";
+        float last = 0;
+        int end = FlashGlow.RippleGrowTics + FlashGlow.RippleFadeTics;
+        for (int t = 0; t <= end; t++)
+        {
+            world.leveltime = leveltime + t;
+            p.bonuscount = t == 0 ? 6 : Math.Max(6 - t, 0); // (P_PlayerThink counts it down)
+            _scene.UpdatePaletteEffects();
+            bool shows = t + 1 < end;
+            (float r, float a) = _scene.PickupRipple;
+            if ((a > 0) != shows || a > FlashGlow.RippleAlpha)
+                Fail($"{what}: {t + 1} tics after the pickup its alpha is {a}, expected {(shows ? $"0–{FlashGlow.RippleAlpha}" : "0")}");
+            if (_scene.Player is not null && (_scene.Glow.Visible != shows || (shows && (!_scene.Glow.IsRipple || _scene.Glow.GlowColor != Colors.White with { A = a } || _scene.Glow.CurrentRadius != r))))
+                Fail($"{what}: {t + 1} tics after the pickup the glow {(_scene.Glow.Visible ? "shows" : "does not show")} ({_scene.Glow.GlowColor}, radius {_scene.Glow.CurrentRadius}{(_scene.Glow.IsRipple ? ", the ripple" : "")}), expected {(shows ? $"the white ripple, alpha {a}, radius {r}" : "nothing")}");
+            if (!shows)
+                continue;
+            if (r < last || r > FlashGlow.RippleRadius + 0.01f || (t + 1 >= FlashGlow.RippleGrowTics && !Mathf.IsEqualApprox(r, FlashGlow.RippleRadius)))
+                Fail($"{what}: {t + 1} tics after the pickup its radius is {r} (before {last}); expected growing to {FlashGlow.RippleRadius} by tic {FlashGlow.RippleGrowTics}");
+            last = r;
+        }
+        // A second pickup starts it again; damage shows the red glow over it.
+        p.bonuscount = 6;
+        _scene.UpdatePaletteEffects();
+        if (_scene.PickupRipple.Alpha <= 0 || _scene.PickupRipple.Radius >= FlashGlow.RippleRadius / 2)
+            Fail($"{what}: a second pickup did not start it again ({_scene.PickupRipple})");
+        p.damagecount = 20;
+        _scene.UpdatePaletteEffects();
+        if (_scene.PickupRipple.Alpha > 0 || (_scene.Player is not null && (_scene.Glow.IsRipple || !Mathf.IsEqualApprox(_scene.Glow.CurrentRadius, FlashGlow.Radius))))
+            Fail($"{what}: damage during it shows the ripple ({_scene.PickupRipple}), expected the red glow");
+        (p.damagecount, p.bonuscount) = (0, 0);
+        world.leveltime = leveltime;
+        _scene.EndPickupRipple();
+        _scene.SetTicFraction(fraction);
+        (_scene.PaletteFlashes, _scene.FlashStrength) = (style, strength);
         _scene.UpdatePaletteEffects();
     }
 

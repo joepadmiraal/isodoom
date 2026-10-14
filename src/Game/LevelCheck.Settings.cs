@@ -162,12 +162,12 @@ public partial class LevelCheck
             }
             CheckApplied(changed);
 
-            // T6.13v: a file from before the flash styles, palette_effects = "on", reads as the screen style, the default, and is dropped from the file.
+            // T6.13v: a file from before the flash styles, palette_effects = "on", reads as the screen style, kept in the file as "screen" (T6.13w: no longer the default).
             s.ApplySettings(new Dictionary<string, string> { ["gameplay/palette_effects"] = "on" }, pin: false);
             s.SyncSettings();
             if (s.PaletteFlashes != PaletteFlashStyle.Screen || s.GetSetting("gameplay/palette_effects") != "screen"
-                || s.SettingsValues.ToSave().Keep.Exists(k => k.Key == "gameplay/palette_effects"))
-                Fail($"settings (T6.13v): gameplay/palette_effects = \"on\" in a file reads \"{s.GetSetting("gameplay/palette_effects")}\" ({s.PaletteFlashes}), expected \"screen\", not kept in the file");
+                || !s.SettingsValues.ToSave().Keep.Exists(k => k.Key == "gameplay/palette_effects" && k.Value == "screen"))
+                Fail($"settings (T6.13v): gameplay/palette_effects = \"on\" in a file reads \"{s.GetSetting("gameplay/palette_effects")}\" ({s.PaletteFlashes}), expected \"screen\", kept in the file");
         }
         finally
         {

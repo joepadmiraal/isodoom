@@ -69,9 +69,9 @@ public class SettingsTests
     [Fact]
     public void ThePaletteFlashesHaveAStyleAndAStrength()
     {
-        // T6.13v: screen at 100 is vanilla's; the strength stops at its ends in steps of 10.
+        // T6.13v: screen at 100 is vanilla's (T6.13w: player is the default); the strength stops at its ends in steps of 10.
         SettingDef style = Settings.Find("gameplay/palette_effects")!, strength = Settings.Find("gameplay/flash_strength")!;
-        Assert.Equal(("screen", "100"), (style.Default, strength.Default));
+        Assert.Equal(("player", "100"), (style.Default, strength.Default));
         Assert.Equal(["screen", "player", "off"], style.Choices);
         Assert.Equal("player", style.Step("screen", 1));
         Assert.Equal("90", strength.Step("100", -1));
