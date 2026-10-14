@@ -75,6 +75,31 @@ public class SaveGameTests
     }
 
     /// <summary>
+    /// T10.4 (the note from T7.6): a Doom II route with the brain targets,
+    /// MAP30's <c>map30-icon</c>, is among the routes played on after a load
+    /// (<see cref="ARouteGoesOnAfterALoad"/>), and its saves from a quarter
+    /// on hold the targets the shooter woke with (skips without Doom II).
+    /// </summary>
+    [Fact]
+    public void TheIconOfSinRouteIsSavedWithItsBrainTargets()
+    {
+        Assert.Contains("map30-icon", Routes().Select(r => r.Data));
+        var route = VanillaRoute.Load("map30-icon");
+        World world = route.NewWorld(out WadArchive wad);
+        int n = route.Cmds.Count;
+        for (int tic = 0; tic < n / 4; tic++)
+        {
+            route.File.RunEvents(world, tic);
+            world.G_Ticker(route.Cmds[tic]);
+        }
+        Assert.True(world.numbraintargets > 0, "the shooter is awake a quarter in");
+        World loaded = Load(Save(world), wad);
+        Assert.Equal(world.braintargets.Select(m => (m.x, m.y)), loaded.braintargets.Select(m => (m.x, m.y)));
+        Assert.Equal(world.braintargeton, loaded.braintargeton);
+        Assert.Equal(world.braineasy, loaded.braineasy);
+    }
+
+    /// <summary>
     /// Plays <paramref name="route"/> through once, saving at its start, at
     /// a quarter, half and three quarters of it, and just before its end;
     /// then loads each save, checks it saves again the same bytes, plays on

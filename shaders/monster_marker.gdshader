@@ -24,6 +24,10 @@
 // point, the chevron in the view plane, drawn over everything (no depth test)
 // so the wall's top never clips it. Unshaded and full bright, a dark rim
 // around the stroke.
+//
+// T10.4, `marker_always` (the Icon of Sin's brain): shown whether hidden or
+// not, its tip at least `always_height` above the foot; when that point is
+// off screen, pinned inside `pin_box` (NDC) and turned to point at it.
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled, shadows_disabled, fog_disabled, blend_mix;
 
@@ -39,6 +43,11 @@ uniform float marker_gap = 4.0;
 uniform float marker_stroke = 2.5;
 uniform float marker_rim = 1.0;
 uniform vec3 marker_rim_color : source_color = vec3(0.08, 0.0, 0.0);
+// T10.4: every instance shown (not only hidden ones), above `always_height`,
+// pinned inside `pin_box` (NDC: x min, y min, x max, y max) when off screen.
+uniform bool marker_always = false;
+uniform float always_height = 56.0;
+uniform vec4 pin_box = vec4(-0.9, -0.9, 0.9, 0.9);
 
 varying vec2 v_local;
 
@@ -76,15 +85,35 @@ void vertex() {
 	right = dot(right, right) > 1e-8 ? normalize(right) : vec3(1.0, 0.0, 0.0);
 	vec3 facing = cross(right, vec3(0.0, 1.0, 0.0));
 	v_local = vec2(VERTEX.x * marker_half_width, VERTEX.y * marker_height);
-	bool hidden = thing_hidden(slot, flip, INSTANCE_CUSTOM.z, row, foot, right, facing, ortho,
-		MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD);
-	if (hidden) {
-		float tip = visible_height(foot, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX) + marker_gap;
+	if (marker_always && slot >= 0) {
+		// T10.4: above the thing or the first point the depth texture shows over it, pinned on screen
+		float tip = max(visible_height(foot, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX), always_height) + marker_gap;
+		vec3 world_tip = (MODEL_MATRIX * vec4(0.0, tip / MAP_UNITS_PER_METRE, 0.0, 1.0)).xyz;
+		vec4 clip = PROJECTION_MATRIX * (VIEW_MATRIX * vec4(world_tip, 1.0));
+		vec2 ndc = clip.w > 0.0 ? clip.xy / clip.w : vec2(0.0, -1e3);
+		vec2 pinned = clamp(ndc, pin_box.xy, pin_box.zw);
+		vec2 up = vec2(0.0, 1.0);
+		if (pinned != ndc) {
+			up = normalize(pinned - ndc); // from the target towards the pin: the chevron points back at it
+			vec4 v = INV_PROJECTION_MATRIX * vec4(pinned, clip.z / max(clip.w, 1e-6), 1.0);
+			world_tip = (INV_VIEW_MATRIX * vec4(v.xyz / v.w, 1.0)).xyz;
+		}
+		vec2 across = vec2(up.y, -up.x);
+		vec2 s = v_local.x * across + v_local.y * up;
 		vec3 screen_right = normalize(INV_VIEW_MATRIX[0].xyz);
 		vec3 screen_up = normalize(INV_VIEW_MATRIX[1].xyz);
-		VERTEX = (vec3(0.0, tip, 0.0) + screen_right * v_local.x + screen_up * v_local.y) / MAP_UNITS_PER_METRE;
+		VERTEX = world_tip - foot + (screen_right * s.x + screen_up * s.y) / MAP_UNITS_PER_METRE;
 	} else {
-		VERTEX = vec3(0.0); // seen, or nothing to mark: a degenerate quad
+		bool hidden = thing_hidden(slot, flip, INSTANCE_CUSTOM.z, row, foot, right, facing, ortho,
+			MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD);
+		if (hidden) {
+			float tip = visible_height(foot, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX) + marker_gap;
+			vec3 screen_right = normalize(INV_VIEW_MATRIX[0].xyz);
+			vec3 screen_up = normalize(INV_VIEW_MATRIX[1].xyz);
+			VERTEX = (vec3(0.0, tip, 0.0) + screen_right * v_local.x + screen_up * v_local.y) / MAP_UNITS_PER_METRE;
+		} else {
+			VERTEX = vec3(0.0); // seen, or nothing to mark: a degenerate quad
+		}
 	}
 }
 

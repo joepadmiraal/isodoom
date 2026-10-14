@@ -30,10 +30,14 @@ public class FinaleTests
 {
     // ---- against vanilla ----
 
-    /// <summary>The DOOM1.WAD routes that end the episode (exit on ExM8), and (T10.1) the Doom II ones whose exit leads to a text screen.</summary>
+    /// <summary>
+    /// The DOOM1.WAD routes that end the episode (exit on ExM8), and (T10.1)
+    /// the Doom II ones whose exit leads to a text screen; not yet MAP30's
+    /// (T10.4's <c>map30-icon</c>): its text leads to the cast call (T10.5).
+    /// </summary>
     private static List<VanillaRoute> EndRoutes() =>
         [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)
-            || IntermissionTests.TextScreenAfter(r))];
+            || IntermissionTests.TextScreenAfter(r) && r.Map != "MAP30")];
 
     /// <summary>The routes and their dumps' suffixes: <c>fi</c>, and for Doom II <c>firead</c> (its text typed out before the skip).</summary>
     public static TheoryData<string, string> Routes()

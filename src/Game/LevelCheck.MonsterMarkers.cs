@@ -23,15 +23,19 @@ namespace IsoDoom.Game;
 // its foot, all above its foot (the beam's rising from behind the wall); the
 // open one's none. A hidden one is required on DOOM1 E1M1 only:
 // an imp is 56 high, and the synthetic E1M1's walls do not hide one whole.
+// T10.4: the brain markers: every drawn live Icon of Sin's brain (MAP30's,
+// and one spawned beside the player on every map), whatever the sight, in
+// their own markers, not the monster markers; none with the option off or
+// without the game camera.
 public partial class LevelCheck
 {
-    private int _monsterMarkerMaps, _monsterMarkerMonsters;
+    private int _monsterMarkerMaps, _monsterMarkerMonsters, _brainMarkerMaps, _brainMarkerBrains;
 
     private void CheckMonsterMarkers(LevelMesh m, string map)
     {
         if (_scene.World is not { } world || _scene.PlayerMobj is not { } me)
             return;
-        (MonsterMarkerMode on, bool everywhere, int rows) = (_scene.MonsterMarking, _scene.MarkersEverywhere, _scene.SightDimRows);
+        (MonsterMarkerMode on, bool everywhere, int rows, bool brainMarking) = (_scene.MonsterMarking, _scene.MarkersEverywhere, _scene.SightDimRows, _scene.BrainMarking);
         var spawned = new List<mobj_t>();
         int failures = _failures;
         try
@@ -39,6 +43,8 @@ public partial class LevelCheck
             _scene.MonsterMarking = MonsterMarkerMode.Chevron;
             _scene.MarkersEverywhere = true;
             _scene.SightDimRows = 0; // the markers take the sight checks on their own
+            _scene.BrainMarking = true;
+            spawned.Add(world.P_SpawnMobj(me.x + (24 << Fixed.FRACBITS), me.y, World.ONFLOORZ, mobjtype_t.MT_BOSSBRAIN)); // T10.4
             mobj_t? near = null;
             int start = me.subsector.sector.Index;
             foreach ((int dx, int dy) in new[] { (64, 0), (-64, 0), (0, 64), (0, -64), (48, 48), (-48, -48) })
@@ -68,6 +74,24 @@ public partial class LevelCheck
             if (near is not null && !got.Contains(near))
                 Fail($"{map}: monster markers (T6.13u): the imp in sight beside the player is not marked");
             _monsterMarkerMonsters += got.Count;
+
+            // T10.4: the brains, whatever the sight, in their own markers
+            var brains = new HashSet<mobj_t>(world.Mobjs().Where(mo => LevelScene.IsLiveBrain(mo) && LevelScene.IsDrawn(mo) && _scene.FogShows(mo)));
+            var brainGot = new HashSet<mobj_t>(_scene.BrainMarkers.Markers.Select(k => k.Mobj));
+            if (!brainGot.SetEquals(brains) || got.Any(LevelScene.IsLiveBrain) || brains.Count == 0)
+                Fail($"{map}: brain markers (T10.4): {brainGot.Count} marked of {brains.Count} brains ({got.Count(LevelScene.IsLiveBrain)} among the monster markers)");
+            _brainMarkerBrains += brains.Count;
+            _scene.BrainMarking = false;
+            _scene.UpdateMonsterMarkers();
+            if (_scene.BrainMarkers.Markers.Count > 0)
+                Fail($"{map}: brain markers (T10.4): off, {_scene.BrainMarkers.Markers.Count} marker(s)");
+            _scene.BrainMarking = true;
+            _scene.MarkersEverywhere = false;
+            _scene.UpdateMonsterMarkers();
+            if (_scene.BrainMarkers.Markers.Count > 0 && !_scene.IsoActive)
+                Fail($"{map}: brain markers (T10.4): without the game camera, {_scene.BrainMarkers.Markers.Count} marker(s)");
+            _scene.MarkersEverywhere = true;
+            _brainMarkerMaps++;
             if (_scene.Things is { } things)
             {
                 foreach (MonsterMarkers.Marker k in _scene.Markers.Markers)
@@ -98,7 +122,7 @@ public partial class LevelCheck
         {
             foreach (mobj_t mo in spawned)
                 world.P_RemoveMobj(mo);
-            (_scene.MonsterMarking, _scene.MarkersEverywhere, _scene.SightDimRows) = (on, everywhere, rows);
+            (_scene.MonsterMarking, _scene.MarkersEverywhere, _scene.SightDimRows, _scene.BrainMarking) = (on, everywhere, rows, brainMarking);
             _scene.SeeSight();
             _scene.PresentWorld();
             _scene.UpdateMonsterMarkers();
@@ -270,5 +294,6 @@ public partial class LevelCheck
         GD.Print($"Level check: monster markers (T6.13u): {_monsterMarkerMaps} maps: {_monsterMarkerMonsters} monsters in sight marked, as P_CheckSight (monster to player) gives them, the same as chevrons and as beams; none with it off or without the game camera, the world's checksum unchanged");
         if (_monsterMarkerMaps == 0)
             Fail("monster markers (T6.13u): no map checked");
+        GD.Print($"Level check: brain markers (T10.4): {_brainMarkerMaps} maps: {_brainMarkerBrains} Icon of Sin brains marked whatever the sight, apart from the monster markers; none with it off or without the game camera");
     }
 }

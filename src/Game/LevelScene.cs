@@ -98,6 +98,9 @@ namespace IsoDoom.Game;
 /// a small red chevron over a live monster with a line of sight to the player
 /// while the level hides it whole under the game camera, or a red beam rising
 /// from behind the wall as the item beams'; <c>on</c> = chevron; default beam);
+/// <c>--level-brain-marker=on|off</c> (T10.4: the Icon of Sin's brain marked
+/// as the monster markers whatever the player's sight, yellow while a rocket
+/// fired now would reach it, <see cref="IconAim"/>; default on);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -240,6 +243,16 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>The monster markers (T6.13u) as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
     public MonsterMarkers Markers { get; } = new() { Name = "MonsterMarkers" };
+
+    /// <summary>T10.4: the Icon of Sin's brain markers (chevrons over what hides the brain), as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
+    public MonsterMarkers BrainMarkers { get; } = new() { Name = "BrainMarkers", Mode = MonsterMarkerMode.Chevron };
+
+    private readonly List<MonsterMarkers.Marker> _brainScratch = [];
+
+    // T10.4: the brain's chevron: twice the monster markers' size, at least 56 units over its foot
+    // (over the BBRN sprite), pinned inside the view above the status bar when off screen.
+    private const float BrainMarkerHeight = 56f, BrainMarkerScale = 2f;
+    private static readonly Vector4 _brainPinBox = new(-0.88f, -0.55f, 0.88f, 0.86f);
 
     private readonly List<MonsterMarkers.Marker> _markerScratch = [];
     private readonly List<ItemBeams.Actor> _markerActorScratch = [];
@@ -681,6 +694,8 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(Glow);
         AddChild(Beams);
         AddChild(Markers);
+        BrainMarkers.ShowAlways(BrainMarkerHeight, BrainMarkerScale, _brainPinBox);
+        AddChild(BrainMarkers);
         AddChild(AutomapScreen); // T7.9: over the level, under the pause graphic and the HUD
         AddChild(Screens); // T7.1: under the debug overlay and the HUD
         AddChild(MenuScreens); // T7.2: layer 2, over everything
@@ -788,6 +803,8 @@ public partial class LevelScene : Node3D, IGameHost
                 SightDimRows = SightDim.Parse(sightDim, "--level-sight-dim");
             if (WadLocator.GetUserArg("--level-monster-markers") is string monsterMarkers)
                 MonsterMarking = ParseMonsterMarkers(monsterMarkers, "--level-monster-markers");
+            if (WadLocator.GetUserArg("--level-brain-marker") is string brainMarker)
+                BrainMarking = ParseBrainMarker(brainMarker, "--level-brain-marker");
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
@@ -2562,6 +2579,10 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append("item beams: ").Append(ItemKinds.Name(ItemBeams)).Append(" (F)\n");
         if (MonsterMarking != MonsterMarkerMode.Beam)
             text.Append("monster markers: ").Append(MonsterMarkers.ModeName(MonsterMarking)).Append(" (C)\n");
+        if (HotBrains > 0)
+            text.Append("icon of sin: clear shot\n"); // T10.4
+        else if (!BrainMarking)
+            text.Append("brain marker: off\n");
         if (PaletteFlashes != PaletteFlashStyle.Player || FlashStrength != PaletteFlash.FullStrength)
             text.Append("palette flashes: ").Append(PaletteFlash.Name(PaletteFlashes)).Append(' ').Append(FlashStrength).Append("%\n");
         if (Mesh is { UpperMode: UpperWallMode.All })
@@ -2842,6 +2863,7 @@ public partial class LevelScene : Node3D, IGameHost
         _shotTracers.Clear();
         Beams.Clear();
         Markers.Clear();
+        BrainMarkers.Clear();
         _planeMoves.Clear();
     }
 
@@ -2949,6 +2971,7 @@ public partial class LevelScene : Node3D, IGameHost
         Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
         Beams.Bind(SpriteAtlas);
         Markers.Bind(SpriteAtlas);
+        BrainMarkers.Bind(SpriteAtlas);
         _drawn.Clear();
         PresentWorld(); // fills the entries from the mobjs
         Things.Visible = Things.Shadows.Visible = _showThings;

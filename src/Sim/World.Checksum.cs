@@ -16,7 +16,9 @@ public sealed partial class World
     /// player in the game (player state, health, armor points, view z,
     /// view height and its delta; since T6.6 also the ready and pending
     /// weapons, the ammo, refire, attackdown, extralight and each psprite's
-    /// state, tics and position). Only sim state
+    /// state, tics and position; since T10.4, once the Icon of Sin woke, its
+    /// brain targets as mobj indices, the next one and <c>A_BrainSpit</c>'s
+    /// <c>easy</c>). Only sim state
     /// goes in: <c>M_Random</c>'s index does not. A mobj index is the mobj's
     /// place in thinker order, -1 for none (or a removed mobj).
     /// </summary>
@@ -58,6 +60,15 @@ public sealed partial class World
             Add(ref h, sec.ceilingheight);
             Add(ref h, sec.lightlevel);
             Add(ref h, MobjIndex(sec.soundtarget));
+        }
+
+        // the brain's targets (T10.4), only once it has any: other maps' checksums stay as they were
+        if (braintargets.Count > 0)
+        {
+            foreach (mobj_t m in braintargets)
+                Add(ref h, MobjIndex(m));
+            Add(ref h, braintargeton);
+            Add(ref h, braineasy);
         }
         _checksumIndex.Clear();
 

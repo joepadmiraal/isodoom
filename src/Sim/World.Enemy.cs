@@ -1179,45 +1179,4 @@ public sealed partial class World
     public void A_BFGSpray(mobj_t actor)
     {
     }
-
-    /// <summary>p_enemy.c <c>A_BrainPain</c>: the Icon of Sin's pain sound. A stub until T10.4.</summary>
-    public void A_BrainPain(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BrainScream</c>: the Icon of Sin's death explosions. A stub until T10.4.</summary>
-    public void A_BrainScream(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BrainDie</c>: the Icon of Sin's death: the level ends. A stub until T10.4.</summary>
-    public void A_BrainDie(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BrainAwake</c>: the Icon of Sin's targets and sight sound. A stub until T10.4.</summary>
-    public void A_BrainAwake(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BrainSpit</c>: the Icon of Sin's spawn cube. A stub until T10.4.</summary>
-    public void A_BrainSpit(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SpawnSound</c>: the spawn cube's sound. A stub until T10.4.</summary>
-    public void A_SpawnSound(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_SpawnFly</c>: the spawn cube's monster. A stub until T10.4.</summary>
-    public void A_SpawnFly(mobj_t actor)
-    {
-    }
-
-    /// <summary>p_enemy.c <c>A_BrainExplode</c>: the Icon of Sin's explosions. A stub until T10.4.</summary>
-    public void A_BrainExplode(mobj_t actor)
-    {
-    }
-
 }

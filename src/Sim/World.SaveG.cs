@@ -101,6 +101,7 @@ public sealed partial class World
             P_ArchivePlayers(d, refs);
             P_ArchiveWorld(d, refs);
             P_ArchiveSpecials(d, refs);
+            P_ArchiveBrain(d, refs);
             P_ArchiveThinkers(d, refs); // last: the table grows while the thinkers are written
             d.Write(SaveEof);
         }
@@ -224,6 +225,21 @@ public sealed partial class World
             w.Write(linespeciallist[i]!.Index);
         WriteInts(w, texturetranslation);
         WriteInts(w, flattranslation);
+    }
+
+    /// <summary>
+    /// p_enemy.c's brain targets (T10.4; vanilla's saves leave them out:
+    /// a loaded MAP30 spits at the targets of the run's last
+    /// <c>A_BrainAwake</c>): <c>braintargets</c>, <c>braintargeton</c> and
+    /// <c>A_BrainSpit</c>'s <c>easy</c>.
+    /// </summary>
+    private void P_ArchiveBrain(BinaryWriter w, SaveRefs refs)
+    {
+        w.Write(braintargets.Count);
+        foreach (mobj_t m in braintargets)
+            w.Write(refs.Of(m));
+        w.Write(braintargeton);
+        w.Write(braineasy);
     }
 
     /// <summary>p_saveg.c <c>P_ArchivePlayers</c>: every player, in the game or not.</summary>
@@ -561,6 +577,7 @@ public sealed partial class World
             P_UnArchivePlayers(r, load);
             P_UnArchiveWorld(r, load);
             P_UnArchiveSpecials(r, load);
+            P_UnArchiveBrain(r, load);
             P_UnArchiveThinkers(r, load);
             if (r.ReadInt32() != SaveEof)
                 throw new SaveGameException("bad end of the save");
@@ -832,6 +849,20 @@ public sealed partial class World
                 throw new SaveGameException($"bad block {i}");
             blocklinks[i] = refs.Thinker<mobj_t>(r);
         }
+    }
+
+    private void P_UnArchiveBrain(BinaryReader r, LoadRefs refs)
+    {
+        int count = r.ReadInt32();
+        if (count < 0 || count > refs.Count)
+            throw new SaveGameException($"bad brain target count {count}");
+        braintargets.Clear();
+        for (int i = 0; i < count; i++)
+            braintargets.Add(refs.Thinker<mobj_t>(r) ?? throw new SaveGameException("a missing brain target"));
+        braintargeton = r.ReadInt32();
+        if (braintargeton < 0 || (braintargeton > 0 && braintargeton >= count))
+            throw new SaveGameException($"bad brain target {braintargeton}");
+        braineasy = r.ReadInt32();
     }
 
     private void P_UnArchiveSpecials(BinaryReader r, LoadRefs refs)

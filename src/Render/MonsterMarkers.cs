@@ -35,13 +35,17 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// <summary>The markers' colour (sRGB).</summary>
     public static readonly Color MarkerColor = new(0.95f, 0.12f, 0.08f);
 
+    /// <summary>T10.4: a marker's colour while a shot fired now would reach its monster (the Icon of Sin's brain, <see cref="Marker.Hot"/>; sRGB).</summary>
+    public static readonly Color HotColor = new(1f, 0.9f, 0.15f);
+
     /// <summary>
     /// One marker: its monster, the monster's foot (map units: x, y, height),
     /// the atlas slot its billboard shows (−1: no marker) and whether it is
     /// mirrored, its radius (the wall pull, as its billboard's), its sector,
-    /// and its index in the actors given to <see cref="Set"/> (−1: none).
+    /// and its index in the actors given to <see cref="Set"/> (−1: none); T10.4:
+    /// whether it shows in <see cref="HotColor"/> (a shot fired now would reach it).
     /// </summary>
-    public readonly record struct Marker(mobj_t Mobj, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector, int Actor);
+    public readonly record struct Marker(mobj_t Mobj, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector, int Actor, bool Hot = false);
 
     private readonly ShaderMaterial _chevron, _beam;
     private readonly NearActors _actors = new();
@@ -100,6 +104,26 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         return mesh;
     }
 
+    /// <summary>
+    /// T10.4 (the Icon of Sin's brain): every marker shown whether its
+    /// monster is hidden or not, as a chevron <paramref name="scale"/> times
+    /// the usual size at least <paramref name="height"/> map units above the
+    /// foot, pinned inside <paramref name="pinBox"/> (NDC: x min, y min, x max,
+    /// y max) and pointing at it when that point is off screen. The chevron
+    /// style only.
+    /// </summary>
+    public void ShowAlways(float height, float scale, Vector4 pinBox)
+    {
+        _chevron.SetShaderParameter("marker_always", true);
+        _chevron.SetShaderParameter("always_height", height);
+        _chevron.SetShaderParameter("pin_box", pinBox);
+        _chevron.SetShaderParameter("marker_half_width", 11f * scale);
+        _chevron.SetShaderParameter("marker_height", 12f * scale);
+        _chevron.SetShaderParameter("marker_gap", 4f * scale);
+        _chevron.SetShaderParameter("marker_stroke", 2.5f * scale);
+        _chevron.SetShaderParameter("marker_rim", 1f * scale);
+    }
+
     /// <summary>Uses <paramref name="atlas"/>'s patches for the hidden test (the things' atlas, <see cref="ThingSprites.Bind"/>).</summary>
     public void Bind(SpriteAtlas atlas)
     {
@@ -147,7 +171,7 @@ public partial class MonsterMarkers : MultiMeshInstance3D
             _markers[i] = m;
             Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, new Vector3(m.MapPosition.X, m.MapPosition.Z, -m.MapPosition.Y) / LevelMesh.MapUnitsPerMetre));
             Multimesh.SetInstanceCustomData(i, new Color(m.Slot, m.Flip ? ThingSprites.FlagFlip : 0, m.Radius, i));
-            Multimesh.SetInstanceColor(i, MarkerColor);
+            Multimesh.SetInstanceColor(i, m.Hot ? HotColor : MarkerColor);
         }
     }
 

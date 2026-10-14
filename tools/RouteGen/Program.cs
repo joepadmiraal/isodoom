@@ -1924,6 +1924,120 @@ exit normal
             g.Tic(0, 0, 0, 0);
             g.Exit(448, 8100);
         }, (448, 8176, 270)),
+        ["map30-icon"] = new(Doom2, "MAP30", """
+# Doom II MAP30 on skill 1 with monsters (T10.4): from the start, the
+# rocket launcher and rockets, through the teleporter (line 88) into the
+# arena; up the lifts (lines 46, 47) to the switch (line 40, raise floor
+# 512: the pillar, sector 12, rises to 416). The shooter (A_BrainAwake,
+# A_BrainSpit every other time on skill 1) spits cubes (A_SpawnSound,
+# A_SpawnFly) whose monsters come out at the brain targets. Down in the
+# pit, each side of the pillar lowers it (lines 41-44, SR lift); riding
+# it up, the player fires a rocket north (BT_ATTACK) timed to leave at a
+# height that flies through the Icon's forehead (sector 9) and bursts on
+# the wall behind the brain (A_BrainPain), until it dies (A_BrainScream,
+# A_BrainExplode); A_BrainDie ends the level, the last tic. Written by
+# tools/RouteGen (map30-icon).
+iwad doom2
+map MAP30
+skill 1
+monsters
+exit normal
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            IsoDoom.Sim.mobj_t brain = g.World.Mobjs().First(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BOSSBRAIN);
+            string State() => $"health {p.health} armor {p.armorpoints} weapon {p.readyweapon} rockets {p.ammo[(int)IsoDoom.Sim.ammotype_t.am_misl]} bullets {p.ammo[(int)IsoDoom.Sim.ammotype_t.am_clip]} brain {brain.health} targets {g.World.numbraintargets}; " + g.Monsters();
+            double Dist(IsoDoom.Sim.mobj_t m) => System.Math.Sqrt(System.Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + System.Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
+            IsoDoom.Sim.mobj_t? Nearest() => g.World.Mobjs()
+                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && Dist(m) < 1400 && g.World.P_CheckSight(g.Mo, m))
+                .OrderBy(Dist).FirstOrDefault();
+            void Wield(IsoDoom.Sim.weapontype_t w)
+            {
+                if (p.readyweapon == w && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange)
+                    return;
+                g.Change(w);
+                g.WaitUntil(() => p.readyweapon == w && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange && p.psprites[0].state == (w == IsoDoom.Sim.weapontype_t.wp_chaingun ? IsoDoom.Sim.statenum_t.S_CHAIN : IsoDoom.Sim.statenum_t.S_MISSILE), 100);
+            }
+            // the spawned monsters in sight, with the chaingun
+            void Fight()
+            {
+                for (int i = 0; i < 40 && Nearest() is { } m && p.health > 0; i++)
+                {
+                    Wield(IsoDoom.Sim.weapontype_t.wp_chaingun);
+                    log($"fighting {m.type} ({m.x >> 16},{m.y >> 16}) " + State());
+                    g.FireAt(m, 200);
+                }
+            }
+            void Leg(System.Action a, bool fight = true)
+            {
+                for (int t = 0; ; t++)
+                {
+                    if (fight || t > 0)
+                        Fight();
+                    try
+                    {
+                        a();
+                        return;
+                    }
+                    catch (InvalidOperationException e) when (t < 6)
+                    {
+                        log("retrying: " + e.Message);
+                    }
+                }
+            }
+            // the chaingun and bullets, the launcher and rockets, then the teleporter
+            g.GoTo(2784, -864, 12);
+            g.GoTo(2816, -800, 12);
+            g.GoTo(2976, -864, 12);
+            g.GoTo(2880, -800, 12);
+            log("armed " + State());
+            g.Teleport(2848, -600);
+            log("teleported " + State());
+            // the lifts up to the switch
+            Leg(() => g.GoTo(1990, 210, 6));
+            g.Use(2030, 170);
+            g.WaitUntil(() => g.World.sectors[13].floorheight == 0, 300);
+            g.Walk(2060, 140, 20, 15);
+            g.WaitUntil(() => g.World.sectors[13].floorheight == 128 << 16, 400);
+            log("lift 13 up " + State());
+            Leg(() => g.GoTo(3584, 30, 8));
+            g.Use(3584, 0);
+            g.WaitUntil(() => g.World.sectors[14].floorheight == 128 << 16, 300);
+            g.Walk(3584, -40, 20, 15);
+            g.WaitUntil(() => g.World.sectors[14].floorheight == 256 << 16, 400);
+            log("lift 14 up " + State());
+            Leg(() => g.GoTo(2880, -400, 8));
+            g.Use(2880, -460);
+            log("switch " + g.Heights(12) + " " + State());
+            // down into the pit, beside the pillar's south side
+            Leg(() => g.GoTo(2880, 700, 12));
+            for (int t = 0; t < 20 && g.World.sectors[12].floorheight != 416 << 16; t++)
+            {
+                Fight();
+                g.Wait(20);
+            }
+            g.WaitUntil(() => g.World.sectors[12].floorheight == 416 << 16, 800);
+            log("pillar up " + State());
+            for (int ride = 0; ride < 12 && brain.health > 0; ride++)
+            {
+                Leg(() => g.GoTo(2880, 736, 6), fight: false);
+                Wield(IsoDoom.Sim.weapontype_t.wp_missile);
+                g.Use(2880, 800);
+                g.WaitUntil(() => g.World.sectors[12].floorheight == -128 << 16, 400);
+                g.GoTo(2880, 832, 6);
+                log($"riding {ride} " + State());
+                g.WaitUntil(() => g.Mo.z >= 328 << 16, 400);
+                g.Tic(0, 0, g.TurnTo(2880, 2000), IsoDoom.Sim.buttoncode_t.BT_ATTACK);
+                g.WaitUntil(() => g.World.sectors[12].specialdata == null, 400);
+                log($"fired {ride} " + State());
+                if (brain.health <= 0)
+                    break;
+                g.Walk(2880, 600, 12, 25);
+            }
+            log("brain dead " + State());
+            g.WaitExit(400);
+        }, Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
     };
 
     public static int Main(string[] args)
