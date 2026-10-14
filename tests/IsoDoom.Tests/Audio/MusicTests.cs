@@ -404,6 +404,29 @@ public class MusicTests
         Assert.Equal(end == text, s.mus_looping);
     }
 
+    /// <summary>T10.5: MAP30's text plays <c>mus_read_m</c>, the cast call <c>mus_evil</c> (a press starting it over keeps it on).</summary>
+    [Fact]
+    public void TheCastCallPlaysEvil()
+    {
+        (_, _, SSound s, _) = Flow(GameMode.commercial);
+        var host = new GameFlowTests.Host(GameMode.commercial);
+        var flow = new GameFlow(host, GameMode.commercial, new DoomRandom(), GameVariant.vanilla, GameMission.doom2) { Sound = s };
+        flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
+        host.World!.gamemap = 30;
+        host.World.G_ExitLevel();
+        flow.G_Ticker(None);
+        for (int i = 0; i < 40 && flow.gamestate == gamestate_t.GS_INTERMISSION; i++)
+            flow.G_Ticker(i % 2 == 0 ? None : _use);
+        Assert.Equal((gamestate_t.GS_FINALE, musicenum_t.mus_read_m), (flow.gamestate, s.mus_playing));
+        for (int i = 0; i <= 50; i++)
+            flow.G_Ticker(None);
+        flow.G_Ticker(_use);
+        Assert.Equal((FFinale.F_STAGE_CAST, musicenum_t.mus_evil, true), (flow.Finale.finalestage, s.mus_playing, s.mus_looping));
+        flow.G_Ticker(None);
+        flow.G_Ticker(_use);
+        Assert.Equal((FFinale.F_STAGE_CAST, musicenum_t.mus_evil), (flow.Finale.finalestage, s.mus_playing));
+    }
+
     [Fact]
     public void ThePauseHoldsTheSongAndANewGameOrALoadLetsItGo()
     {

@@ -2426,7 +2426,7 @@ public partial class LevelScene : Node3D, IGameHost
         // any key opens them, g_game.c G_Responder), so the cameras' keys don't act under them
         if (IsCheckRun)
             return;
-        if (MenuEvent(@event))
+        if (MenuEvent(@event) || CastEvent(@event)) // T10.5: G_Responder's F_Responder in the finale
             GetViewport().SetInputAsHandled();
         else
         {
@@ -2450,7 +2450,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public ticcmd_t BuildTiccmd(Tweaks tweaks)
     {
-        TiccmdInput input = AutomapFilter(MenuFilter(GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null))); // T7.2: none under the menus; T7.9: the automap's pan keys
+        TiccmdInput input = CastFilter(AutomapFilter(MenuFilter(GameInput.Take(Cursor is { } hit ? (hit.MapUnits.X, hit.MapUnits.Y) : null)))); // T7.2: none under the menus; T7.9: the automap's pan keys; T10.5: the cast call's keys
         if (!IsoActive && GameState == gamestate_t.GS_LEVEL)
             input = new TiccmdInput { Pause = input.Pause }; // T7.1: the pause key works under every camera
         mobj_t? mo = PlayerMobj;

@@ -1120,7 +1120,9 @@ public sealed class GameFlow
     {
         gamestate_t.GS_LEVEL => "level",
         gamestate_t.GS_INTERMISSION => $"intermission ({Wi.StateText()})",
-        gamestate_t.GS_FINALE => $"finale (stage {Finale.finalestage}, tic {Finale.finalecount})",
+        gamestate_t.GS_FINALE => Finale.finalestage == FFinale.F_STAGE_CAST
+            ? $"finale (cast call: {FFinale.castorder[Finale.castnum].name}{(Finale.castdeath ? " dying" : Finale.castattacking ? " attacking" : "")}, {Finale.caststate}, tic {Finale.finalecount})" // T10.5
+            : $"finale (stage {Finale.finalestage}, tic {Finale.finalecount})",
         _ => $"title loop: {pagename} ({pagetic} tics)",
     } + (paused ? ", paused" : "");
 

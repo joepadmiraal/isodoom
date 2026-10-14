@@ -87,6 +87,34 @@ public sealed class HudScreen
     }
 
     /// <summary>
+    /// v_video.c <c>V_DrawPatchFlipped</c> (T10.5, the cast call's): as
+    /// <see cref="V_DrawPatch"/> with the patch's columns mirrored (column
+    /// <c>w - 1 - col</c> at <c>x + col</c>; the offsets as they are).
+    /// </summary>
+    [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]
+    public void V_DrawPatchFlipped(int x, int y, IndexedImage? patch)
+    {
+        if (patch is null)
+            return;
+        x -= patch.LeftOffset;
+        y -= patch.TopOffset + Top;
+        for (int py = 0; py < patch.Height; py++)
+        {
+            int sy = y + py;
+            if (sy < 0 || sy >= Height)
+                continue;
+            for (int col = 0; col < patch.Width; col++)
+            {
+                int sx = x + col, px = patch.Width - 1 - col;
+                if (sx < 0 || sx >= Width || !patch.IsOpaque(px, py))
+                    continue;
+                Pixels[sy * Width + sx] = patch[px, py];
+                Opaque[sy * Width + sx] = 1;
+            }
+        }
+    }
+
+    /// <summary>
     /// v_video.c <c>V_CopyRect</c> from <paramref name="source"/> (the status
     /// bar's backing screen, same layout) at the same place: the rectangle
     /// <paramref name="x"/>, <paramref name="y"/> (screen rows),

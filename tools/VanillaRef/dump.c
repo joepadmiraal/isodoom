@@ -570,6 +570,15 @@ void dump_witic(void)
 // palette 0, as D_Display sets it off the level). It exits once the end
 // picture has shown $DUMP_FI_ART tics (default 35; vanilla's stays until
 // the menu ends the game) or the finale ends (Doom II's skip: a game action).
+// The cast call (T10.5): its lines go on "CASTNUM STATE TICS FRAMES DEATH
+// ONMELEE ATTACKING SOUNDS" (f_finale.c's castnum, caststate's index in
+// states, casttics, castframes, castdeath, castonmelee, castattacking; the
+// tic's S_StartSound calls as the route dump's, "-" for none); with
+// $DUMP_FI_KEYS ("N,M,...", finale tics) a key is pressed after the line of
+// each of those tics (F_Responder with an ev_keydown, as D_ProcessEvents
+// before the next tic; its sound goes in the next line), and the first line
+// is "presses $DUMP_FI_PRESSES keys $DUMP_FI_KEYS"; the cast call never
+// ends: the run ends with the demo.
 void dump_fitic(void)
 {
     static FILE *fifile;
@@ -595,8 +604,11 @@ void dump_fitic(void)
         uint32_t texthash = 2166136261u;
         for (const char *c = finaletext; *c; c++)
             texthash = (texthash ^ (byte)*c) * 16777619u;
-        fprintf(fifile, "presses %s\nfinale %d %d %s %d %08x\n", presses && *presses ? presses : "-",
-                gameepisode, gamemap, finaleflat, (int)strlen(finaletext), texthash);
+        char *keys = getenv("DUMP_FI_KEYS");
+        fprintf(fifile, "presses %s", presses && *presses ? presses : "-");
+        if (keys && *keys)
+            fprintf(fifile, " keys %s", keys);
+        fprintf(fifile, "\nfinale %d %d %s %d %08x\n", gameepisode, gamemap, finaleflat, (int)strlen(finaletext), texthash);
     }
     tic++;
     static byte fi[2][SCREENWIDTH * SCREENHEIGHT];
@@ -609,8 +621,34 @@ void dump_fitic(void)
     uint32_t hash = 2166136261u;
     for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
         hash = (hash ^ (fi[0][i] == fi[1][i] ? fi[0][i] : 256u)) * 16777619u;
-    fprintf(fifile, "%d %u %08x %d\n", finalestage, finalecount, hash, rndindex);
+    fprintf(fifile, "%d %u %08x %d", finalestage, finalecount, hash, rndindex);
+    if (finalestage == 2)
+    {
+        extern int castnum, casttics, castframes, castonmelee;
+        extern state_t *caststate;
+        extern boolean castdeath, castattacking;
+        fprintf(fifile, " %d %d %d %d %d %d %d %s", castnum, (int)(caststate - states), casttics, castframes, castdeath,
+                castonmelee, castattacking, soundslen ? sounds : "-");
+    }
+    fprintf(fifile, "\n");
     soundslen = 0;
+    char *keys = getenv("DUMP_FI_KEYS");
+    if (keys && *keys)
+    {
+        char want[16];
+        snprintf(want, sizeof want, "%d", tic);
+        int hit = 0;
+        char *copy = strdup(keys);
+        for (char *t = strtok(copy, ","); t && !hit; t = strtok(NULL, ","))
+            hit = !strcmp(t, want);
+        free(copy);
+        if (hit)
+        {
+            extern boolean F_Responder(event_t *);
+            event_t ev = { ev_keydown, ' ', ' ', 0 };
+            F_Responder(&ev);
+        }
+    }
     char *dir = getenv("DUMP_FI_DIR"), *tics = getenv("DUMP_FI_TICS");
     if (dir && tics)
     {

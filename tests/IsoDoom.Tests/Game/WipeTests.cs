@@ -34,7 +34,9 @@ public class WipeTests
     public static readonly string[] Routes = ["e1m1-exit", "e1m3-secret-exit", "e1m8-exit", "e1m8-death",
         // T10.1: Doom II's flow: MAP01 to MAP02, a text screen (MAP06 to MAP07), the secret maps in (MAP15 to MAP31 to MAP32, each through
         // its text screen) and out (MAP31 and MAP32 to MAP16)
-        "map01-exit", "map06-exit", "map15-secret-exit", "map31-secret-exit", "map31-exit", "map32-exit"];
+        "map01-exit", "map06-exit", "map15-secret-exit", "map31-secret-exit", "map31-exit", "map32-exit",
+        // T10.5: MAP30 won, its text and the cast call
+        "map30-icon"];
 
     public static TheoryData<string> Dumps()
     {
@@ -170,7 +172,11 @@ public class WipeTests
         if (route.Map == "E1M8" && route.Exit != 0)
             Assert.True(fullWipes == 1 && fullSteps > 30, $"{name}: the finale's text to its end picture compared ({fullWipes} wipes, {fullSteps} frames)");
         if (IntermissionTests.TextScreenAfter(route))
-            Assert.True(fullWipes == 1 && fullSteps > 10, $"{name}: the intermission to the text screen compared ({fullWipes} wipes, {fullSteps} frames)");
+        {
+            // T10.5: MAP30's text, then the cast call (F_StartCast's forced wipe)
+            int full = route.Map == "MAP30" ? 2 : 1;
+            Assert.True(fullWipes == full && fullSteps > 10 * full, $"{name}: the intermission to the text screen{(full == 2 ? " and the text to the cast call" : "")} compared ({fullWipes} wipes, {fullSteps} frames)");
+        }
     }
 
     /// <summary>The game's lines against the dump's from <paramref name="line"/> (a melt line's hash only where the game has one).</summary>

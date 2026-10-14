@@ -108,7 +108,7 @@ public partial class LevelCheck
     /// the intermission) with f_finale.c's text and flat for the WAD's mission,
     /// or null when the game did not get there.
     /// </summary>
-    private FFinale? StartFinale()
+    private FFinale? StartFinale(int? map = null)
     {
         GameFlow flow = _scene.Flow;
         bool commercial = flow.gamemode == GameMode.commercial;
@@ -123,7 +123,7 @@ public partial class LevelCheck
             }
             world = w;
         }
-        world.gamemap = commercial ? 6 : 8;
+        world.gamemap = map ?? (commercial ? 6 : 8);
         world.G_ExitLevel();
         _scene.Tic(new ticcmd_t());
         if (commercial)
@@ -150,9 +150,11 @@ public partial class LevelCheck
     private void CheckFinale()
     {
         GameFlow flow = _scene.Flow;
+        bool commercial = flow.gamemode == GameMode.commercial;
+        if (commercial)
+            CheckCast();
         if (StartFinale() is not { } fi)
             return;
-        bool commercial = flow.gamemode == GameMode.commercial;
         FFinale.textscreen_t vanilla = FFinale.textscreens.FirstOrDefault(t => t.mission == flow.gamemission && t.episode == 1 && t.level == (commercial ? 6 : 8));
         if (vanilla.text is null || fi.finaletext != vanilla.text || fi.finaleflat != vanilla.background)
         {
@@ -195,6 +197,90 @@ public partial class LevelCheck
             Fail($"the finale: the end picture {page} is not drawn as its patch");
         else
             GD.Print($"Level check: finale (T7.5): E1M8's text on {fi.finaleflat} ({fi.finaletext.Length} characters) for {textTics} tics, then {page}, which stays");
+    }
+
+    /// <summary>
+    /// T10.5 (Doom II, headless): MAP30 left, its text (C4TEXT on RROCK17)
+    /// skipped after 50 tics into the cast call (<c>mus_evil</c>); a key
+    /// through the scene's input glue kills the zombieman (its death sound),
+    /// the shotgun guy walks in; every member's walking frame drawn over
+    /// <c>BOSSBACK</c> at 160, 170 as its sprite's patch (mirrored where its
+    /// lump is the second of a pair); any button starts the cast over; then
+    /// the title loop.
+    /// </summary>
+    private void CheckCast()
+    {
+        GameFlow flow = _scene.Flow;
+        if (StartFinale(30) is not { } fi)
+            return;
+        if (fi.finaleflat != "RROCK17" || fi.finaletext != FFinale.C4TEXT)
+        {
+            Fail($"the cast call: MAP30's text on {fi.finaleflat}, not C4TEXT on RROCK17");
+            return;
+        }
+        while (fi.finalecount <= 50)
+            _scene.Tic(new ticcmd_t());
+        _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_USE });
+        if (fi.finalestage != FFinale.F_STAGE_CAST || fi.castnum != 0 || fi.caststate != statenum_t.S_POSS_RUN1)
+        {
+            Fail($"the cast call: MAP30's text not skipped into it: {flow.StateText()}");
+            return;
+        }
+        if (_scene.Sound is { } sound && sound.mus_playing != musicenum_t.mus_evil)
+            Fail($"the cast call: the song is {sound.mus_playing}, not mus_evil");
+        var key = new InputEventKey { Keycode = Key.Space, PhysicalKeycode = Key.Space, Pressed = true };
+        if (!_scene.CastEvent(key) || !fi.castdeath || fi.caststate != statenum_t.S_POSS_DIE1)
+            Fail($"the cast call: a key through the input glue did not kill the zombieman: {flow.StateText()}");
+        _scene.Tic(new ticcmd_t());
+        if (!fi.sounds.Contains(sfxenum_t.sfx_podth1))
+            Fail($"the cast call: no death sound ({string.Join(',', fi.sounds)})");
+        for (int t = 0; t < 100 && fi.castnum == 0; t++)
+            _scene.Tic(new ticcmd_t());
+        if (fi.castnum != 1 || fi.castdeath || !fi.sounds.Contains(sfxenum_t.sfx_posit2))
+            Fail($"the cast call: the shotgun guy did not walk in after the zombieman's death: {flow.StateText()}");
+
+        // every member's walking frame, drawn as its sprite's patch
+        var graphics = new ScreenGraphics(_scene.Wad, _scene.MessageLine);
+        var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        (int castnum, statenum_t caststate) = (fi.castnum, fi.caststate);
+        int drawn = 0;
+        for (int i = 0; i < FFinale.castorder.Length; i++)
+        {
+            fi.castnum = i;
+            fi.caststate = Info.mobjinfo[(int)FFinale.castorder[i].type].seestate;
+            state_t st = Info.states[(int)fi.caststate];
+            (IndexedImage? patch, bool flip) = graphics.SpriteFrame((int)st.sprite, st.frame & Info.FF_FRAMEMASK);
+            if (patch is null)
+            {
+                Fail($"the cast call: no sprite for {FFinale.castorder[i].name} ({st.sprite})");
+                continue;
+            }
+            fi.F_Drawer(graphics, screen);
+            for (int y = 0; y < patch.Height; y++)
+            {
+                for (int x = 0; x < patch.Width; x++)
+                {
+                    int px = flip ? patch.Width - 1 - x : x, sx = 160 - patch.LeftOffset + x, sy = 170 - patch.TopOffset + y;
+                    if (!patch.IsOpaque(px, y) || sx < 0 || sy < 0 || sx >= screen.Width || sy >= screen.Height)
+                        continue;
+                    int k = sy * screen.Width + sx;
+                    if (screen.Opaque[k] == 0 || screen.Pixels[k] != patch[px, y])
+                    {
+                        Fail($"the cast call: {FFinale.castorder[i].name}'s frame is not drawn at {sx}, {sy}");
+                        y = patch.Height;
+                        break;
+                    }
+                }
+            }
+            drawn++;
+        }
+        (fi.castnum, fi.caststate) = (castnum, caststate);
+        _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
+        if (fi.castnum != 0 || fi.finalestage != FFinale.F_STAGE_CAST)
+            Fail($"the cast call: a button did not start it over: {flow.StateText()}");
+        else
+            GD.Print($"Level check: cast call (T10.5): MAP30's text skipped into it, mus_evil, a key killed the zombieman, the shotgun guy walked in, {drawn} members drawn, a button started it over");
+        flow.D_StartTitle(null);
     }
 
     /// <summary>Whether every opaque pixel of <paramref name="patch"/> at 0, 0 (less its offsets) is on <paramref name="screen"/>.</summary>
@@ -259,8 +345,9 @@ public partial class LevelCheck
                 _scene.UpdateScreens();
                 if (_scene.Screens.Visible)
                     Fail("the screens node still shows over the unpaused level");
-                // T7.5: the finale's text half typed (Doom II's after its intermission), then (before Doom II) its end picture
-                if (StartFinale() is not { } fi)
+                // T7.5: the finale's text half typed (Doom II's after its intermission), then (before Doom II) its end picture;
+                // T10.5: Doom II's is MAP30's, then the cast call
+                if (StartFinale(flow.gamemode == GameMode.commercial ? 30 : null) is not { } fi)
                     continue;
                 while (fi.finalecount < 400)
                     _scene.Tic(new ticcmd_t());
@@ -273,6 +360,12 @@ public partial class LevelCheck
                     _scene.Tic(new ticcmd_t());
                     if (fi.ArtScreen() is not { } page || _scene.Wad?.W_CheckNumForName(page) < 0)
                         continue; // (the synthetic IWAD has no end picture: nothing drawn)
+                }
+                else
+                {
+                    _scene.Tic(new ticcmd_t { buttons = buttoncode_t.BT_USE }); // the cast call
+                    for (int t = 0; t < 70; t++)
+                        _scene.Tic(new ticcmd_t());
                 }
                 what = $"the finale ({flow.StateText()})";
             }
@@ -299,7 +392,7 @@ public partial class LevelCheck
             await CompareScreen(what, title);
         }
         _scene.Overlay.Visible = overlay;
-        GD.Print($"Level check: screens (T7.1, T7.4, T7.5): the title page, the intermission (counting, the next location), the finale (text, end picture) and the pause graphic at scale {_scene.Screens.Layout.ScaleX}, {_screenPixels} pixels compared");
+        GD.Print($"Level check: screens (T7.1, T7.4, T7.5): the title page, the intermission (counting, the next location), the finale (text, end picture; Doom II: the cast call) and the pause graphic at scale {_scene.Screens.Layout.ScaleX}, {_screenPixels} pixels compared");
     }
 
     private int _screenPixels;

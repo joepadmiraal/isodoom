@@ -30,6 +30,7 @@
     <Compile Include="../../src/Game/FFinale.cs" Link="Game/FFinale.cs" />
     <Compile Include="../../src/Game/FWipe.cs" Link="Game/FWipe.cs" />
     <Compile Include="../../src/Game/FFinale.Texts.cs" Link="Game/FFinale.Texts.cs" />
+    <Compile Include="../../src/Game/FFinale.Cast.cs" Link="Game/FFinale.Cast.cs" />
     <Compile Include="../../src/Game/ScreenGraphics.cs" Link="Game/ScreenGraphics.cs" />
     <Compile Include="../../src/Game/MCheat.cs" Link="Game/MCheat.cs" />
     <Compile Include="../../src/Game/AmMap.cs" Link="Game/AmMap.cs" />

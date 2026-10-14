@@ -20,6 +20,13 @@ route (ROUTE@20,40,60). WAD-derived: never commit them. With --images, the
 screens of finale tics TICS ("N,M,..." or "all") go to DIR/fiN.ppm
 (dump.c's $DUMP_FI_DIR/$DUMP_FI_TICS). FinaleTests compares the game's
 finale with the dumps tic by tic.
+
+T10.5: MAP30's exit (a Doom II route) leads to the cast call: its schedules
+are "PRESSES;KEYS;LENGTH" (CAST: NAME.fi, CAST_READ: NAME.firead): BT_USE at
+the finale tics PRESSES (the first after tic 51 starts the cast call, a later
+one starts it over), a key pressed after each finale tic of KEYS (dump.c's
+$DUMP_FI_KEYS: F_Responder, which kills the member shown), LENGTH finale tics
+in all; the dump's first line then reads "presses PRESSES keys KEYS".
 """
 import os, subprocess, sys, tempfile
 
@@ -31,6 +38,32 @@ DEFAULT = '1,51,52,300,1000,1580'  # E1's text (440 characters) is typed out by 
 LONGEST = 4 * 1000 * 3  # finale tics enough for any text (under 1000 characters) and the end picture
 READ = '2000'  # T10.1: Doom II's longest text (C2TEXT, 617 characters) is typed out by finale tic 1852
 INTERMISSION = ([20, 40], 50)  # T10.1: Doom II's intermission before its text: the stats, then its end at tic 50
+
+
+def cast_keys(start, count):
+    """T10.5: the keys of the cast schedule: COUNT kills from finale tic START, 210-240 tics apart (a death lasts
+    at most about 110 tics: the next member walks and attacks before its key), each fourth one followed by
+    another 3 tics later, which the dying member eats."""
+    keys, t = [], start
+    for k in range(count):
+        t += 210 + 15 * (k % 3)
+        keys.append(t)
+        if k % 4 == 1:
+            keys.append(t + 3)
+    return keys
+
+
+# T10.5: MAP30's text to the cast call: skipped at finale tic 52, every member killed in turn past the hero
+# back to the zombieman, then a press (a mouse click's or a pad's button: any ticcmd button) starts the cast
+# over; and read to the end (2000), two kills, a press. "PRESSES;KEYS;LENGTH" (finale tics).
+_KEYS = cast_keys(52, 18)
+CAST = f'52,{_KEYS[-1] + 120};{",".join(map(str, _KEYS))};{_KEYS[-1] + 300}'
+CAST_READ = '2000,2330;2100,2103,2250;2450'
+
+
+def cast(head):
+    """T10.5: whether a Doom II route's exit leads to the cast call (MAP30's text)."""
+    return (head['map'] or 'MAP01').upper() == 'MAP30' and head['exit'] == 'normal'
 
 
 def text_screen(head):
@@ -54,24 +87,28 @@ def main():
         route, _, presses = spec.partition('@')
         head, cmds = routes.parse(route)
         doom2 = head['iwad'] == 'doom2'
-        if doom2 and (head['exit'] is None or not text_screen(head)):
-            sys.exit(f'{route}: only Doom II routes whose exit leads to a text screen')
+        if doom2 and (head['exit'] is None or not text_screen(head) and not cast(head)):
+            sys.exit(f'{route}: only Doom II routes whose exit leads to a text screen or the cast call')
         if not doom2 and (head['iwad'] != 'doom1' or head['exit'] is None or not (head['map'] or 'E1M1').upper().endswith('M8')):
             sys.exit(f'{route}: only DOOM1.WAD routes with an exit header on an episode\'s last map')
-        schedules = [p for p in presses.split('@') if p] if presses else [DEFAULT, READ] if doom2 else [DEFAULT]
+        schedules = [p for p in presses.split('@') if p] if presses else [CAST, CAST_READ] if doom2 and cast(head) \
+            else [DEFAULT, READ] if doom2 else [DEFAULT]
         wi = [(0, 0, 0, 2 if t in INTERMISSION[0] else 0) for t in range(1, INTERMISSION[1] + 1)] if doom2 else []
         name = os.path.splitext(os.path.basename(route))[0]
         for n, schedule in enumerate(schedules):
-            tics = [int(t) for t in schedule.split(',')]
+            parts = schedule.split(';')  # T10.5: "PRESSES[;KEYS[;LENGTH]]"
+            tics = [int(t) for t in parts[0].split(',')]
+            keys = parts[1] if len(parts) > 1 else ''
+            length = int(parts[2]) if len(parts) > 2 else max(max(tics), LONGEST)
             if any(t < 1 for t in tics):
                 sys.exit(f'{spec}: finale tics start at 1')
-            fin = [(0, 0, 0, 2 if t in tics else 0) for t in range(1, max(max(tics), LONGEST) + 1)]
+            fin = [(0, 0, 0, 2 if t in tics else 0) for t in range(1, length + 1)]
             suffix = str(n) if presses else '' if n == 0 else 'read'
             out = os.path.join(outdir, f'{name}.fi{suffix}')
             tmp = tempfile.mkdtemp()
             try:
                 open(os.path.join(tmp, 'route.lmp'), 'wb').write(routes.demo(head, cmds + wi + fin))
-                env = dict(os.environ, DUMP_TICS=os.path.join(tmp, 'route.vanilla'), DUMP_FI=out, DUMP_FI_PRESSES=schedule)
+                env = dict(os.environ, DUMP_TICS=os.path.join(tmp, 'route.vanilla'), DUMP_FI=out, DUMP_FI_PRESSES=parts[0], DUMP_FI_KEYS=keys)
                 for k in ('VIEWS', 'DUMP_START', 'DUMP_EVENTS', 'DUMP_FI_DIR', 'DUMP_FI_TICS', 'DUMP_WI'):
                     env.pop(k, None)
                 if head['start']:
@@ -89,7 +126,11 @@ def main():
                         os.remove(os.path.join(root, f))
                     os.rmdir(root)
             lines = open(out).read().splitlines() if os.path.exists(out) else []
-            if doom2:  # skipped by the first press after finale tic 51 (finalecount > 50), on that tic
+            if doom2 and cast(head):  # T10.5: the cast call goes on until the demo's end
+                ended = len(lines) - 2 == length and lines[-1].split()[0] == '2'
+                with open(out, 'w') as f:
+                    f.write(f'intermission {",".join(map(str, INTERMISSION[0]))} {INTERMISSION[1]}\n' + ''.join(l + '\n' for l in lines))
+            elif doom2:  # skipped by the first press after finale tic 51 (finalecount > 50), on that tic
                 skip = min([t for t in tics if t > 51], default=0)
                 ended = len(lines) - 2 == skip and lines[-1].split()[0] == '0'
                 with open(out, 'w') as f:
@@ -99,7 +140,7 @@ def main():
             if r.returncode != 0 or not ended:
                 sys.exit(f'{spec}: vanilla exited with {r.returncode} after {max(len(lines) - 2, 0)} finale tics '
                          f'(the end picture must show, or Doom II\'s text be skipped)\n{r.stderr.strip()}')
-            print(f'{route} @{schedule}: {len(lines) - 2} finale tics -> {out}')
+            print(f'{route} @{schedule[:60]}: {len(lines) - 2} finale tics -> {out}')
 
 
 if __name__ == '__main__':

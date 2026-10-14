@@ -168,7 +168,8 @@ namespace IsoDoom.Game;
 /// queues tics pressing and releasing use, one at a time, until the
 /// intermission or the finale is over (the level or the title loop shows),
 /// and fails after TICS tics (default 3000); on the finale it stops at the
-/// end picture, which stays until the menus start or end a game (T7.2). E.g. after an exit:
+/// end picture, which stays until the menus start or end a game (T7.2), or
+/// at Doom II's cast call (T10.5: a press would start it over). E.g. after an exit:
 /// <c>route tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route; gamestate intermission; skip; map E1M2 1</c>.
 /// While a screen wipe melts (T7.1a) no tic runs and queued tics wait;
 /// <c>wipe STEP [N]</c> holds the melt under way (or the next; with N, the
@@ -842,17 +843,17 @@ public partial class LevelScript : Node
     /// T7.1: <c>skip [TICS]</c>: waits for the queued tics, then queues one
     /// tic at a time, use pressed and released in turn (as a player skipping
     /// the screens), until the game state is the level or the title loop, or
-    /// the finale shows its end picture (which stays, as vanilla's, T7.2);
-    /// fails after TICS tics (default 3000). Returns the tics it ran, or −1.
+    /// the finale shows its end picture (which stays, as vanilla's, T7.2) or
+    /// the cast call (T10.5); fails after TICS tics (default 3000). Returns the tics it ran, or −1.
     /// </summary>
     private async Task<int> Skip(int max)
     {
         await Drain();
         _scene.ScriptedTics = true;
         int tics = 0;
-        // T7.2: the finale's end picture stays until the menu starts or ends a game, so skip stops there
+        // T7.2: the finale's end picture stays until the menu starts or ends a game, so skip stops there; T10.5: so does Doom II's cast call
         while (_scene.GameState is gamestate_t.GS_INTERMISSION
-            || _scene.GameState == gamestate_t.GS_FINALE && !(_scene.Flow.Finale.finalestage == 1 && _scene.Flow.gamemode != IsoDoom.Wad.GameMode.commercial))
+            || _scene.GameState == gamestate_t.GS_FINALE && _scene.Flow.Finale.finalestage == FFinale.F_STAGE_TEXT)
         {
             if (tics >= max)
                 return -1;

@@ -20,6 +20,9 @@ public sealed class ScreenGraphics
     private readonly IndexedImage?[] _font;
     private readonly Dictionary<string, IndexedImage?> _patches = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IndexedImage?> _flats = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, IndexedImage?> _spritePatches = [];
+    private Sprites? _sprites;
+    private bool _spritesRead;
 
     public ScreenGraphics(WadArchive? wad, HuStuff? hu)
     {
@@ -65,6 +68,45 @@ public sealed class ScreenGraphics
         }
         _flats[name] = image;
         return image;
+    }
+
+    /// <summary>
+    /// T10.5: f_finale.c <c>F_CastDrawer</c>'s sprite: the first rotation
+    /// (<c>lump[0]</c>, <c>flip[0]</c>) of frame <paramref name="frame"/> of
+    /// sprite <paramref name="sprite"/> (info.c's <c>spritenum_t</c>, r_things.c
+    /// <c>sprites[]</c>), or null when the WAD lacks it.
+    /// </summary>
+    public (IndexedImage? Patch, bool Flip) SpriteFrame(int sprite, int frame)
+    {
+        if (!_spritesRead)
+        {
+            _spritesRead = true;
+            try
+            {
+                _sprites = _wad is null ? null : Sprites.R_InitSprites(_wad);
+            }
+            catch (WadFormatException)
+            {
+            }
+        }
+        if (_sprites is null || sprite < 0 || sprite >= _sprites.NumSprites || frame >= _sprites.SpriteDefs[sprite].NumFrames)
+            return (null, false);
+        Wad.Graphics.SpriteFrame f = _sprites.SpriteDefs[sprite].Frames[frame];
+        int lump = f.Lump[0];
+        if (lump < 0)
+            return (null, false);
+        if (!_spritePatches.TryGetValue(lump, out IndexedImage? image))
+        {
+            try
+            {
+                image = Wad.Graphics.Patch.Decode(_wad!.W_CacheLumpNum(lump).Span, _wad.Lumps[lump].Name);
+            }
+            catch (WadFormatException)
+            {
+            }
+            _spritePatches[lump] = image;
+        }
+        return (image, f.Flip[0]);
     }
 
     /// <summary>d_main.c <c>D_PageDrawer</c>: patch <paramref name="name"/> at 0, 0 (a full-screen picture).</summary>

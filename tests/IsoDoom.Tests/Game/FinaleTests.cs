@@ -32,12 +32,12 @@ public class FinaleTests
 
     /// <summary>
     /// The DOOM1.WAD routes that end the episode (exit on ExM8), and (T10.1)
-    /// the Doom II ones whose exit leads to a text screen; not yet MAP30's
-    /// (T10.4's <c>map30-icon</c>): its text leads to the cast call (T10.5).
+    /// the Doom II ones whose exit leads to a text screen (T10.5: MAP30's,
+    /// T10.4's <c>map30-icon</c>, to its text and the cast call).
     /// </summary>
     private static List<VanillaRoute> EndRoutes() =>
         [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)
-            || IntermissionTests.TextScreenAfter(r) && r.Map != "MAP30")];
+            || IntermissionTests.TextScreenAfter(r))];
 
     /// <summary>The routes and their dumps' suffixes: <c>fi</c>, and for Doom II <c>firead</c> (its text typed out before the skip).</summary>
     public static TheoryData<string, string> Routes()
@@ -56,10 +56,10 @@ public class FinaleTests
     public void Episode1sEndHasAFinaleToCompare() =>
         Assert.Contains(EndRoutes(), r => r.Map == "E1M8" && r.Exit == 1);
 
-    /// <summary>T10.1: every Doom II text screen between maps has a route to compare (MAP30's is the cast call's, T10.5).</summary>
+    /// <summary>T10.1: every Doom II text screen has a route to compare (T10.5: MAP30's, then the cast call).</summary>
     [Fact]
     public void DoomIIsTextScreensHaveRoutesToCompare() =>
-        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP31:2"],
+        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:2"],
             EndRoutes().Where(r => r.Iwad == "doom2").Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
 
     [Theory]
@@ -89,7 +89,10 @@ public class FinaleTests
         }
         Assert.StartsWith("presses ", expected[0]);
         Assert.StartsWith("finale ", expected[1]);
-        HashSet<int> presses = [.. expected[0]["presses ".Length..].Split(',').Select(int.Parse)];
+        // T10.5: "presses P keys K": a key pressed after each finale tic of K (F_Responder, between the tics)
+        string[] schedule = expected[0].Split(' ');
+        HashSet<int> presses = [.. schedule[1].Split(',').Select(int.Parse)];
+        HashSet<int> keys = schedule.Length > 3 && schedule[2] == "keys" ? [.. schedule[3].Split(',').Select(int.Parse)] : [];
 
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
@@ -108,14 +111,32 @@ public class FinaleTests
 
         var g = new ScreenGraphics(wad, new HuStuff(wad));
         var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        HashSet<int> casts = [];
         for (int t = 1; t < expected.Length - 1; t++)
         {
             Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
             flow.G_Ticker(new ticcmd_t { buttons = presses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
             fi.F_Drawer(g, screen);
             string actual = $"{fi.finalestage} {fi.finalecount} {screen.Hash():x8} {mrandom.rndindex}";
+            if (fi.finalestage == FFinale.F_STAGE_CAST)
+            {
+                // T10.5: the cast call's state and sounds
+                string sounds = fi.sounds.Count == 0 ? "-" : string.Join(',', fi.sounds.Select(x => x.ToString()["sfx_".Length..] + "@-"));
+                actual += $" {fi.castnum} {(int)fi.caststate} {fi.casttics} {fi.castframes} {(fi.castdeath ? 1 : 0)} {fi.castonmelee} {(fi.castattacking ? 1 : 0)} {sounds}";
+                casts.Add(fi.castnum);
+            }
             if (actual != expected[t + 1])
-                Assert.Fail($"{name}.fi: finale tic {t} differs from vanilla\n  vanilla: {expected[t + 1]}\n  game:    {actual}");
+                Assert.Fail($"{name}.{suffix}: finale tic {t} differs from vanilla\n  vanilla: {expected[t + 1]}\n  game:    {actual}");
+            if (keys.Contains(t))
+                fi.F_Responder(true);
+        }
+        if (route.Map == "MAP30")
+        {
+            // T10.5: the cast call goes on (vanilla's: until the menu ends the game); "fi" kills every member past the hero
+            Assert.Equal((gamestate_t.GS_FINALE, FFinale.F_STAGE_CAST), (flow.gamestate, fi.finalestage));
+            if (suffix == "fi")
+                Assert.Equal(FFinale.castorder.Length, casts.Count);
+            return;
         }
         if (route.GameMode == GameMode.commercial)
         {
@@ -298,5 +319,116 @@ public class FinaleTests
         flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate); // MAP07: not in the synthetic IWAD
         Assert.Contains("MAP07", host.Ended);
+    }
+
+    // ---- the cast call (T10.5) ----
+
+    /// <summary>MAP30's text skipped after 50 tics: the cast call, its first member walking.</summary>
+    private static (GameFlow Flow, FFinale Fi) AtCast()
+    {
+        (GameFlow flow, _) = AtFinale(GameMode.commercial, GameMission.doom2, 1, 30);
+        Assert.Equal((gamestate_t.GS_FINALE, "RROCK17"), (flow.gamestate, flow.Finale.finaleflat));
+        while (flow.Finale.finalecount <= 50)
+            flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_USE });
+        return (flow, flow.Finale);
+    }
+
+
+    [Fact]
+    public void TheCastCallFollowsMap30sText()
+    {
+        (GameFlow flow, FFinale fi) = AtCast();
+        Assert.Equal((gamestate_t.GS_FINALE, FFinale.F_STAGE_CAST, 0), (flow.gamestate, fi.finalestage, fi.castnum));
+        // F_StartCast, then the same tic's F_CastTicker: the zombieman's see state, a tic gone
+        Assert.Equal((statenum_t.S_POSS_RUN1, 3, 0, false, false), (fi.caststate, fi.casttics, fi.castframes, fi.castdeath, fi.castattacking));
+        Assert.Equal(17, FFinale.castorder.Length);
+        Assert.Equal(("ZOMBIEMAN", mobjtype_t.MT_POSSESSED), (FFinale.castorder[0].name, FFinale.castorder[0].type));
+        Assert.Equal(("OUR HERO", mobjtype_t.MT_PLAYER), (FFinale.castorder[16].name, FFinale.castorder[16].type));
+    }
+
+    [Fact]
+    public void AMemberWalksTwelveFramesThenAttacksWithItsSounds()
+    {
+        (GameFlow flow, FFinale fi) = AtCast();
+        var log = new List<string>();
+        for (int t = 0; t < 200; t++)
+        {
+            flow.G_Ticker(default);
+            if (fi.sounds.Count > 0)
+                log.Add($"{fi.caststate}:{string.Join('+', fi.sounds)}");
+            if (t == 40)
+                Assert.False(fi.castattacking);
+        }
+        // the 12th frame (4 tics each) goes into the missile state, whose second frame shoots
+        Assert.Contains("S_POSS_ATK2:sfx_pistol", log);
+        Assert.Equal(0, fi.castnum); // no key: the zombieman goes on
+        Assert.Equal(0, flow.MRandom.rndindex); // no M_Random
+    }
+
+    [Fact]
+    public void AKeyKillsTheMemberAndTheNextWalksIn()
+    {
+        (GameFlow flow, FFinale fi) = AtCast();
+        flow.G_Ticker(default);
+        Assert.True(fi.F_Responder(true));
+        Assert.Equal((true, statenum_t.S_POSS_DIE1, 0, false), (fi.castdeath, fi.caststate, fi.castframes, fi.castattacking));
+        Assert.False(fi.F_Responder(false)); // a key's release: not the cast's
+        Assert.True(fi.F_Responder(true)); // dying: eaten, nothing more
+        Assert.Equal(statenum_t.S_POSS_DIE1, fi.caststate);
+        flow.G_Ticker(default);
+        Assert.Equal([sfxenum_t.sfx_podth1], fi.sounds); // the death sound, between the tics, with the next tic's
+        for (int t = 0; t < 200 && fi.castnum == 0; t++)
+            flow.G_Ticker(default);
+        Assert.Equal((1, false, statenum_t.S_SPOS_RUN1), (fi.castnum, fi.castdeath, fi.caststate));
+        Assert.Equal([sfxenum_t.sfx_posit2], fi.sounds); // the shotgun guy's see sound
+    }
+
+    [Fact]
+    public void TheCastWrapsAfterTheHeroAndAPressStartsItOver()
+    {
+        (GameFlow flow, FFinale fi) = AtCast();
+        var seen = new List<int>();
+        bool heroShot = false;
+        for (int t = 0; t < 20000 && seen.Count < 18; t++)
+        {
+            flow.G_Ticker(default);
+            heroShot |= fi.castnum == 16 && fi.caststate == statenum_t.S_PLAY_ATK1;
+            if (seen.Count == 0 || seen[^1] != fi.castnum)
+                seen.Add(fi.castnum);
+            if (fi.castnum == 16 ? heroShot && fi.caststate == statenum_t.S_PLAY_RUN1 : fi.castframes == 13)
+                fi.F_Responder(true);
+        }
+        Assert.Equal([.. Enumerable.Range(0, 17), 0], seen);
+        Assert.True(heroShot); // the hero's attack (S_PLAY_ATK1, its "gross hack": no sound, as vanilla's), back to walking
+        for (int t = 0; t < 30; t++)
+            flow.G_Ticker(default);
+        fi.F_Responder(true);
+        flow.G_Ticker(default);
+        Assert.True(fi.castdeath);
+        // any button (a mouse click, a pad's: the responder lets them through) starts the cast over
+        flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
+        Assert.Equal((0, false, statenum_t.S_POSS_RUN1, FFinale.F_STAGE_CAST), (fi.castnum, fi.castdeath, fi.caststate, fi.finalestage));
+    }
+
+    [Fact]
+    public void TheResponderTakesNothingBeforeTheCast()
+    {
+        (GameFlow flow, _) = AtFinale(GameMode.commercial, GameMission.doom2, 1, 30);
+        Assert.False(flow.Finale.F_Responder(true));
+        Assert.Equal(FFinale.F_STAGE_TEXT, flow.Finale.finalestage);
+    }
+
+    /// <summary>v_video.c <c>V_DrawPatchFlipped</c>: the columns mirrored, the offsets as they are.</summary>
+    [Fact]
+    public void AFlippedPatchIsMirrored()
+    {
+        var patch = new IndexedImage(3, 1, 1, 0, [1, 2, 3], [1, 1, 0]);
+        var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        screen.V_DrawPatchFlipped(10, 5, patch);
+        Assert.Equal((0, 2, 1), (screen.Opaque[5 * 320 + 9], screen.Pixels[5 * 320 + 10], screen.Pixels[5 * 320 + 11]));
+        screen.Clear();
+        screen.V_DrawPatch(10, 5, patch);
+        Assert.Equal((1, 2, 0), (screen.Pixels[5 * 320 + 9], screen.Pixels[5 * 320 + 10], screen.Opaque[5 * 320 + 11]));
     }
 }

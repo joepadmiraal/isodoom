@@ -12,7 +12,8 @@ the end) and then the next level, TAIL tics in all; for one that ends an
 episode (ExM8), the finale up to its end picture; for a Doom II exit
 (T10.1), BT_USE at intermission tics 20 and 40 (the stats, the end at 50)
 and, for an exit to a text screen (finales.py's), at its finale tic 52 (the
-first that skips it), then the next level; for any other none.
+first that skips it), then the next level (T10.5: MAP30's, the cast call
+for 148 tics); for any other none.
 Writes dump.c's $DUMP_WIPE dump to OUTDIR/NAME.wipe, its first line
 "tail PRESSES LENGTH" (the tail's ticcmds: BT_USE at the 1-based tail tics
 PRESSES, "-" for none, LENGTH tics), and (T7.8c) its $DUMP_MUSIC dump, every
@@ -36,13 +37,14 @@ FINALE = ([], 1650)  # E1's text gives way to the end picture at finale tic 1571
 
 DOOM2 = ([20, 40], 200)  # T10.1: Doom II's intermission has no next location: it ends at its tic 50
 DOOM2_TEXT = ([20, 40, 50 + 52], 50 + 52 + 150)  # T10.1: then the text screen, skipped at its tic 52, and the next level
+DOOM2_CAST = ([20, 40, 50 + 52], 50 + 52 + 200)  # T10.5: MAP30's text skipped at its tic 52 into the cast call (its wipe), which goes on
 
 
 def tail(head):
     if head['exit'] is None:
         return [], 0
     if head['iwad'] == 'doom2':
-        return DOOM2_TEXT if finales.text_screen(head) else DOOM2
+        return DOOM2_CAST if finales.cast(head) else DOOM2_TEXT if finales.text_screen(head) else DOOM2
     if (head['map'] or 'E1M1').upper().endswith('M8'):
         return FINALE
     return INTERMISSION

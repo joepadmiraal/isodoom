@@ -13,10 +13,10 @@ namespace IsoDoom.Game;
 /// picture (<see cref="F_Drawer"/>: E1 <c>HELP2</c>, the retail game's
 /// <c>CREDIT</c>; E2 <c>VICTORY2</c>; E4 <c>ENDPIC</c>), which stays, as
 /// vanilla's, until the menu (T7.2) starts another game or ends this one.
-/// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) and Doom II's cast
-/// call (M10, the title loop until then) are later tasks'; the music
-/// (<c>mus_victor</c>, <c>mus_read_m</c>, E3's <c>mus_bunny</c>) changes as
-/// vanilla's (T7.8c; the cast call's <c>mus_evil</c> is M10's). The
+/// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) is a later task's;
+/// Doom II's cast call after MAP30 is <c>FFinale.Cast.cs</c> (T10.5); the music
+/// (<c>mus_victor</c>, <c>mus_read_m</c>, E3's <c>mus_bunny</c>, the cast
+/// call's <c>mus_evil</c>) changes as vanilla's (T7.8c). The
 /// end picture forces a wipe (T7.1a). No Godot types: the tests link it.
 /// </summary>
 public sealed partial class FFinale
@@ -31,7 +31,7 @@ public sealed partial class FFinale
     /// <summary>f_finale.c <c>TEXTWAIT</c>: tics the whole text stays.</summary>
     public const int TEXTWAIT = 250;
 
-    /// <summary>f_finale.c <c>finalestage_t</c>: the text, the end picture (<c>F_STAGE_ARTSCREEN</c>), the cast call (M10's).</summary>
+    /// <summary>f_finale.c <c>finalestage_t</c>: the text, the end picture (<c>F_STAGE_ARTSCREEN</c>), the cast call (T10.5).</summary>
     public const int F_STAGE_TEXT = 0, F_STAGE_ARTSCREEN = 1, F_STAGE_CAST = 2;
 
     /// <summary>f_finale.c <c>finalestage</c> (<see cref="F_STAGE_TEXT"/>, …).</summary>
@@ -84,12 +84,17 @@ public sealed partial class FFinale
 
     /// <summary>
     /// f_finale.c <c>F_Ticker</c>: Doom II's text is skipped by any button
-    /// after 50 tics (the next level, or after MAP30 the cast call, M10:
-    /// the end here); otherwise the text shows its time, then the end picture.
+    /// after 50 tics (the next level, or after MAP30 the cast call, T10.5,
+    /// which any button starts over, as vanilla's); otherwise the text shows
+    /// its time, then the end picture. The cast call runs its own tic
+    /// (<see cref="F_CastTicker"/>).
     /// </summary>
     public void F_Ticker()
     {
         World world = flow.World!;
+        sounds.Clear();
+        sounds.AddRange(_respondersounds); // T10.5: a key's death sound, between the tics
+        _respondersounds.Clear();
 
         // check for skipping
         if (flow.gamemode == GameMode.commercial && finalecount > 50)
@@ -104,16 +109,20 @@ public sealed partial class FFinale
             if (i < World.MAXPLAYERS)
             {
                 if (gamemap == 30)
-                {
                     F_StartCast();
-                    return;
-                }
-                flow.gameaction = gameaction_t.ga_worlddone;
+                else
+                    flow.gameaction = gameaction_t.ga_worlddone;
             }
         }
 
         // advance animation
         finalecount++;
+
+        if (finalestage == F_STAGE_CAST)
+        {
+            F_CastTicker();
+            return;
+        }
 
         if (flow.gamemode == GameMode.commercial)
             return;
@@ -129,17 +138,17 @@ public sealed partial class FFinale
         // finalestage 1 (the end picture) stays until the menu starts a new game or ends this one (T7.2), as vanilla's
     }
 
-    /// <summary>f_finale.c <c>F_StartCast</c>: Doom II's cast call is M10's; the game ends here (the title loop).</summary>
-    private void F_StartCast() => flow.D_StartTitle($"MAP{gamemap:00} completed: the end of the game (the cast call is M10's)");
-
     /// <summary>
-    /// f_finale.c <c>F_Drawer</c>: the text screen (<see cref="F_TextWrite"/>)
-    /// or the episode's end picture (<c>F_ArtScreenDrawer</c>).
+    /// f_finale.c <c>F_Drawer</c>: the cast call (<see cref="F_CastDrawer"/>, T10.5),
+    /// the text screen (<see cref="F_TextWrite"/>) or the episode's end
+    /// picture (<c>F_ArtScreenDrawer</c>).
     /// </summary>
     public void F_Drawer(ScreenGraphics g, HudScreen screen)
     {
         screen.Clear();
-        if (finalestage == F_STAGE_TEXT)
+        if (finalestage == F_STAGE_CAST)
+            F_CastDrawer(g, screen);
+        else if (finalestage == F_STAGE_TEXT)
             F_TextWrite(g, screen);
         else
             F_ArtScreenDrawer(g, screen);
