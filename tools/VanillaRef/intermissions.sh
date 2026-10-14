@@ -1,8 +1,9 @@
 #!/bin/bash
 # The vanilla intermission reference (T7.4; dev tool). Usage:
 #   tools/VanillaRef/intermissions.sh [ROUTE.route[@PRESSES]...]
-# Plays each DOOM1.WAD exit route (default: every one in
-# tests/IsoDoom.Tests/Sim/Routes but E1M8's, whose exit goes to the finale)
+# Plays each DOOM1.WAD or Doom II (T10.1) exit route (default: every one in
+# tests/IsoDoom.Tests/Sim/Routes but E1M8's, whose exit goes to the finale,
+# and MAP30's)
 # in the vanilla reference (build.sh; $VANILLA_REF or
 # ~/.cache/isodoom/vanilla-ref) and then its intermission, with BT_USE
 # pressed at the intermission tics of a schedule (intermissions.py: by
@@ -10,7 +11,8 @@
 # dump.c's per-tic intermission dump to $ISODOOM_VANILLA_ROUTES (default
 # ~/.cache/isodoom/vanilla-routes; WAD-derived: never commit them).
 # IntermissionTests compares the game's intermission with them. Needs
-# DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD).
+# DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD), and for Doom II's routes Doom II's
+# IWAD (wads/doom2.wad or $ISODOOM_DOOM2_WAD).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -25,7 +27,7 @@ out=${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes}
 if [ $# -eq 0 ]; then
     for r in "$repo"/tests/IsoDoom.Tests/Sim/Routes/*.route; do
         body=$(sed -e 's/#.*//' "$r")
-        if grep -qE '^ *iwad +doom1' <<< "$body" && grep -qE '^ *exit +' <<< "$body" && ! grep -qiE '^ *map +e[1-4]m8' <<< "$body"; then
+        if grep -qE '^ *iwad +doom[12]' <<< "$body" && grep -qE '^ *exit +' <<< "$body" && ! grep -qiE '^ *map +(e[1-4]m8|map30)' <<< "$body"; then
             set -- "$@" "$r"
         fi
     done

@@ -5,7 +5,6 @@ using System.Linq;
 using IsoDoom.Game;
 using IsoDoom.Sim;
 using IsoDoom.Tests.Sim;
-using IsoDoom.Tests.Support;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
@@ -15,8 +14,10 @@ namespace IsoDoom.Tests.Game;
 
 /// <summary>
 /// T7.5: f_finale.c's finale (<see cref="FFinale"/>). Against vanilla: each
-/// DOOM1.WAD route that ends the episode (E1M8's exit) played through the
-/// game flow into its finale, which then runs tic by tic as vanilla's did with
+/// DOOM1.WAD route that ends the episode (E1M8's exit), and (T10.1) each
+/// Doom II route whose exit leads to a text screen (MAP06, MAP11, MAP20,
+/// the secret exits of MAP15 and MAP31; its intermission skipped first),
+/// played through the game flow into its finale, which then runs tic by tic as vanilla's did with
 /// the same presses, compared with the dump of
 /// <c>tools/VanillaRef/finales.sh</c> (the episode, map, flat and text it
 /// starts with; every tic's stage, count, the hash of every pixel drawn and
@@ -29,15 +30,21 @@ public class FinaleTests
 {
     // ---- against vanilla ----
 
-    /// <summary>The DOOM1.WAD routes that end the episode (exit on ExM8).</summary>
+    /// <summary>The DOOM1.WAD routes that end the episode (exit on ExM8), and (T10.1) the Doom II ones whose exit leads to a text screen.</summary>
     private static List<VanillaRoute> EndRoutes() =>
-        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase))];
+        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)
+            || IntermissionTests.TextScreenAfter(r))];
 
-    public static TheoryData<string> Routes()
+    /// <summary>The routes and their dumps' suffixes: <c>fi</c>, and for Doom II <c>firead</c> (its text typed out before the skip).</summary>
+    public static TheoryData<string, string> Routes()
     {
-        var data = new TheoryData<string>();
+        var data = new TheoryData<string, string>();
         foreach (VanillaRoute r in EndRoutes())
-            data.Add(r.Name);
+        {
+            data.Add(r.Name, "fi");
+            if (r.Iwad == "doom2")
+                data.Add(r.Name, "firead");
+        }
         return data;
     }
 
@@ -45,19 +52,37 @@ public class FinaleTests
     public void Episode1sEndHasAFinaleToCompare() =>
         Assert.Contains(EndRoutes(), r => r.Map == "E1M8" && r.Exit == 1);
 
+    /// <summary>T10.1: every Doom II text screen between maps has a route to compare (MAP30's is the cast call's, T10.5).</summary>
+    [Fact]
+    public void DoomIIsTextScreensHaveRoutesToCompare() =>
+        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP31:2"],
+            EndRoutes().Where(r => r.Iwad == "doom2").Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
+
     [Theory]
     [MemberData(nameof(Routes))]
-    public void MatchesVanilla(string name)
+    public void MatchesVanilla(string name, string suffix)
     {
         var route = VanillaRoute.Load(name);
-        TestWads.RequireDoom1();
+        route.RequireWad();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
             dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes");
-        string path = Path.Combine(dir, $"{name}.fi");
+        string path = Path.Combine(dir, $"{name}.{suffix}");
         if (!File.Exists(path))
             Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/finales.sh (or set {VanillaRoute.DumpDirEnvVar}).");
         string[] expected = [.. File.ReadAllLines(path).Where(l => l.Length > 0)];
+        // T10.1: Doom II's dumps start with the intermission played before the text (finales.py: "intermission PRESSES LENGTH")
+        var cmds = new List<ticcmd_t>(route.Cmds);
+        int intermission = 0;
+        if (expected[0].StartsWith("intermission ", StringComparison.Ordinal))
+        {
+            string[] wi = expected[0].Split(' ');
+            HashSet<int> wiPresses = [.. wi[1].Split(',').Select(int.Parse)];
+            intermission = int.Parse(wi[2], System.Globalization.CultureInfo.InvariantCulture);
+            for (int t = 1; t <= intermission; t++)
+                cmds.Add(new ticcmd_t { buttons = wiPresses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
+            expected = expected[1..];
+        }
         Assert.StartsWith("presses ", expected[0]);
         Assert.StartsWith("finale ", expected[1]);
         HashSet<int> presses = [.. expected[0]["presses ".Length..].Split(',').Select(int.Parse)];
@@ -65,14 +90,15 @@ public class FinaleTests
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
         var host = new IntermissionTests.RouteHost(world, wad, mrandom);
-        var flow = new GameFlow(host, GameMode.shareware, mrandom, GameVariant.vanilla, GameMission.doom);
-        for (int tic = 0; tic < route.Cmds.Count; tic++)
+        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMode == GameMode.commercial ? GameMission.doom2 : GameMission.doom);
+        for (int tic = 0; tic < cmds.Count; tic++)
         {
-            Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
-            route.File.RunEvents(world, tic);
-            flow.G_Ticker(route.Cmds[tic]);
+            Assert.Equal(tic < route.Cmds.Count ? gamestate_t.GS_LEVEL : gamestate_t.GS_INTERMISSION, flow.gamestate);
+            if (tic < route.Cmds.Count)
+                route.File.RunEvents(world, tic);
+            flow.G_Ticker(cmds[tic]);
         }
-        Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // no intermission after ExM8
+        Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // no intermission after ExM8; Doom II's text after its intermission's last tic
         FFinale fi = flow.Finale;
         Assert.Equal(expected[1], $"finale {world.gameepisode} {world.gamemap} {fi.finaleflat} {fi.finaletext.Length} {TextHash(fi.finaletext):x8}");
 
@@ -86,6 +112,13 @@ public class FinaleTests
             string actual = $"{fi.finalestage} {fi.finalecount} {screen.Hash():x8} {mrandom.rndindex}";
             if (actual != expected[t + 1])
                 Assert.Fail($"{name}.fi: finale tic {t} differs from vanilla\n  vanilla: {expected[t + 1]}\n  game:    {actual}");
+        }
+        if (route.GameMode == GameMode.commercial)
+        {
+            // T10.1: the press skipped the text on its tic (vanilla's dump ends there): the next level, the secret ones too
+            Assert.Equal((gamestate_t.GS_LEVEL, World.MapName(GameMode.commercial, 1, world.wminfo.next + 1)), (flow.gamestate, world.level.Name));
+            Assert.Equal(route.Map switch { "MAP15" => "MAP31", "MAP31" => "MAP32", "MAP06" => "MAP07", "MAP11" => "MAP12", _ => "MAP21" }, world.level.Name);
+            return;
         }
         // the end picture stays (vanilla's: until the menu ends the game or starts another)
         Assert.Equal((gamestate_t.GS_FINALE, FFinale.F_STAGE_ARTSCREEN, "HELP2"), (flow.gamestate, fi.finalestage, fi.ArtScreen()));

@@ -1,0 +1,14 @@
+# Doom II MAP32 (T10.1): started north of the exit switch (line 212, 11),
+# inside the Keens' shut door ring (sector 16, tag 666; no monsters to open
+# it: the start header places the player without a collision check, as
+# vanilla's reference does), pressed facing south on the second tic: the
+# intermission, then back to MAP16 (no text screen). Written by
+# tools/RouteGen (map32-exit).
+iwad doom2
+map MAP32
+exit normal
+start 448 8176 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x2
+0 0 0 2

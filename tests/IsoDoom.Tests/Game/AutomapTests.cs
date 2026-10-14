@@ -619,15 +619,22 @@ public class AutomapTests
     [InlineData(GameMission.doom, 5, 1, "NEWLEVEL")]
     [InlineData(GameMission.doom2, 1, 1, "level 1: entryway")]
     [InlineData(GameMission.doom2, 1, 32, "level 32: grosse")]
-    [InlineData(GameMission.doom2, 1, 33, "")]
+    [InlineData(GameMission.doom2, 1, 33, "level 1: congo")] // T10.1: vanilla reads on into Plutonia's names
+    [InlineData(GameMission.doom2, 1, 40, "level 8: realm")]
     [InlineData(GameMission.pack_plut, 1, 1, "level 1: congo")]
     [InlineData(GameMission.pack_tnt, 1, 32, "level 32: caribbean")]
+    [InlineData(GameMission.pack_tnt, 1, 33, "")]
     [InlineData(GameMission.none, 1, 1, "Unknown level")]
-    public void TheTitleIsTheMissionsMapName(GameMission mission, int episode, int map, string title)
+    [InlineData(GameMission.doom2, 1, 31, "level 31: idkfa", GameVariant.bfgedition)] // T10.1: the BFG Edition's (Chocolate Doom's)
+    [InlineData(GameMission.doom2, 1, 32, "level 32: keen", GameVariant.bfgedition)]
+    [InlineData(GameMission.doom2, 1, 33, "level 33: betray", GameVariant.bfgedition)]
+    [InlineData(GameMission.doom2, 1, 30, "level 30: icon of sin", GameVariant.bfgedition)]
+    [InlineData(GameMission.doom2, 1, 31, "level 31: wolfenstein", GameVariant.freedoom)]
+    public void TheTitleIsTheMissionsMapName(GameMission mission, int episode, int map, string title, GameVariant variant = GameVariant.vanilla)
     {
-        Assert.Equal(title, HuStuff.HU_Title(mission, episode, map));
+        Assert.Equal(title, HuStuff.HU_Title(mission, episode, map, variant));
         var hu = new HuStuff(null);
-        hu.HU_Start(mission, episode, map);
+        hu.HU_Start(mission, episode, map, variant);
         Assert.Equal(title, hu.title);
     }
 }

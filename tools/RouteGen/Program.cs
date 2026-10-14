@@ -38,6 +38,14 @@ public static class Program
     private static WadArchive Doom1() =>
         WadArchive.Open(Environment.GetEnvironmentVariable("ISODOOM_DOOM1_WAD") is { Length: > 0 } p ? p : Path.Combine(RepoRoot(), "wads", "DOOM1.WAD"));
 
+    /// <summary>T10.1: Doom II's IWAD (<c>ISODOOM_DOOM2_WAD</c>, else <c>wads/doom2.wad</c> or <c>wads/DOOM2.WAD</c>).</summary>
+    private static WadArchive Doom2() =>
+        WadArchive.Open(Environment.GetEnvironmentVariable("ISODOOM_DOOM2_WAD") is { Length: > 0 } p ? p
+            : File.Exists(Path.Combine(RepoRoot(), "wads", "doom2.wad")) ? Path.Combine(RepoRoot(), "wads", "doom2.wad") : Path.Combine(RepoRoot(), "wads", "DOOM2.WAD"));
+
+    /// <summary>The IWAD of a map name: Doom II's for <c>MAPxx</c>, else DOOM1.WAD (<see cref="Steer.ModeOf"/>).</summary>
+    private static WadArchive IwadOf(string map) => Steer.ModeOf(map) == GameMode.commercial ? Doom2() : Doom1();
+
     private static WadArchive Synthetic() =>
         new([WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName)]);
 
@@ -1315,21 +1323,129 @@ map stairs
             g.Wait(150);
             log("crusher " + g.Heights(0));
         }),
+        ["map01-exit"] = new(Doom2, "MAP01", """
+# Doom II MAP01 (T10.1): from the start to the exit switch (line 162,
+# 11), the last tic: the doors on the way opened. Written by
+# tools/RouteGen (map01-exit).
+iwad doom2
+map MAP01
+exit normal
+
+""", (g, log) =>
+        {
+            g.GoToDoors(2656, 3550, 8, 50);
+            log("at the exit switch");
+            g.Exit(2656, 3600);
+        }),
+        ["map06-exit"] = new(Doom2, "MAP06", """
+# Doom II MAP06 (T10.1): started beside the exit switch (line 638, 11),
+# pressed on the second tic: the intermission, then Doom II's first text
+# screen (C1TEXT) before MAP07. Written by tools/RouteGen (map06-exit).
+iwad doom2
+map MAP06
+exit normal
+
+""", (g, log) =>
+        {
+            g.Tic(0, 0, 0, 0);
+            g.Exit(1240, 224);
+        }, (1294, 224, 180)),
+        ["map11-exit"] = new(Doom2, "MAP11", """
+# Doom II MAP11 (T10.1): started beside the exit switch (line 832, 11),
+# pressed on the second tic: the intermission, then the text screen C2TEXT
+# before MAP12. Written by tools/RouteGen (map11-exit).
+iwad doom2
+map MAP11
+exit normal
+
+""", (g, log) =>
+        {
+            g.Tic(0, 0, 0, 0);
+            g.Exit(2420, 2592);
+        }, (2362, 2592, 0)),
+        ["map15-secret-exit"] = new(Doom2, "MAP15", """
+# Doom II MAP15 (T10.1): started in the nukage west of the secret exit's
+# platform (sector 197, inside the W1 secret exit lines 1666-1669, 124):
+# east onto it, the last tic: the intermission, the text screen C5TEXT,
+# then MAP31. Written by tools/RouteGen (map15-secret-exit).
+iwad doom2
+map MAP15
+exit secret
+
+""", (g, log) =>
+        {
+            g.WalkExit(-416, -4256);
+        }, (-480, -4256, 0)),
+        ["map20-exit"] = new(Doom2, "MAP20", """
+# Doom II MAP20 (T10.1): started west of the exit pit (the W1 exit lines
+# 993-996, 52, around x 4008..4120, y -704..-576): east into it, the last
+# tic: the intermission, the text screen C3TEXT, then MAP21. Written by
+# tools/RouteGen (map20-exit).
+iwad doom2
+map MAP20
+exit normal
+
+""", (g, log) =>
+        {
+            g.WalkExit(4064, -640);
+        }, (3930, -640, 0)),
+        ["map31-exit"] = new(Doom2, "MAP31", """
+# Doom II MAP31 (T10.1): started beside the exit switch (line 549, 11),
+# pressed on the second tic: the intermission, then back to MAP16 (no text
+# screen). Written by tools/RouteGen (map31-exit).
+iwad doom2
+map MAP31
+exit normal
+
+""", (g, log) =>
+        {
+            g.Tic(0, 0, 0, 0);
+            g.Exit(-2210, -704);
+        }, (-2270, -704, 0)),
+        ["map31-secret-exit"] = new(Doom2, "MAP31", """
+# Doom II MAP31 (T10.1): started beside the secret exit switch (line 552,
+# 51), pressed on the second tic: the intermission, the text screen C6TEXT,
+# then MAP32. Written by tools/RouteGen (map31-secret-exit).
+iwad doom2
+map MAP31
+exit secret
+
+""", (g, log) =>
+        {
+            g.Tic(0, 0, 0, 0);
+            g.Exit(-4320, -1216);
+        }, (-4258, -1216, 180)),
+        ["map32-exit"] = new(Doom2, "MAP32", """
+# Doom II MAP32 (T10.1): started north of the exit switch (line 212, 11),
+# inside the Keens' shut door ring (sector 16, tag 666; no monsters to open
+# it: the start header places the player without a collision check, as
+# vanilla's reference does), pressed facing south on the second tic: the
+# intermission, then back to MAP16 (no text screen). Written by
+# tools/RouteGen (map32-exit).
+iwad doom2
+map MAP32
+exit normal
+
+""", (g, log) =>
+        {
+            g.Tic(0, 0, 0, 0);
+            g.Exit(448, 8100);
+        }, (448, 8176, 270)),
     };
 
     public static int Main(string[] args)
     {
         if (args.Length == 3 && args[0] == "--probe")
         {
-            var probe = new Steer(Doom1(), args[1]);
+            var probe = new Steer(IwadOf(args[1]), args[1]);
             foreach (string pt in args[2].Split(';'))
                 Console.WriteLine(probe.ProbeText(double.Parse(pt.Split(',')[0], CultureInfo.InvariantCulture), double.Parse(pt.Split(',')[1], CultureInfo.InvariantCulture)));
             return 0;
         }
         if (args.Length is 2 or 3 && args[0] == "--monsters")
-            return MapInfo.PrintMonsters(Doom1(), args[1], args.Length == 3 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 3);
+            return MapInfo.PrintMonsters(IwadOf(args[1]), args[1], args.Length == 3 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 3);
         if (args.Length is 2 or 3 && args[0] == "--info")
-            return MapInfo.Print(Doom1(), args[1], args.Length == 3 ? [.. args[2].Split(',').Select(int.Parse)] : null);
+            return MapInfo.Print(IwadOf(args[1]), args[1], args.Length == 3 ? [.. args[2].Split(',').Select(int.Parse)] : null);
         if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))
         {
             Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", _scripts.Keys)}");

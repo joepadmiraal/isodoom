@@ -20,8 +20,9 @@ namespace IsoDoom.Tests.Sim;
 /// (<c>tools/VanillaRef/routes.sh</c>, as a v1.9 demo) and by the sim, compared tic by tic.
 /// <para>
 /// A <c>.route</c> file (in <c>Routes/</c>) is text: <c>#</c> starts a
-/// comment; header lines <c>iwad synthetic|doom1|testmap</c> (required),
-/// <c>map ExMy</c> (default <c>E1M1</c>; for <c>testmap</c> the name of a
+/// comment; header lines <c>iwad synthetic|doom1|doom2|testmap</c> (required;
+/// <c>doom2</c>, T10.1: Doom II's IWAD, any version, <c>commercial</c>),
+/// <c>map ExMy</c> or <c>MAPxx</c> (default <c>E1M1</c>, <c>MAP01</c> for <c>doom2</c>; for <c>testmap</c> the name of a
 /// <see cref="RouteTestMaps"/> map, required, T4.8a), <c>skill 1-5</c> (default 3) and
 /// <c>start X Y ANGLE</c> (T5.6: player 1 starts at map point X, Y facing ANGLE
 /// degrees instead of at its map start: <see cref="RouteStart.Place"/>) and
@@ -78,7 +79,7 @@ namespace IsoDoom.Tests.Sim;
 /// (<see cref="Hud"/>: the status bar's face and its count, key boxes and
 /// ready ammo, the message line's state and text hash, and the hash of the
 /// pixels both draw; the pixels are compared only where the test has
-/// DOOM1.WAD's graphics, <see cref="HudGraphics"/>), then (T5.9)
+/// the IWAD's graphics (DOOM1.WAD's, or Doom II's for its routes), <see cref="HudGraphics"/>), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
 /// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
@@ -97,8 +98,14 @@ public sealed class VanillaRoute
 
     public string Name { get; }
     public string Path { get; }
-    /// <summary><c>synthetic</c>, <c>doom1</c> or <c>testmap</c>.</summary>
+    /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom2</c> (T10.1) or <c>testmap</c>.</summary>
     public string Iwad { get; }
+
+    /// <summary>The game mode vanilla plays the route in: Doom II's <c>commercial</c> for <c>doom2</c>, else DOOM1.WAD's <c>shareware</c>.</summary>
+    public GameMode GameMode => Iwad == "doom2" ? GameMode.commercial : GameMode.shareware;
+
+    /// <summary>Whether the route's dumps are WAD-derived (DOOM1.WAD's or Doom II's: in <see cref="DumpDirEnvVar"/>, never committed).</summary>
+    public bool IdWad => Iwad is "doom1" or "doom2";
     public string Map { get; }
     public skill_t Skill { get; }
     /// <summary>The <c>start</c> header (map units, degrees), or null for the map's player 1 start (T5.6).</summary>
@@ -154,8 +161,8 @@ public sealed class VanillaRoute
     {
         var route = RouteFile.Parse(path);
         string? iwad = route.Iwad, map = route.Map;
-        if (iwad is not ("synthetic" or "doom1" or "testmap"))
-            throw new FormatException($"{path}: needs \"iwad synthetic|doom1|testmap\" and a skill of 1-5");
+        if (iwad is not ("synthetic" or "doom1" or "doom2" or "testmap"))
+            throw new FormatException($"{path}: needs \"iwad synthetic|doom1|doom2|testmap\" and a skill of 1-5");
         if (iwad == "testmap")
         {
             if (map is null || !RouteTestMaps.Maps.ContainsKey(map))
@@ -163,7 +170,9 @@ public sealed class VanillaRoute
         }
         else
         {
-            map = (map ?? "E1M1").ToUpperInvariant();
+            map = (map ?? (iwad == "doom2" ? "MAP01" : "E1M1")).ToUpperInvariant();
+            if (iwad == "doom2" != map.StartsWith("MAP", StringComparison.Ordinal))
+                throw new FormatException($"{path}: \"iwad doom2\" plays MAPxx maps, the others ExMy");
         }
         return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds, route);
     }
@@ -184,13 +193,13 @@ public sealed class VanillaRoute
     public string[] Reference()
     {
         string path;
-        if (Iwad != "doom1")
+        if (!IdWad)
         {
             path = System.IO.Path.ChangeExtension(Path, ".vanilla");
         }
         else
         {
-            TestWads.RequireDoom1();
+            RequireWad();
             path = System.IO.Path.Combine(DumpDir(), Name + ".vanilla");
             if (!System.IO.File.Exists(path))
                 Assert.Skip($"No vanilla dump {path}: run tools/VanillaRef/routes.sh (or set {DumpDirEnvVar}).");
@@ -208,11 +217,12 @@ public sealed class VanillaRoute
         {
             "synthetic" => new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]),
             "testmap" => new WadArchive([WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad")]),
-            _ => WadArchive.Open(TestWads.RequireDoom1()),
+            _ => WadArchive.Open(RequireWad()),
         };
-        var world = new World(new SpawnSettings(GameMode.shareware, Skill, nomonsters: !Monsters), Tweaks.Vanilla)
+        var world = new World(new SpawnSettings(GameMode, Skill, nomonsters: !Monsters), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
+            map31exists = wad.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check
         };
         world.P_InitPicAnims(world.textures, PicAnims.FlatNames(wad)); // P_Init's (T5.7)
         world.G_DoLoadLevel(Level.Load(wad, MapLump));
@@ -220,6 +230,9 @@ public sealed class VanillaRoute
             RouteStart.Place(world, s.X, s.Y, s.Angle);
         return world;
     }
+
+    /// <summary>The path of the route's id IWAD (DOOM1.WAD, or Doom II's for <c>doom2</c>); skips the test without it.</summary>
+    public string RequireWad() => Iwad == "doom2" ? TestWads.RequireDoom2() : TestWads.RequireDoom1();
 
     /// <summary>The route's map lump (a test map's is <c>E1M1</c>).</summary>
     public string MapLump => Iwad == "testmap" ? "E1M1" : Map;
@@ -392,10 +405,12 @@ public sealed class VanillaRoute
     /// The WAD whose status bar and font vanilla drew a route with
     /// (T6.11): DOOM1.WAD, with the synthetic IWAD or the test map over it
     /// as <c>-file</c> as <c>routes.py</c> plays them (the synthetic IWAD's
-    /// <c>STBAR</c> and three font glyphs replace DOOM1's); null without DOOM1.WAD.
+    /// <c>STBAR</c> and three font glyphs replace DOOM1's), or (T10.1) Doom II's IWAD alone for its routes; null without the WAD.
     /// </summary>
     public WadArchive? HudGraphics()
     {
+        if (Iwad == "doom2")
+            return TestWads.Doom2Path is string doom2 ? WadArchive.Open(doom2) : null; // T10.1: Doom II's own
         if (TestWads.Doom1Path is not string doom1)
             return null;
         var files = new List<WadFile> { WadFile.Open(doom1) };

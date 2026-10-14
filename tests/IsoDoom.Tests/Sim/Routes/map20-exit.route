@@ -1,0 +1,11 @@
+# Doom II MAP20 (T10.1): started west of the exit pit (the W1 exit lines
+# 993-996, 52, around x 4008..4120, y -704..-576): east into it, the last
+# tic: the intermission, the text screen C3TEXT, then MAP21. Written by
+# tools/RouteGen (map20-exit).
+iwad doom2
+map MAP20
+exit normal
+start 3930 -640 0
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+10 0 0 0 x33

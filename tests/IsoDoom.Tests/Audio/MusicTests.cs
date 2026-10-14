@@ -92,7 +92,7 @@ public class MusicTests
     public void TheSongsAreVanillas(string name)
     {
         var route = VanillaRoute.Load(name);
-        TestWads.RequireDoom1();
+        route.RequireWad();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
             dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes");
@@ -109,9 +109,10 @@ public class MusicTests
 
         World world = route.NewWorld(out WadArchive wad);
         var host = new RouteHost(route, world, wad);
-        var flow = new GameFlow(host, GameMode.shareware, new DoomRandom(), GameVariant.vanilla, GameMission.doom);
+        bool commercial = route.GameMode == GameMode.commercial;
+        var flow = new GameFlow(host, route.GameMode, new DoomRandom(), GameVariant.vanilla, commercial ? GameMission.doom2 : GameMission.doom);
         var device = new RecordingMusicDevice();
-        flow.Sound = new SSound(null, SSound.DefaultChannels, device, Lumps(wad));
+        flow.Sound = new SSound(null, SSound.DefaultChannels, device, Lumps(wad)) { commercial = commercial };
         var actual = new List<string>();
         flow.Sound.MusicChanged = c => actual.Add($"music {flow.gametic} {(int)flow.gamestate} {MusicInfo.S_music[(int)c.musicnum].name} {(c.looping ? 1 : 0)}");
 

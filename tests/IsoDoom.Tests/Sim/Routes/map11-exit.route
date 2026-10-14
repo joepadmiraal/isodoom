@@ -1,0 +1,11 @@
+# Doom II MAP11 (T10.1): started beside the exit switch (line 832, 11),
+# pressed on the second tic: the intermission, then the text screen C2TEXT
+# before MAP12. Written by tools/RouteGen (map11-exit).
+iwad doom2
+map MAP11
+exit normal
+start 2362 2592 0
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x2
+0 0 0 2

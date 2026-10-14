@@ -11,13 +11,38 @@ non-id content: committed), OUTDIR/NAME.vanilla for one on DOOM1.WAD
 (WAD-derived: never committed). The synthetic map and the test maps
 (TESTMAPS/NAME.wad, written by the tests' WritesTheTestMapPwads; T4.8a) play
 as a -file over DOOM1.WAD, whose status bar and fonts the reference needs to
-start; a test map's lump is E1M1. A route with the monsters header (T6.4)
+start; a test map's lump is E1M1. A Doom II route (iwad doom2, T10.1) plays
+on Doom II's IWAD (doom2_wad(): $ISODOOM_DOOM2_WAD, else wads/doom2.wad or
+wads/DOOM2.WAD) and its dump goes to OUTDIR too. A route with the monsters header (T6.4)
 plays without nomonsters, and its damage/alert (and, T6.5, rocket) lines go
 to the reference as $DUMP_EVENTS (dump.c), run before their tics.
 """
 import os, subprocess, sys, tempfile
 
 SKILLS = range(1, 6)
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def doom2_wad():
+    """T10.1: Doom II's IWAD: $ISODOOM_DOOM2_WAD, else wads/doom2.wad or wads/DOOM2.WAD (as the tests' TestWads)."""
+    env = os.environ.get('ISODOOM_DOOM2_WAD')
+    if env:
+        return os.path.abspath(env)
+    for name in ('doom2.wad', 'DOOM2.WAD'):
+        path = os.path.join(REPO, 'wads', name)
+        if os.path.exists(path):
+            return path
+    sys.exit('No Doom II IWAD: put doom2.wad in wads/ or set ISODOOM_DOOM2_WAD')
+
+
+def iwad(head, doom1):
+    """The IWAD vanilla plays a route on: Doom II's for iwad doom2, else DOOM1.WAD (the others go over it as -file)."""
+    return doom2_wad() if head['iwad'] == 'doom2' else doom1
+
+
+def id_wad(head):
+    """Whether the route's dumps are WAD-derived (DOOM1.WAD's or Doom II's: never committed)."""
+    return head['iwad'] in ('doom1', 'doom2')
 
 
 def parse(path):
@@ -72,8 +97,8 @@ def parse(path):
         if not (-128 <= fwd <= 127 and -128 <= side <= 127 and -128 <= turn <= 127 and 0 <= buttons <= 255):
             sys.exit(f'{where}: out of range')
         cmds += [(fwd, side, turn, buttons)] * count
-    if head['iwad'] not in ('synthetic', 'doom1', 'testmap') or head['skill'] not in SKILLS:
-        sys.exit(f'{path}: needs "iwad synthetic|doom1|testmap" and a skill of 1-5')
+    if head['iwad'] not in ('synthetic', 'doom1', 'doom2', 'testmap') or head['skill'] not in SKILLS:
+        sys.exit(f'{path}: needs "iwad synthetic|doom1|doom2|testmap" and a skill of 1-5')
     if head['iwad'] == 'testmap' and not head['map']:
         sys.exit(f'{path}: "iwad testmap" needs "map NAME"')
     if events and int(events[-1].split()[0]) >= len(cmds):
@@ -83,11 +108,19 @@ def parse(path):
 
 
 def demo(head, cmds):
-    """A v1.9 demo lump: nomonsters unless the monsters header (T6.4), player 1 alone; angleturn is the turn byte << 8."""
-    m = 'E1M1' if head['iwad'] == 'testmap' else (head['map'] or 'E1M1').upper()
-    if len(m) != 4 or m[0] != 'E' or m[2] != 'M':
-        sys.exit(f'{m}: only ExMy maps')
-    data = bytearray([109, head['skill'] - 1, int(m[1]), int(m[3]), 0, 0, 0, 0 if head['monsters'] else 1, 0, 1, 0, 0, 0])
+    """A v1.9 demo lump: nomonsters unless the monsters header (T6.4), player 1 alone; angleturn is the turn byte << 8.
+    Doom II's (T10.1): MAPxx, episode 1."""
+    if head['iwad'] == 'doom2':
+        m = (head['map'] or 'MAP01').upper()
+        if len(m) != 5 or not m.startswith('MAP') or not m[3:].isdigit():
+            sys.exit(f'{m}: Doom II routes play MAPxx maps')
+        episode, mapnum = 1, int(m[3:])
+    else:
+        m = 'E1M1' if head['iwad'] == 'testmap' else (head['map'] or 'E1M1').upper()
+        if len(m) != 4 or m[0] != 'E' or m[2] != 'M':
+            sys.exit(f'{m}: only ExMy maps')
+        episode, mapnum = int(m[1]), int(m[3])
+    data = bytearray([109, head['skill'] - 1, episode, mapnum, 0, 0, 0, 0 if head['monsters'] else 1, 0, 1, 0, 0, 0])
     for fwd, side, turn, buttons in cmds:
         data += bytes([fwd & 255, side & 255, turn & 255, buttons])
     return bytes(data + b'\x80')
@@ -100,11 +133,11 @@ def main():
     for route in sys.argv[6:]:
         head, cmds = parse(route)
         name = os.path.splitext(os.path.basename(route))[0]
-        out = os.path.join(os.path.dirname(os.path.abspath(route)) if head['iwad'] != 'doom1' else outdir, name + '.vanilla')
+        out = os.path.join(os.path.dirname(os.path.abspath(route)) if not id_wad(head) else outdir, name + '.vanilla')
         tmp = tempfile.mkdtemp()
         try:
             open(os.path.join(tmp, 'route.lmp'), 'wb').write(demo(head, cmds))
-            args = [ref, '-iwad', doom1, '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui']
+            args = [ref, '-iwad', iwad(head, doom1), '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui']
             if head['iwad'] == 'synthetic':
                 args[3:3] = ['-file', synthetic]
             elif head['iwad'] == 'testmap':

@@ -78,15 +78,16 @@ public sealed class HuStuff
     /// no message shows; the map title (T7.9, <c>w_title</c>) is the map's of
     /// <paramref name="mission"/> (Chocolate Doom's <c>logical_gamemission</c>),
     /// episode <paramref name="episode"/>, map <paramref name="map"/> (none
-    /// for a map the tables lack, where vanilla reads past their end).
+    /// for a map the tables lack, where vanilla reads past their end), with
+    /// the BFG Edition's names for <paramref name="variant"/> (T10.1).
     /// </summary>
-    public void HU_Start(GameMission mission = GameMission.none, int episode = 1, int map = 0)
+    public void HU_Start(GameMission mission = GameMission.none, int episode = 1, int map = 0, GameVariant variant = GameVariant.vanilla)
     {
         message_on = false;
         message_dontfuckwithme = false;
         message_nottobefuckedwith = false;
         text = "";
-        title = HU_Title(mission, episode, map);
+        title = HU_Title(mission, episode, map, variant);
         if (title.Length > HU_MAXLINELENGTH)
             title = title[..HU_MAXLINELENGTH]; // hu_lib.c HUlib_addCharToTextLine
     }
@@ -99,8 +100,12 @@ public sealed class HuStuff
     /// <c>HU_TITLET</c> (<see cref="mapnames"/>, <see cref="mapnames_commercial"/>)
     /// for the mission (<see cref="GameMission.none"/>: "Unknown level", as
     /// Chocolate Doom's default); empty when the index is past the table.
+    /// Doom II's maps past 32 read on into Plutonia's names, as vanilla's
+    /// (MAP33: <c>PHUSTR_1</c>); T10.1: the BFG Edition's
+    /// (<paramref name="variant"/>) through Chocolate Doom's
+    /// <c>DEH_AddStringReplacement</c>s (<see cref="DEH_String"/>).
     /// </summary>
-    public static string HU_Title(GameMission mission, int episode, int map)
+    public static string HU_Title(GameMission mission, int episode, int map, GameVariant variant = GameVariant.vanilla)
     {
         int i = mission switch
         {
@@ -114,8 +119,25 @@ public sealed class HuStuff
             return "Unknown level";
         if (mission == GameMission.doom)
             return i >= 0 && i < mapnames.Length && map >= 1 ? mapnames[i] : "";
-        return map >= 1 && map <= 32 ? mapnames_commercial[i] : "";
+        return map >= 1 && i < mapnames_commercial.Length ? DEH_String(mapnames_commercial[i], variant) : "";
     }
+
+    /// <summary>
+    /// T10.1: Chocolate Doom's <c>D_DoomMain</c> string replacements for the
+    /// BFG Edition (<see cref="GameVariant.bfgedition"/>): its renamed secret
+    /// levels (<c>HUSTR_31</c>, <c>HUSTR_32</c>) and its MAP33, whose name
+    /// vanilla reads from <c>PHUSTR_1</c>; any other string, or variant, as it is.
+    /// </summary>
+    public static string DEH_String(string s, GameVariant variant) => variant != GameVariant.bfgedition ? s : s switch
+    {
+        HUSTR_31 => "level 31: idkfa",
+        HUSTR_32 => "level 32: keen",
+        PHUSTR_1 => "level 33: betray",
+        _ => s,
+    };
+
+    /// <summary>d_englsh.h <c>HUSTR_31</c>, <c>HUSTR_32</c> and <c>PHUSTR_1</c>: the names the BFG Edition replaces (<see cref="DEH_String"/>).</summary>
+    public const string HUSTR_31 = "level 31: wolfenstein", HUSTR_32 = "level 32: grosse", PHUSTR_1 = "level 1: congo";
 
     /// <summary>hu_stuff.h <c>HU_TITLEX</c>.</summary>
     public const int HU_TITLEX = 0;

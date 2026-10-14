@@ -58,12 +58,16 @@ public sealed class Steer
 
     public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
     {
-        World = new World(new SpawnSettings(GameMode.shareware, skill, nomonsters: !monsters), Tweaks.Vanilla)
+        World = new World(new SpawnSettings(ModeOf(map), skill, nomonsters: !monsters), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
         World.G_DoLoadLevel(Level.Load(wad, map));
     }
+
+    /// <summary>T10.1: the game mode a map name implies: <c>MAPxx</c> is Doom II's (<c>commercial</c>), anything else DOOM1.WAD's (<c>shareware</c>).</summary>
+    public static GameMode ModeOf(string map) =>
+        map.StartsWith("MAP", StringComparison.OrdinalIgnoreCase) ? GameMode.commercial : GameMode.shareware;
 
     /// <summary>T5.6: a route's <c>start X Y ANGLE</c> (<see cref="RouteStart.Place"/>), before the first tic.</summary>
     public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start, skill_t skill = skill_t.sk_medium, bool monsters = false)
@@ -194,6 +198,18 @@ public sealed class Steer
         for (int i = 0; i < tics; i++)
             Tic(speed, 0, TurnTo(x, y), 0);
         Settle();
+    }
+
+    /// <summary>
+    /// T10.1: walks straight towards (x, y) at <paramref name="speed"/> until
+    /// a tic leaves the level (a walk-over exit line): the route's last tic.
+    /// </summary>
+    public void WalkExit(double x, double y, int speed = 10, int max = 200)
+    {
+        for (int i = 0; i < max && World.gameaction != gameaction_t.ga_completed; i++)
+            Tic(speed, 0, TurnTo(x, y), 0);
+        if (World.gameaction != gameaction_t.ga_completed)
+            throw new InvalidOperationException($"WalkExit: no exit at ({X:F1}, {Y:F1}) by tic {World.leveltime}");
     }
 
     /// <summary>

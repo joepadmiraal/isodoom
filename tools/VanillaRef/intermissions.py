@@ -3,7 +3,7 @@
 
     intermissions.py REF DOOM1.WAD OUTDIR ROUTE[@PRESSES]... [--images DIR TICS]
 
-Plays each DOOM1.WAD exit route (a .route file with an exit header,
+Plays each DOOM1.WAD or (T10.1) Doom II exit route (a .route file with an exit header,
 tests/IsoDoom.Tests/Sim/Routes) in the vanilla reference (REF, dump.c built
 by build.sh) as a v1.9 demo (routes.py's), followed by the intermission's
 ticcmds: nothing but BT_USE pressed for one tic at each intermission tic
@@ -22,7 +22,7 @@ sys.dont_write_bytecode = True  # no __pycache__ in the repo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import routes  # noqa: E402
 
-DEFAULT = '600'  # every E1 exit route's stats are counted out by then
+DEFAULT = '600'  # every E1 and Doom II exit route's stats are counted out by then
 SKIP = '20,40,60'  # skips the counting, then the next location
 
 
@@ -40,8 +40,8 @@ def main():
     for spec in args[3:]:
         route, _, presses = spec.partition('@')
         head, cmds = routes.parse(route)
-        if head['iwad'] != 'doom1' or head['exit'] is None:
-            sys.exit(f'{route}: only DOOM1.WAD routes with an exit header')
+        if not routes.id_wad(head) or head['exit'] is None:
+            sys.exit(f'{route}: only DOOM1.WAD or Doom II routes with an exit header')
         schedules = [p for p in presses.split('@') if p] if presses else [DEFAULT, SKIP]
         name = os.path.splitext(os.path.basename(route))[0]
         for n, schedule in enumerate(schedules):
@@ -64,7 +64,7 @@ def main():
                 if images:
                     os.makedirs(images[0], exist_ok=True)
                     env['DUMP_WI_DIR'], env['DUMP_WI_TICS'] = images
-                r = subprocess.run([ref, '-iwad', doom1, '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
+                r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1), '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
                                    cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             finally:  # (no shutil: the dev container's Python is minimal)
                 for root, dirs, files in os.walk(tmp, topdown=False):

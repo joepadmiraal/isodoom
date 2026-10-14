@@ -1655,7 +1655,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
         StatusBar?.ConsolePlayer = world.consoleplayer;
-        MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap); // T7.9: the map's title too
+        MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap, Flow.gamevariant); // T7.9: the map's title too
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }
 

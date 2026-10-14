@@ -2,7 +2,8 @@
 # The vanilla finale reference (T7.5; dev tool). Usage:
 #   tools/VanillaRef/finales.sh [ROUTE.route[@PRESSES]...]
 # Plays each DOOM1.WAD route that ends the episode (default: every one in
-# tests/IsoDoom.Tests/Sim/Routes with an exit header on E1M8) in the vanilla
+# tests/IsoDoom.Tests/Sim/Routes with an exit header on E1M8, and (T10.1)
+# every Doom II one whose exit leads to a text screen) in the vanilla
 # reference (build.sh; $VANILLA_REF or ~/.cache/isodoom/vanilla-ref) and then
 # its finale, with BT_USE pressed at the finale tics of a schedule
 # (finales.py: by default a few through the text and on the end picture,
@@ -10,7 +11,8 @@
 # per-tic finale dump to $ISODOOM_VANILLA_ROUTES (default
 # ~/.cache/isodoom/vanilla-routes; WAD-derived: never commit them).
 # FinaleTests compares the game's finale with them. Needs DOOM1.WAD (wads/
-# or $ISODOOM_DOOM1_WAD).
+# or $ISODOOM_DOOM1_WAD), and Doom II's IWAD for its routes (wads/doom2.wad
+# or $ISODOOM_DOOM2_WAD).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -25,7 +27,10 @@ out=${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes}
 if [ $# -eq 0 ]; then
     for r in "$repo"/tests/IsoDoom.Tests/Sim/Routes/*.route; do
         body=$(sed -e 's/#.*//' "$r")
-        if grep -qE '^ *iwad +doom1' <<< "$body" && grep -qE '^ *exit +' <<< "$body" && grep -qiE '^ *map +e[1-4]m8' <<< "$body"; then
+        has() { grep -qiE "$1" <<< "$body"; }
+        if { has '^ *iwad +doom1' && has '^ *exit +' && has '^ *map +e[1-4]m8'; } \
+            || { has '^ *iwad +doom2' && { { has '^ *exit +normal' && has '^ *map +map(06|11|20)'; } \
+                || { has '^ *exit +secret' && has '^ *map +map(15|31)'; }; }; }; then
             set -- "$@" "$r"
         fi
     done

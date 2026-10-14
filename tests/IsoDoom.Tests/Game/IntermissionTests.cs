@@ -8,7 +8,6 @@ using IsoDoom.Game;
 using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Tests.Sim;
-using IsoDoom.Tests.Support;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
 using Xunit;
@@ -17,7 +16,9 @@ namespace IsoDoom.Tests.Game;
 
 /// <summary>
 /// T7.4: wi_stuff.c's intermission (<see cref="WiStuff"/>). Against vanilla:
-/// each DOOM1.WAD exit route (but E1M8's, whose exit goes to the finale)
+/// each DOOM1.WAD exit route (but E1M8's, whose exit goes to the finale) and
+/// (T10.1) each Doom II one (<c>INTERPIC</c>, <c>CWILV*</c>, Doom II's pars,
+/// no next location; then the next level or Doom II's text screen)
 /// played through the game flow to its intermission, which then runs tic by
 /// tic as vanilla's did with the same presses, compared with the dump of
 /// <c>tools/VanillaRef/intermissions.sh</c> (the stats and par it starts
@@ -67,9 +68,9 @@ public class IntermissionTests
         public void EndGame(string? why) => World = null;
     }
 
-    /// <summary>The DOOM1.WAD exit routes with an intermission (all but E1M8's).</summary>
+    /// <summary>The DOOM1.WAD and (T10.1) Doom II exit routes with an intermission (all but E1M8's and MAP30's).</summary>
     private static List<VanillaRoute> ExitRoutes() =>
-        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map != "E1M8")];
+        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.IdWad && r.Exit != 0 && r.Map is not ("E1M8" or "MAP30"))];
 
     /// <summary>The exit routes with an intermission and the dumps' suffixes (<c>wi</c>: counted out; <c>wiskip</c>: skipped).</summary>
     public static TheoryData<string, string> Dumps()
@@ -86,9 +87,23 @@ public class IntermissionTests
     [Fact]
     public void EveryEpisode1ExitHasAnIntermissionToCompare()
     {
-        List<VanillaRoute> routes = ExitRoutes();
+        List<VanillaRoute> routes = [.. ExitRoutes().Where(r => r.Iwad == "doom1")];
         Assert.Equal(["E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M9"], routes.Select(r => r.Map).Distinct().Order());
         Assert.Contains(routes, r => r.Map == "E1M3" && r.Exit == 2);
+    }
+
+    /// <summary>
+    /// T10.1: Doom II's flow has its intermissions to compare: MAP01's exit
+    /// (to MAP02), the maps before a text screen (MAP06, MAP11, MAP20; MAP30's
+    /// is the cast call's, T10.5), the secret maps' way in (MAP15's and
+    /// MAP31's secret exits) and out (MAP31's and MAP32's exits, to MAP16).
+    /// </summary>
+    [Fact]
+    public void DoomIIsFlowHasIntermissionsToCompare()
+    {
+        List<VanillaRoute> routes = [.. ExitRoutes().Where(r => r.Iwad == "doom2")];
+        Assert.Equal(["MAP01:1", "MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP31:1", "MAP31:2", "MAP32:1"],
+            routes.Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
     }
 
     [Theory]
@@ -96,7 +111,7 @@ public class IntermissionTests
     public void MatchesVanilla(string name, string suffix)
     {
         var route = VanillaRoute.Load(name);
-        TestWads.RequireDoom1();
+        route.RequireWad();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
             dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes");
@@ -111,7 +126,7 @@ public class IntermissionTests
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
         var host = new RouteHost(world, wad, mrandom);
-        var flow = new GameFlow(host, GameMode.shareware, mrandom);
+        var flow = new GameFlow(host, route.GameMode, mrandom);
         for (int tic = 0; tic < route.Cmds.Count; tic++)
         {
             Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
@@ -133,9 +148,18 @@ public class IntermissionTests
             if (actual != expected[t + 1])
                 Assert.Fail($"{name}.{suffix}: intermission tic {t} differs from vanilla\n  vanilla: {expected[t + 1]}\n  game:    {actual}");
         }
-        // the last tic ended it: the next level
-        Assert.Equal((gamestate_t.GS_LEVEL, World.MapName(GameMode.shareware, 1, wi.wbs!.next + 1)), (flow.gamestate, world.level.Name));
+        // the last tic ended it: the next level, or (T10.1) Doom II's text screen before it
+        if (TextScreenAfter(route))
+        {
+            Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
+            return;
+        }
+        Assert.Equal((gamestate_t.GS_LEVEL, World.MapName(route.GameMode, 1, wi.wbs!.next + 1)), (flow.gamestate, world.level.Name));
     }
+
+    /// <summary>T10.1: whether Doom II's <c>G_WorldDone</c> shows a text screen after the route's exit (maps 6, 11, 20, 30, and the secret exits of 15 and 31).</summary>
+    internal static bool TextScreenAfter(VanillaRoute route) =>
+        route.GameMode == GameMode.commercial && (route.Exit == 2 ? route.Map is "MAP15" or "MAP31" : route.Map is "MAP06" or "MAP11" or "MAP20" or "MAP30");
 
     /// <summary>dump.c's <c>wminfo</c> line: the stats and par the intermission starts with.</summary>
     private static string WminfoLine(wbstartstruct_t w)

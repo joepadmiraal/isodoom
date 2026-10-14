@@ -7,7 +7,6 @@ using IsoDoom.Game;
 using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Tests.Sim;
-using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
 using Xunit;
 
@@ -32,7 +31,10 @@ public class WipeTests
     // ---- against vanilla ----
 
     /// <summary>The routes <c>wipes.sh</c> dumps by default.</summary>
-    public static readonly string[] Routes = ["e1m1-exit", "e1m3-secret-exit", "e1m8-exit", "e1m8-death"];
+    public static readonly string[] Routes = ["e1m1-exit", "e1m3-secret-exit", "e1m8-exit", "e1m8-death",
+        // T10.1: Doom II's flow: MAP01 to MAP02, a text screen (MAP06 to MAP07), the secret maps in (MAP15 to MAP31 to MAP32, each through
+        // its text screen) and out (MAP31 and MAP32 to MAP16)
+        "map01-exit", "map06-exit", "map15-secret-exit", "map31-secret-exit", "map31-exit", "map32-exit"];
 
     public static TheoryData<string> Dumps()
     {
@@ -92,7 +94,7 @@ public class WipeTests
     public void MatchesVanilla(string name)
     {
         var route = VanillaRoute.Load(name);
-        TestWads.RequireDoom1();
+        route.RequireWad();
         string? dir = Environment.GetEnvironmentVariable(VanillaRoute.DumpDirEnvVar);
         if (string.IsNullOrEmpty(dir))
             dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "isodoom", "vanilla-routes");
@@ -110,7 +112,7 @@ public class WipeTests
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
         var host = new RouteHost(route, world, wad, mrandom);
-        var flow = new GameFlow(host, GameMode.shareware, mrandom, GameVariant.vanilla, GameMission.doom) { Wipes = true };
+        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMode == GameMode.commercial ? GameMission.doom2 : GameMission.doom) { Wipes = true };
         var g = new ScreenGraphics(wad, new HuStuff(wad));
         var shown = new HudScreen(0, HudScreen.SCREENHEIGHT);
         var now = new HudScreen(0, HudScreen.SCREENHEIGHT);
@@ -167,6 +169,8 @@ public class WipeTests
         Assert.True(line == expected.Length, $"{name}: {line - 1} lines compared, the dump has {expected.Length - 1}");
         if (route.Map == "E1M8" && route.Exit != 0)
             Assert.True(fullWipes == 1 && fullSteps > 30, $"{name}: the finale's text to its end picture compared ({fullWipes} wipes, {fullSteps} frames)");
+        if (IntermissionTests.TextScreenAfter(route))
+            Assert.True(fullWipes == 1 && fullSteps > 10, $"{name}: the intermission to the text screen compared ({fullWipes} wipes, {fullSteps} frames)");
     }
 
     /// <summary>The game's lines against the dump's from <paramref name="line"/> (a melt line's hash only where the game has one).</summary>

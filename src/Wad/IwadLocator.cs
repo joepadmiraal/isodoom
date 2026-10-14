@@ -109,7 +109,7 @@ public sealed class IwadLocator
     /// <c>iwads[]</c>, plus linuxdoom's <c>doomu.wad</c>). Chocolate Doom and
     /// linuxdoom put DOOM II first; here the DOOM 1 IWADs come first, the full
     /// game before the shareware one, because DOOM 1 is the content supported
-    /// first (SPEC §2). Revisit when DOOM II is playable (SPEC §12).
+    /// first (SPEC §2); T10.1 kept it until DOOM II is marked playable (T10.6, SPEC §12).
     /// </summary>
     [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (d_iwad.c)")]
     public static readonly IReadOnlyList<IwadName> iwads =

@@ -3,13 +3,16 @@
 
     wipes.py REF DOOM1.WAD OUTDIR ROUTE... [--images DIR STEPS]
 
-Plays each DOOM1.WAD route (tests/IsoDoom.Tests/Sim/Routes) in the vanilla
+Plays each DOOM1.WAD or (T10.1) Doom II route (tests/IsoDoom.Tests/Sim/Routes) in the vanilla
 reference (REF, dump.c built by build.sh) as a v1.9 demo (routes.py's) with
 the game drawn (not -nodraw's nodrawers, so d_main.c's D_Display wipes),
 followed by a tail of ticcmds: for a route that exits to an intermission,
 BT_USE at intermission tics 20, 40 and 60 (the stats, the next location,
 the end) and then the next level, TAIL tics in all; for one that ends an
-episode (ExM8), the finale up to its end picture; for any other none.
+episode (ExM8), the finale up to its end picture; for a Doom II exit
+(T10.1), BT_USE at intermission tics 20 and 40 (the stats, the end at 50)
+and, for an exit to a text screen (finales.py's), at its finale tic 52 (the
+first that skips it), then the next level; for any other none.
 Writes dump.c's $DUMP_WIPE dump to OUTDIR/NAME.wipe, its first line
 "tail PRESSES LENGTH" (the tail's ticcmds: BT_USE at the 1-based tail tics
 PRESSES, "-" for none, LENGTH tics), and (T7.8c) its $DUMP_MUSIC dump, every
@@ -25,14 +28,21 @@ import os, subprocess, sys, tempfile
 sys.dont_write_bytecode = True  # no __pycache__ in the repo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import routes  # noqa: E402
+import finales  # noqa: E402
 
 INTERMISSION = ([20, 40, 60], 200)  # skip the stats, the next location, then the next level's first tics
 FINALE = ([], 1650)  # E1's text gives way to the end picture at finale tic 1571
 
 
+DOOM2 = ([20, 40], 200)  # T10.1: Doom II's intermission has no next location: it ends at its tic 50
+DOOM2_TEXT = ([20, 40, 50 + 52], 50 + 52 + 150)  # T10.1: then the text screen, skipped at its tic 52, and the next level
+
+
 def tail(head):
     if head['exit'] is None:
         return [], 0
+    if head['iwad'] == 'doom2':
+        return DOOM2_TEXT if finales.text_screen(head) else DOOM2
     if (head['map'] or 'E1M1').upper().endswith('M8'):
         return FINALE
     return INTERMISSION
@@ -51,8 +61,8 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     for route in args[3:]:
         head, cmds = routes.parse(route)
-        if head['iwad'] != 'doom1':
-            sys.exit(f'{route}: only DOOM1.WAD routes (the reference draws the game)')
+        if not routes.id_wad(head):
+            sys.exit(f'{route}: only DOOM1.WAD or Doom II routes (the reference draws the game)')
         presses, length = tail(head)
         extra = [(0, 0, 0, 2 if t in presses else 0) for t in range(1, length + 1)]
         name = os.path.splitext(os.path.basename(route))[0]
@@ -72,7 +82,7 @@ def main():
                 os.makedirs(images[0], exist_ok=True)
                 env['DUMP_WIPE_DIR'], env['DUMP_WIPE_STEPS'] = images
             # -timedemo: singletics, D_Display after every tic (as vanilla's at 35 frames a second or more)
-            r = subprocess.run([ref, '-iwad', doom1, '-timedemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
+            r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1), '-timedemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
                                cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         finally:  # (no shutil: the dev container's Python is minimal)
             for root, dirs, files in os.walk(tmp, topdown=False):
