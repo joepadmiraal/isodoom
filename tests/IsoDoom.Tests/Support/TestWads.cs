@@ -78,6 +78,17 @@ public static class TestWads
     /// <summary>MD5 (lower-case hex) of <see cref="Doom2Path"/>, or null when there is no DOOM II IWAD.</summary>
     public static string? Doom2Md5 => _doom2Md5Value.Value;
 
+    /// <summary>M9: environment variable that overrides the registered/Ultimate Doom IWAD's path (an absent path forces a skip).</summary>
+    public const string DoomEnvVar = "ISODOOM_DOOM_WAD";
+
+    private static readonly Lazy<string?> _doom = new(() => FindIwad(DoomEnvVar, "DOOM.WAD", "doom.wad"));
+
+    /// <summary>M9: the registered or Ultimate Doom IWAD (<see cref="DoomEnvVar"/>, else <c>wads/DOOM.WAD</c> or <c>wads/doom.wad</c>), or null.</summary>
+    public static string? DoomPath => _doom.Value;
+
+    /// <summary>M9: the path of a registered or Ultimate Doom IWAD (any version; no MD5 check), or skips the calling test.</summary>
+    public static string RequireDoom() => DoomPath ?? SkipMissing("DOOM.WAD", DoomEnvVar);
+
     /// <summary>T10.7: environment variable that overrides the TNT.WAD path (an absent path forces a skip).</summary>
     public const string TntEnvVar = "ISODOOM_TNT_WAD";
 
