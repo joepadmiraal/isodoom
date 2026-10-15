@@ -24,7 +24,8 @@ in this order, in:
 
   1. the folder you started the game from;
   2. the game's own folder, and a "wads" folder inside it (put the WAD next
-     to IsoDoom.exe or IsoDoom.x86_64, or in a "wads" folder beside it);
+     to IsoDoom.exe, IsoDoom.x86_64 or IsoDoom.app, or in a "wads" folder
+     beside it);
   3. the folders in the DOOMWADDIR and DOOMWADPATH environment variables;
   4. Steam's and GOG's Doom installs (every Steam library, a Steam Deck's
      SD card too), and on Linux ~/.local/share/games/doom and
@@ -33,8 +34,7 @@ in this order, in:
 If it finds several, a menu lets you pick one (keyboard, mouse or pad); it
 remembers your choice. If it finds none, the same menu lets you browse for
 the file, or download the shareware DOOM1.WAD from the idgames archive
-(id Software's own release, checked before use). On macOS, where the game's
-folder is inside IsoDoom.app, use the menu or a Steam install.
+(id Software's own release, checked before use).
 
 From a command line, pass the file directly (anything after "--" goes to
 the game):

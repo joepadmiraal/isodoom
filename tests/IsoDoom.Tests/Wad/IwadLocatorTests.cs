@@ -252,6 +252,31 @@ public sealed class IwadLocatorTests : IDisposable
     }
 
     [Fact]
+    public void GameDirectoriesAreTheExecutablesFolderAndItsWads()
+    {
+        string game = Dir("game");
+        Assert.Equal([game, Path.Combine(game, "wads")], IwadSearchContext.GameDirectoriesFor(game + "/"));
+        Assert.Empty(IwadSearchContext.GameDirectoriesFor(""));
+        // Contents/MacOS outside a bundle is no bundle.
+        string notBundle = Dir("game/Contents/MacOS");
+        Assert.Equal(2, IwadSearchContext.GameDirectoriesFor(notBundle).Count);
+    }
+
+    [Fact]
+    public void MacBundleAddsTheFolderHoldingIt()
+    {
+        // T8.7b: a WAD beside IsoDoom.app, or in a wads folder beside it.
+        string macOS = Dir("Games/IsoDoom.app/Contents/MacOS");
+        string games = Dir("Games");
+        Assert.Equal([macOS, Path.Combine(macOS, "wads"), games, Path.Combine(games, "wads")],
+            IwadSearchContext.GameDirectoriesFor(macOS));
+
+        string beside = Touch("Games/wads/doom2.wad");
+        IwadSearchResult r = Locator(gameDirs: [.. IwadSearchContext.GameDirectoriesFor(macOS)], platform: IwadPlatform.MacOS).D_FindIWAD();
+        Assert.Equal(beside, r.Path);
+    }
+
+    [Fact]
     public void WadPathEntryMayNameAFile()
     {
         string wad = Touch("files/DOOM1.WAD");

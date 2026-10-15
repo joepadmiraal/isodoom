@@ -61,6 +61,29 @@ public sealed class IwadSearchContext
     /// </summary>
     public Func<string, string, string?> ReadRegistry { get; init; } = WindowsRegistry.ReadLocalMachine;
 
+    /// <summary>
+    /// The game folders for an export whose executable is in
+    /// <paramref name="executableDir"/>: that folder and its <c>wads/</c>; and
+    /// (T8.7b) when it is a macOS bundle's <c>NAME.app/Contents/MacOS</c>, the
+    /// folder holding the bundle and its <c>wads/</c>, where a player puts a WAD
+    /// next to the app (a Finder launch's working directory is <c>/</c>).
+    /// </summary>
+    public static IReadOnlyList<string> GameDirectoriesFor(string executableDir)
+    {
+        string root = executableDir.TrimEnd('/', '\\');
+        if (root.Length == 0)
+            return [];
+        var dirs = new List<string> { root, Path.Combine(root, "wads") };
+        DirectoryInfo macOS = new(root);
+        if (macOS.Name == "MacOS" && macOS.Parent is { Name: "Contents", Parent: { } bundle }
+            && bundle.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase) && bundle.Parent is { } holder)
+        {
+            dirs.Add(Path.TrimEndingDirectorySeparator(holder.FullName));
+            dirs.Add(Path.Combine(holder.FullName, "wads"));
+        }
+        return dirs;
+    }
+
     public static IwadPlatform CurrentPlatform =>
         OperatingSystem.IsWindows() ? IwadPlatform.Windows
         : OperatingSystem.IsMacOS() ? IwadPlatform.MacOS

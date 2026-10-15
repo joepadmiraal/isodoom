@@ -49,17 +49,16 @@ public static class WadLocator
 
     /// <summary>
     /// The game folder: the project folder in editor runs, the executable's
-    /// folder in exports; each followed by its <c>wads/</c> subfolder.
+    /// folder in exports (and on macOS, T8.7b, the folder holding
+    /// <c>IsoDoom.app</c>); each followed by its <c>wads/</c> subfolder
+    /// (<see cref="IwadSearchContext.GameDirectoriesFor"/>).
     /// </summary>
     public static IReadOnlyList<string> GameDirectories()
     {
         string? root = OS.HasFeature("editor")
             ? ProjectSettings.GlobalizePath("res://")
             : Path.GetDirectoryName(OS.GetExecutablePath());
-        if (string.IsNullOrEmpty(root))
-            return [];
-        root = root.TrimEnd('/', '\\');
-        return [root, Path.Combine(root, "wads")];
+        return string.IsNullOrEmpty(root) ? [] : IwadSearchContext.GameDirectoriesFor(root);
     }
 
     /// <summary>
