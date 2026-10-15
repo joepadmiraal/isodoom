@@ -120,8 +120,9 @@ public sealed class WallCaps
     public float IslandTop(int island, Func<int, float> ceiling)
     {
         float top = float.MinValue;
-        foreach (int s in Islands[island].Sectors)
-            top = Math.Max(top, ceiling(s));
+        IReadOnlyList<int> sectors = Islands[island].Sectors;
+        for (int i = 0; i < sectors.Count; i++) // (T8.3: no enumerator, it runs every frame)
+            top = Math.Max(top, ceiling(sectors[i]));
         return top;
     }
 

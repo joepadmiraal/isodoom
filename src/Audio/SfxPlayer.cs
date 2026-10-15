@@ -27,6 +27,7 @@ public partial class SfxPlayer : Node, ISoundDevice
     private readonly AudioEffectPanner[] _panners;
     private readonly Dictionary<string, (AudioStreamWav? Stream, double Seconds)> _streams = new(StringComparer.Ordinal);
     private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
+    private readonly string?[] _lumpNames = new string?[(int)sfxenum_t.NUMSFX];
     private bool _paused;
 
     /// <summary>s_sound.c <c>snd_SfxVolume</c> (0–127): the channels' volumes are shares of it (the bus applies it).</summary>
@@ -94,7 +95,8 @@ public partial class SfxPlayer : Node, ISoundDevice
     /// </summary>
     public (AudioStreamWav? Stream, double Seconds) StreamFor(sfxenum_t sfx)
     {
-        string name = SoundInfo.LumpName(sfx);
+        // (T8.3: each sound's lump name made once, not at every start)
+        string name = (uint)sfx < (uint)_lumpNames.Length ? _lumpNames[(int)sfx] ??= SoundInfo.LumpName(sfx) : SoundInfo.LumpName(sfx);
         if (_streams.TryGetValue(name, out (AudioStreamWav? Stream, double Seconds) cached))
             return cached;
         (AudioStreamWav?, double) entry = (null, 0);

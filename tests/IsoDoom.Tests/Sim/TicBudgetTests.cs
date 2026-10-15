@@ -51,28 +51,10 @@ public class TicBudgetTests
         var world = new World(new SpawnSettings(mode, skill_t.sk_hard), Tweaks.TopDown);
         world.G_DoLoadLevel(Level.Load(wad, map));
         int mobjs = world.Mobjs().Count();
-        if (awake != "asleep")
-        {
-            foreach (mobj_t m in world.Mobjs())
-                m.flags &= ~mobjflag_t.MF_AMBUSH;
-            world.players[world.consoleplayer].cheats |= player_t.CF_GODMODE;
-            world.P_NoiseAlert(world.players[world.consoleplayer].mo!, world.players[world.consoleplayer].mo!);
-        }
-        if (awake == "all")
-        {
-            // T6.13: every monster hunts the player, as A_Look on seeing it (the level script's wake).
-            foreach (mobj_t m in world.Mobjs().ToList())
-            {
-                // T10.6: MAP30's eye starts spitting cubes, as on seeing the player (A_BrainAwake).
-                if (m.type == mobjtype_t.MT_BOSSSPIT && m.state == m.info.spawnstate)
-                    world.P_SetMobjState(m, m.info.seestate);
-                if ((m.flags & mobjflag_t.MF_COUNTKILL) == 0)
-                    continue;
-                m.target = world.players[world.consoleplayer].mo;
-                if (m.state == m.info.spawnstate)
-                    world.P_SetMobjState(m, m.info.seestate);
-            }
-        }
+        if (awake == "noise")
+            Alert(world);
+        else if (awake == "all")
+            WakeAll(world);
 
         const int Warmup = 105, Measured = 1050;
         double[] ms = new double[Measured];
@@ -82,11 +64,7 @@ public class TicBudgetTests
         int travelled = 0;
         for (int tic = 0; tic < Warmup + Measured; tic++)
         {
-            // Run in a slow circle (twin-stick: an absolute direction and aim), so the player
-            // collides, slides and changes sectors.
-            uint direction = unchecked((uint)tic * (Tables.ANG90 / 35));
-            var cmd = new ticcmd_t { angleturn = Ticcmds.AbsoluteAngle(direction) };
-            Ticcmds.AbsoluteMove(ref cmd, direction, Ticcmds.TwinStickSpeed(true));
+            ticcmd_t cmd = CircleCmd(tic);
             clock.Restart();
             world.G_Ticker(cmd);
             clock.Stop();
@@ -106,5 +84,40 @@ public class TicBudgetTests
         // The median and 95th percentile, not the worst tic: a GC pause or the test host can stall one.
         Assert.True(median < BudgetMs, $"median {median:F4} ms");
         Assert.True(p95 < BudgetMs, $"p95 {p95:F4} ms");
+    }
+
+    /// <summary>The player runs a slow circle (twin-stick: an absolute direction and aim), so it collides, slides and changes sectors.</summary>
+    internal static ticcmd_t CircleCmd(int tic)
+    {
+        uint direction = unchecked((uint)tic * (Tables.ANG90 / 35));
+        var cmd = new ticcmd_t { angleturn = Ticcmds.AbsoluteAngle(direction) };
+        Ticcmds.AbsoluteMove(ref cmd, direction, Ticcmds.TwinStickSpeed(true));
+        return cmd;
+    }
+
+    /// <summary>T6.4: no monster deaf, the player in god mode, and a noise from it.</summary>
+    internal static void Alert(World world)
+    {
+        foreach (mobj_t m in world.Mobjs())
+            m.flags &= ~mobjflag_t.MF_AMBUSH;
+        world.players[world.consoleplayer].cheats |= player_t.CF_GODMODE;
+        world.P_NoiseAlert(world.players[world.consoleplayer].mo!, world.players[world.consoleplayer].mo!);
+    }
+
+    /// <summary>T6.13: <see cref="Alert"/>, then every monster hunts the player, as A_Look on seeing it (the level script's <c>wake</c>).</summary>
+    internal static void WakeAll(World world)
+    {
+        Alert(world);
+        foreach (mobj_t m in world.Mobjs().ToList())
+        {
+            // T10.6: MAP30's eye starts spitting cubes, as on seeing the player (A_BrainAwake).
+            if (m.type == mobjtype_t.MT_BOSSSPIT && m.state == m.info.spawnstate)
+                world.P_SetMobjState(m, m.info.seestate);
+            if ((m.flags & mobjflag_t.MF_COUNTKILL) == 0)
+                continue;
+            m.target = world.players[world.consoleplayer].mo;
+            if (m.state == m.info.spawnstate)
+                world.P_SetMobjState(m, m.info.seestate);
+        }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Godot;
 using IsoDoom.Map;
 
@@ -31,6 +30,9 @@ public static class CursorGround
         public Vector3 MapUnits => new(Point.X * LevelMesh.MapUnitsPerMetre, -Point.Z * LevelMesh.MapUnitsPerMetre, Point.Y * LevelMesh.MapUnitsPerMetre);
     }
 
+    // T8.3: Pick's sorted floor heights (main thread only; Pick runs every frame).
+    private static int[] _heights = [];
+
     /// <summary>
     /// The cursor ground point for the ray from <paramref name="origin"/> along
     /// <paramref name="direction"/> (Godot space), against <paramref name="mesh"/>'s
@@ -42,11 +44,18 @@ public static class CursorGround
     {
         if (direction.Y < 0)
         {
-            var heights = new SortedSet<int>();
-            foreach (Sector s in mesh.Level.Sectors)
-                heights.Add(s.FloorHeight);
-            foreach (int h in heights.Reverse())
+            // The floor heights, highest first, each once (T8.3: sorted in a reused buffer, no set per frame).
+            Sector[] sectors = mesh.Level.Sectors;
+            if (_heights.Length < sectors.Length)
+                _heights = new int[sectors.Length];
+            for (int i = 0; i < sectors.Length; i++)
+                _heights[i] = sectors[i].FloorHeight;
+            Array.Sort(_heights, 0, sectors.Length);
+            for (int i = sectors.Length - 1; i >= 0; i--)
             {
+                int h = _heights[i];
+                if (i + 1 < sectors.Length && _heights[i + 1] == h)
+                    continue;
                 if (AtHeight(origin, direction, h / 65536f) is not Vector3 p)
                     continue;
                 int sector = DrawnSectorAt(mesh, ToFixed(p.X), ToFixed(-p.Z));

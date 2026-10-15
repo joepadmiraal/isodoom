@@ -27,17 +27,27 @@ public sealed class NearActors
         Texture = ImageTexture.CreateFromImage(_image);
     }
 
-    /// <summary>
-    /// One row per thing (<paramref name="count"/>, each's foot in map units
-    /// from <paramref name="foot"/>) with its nearest of
-    /// <paramref name="actors"/>, leaving out the actor
-    /// <paramref name="self"/> gives for the row (the thing's own billboard,
-    /// when it is an actor; −1: none).
-    /// </summary>
-    public void Set(int count, Func<int, Vector3> foot, IReadOnlyList<ItemBeams.Actor> actors, Func<int, int>? self = null)
+    /// <summary>A thing with a row: its foot (map units) and its own actor among the actors (−1: none).</summary>
+    public interface IThing
     {
-        ArgumentNullException.ThrowIfNull(foot);
+        Vector3 MapPosition { get; }
+
+        int Self { get; }
+    }
+
+    /// <summary>
+    /// One row per thing of <paramref name="things"/> (each's foot in map units)
+    /// with its nearest of <paramref name="actors"/>, leaving out its own
+    /// (<see cref="IThing.Self"/>: the thing's own billboard, when it is an
+    /// actor). T8.3: generic over the things' struct, so the call every frame
+    /// makes no closure or boxing.
+    /// </summary>
+    public void Set<T>(IReadOnlyList<T> things, IReadOnlyList<ItemBeams.Actor> actors)
+        where T : struct, IThing
+    {
+        ArgumentNullException.ThrowIfNull(things);
         ArgumentNullException.ThrowIfNull(actors);
+        int count = things.Count;
         int rows = Math.Max(count, 1);
         bool resized = _image.GetHeight() != rows;
         if (resized)
@@ -46,8 +56,9 @@ public sealed class NearActors
         for (int i = 0; i < count; i++)
         {
             int found = 0;
-            int own = self?.Invoke(i) ?? -1;
-            Vector3 thing = foot(i);
+            T t = things[i];
+            int own = t.Self;
+            Vector3 thing = t.MapPosition;
             for (int a = 0; a < actors.Count; a++)
             {
                 if (a == own)

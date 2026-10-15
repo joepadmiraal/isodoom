@@ -335,13 +335,47 @@ public sealed partial class World
         return 0;
     }
 
-    /// <summary>Every mobj in thinker list order (removed ones not yet unlinked are skipped).</summary>
-    public IEnumerable<mobj_t> Mobjs()
+    /// <summary>
+    /// Every mobj in thinker list order (removed ones not yet unlinked are
+    /// skipped). T8.3: a struct, so a <c>foreach</c> over it (the presentation
+    /// does every frame) allocates nothing; LINQ takes it as an <see cref="IEnumerable{T}"/>.
+    /// </summary>
+    public MobjList Mobjs() => new(thinkercap);
+
+    /// <summary>The mobjs of the thinker list (<see cref="Mobjs"/>).</summary>
+    public readonly struct MobjList(thinker_t thinkercap) : IEnumerable<mobj_t>
     {
-        for (thinker_t th = thinkercap.next; th != thinkercap; th = th.next)
+        public Enumerator GetEnumerator() => new(thinkercap);
+
+        IEnumerator<mobj_t> IEnumerable<mobj_t>.GetEnumerator() => GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        /// <summary>Walks the thinker list from its cap to the next live mobj at each step.</summary>
+        public struct Enumerator : IEnumerator<mobj_t>
         {
-            if (th is mobj_t mobj && th.function != think_t.REMOVED)
-                yield return mobj;
+            private readonly thinker_t _cap;
+            private thinker_t _th;
+
+            public Enumerator(thinker_t thinkercap) => _cap = _th = thinkercap;
+
+            public readonly mobj_t Current => (mobj_t)_th;
+
+            readonly object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                for (_th = _th.next; _th != _cap; _th = _th.next)
+                {
+                    if (_th is mobj_t && _th.function != think_t.REMOVED)
+                        return true;
+                }
+                return false;
+            }
+
+            public void Reset() => _th = _cap;
+
+            public readonly void Dispose() { }
         }
     }
 }

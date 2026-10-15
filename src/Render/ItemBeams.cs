@@ -46,7 +46,10 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// mirrored, its radius (the wall pull, as its billboard's), and its
     /// sector.
     /// </summary>
-    public readonly record struct Beam(mobj_t Mobj, ItemKind Kind, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector);
+    public readonly record struct Beam(mobj_t Mobj, ItemKind Kind, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector) : NearActors.IThing
+    {
+        int NearActors.IThing.Self => -1;
+    }
 
     /// <summary>An actor's billboard (<see cref="ThingSprites.FlagActor"/>): its foot (map units: x, y, height) and radius (the wall pull, as its billboard's).</summary>
     public readonly record struct Actor(Vector3 MapPosition, float Radius);
@@ -129,7 +132,7 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// </summary>
     public void Set(IReadOnlyList<Beam> beams, IReadOnlyList<Actor>? actors = null)
     {
-        _actors.Set(beams.Count, i => beams[i].MapPosition, actors ?? []);
+        _actors.Set(beams, actors ?? []);
         bool resized = beams.Count != _beams.Length;
         if (resized)
         {
