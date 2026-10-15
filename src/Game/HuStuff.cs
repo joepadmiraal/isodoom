@@ -82,8 +82,7 @@ public sealed class HuStuff
     /// the BFG Edition's names for <paramref name="variant"/> (T10.1), as
     /// <paramref name="gameversion"/>'s executable reads them (T10.7).
     /// </summary>
-    public void HU_Start(GameMission mission = GameMission.none, int episode = 1, int map = 0, GameVariant variant = GameVariant.vanilla,
-        GameVersion gameversion = GameVersion.exe_doom_1_9)
+    public void HU_Start(GameMission mission, int episode, int map, GameVariant variant, GameVersion gameversion)
     {
         message_on = false;
         message_dontfuckwithme = false;
@@ -110,8 +109,7 @@ public sealed class HuStuff
     /// Chocolate Doom's <c>DEH_AddStringReplacement</c>s (<see cref="DEH_String"/>,
     /// T10.1; not Chocolate Doom's, which drops it: SPEC §12 T10.7).
     /// </summary>
-    public static string HU_Title(GameMission mission, int episode, int map, GameVariant variant = GameVariant.vanilla,
-        GameVersion gameversion = GameVersion.exe_doom_1_9)
+    public static string HU_Title(GameMission mission, int episode, int map, GameVariant variant, GameVersion gameversion)
     {
         // Pre-Final Doom compatibility: map33-map35 names don't spill over
         if (mission == GameMission.doom2 && gameversion <= GameVersion.exe_doom_1_9 && map >= 33 && variant != GameVariant.bfgedition)

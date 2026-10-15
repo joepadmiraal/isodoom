@@ -22,10 +22,13 @@ public enum skill_t
 /// (<c>-respawn</c>: monsters respawn as on Nightmare) and <c>fastparm</c>
 /// (<c>-fast</c>: fast monsters as on Nightmare), which the world reads;
 /// and (T10.7) Chocolate Doom's <c>gameversion</c>, the executable emulated
-/// (null: the game mode's default, <see cref="World.gameversion"/>).
+/// (null: the IWAD's default, <see cref="World.gameversion"/>), and its
+/// <c>gamemission</c>, which that default needs (Final Doom's executable for
+/// TNT and Plutonia; <see cref="GameMission.none"/>: the game mode's alone).
+/// The mission is not saved: a save keeps the version it resolved to.
 /// </summary>
 public readonly record struct SpawnSettings(GameMode gamemode, skill_t gameskill, bool netgame = false, int deathmatch = 0, bool nomonsters = false,
-    bool respawnparm = false, bool fastparm = false, GameVersion? gameversion = null);
+    bool respawnparm = false, bool fastparm = false, GameVersion? gameversion = null, GameMission gamemission = GameMission.none);
 
 /// <summary>What <see cref="MapThingSpawning.Select"/> decided for one map thing.</summary>
 public enum MapThingSpawnKind
