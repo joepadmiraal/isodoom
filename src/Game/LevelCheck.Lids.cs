@@ -29,7 +29,7 @@ namespace IsoDoom.Game;
 /// </summary>
 public partial class LevelCheck
 {
-    private int _lidMaps, _lidMoves;
+    private int _lidMaps, _lidMoves, _lidEnds, _lidEndsShown, _lidEndsOntoVoid;
 
     /// <summary>The lid height of each sector from the level's current ceilings (<see cref="DoorLids.LidHeight"/>; <see cref="DoorLids.None"/> without a lid).</summary>
     private static float[] LidHeights(LevelMesh m)
@@ -64,6 +64,85 @@ public partial class LevelCheck
             _lidMoves++;
             return;
         }
+    }
+
+    /// <summary>
+    /// The lids' ends (T6.13f, every map): each lid sector's drawn one-sided
+    /// wall has its end (<see cref="DoorLids.HasEnd"/>; the chunk check
+    /// compares its vertices), facing out of its sector (just across the line
+    /// on its right its own sector's floor is drawn, on its left not: the
+    /// void, but for a few maps' overlapping sectors), and
+    /// spans from the sector's ceiling up to its lid as the shader evaluates
+    /// them from the uploaded data: the lid's height while it shows, nothing
+    /// while the sector is open above it; also with the lowest neighbour's
+    /// ceiling lowered below the sector's (the end collapses) and back.
+    /// </summary>
+    private void CheckLidEndData(LevelMesh m, string map)
+    {
+        int ends = 0, shown = 0, facing = 0, badFacing = 0;
+        string firstFacing = "";
+        float Ceiling(int s) => m.Level.Sectors[s].CeilingHeight / 65536f;
+        // The shader's span of a lid end: (bottom, top), top == bottom when it collapses.
+        (float Bottom, float Top) Span(int sector)
+        {
+            float bottom = m.SectorData(sector).G;
+            (float height, int slot, _, _) = m.LidData(sector);
+            return (bottom, m.LidMode == DoorLidMode.On && slot >= 0 ? Math.Max(height, bottom) : bottom);
+        }
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            bool expected = LevelMesh.IsDrawn(s) && s.BackSector is null && s.Kind == WallSectionKind.Middle && m.Lids.Has(s.FrontSector.Index);
+            if (m.Lids.HasEnd(s) != expected)
+                Fail($"{map}: line {s.Line.Index}: HasEnd {!expected}, expected {expected}");
+            if (!expected)
+                continue;
+            ends++;
+            int sector = s.FrontSector.Index;
+            foreach (WallPiece pc in m.Pieces.Of(s.Line, s.Side))
+            {
+                double ax = pc.A.X / 65536.0, ay = pc.A.Y / 65536.0, bx = pc.B.X / 65536.0, by = pc.B.Y / 65536.0;
+                double len = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+                if (len < 4)
+                    continue;
+                double mx = (ax + bx) / 2, my = (ay + by) / 2, nx = (by - ay) / len, ny = -(bx - ax) / len; // towards the sector
+                int inside = CursorGround.DrawnSectorAt(m, (int)Math.Round((mx + nx) * 65536), (int)Math.Round((my + ny) * 65536));
+                int outside = CursorGround.DrawnSectorAt(m, (int)Math.Round((mx - nx) * 65536), (int)Math.Round((my - ny) * 65536));
+                facing++;
+                // Out of its sector (the void, or rarely another sector overlapping it: Doom II MAP17 line 728, MAP19 line 430).
+                if ((inside != sector || outside == sector) && badFacing++ == 0)
+                    firstFacing = $"line {s.Line.Index}: sector {inside} on its right, {outside} on its left (expected {sector} and not it)";
+                if (outside < 0)
+                    _lidEndsOntoVoid++;
+            }
+            (float bottom, float top) = Span(sector);
+            float lid = m.Lids.LidHeight(sector, Ceiling);
+            bool shows = m.LidMode == DoorLidMode.On && m.LidData(sector).Slot >= 0 && DoorLids.Shows(lid, Ceiling(sector));
+            if (shows)
+                shown++;
+            if (Math.Abs(bottom - Ceiling(sector)) > 1e-3f || Math.Abs(top - (shows ? lid : Ceiling(sector))) > 1e-3f)
+                Fail($"{map}: line {s.Line.Index}'s lid end spans {bottom}..{top}, expected {Ceiling(sector)}..{(shows ? lid : Ceiling(sector))}");
+        }
+        if (badFacing > 0)
+            Fail($"{map}: {badFacing} of {facing} lid end piece(s) do not face the void from their sector, first {firstFacing}");
+
+        // A lid end collapses when the lid no longer shows: the lowest neighbour's ceiling lowered to the sector's.
+        WallSection? one = m.Walls.Sections.FirstOrDefault(s => m.Lids.HasEnd(s) && Span(s.FrontSector.Index) is var (b, t) && t > b);
+        if (one is not null)
+        {
+            int sector = one.FrontSector.Index;
+            Sector lowest = m.Lids.Neighbours(sector).Select(n => m.Level.Sectors[n]).MinBy(n => n.CeilingHeight)!;
+            int old = lowest.CeilingHeight;
+            lowest.CeilingHeight = m.Level.Sectors[sector].CeilingHeight;
+            m.UpdateSectors();
+            if (Span(sector) is var (b, t) && t != b)
+                Fail($"{map}: line {one.Line.Index}'s lid end spans {b}..{t} with sector {lowest.Index}'s ceiling lowered to sector {sector}'s (collapsed expected)");
+            lowest.CeilingHeight = old;
+            m.UpdateSectors();
+            if (Span(sector) is var (b2, t2) && t2 <= b2)
+                Fail($"{map}: line {one.Line.Index}'s lid end collapsed with sector {lowest.Index}'s ceiling back");
+        }
+        _lidEnds += ends;
+        _lidEndsShown += shown;
     }
 
     /// <summary>The drawn lid views (real renderer only); the lids are off for the other render checks.</summary>
@@ -334,6 +413,116 @@ public partial class LevelCheck
         GD.Print($"Level check: {map}: lid of sector {door.Index}: no view from in front of it");
     }
 
+    /// <summary>
+    /// The lids' ends (T6.13f) at the sectors' current heights, as the
+    /// classes cast rays against them: each piece of a lid sector's one-sided
+    /// wall (<see cref="DoorLids.HasEnd"/>) whose lid shows, from its
+    /// ceiling up to <paramref name="lids"/>' height, facing the void (its
+    /// normal away from the sector).
+    /// </summary>
+    private static List<CutQuad> LidEndQuads(LevelMesh m, float[] lids)
+    {
+        var quads = new List<CutQuad>();
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            if (!m.Lids.HasEnd(s))
+                continue;
+            int sector = s.FrontSector.Index;
+            float ceiling = s.FrontSector.CeilingHeight / 65536f;
+            if (!DoorLids.Shows(lids[sector], ceiling) || m.LidData(sector).Slot < 0)
+                continue;
+            foreach (WallPiece pc in m.Pieces.Of(s.Line, s.Side))
+            {
+                var a = new Vector2(pc.A.X / 65536f, pc.A.Y / 65536f);
+                var b = new Vector2(pc.B.X / 65536f, pc.B.Y / 65536f);
+                float len = a.DistanceTo(b);
+                if (len < 1e-3f)
+                    continue;
+                Vector2 dir = (b - a) / len;
+                quads.Add(new CutQuad(a, dir, len, new Vector3(-dir.Y, dir.X, 0), ceiling, lids[sector], false, s));
+            }
+        }
+        return quads;
+    }
+
+    /// <summary>
+    /// The colour a lid's end (T6.13f) draws at <paramref name="e"/>: its
+    /// wall's texture at the column along its line and the row its texture
+    /// top gives (going on upwards past the ceiling), lit as the wall (its
+    /// sector's light, fake contrast); null within a texel's edge or a light
+    /// table step.
+    /// </summary>
+    private (int R, int G, int B)? LidEndPixel(LevelMesh m, EndPoint e)
+    {
+        WallSection s = e.Section!;
+        Line line = s.Line;
+        double lx = line.Dx / 65536.0, ly = line.Dy / 65536.0, length = Math.Sqrt(lx * lx + ly * ly);
+        double column = s.TextureOffset / 65536.0 + ((e.X - line.V1.X / 65536.0) * lx + (e.Y - line.V1.Y / 65536.0) * ly) / length;
+        IsoDoom.Wad.Graphics.IndexedImage tex = ShownComposite(m, s.Texture);
+        double row = s.TextureTopFor(tex.Height << Fixed.FRACBITS) / 65536.0 - e.Z;
+        if (Math.Abs(column - Math.Round(column)) < CapTexelMargin || Math.Abs(row - Math.Round(row)) < CapTexelMargin)
+            return null;
+        int colormap = ExpectedColormap(m, true, s.FrontSector.LightLevel, m.Pieces.Of(line, s.Side)[0].Contrast, e.X, e.Y, e.Depth);
+        if (colormap < 0)
+            return null;
+        (int tc, int tr) = TextureWrap.WallTexel((int)Math.Floor(column), (int)Math.Floor(row), tex.Width, tex.Height, WallTextureTiling.Vanilla);
+        return Shade(tex[tc, tr], colormap);
+    }
+
+    /// <summary>
+    /// The lids' ends (T6.13f, real renderer only): a closed lid sector's
+    /// one-sided wall facing away from the game camera (it has no cap, T6.13e;
+    /// its end faces the camera), seen along the game camera's direction at 1
+    /// unit per pixel with a cut centre inside the sector beside it: with the
+    /// cutaway off, the pixels whose first surface is definitely its end (or
+    /// another's) show the wall's texture going on upwards, lit as the wall,
+    /// the rest as with the lids off (<see cref="CompareLidView"/>); then the
+    /// cutaway's comparisons with the doors cut (the end cut above the cutoff
+    /// as walls are, the lid's solid capped) and kept. At least 50 end pixels.
+    /// </summary>
+    private async Task LidEndCheck(LevelMesh m)
+    {
+        string map = m.Level.Name;
+        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Doors = CutawayDoors.Cut };
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        Vector2 toCameraFlat = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        Vector2I size = ViewSize();
+        float[] lids = LidHeights(m);
+        int candidates = 0;
+        foreach (WallSection s in m.Walls.Sections.Where(s => m.Lids.HasEnd(s))
+            .OrderByDescending(s => lids[s.FrontSector.Index] - s.FrontSector.CeilingHeight / 65536f))
+        {
+            Sector sector = s.FrontSector;
+            float ceiling = sector.CeilingHeight / 65536f, floor = sector.FloorHeight / 65536f;
+            var v1 = new Vector2(s.Line.V1.X / 65536f, s.Line.V1.Y / 65536f);
+            var v2 = new Vector2(s.Line.V2.X / 65536f, s.Line.V2.Y / 65536f);
+            float len = v1.DistanceTo(v2);
+            Vector2 dir = (v2 - v1) / len, n = new(dir.Y, -dir.X); // towards the sector
+            if (len < 8 || lids[sector.Index] - ceiling < settings.Height + 16 || n.Dot(toCameraFlat) > -0.3f)
+                continue; // a closed lid, deep enough to cut, its wall facing away from the camera
+            if (candidates++ >= 40)
+                break;
+            // The centre inside the sector, 4 units in from the wall's middle, on its floor.
+            Vector2 mid = (v1 + v2) / 2 + n * 4;
+            var centre = new Vector3(mid.X, mid.Y, floor);
+            CutView(centre, basis, toCamera);
+            CutClasses c = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings, toCamera, size.X, size.Y, lids);
+            if (c.Ends < 50)
+                continue;
+            string what = $"{map}: line {s.Line.Index}'s lid end (sector {sector.Index}, ceiling {ceiling:F0} to lid {lids[sector.Index]:F0}), centre ({centre.X:F0}, {centre.Y:F0}, {centre.Z:F0})";
+            GD.Print($"Level check: {what}: {c.Ends} pixels whose first surface is a lid's end, {c.Capped} capped");
+            await CompareLidView(m, centre, c, settings, basis, toCamera, what);
+            CutClasses k = ClassifyCut(m, CutQuads(m), FloorHeights(m), centre, settings with { Doors = CutawayDoors.Keep }, toCamera, size.X, size.Y, lids);
+            await CompareLidView(m, centre, k, settings with { Doors = CutawayDoors.Keep }, basis, toCamera, $"{what}, doors kept");
+            return;
+        }
+        if (candidates == 0)
+            GD.Print($"Level check: {map}: lid ends: no closed lid sector with a one-sided wall facing away from the game camera");
+        else
+            Fail($"{map}: lid ends: no view found (a closed lid sector's one-sided wall facing away from the game camera with at least 50 pixels of its end shown)");
+    }
+
     /// <summary>The pixels whose first surface is definitely a lid above the cutoff inside the disc (not cut, or the lid would not be first).</summary>
     private static int LidPixelsInDisc(CutClasses c, float[] lids, Vector3 centre, CutawaySettings settings, Vector3 toCamera)
     {
@@ -371,8 +560,8 @@ public partial class LevelCheck
             return;
         (int Left, int Top, int Right, int Bottom) box = classes.Box;
         int bw = box.Right - box.Left;
-        int compared = 0, lidPixels = 0, badLid = 0, badKeep = 0;
-        string firstLid = "", firstKeep = "";
+        int compared = 0, lidPixels = 0, badLid = 0, badKeep = 0, endPixels = 0, badEnd = 0;
+        string firstLid = "", firstKeep = "", firstEnd = "";
         for (int py = box.Top; py < box.Bottom; py++)
         {
             for (int px = box.Left; px < box.Right; px++)
@@ -399,14 +588,25 @@ public partial class LevelCheck
                     if (got != expected && badLid++ == 0)
                         firstLid = $"pixel ({px}, {py}), map ({c.X:F2}, {c.Y:F2}) in sector {c.Sector}: drew {got}, expected {expected}";
                 }
+                else if (classes.LidStates[i] == 3 && LidEndPixel(m, classes.EndPoints[i]) is { } expected)
+                {
+                    // T6.13f: a lid's end, its wall's texture going on upwards, lit as the wall.
+                    compared++;
+                    endPixels++;
+                    EndPoint e = classes.EndPoints[i];
+                    if (got != expected && badEnd++ == 0)
+                        firstEnd = $"pixel ({px}, {py}), map ({e.X:F2}, {e.Y:F2}, {e.Z:F2}) on line {e.Section!.Line.Index}'s lid end: drew {got}, expected {expected}";
+                }
             }
         }
         _pixels += compared;
         if (badLid > 0)
             Fail($"{what}: {badLid} of {lidPixels} lid pixel(s) differ, first at {firstLid}");
+        if (badEnd > 0)
+            Fail($"{what}: {badEnd} of {endPixels} lid end pixel(s) differ, first at {firstEnd}");
         if (badKeep > 0)
             Fail($"{what}: {badKeep} pixel(s) whose ray meets no lid changed with the lids on, first at {firstKeep}");
-        GD.Print($"Level check: {what}: {compared} pixels compared with the cutaway off, {lidPixels} of them on a lid, the rest as with the lids off");
+        GD.Print($"Level check: {what}: {compared} pixels compared with the cutaway off, {lidPixels} of them on a lid, {endPixels} on a lid's end, the rest as with the lids off");
         await CompareCutView(m, centre, classes, settings, basis, toCamera, $"{what}, lids on");
     }
 }

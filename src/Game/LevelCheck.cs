@@ -209,6 +209,7 @@ public partial class LevelCheck : Godot.Node
             CheckMapMusic(map); // T7.8c: S_Start's song
             CheckSectorData(m, map);
             CheckLidData(m, map);
+            CheckLidEndData(m, map); // T6.13f
             slots += CheckSlots(m, map);
             CheckLightTables(m, map);
             CheckCursorGround(m, map);
@@ -277,6 +278,9 @@ public partial class LevelCheck : Godot.Node
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
             + $"{_switchPairs} switch pairs drawn with both textures in the atlas");
         GD.Print($"Level check: lids (T6.13b): {_lidMoves} maps moved a lid sector's lowest neighbouring ceiling up and down: the lid texel follows");
+        GD.Print($"Level check: lid ends (T6.13f): {_lidEnds} lid sector one-sided walls with an end facing out of its sector ({_lidEndsOntoVoid} pieces onto the void), {_lidEndsShown} of them spanning up to a lid at load");
+        if (_lidEnds == 0)
+            Fail("no lid ends on any map (T6.13f)");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         PrintFog();
@@ -635,7 +639,8 @@ public partial class LevelCheck : Godot.Node
             List<SwitchMarker> sectorMarkers = markers[sector] ?? [];
             List<LedgeEdge> sectorLedges = ledges[sector] ?? [];
             int solidVertices = floorVertices + 4 * QuadCount(sectorWalls) + 3 * sectorCaps.Sum(c => c.Pieces.Sum(p => p.Length))
-                + sectorMarkers.Sum(k => k.Pieces.Sum(p => p.Length)) + sectorLedges.Sum(e => e.Pieces.Sum(p => p.Length)) + 4 * QuadCount([.. sectorWalls.Where(w => IsIslandWall(m, w.Item1))]);
+                + sectorMarkers.Sum(k => k.Pieces.Sum(p => p.Length)) + sectorLedges.Sum(e => e.Pieces.Sum(p => p.Length)) + 4 * QuadCount([.. sectorWalls.Where(w => IsIslandWall(m, w.Item1))])
+                + 4 * QuadCount([.. sectorWalls.Where(w => !w.Item2 && m.Lids.HasEnd(w.Item1))]);
             int maskedVertices = 4 * QuadCount(sectorMasked);
             ArrayMesh? mesh = sector < m.SectorMeshes.Length ? m.SectorMeshes[sector] : null;
             if (solidVertices + maskedVertices == 0)
@@ -669,6 +674,9 @@ public partial class LevelCheck : Godot.Node
         }
         if (quads != m.WallQuads)
             Fail($"{map}: {m.WallQuads} wall quads, {quads} expected");
+        int lidEnds = m.Walls.Sections.Where(s => m.Lids.HasEnd(s)).Sum(s => m.Pieces.Of(s.Line, s.Side).Count);
+        if (lidEnds != m.LidEndQuads)
+            Fail($"{map}: {m.LidEndQuads} lid end quads, {lidEnds} expected (T6.13f)");
         if (maskedQuads != m.MaskedQuads + m.MaskedBackQuads || backFaces != m.MaskedBackQuads)
             Fail($"{map}: {m.MaskedQuads} masked middle quads and {m.MaskedBackQuads} back faces, {maskedQuads - backFaces} and {backFaces} expected");
         return (sectionCount, vertexCount);
@@ -687,8 +695,9 @@ public partial class LevelCheck : Godot.Node
     /// cut centre (<see cref="LevelMesh.KindWallCap"/>, <see cref="LevelMesh.KindWallCapCut"/>),
     /// the sector's switch markers (T6.13p, <paramref name="markers"/>, <see cref="LevelMesh.KindSwitchMarker"/>),
     /// each as a fan per piece, the sector's ledge edges (T6.13s, <paramref name="ledges"/>, <see cref="LevelMesh.KindLedge"/>),
-    /// each as a fan per piece, and the walls of islands once more (<see cref="LevelMesh.KindWallExtension"/>).
-    /// Returns the wall quads checked.
+    /// each as a fan per piece, the walls of islands once more (<see cref="LevelMesh.KindWallExtension"/>),
+    /// and a lid sector's one-sided walls once more, wound the other way, as its lid's ends
+    /// (T6.13f, <see cref="LevelMesh.KindLidEnd"/>). Returns the wall quads checked.
     /// </summary>
     private int CheckSurface(LevelMesh m, ArrayMesh mesh, int surface, int sector, SectorFloor? floor, List<(WallSection S, bool Back)> sectionsOfSurface,
         List<WallCap> caps, List<SwitchMarker> markers, List<LedgeEdge> ledges, List<Seg>?[] sideSegs, string what, ref int sectionCount, ref int vertexCount)
@@ -700,7 +709,8 @@ public partial class LevelCheck : Godot.Node
             quadCount += m.Pieces.Of(s.Line, s.Side).Count;
         int floorCopies = floor is not null && m.Lids.Has(sector) ? 4 : 3; // the floor, two caps, the lid (T6.13b)
         List<WallSection> islandWalls = [.. sectionsOfSurface.Where(w => !w.Back && IsIslandWall(m, w.S)).Select(w => w.S)];
-        int extensionQuads = islandWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count);
+        List<WallSection> lidEndWalls = [.. sectionsOfSurface.Where(w => !w.Back && m.Lids.HasEnd(w.S)).Select(w => w.S)];
+        int extensionQuads = islandWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count) + lidEndWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count);
         int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)) + markers.Sum(k => k.Pieces.Sum(p => p.Length))
             + ledges.Sum(e => e.Pieces.Sum(p => p.Length)) + 4 * extensionQuads;
         int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + markers.Sum(k => k.Pieces.Sum(p => 3 * (p.Length - 2)))
@@ -995,6 +1005,45 @@ public partial class LevelCheck : Godot.Node
                 ci += 6;
             }
         }
+
+        // T6.13f: the lid sector's one-sided walls again, as its lid's ends: the wall's corners, columns and
+        // texture plane, its ceiling as both plane references, wound the other way (facing the void).
+        foreach (WallSection s in lidEndWalls)
+        {
+            string sw = $"{level.Name}: line {s.Line.Index}'s lid end";
+            foreach (WallPiece piece in m.Pieces.Of(s.Line, s.Side))
+            {
+                Vector3 p1 = LevelMesh.ToGodot(piece.A.X, piece.A.Y, 0), p2 = LevelMesh.ToGodot(piece.B.X, piece.B.Y, 0);
+                Vector3[] corners = [p1, p1, p2, p2];
+                double ua = (s.TextureOffset + (long)piece.ColumnA) / 65536.0, ub = (s.TextureOffset + (long)piece.ColumnB) / 65536.0;
+                double[] us = [ua, ua, ub, ub];
+                float[] vs = [0, 1, 1, 0];
+                int texturePlane = (int)s.TextureTop.Plane + (s.BottomPegged ? LevelMesh.PlaneAddsTextureHeight : 0);
+                for (int k = 0; k < 4; k++)
+                {
+                    int i = (cv + k) * 4;
+                    if (!Near(pos[cv + k], corners[k]) || Math.Abs(uv[cv + k].X - us[k]) > 1e-3 || uv[cv + k].Y != vs[k]
+                        || !Custom(c0, cv + k, LevelMesh.KindLidEnd, LevelMesh.SidePartId(s), sector, -1)
+                        || (int)c1[i] != (int)WallPlane.FrontCeiling || (int)c1[i + 2] != (int)WallPlane.FrontCeiling || (int)c2[i] != texturePlane
+                        || c2[i + 3] != LevelMesh.PieceAngle(piece) || c2[i + 2] != piece.Contrast)
+                    {
+                        Fail($"{sw}: corner {k} differs ({Custom4(c0, cv + k)})");
+                        break;
+                    }
+                }
+                int[] quadIndices = LevelMesh.BackFaceIndices(cv);
+                for (int k = 0; k < 6; k++)
+                {
+                    if (idx[ci + k] != quadIndices[k])
+                    {
+                        Fail($"{sw}: quad indices differ (not wound as a back face)");
+                        break;
+                    }
+                }
+                cv += 4;
+                ci += 6;
+            }
+        }
         return quad;
     }
 
@@ -1274,6 +1323,7 @@ public partial class LevelCheck : Godot.Node
         await CutawayCheck(m);
 
         await LidCheck(m);
+        await LidEndCheck(m); // T6.13f
         m.SetDoorLids(DoorLidMode.Off);
 
         await WallCapCheck(m);

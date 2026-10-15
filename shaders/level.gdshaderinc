@@ -39,7 +39,7 @@
 //   VERTEX.xz  position (VERTEX.y is ignored and set here)
 //   CUSTOM0    kind (0 floor, 1 solid wall, 2 masked middle, 3 a masked middle's back face,
 //              4 a floor's cutaway cap, 5 a lid, 6 a wall cap, 7 a wall cap's cutaway cap, 8 an
-//              island's wall above its ceiling, 9 a switch marker, 10 a ledge edge), side
+//              island's wall above its ceiling, 9 a switch marker, 10 a ledge edge, 11 a lid's end), side
 //              part (walls and wall caps: the side_textures texel; floors 0, their slot is the
 //              sector's), front sector, back sector (-1: none; for a cap its cut centre, 0
 //              player, 1 cursor; for kind 8 its island; for kind 10 the sector across its line)
@@ -143,6 +143,15 @@
 // each of its walls again (as kind 1, its sectors' plane references unused),
 // draws the wall on from its sector's ceiling up to that top, its texture
 // going on upwards (collapsed with the caps off, or where the ceiling is the top).
+//
+// Lid ends (T6.13f; IsoDoom.Render.DoorLids.HasEnd): kind 11 is a quad of
+// a lid sector's one-sided wall (a door's jamb) again, as kind 1 (its plane
+// references unused), from the sector's ceiling up to its lid while the lid
+// shows (the lids on), wound the other way: the end of the lid's block,
+// facing the void. It shows when the wall faces away from the camera (then
+// it has no cap), lit and textured as the wall going on upwards (its columns
+// mirrored, as a back face's), and is cut, kept with the doors and fogged as
+// its sector's walls.
 //
 // Switch markers (T6.13p; IsoDoom.Render.SwitchMarkers, `switch_markers` 0 off,
 // 1 on): kind 9 is a piece of the decal on the floor in front of a switch side,
@@ -438,10 +447,12 @@ void vertex() {
 		// T6.13e: an island's wall above its ceiling, drawn as a solid wall.
 		bool extension = kind == 8;
 		int island = extension ? int(CUSTOM0.w) : -1;
-		if (extension) {
+		// T6.13f: a lid's block's end, a lid sector's one-sided wall from its ceiling up to its lid.
+		bool lid_end = kind == 11;
+		if (extension || lid_end) {
 			kind = 1;
 		}
-		int back_id = v_cap >= 0 || extension ? -1 : int(CUSTOM0.w);
+		int back_id = v_cap >= 0 || extension || lid_end ? -1 : int(CUSTOM0.w);
 		vec4 front = data_texel(sector_data, front_id);
 		vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
 		vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
@@ -499,6 +510,12 @@ void vertex() {
 				// From the ceiling up to the island's top.
 				bottom = front.g;
 				top = wall_caps == 1 ? data_texel(wall_islands, island).r : bottom;
+			}
+			if (lid_end) {
+				// From the ceiling up to the lid, while the lid shows (DoorLids.Shows, its flat's slot set).
+				vec2 end_lid = data_texel(sector_lids, front_id).rg;
+				bottom = front.g;
+				top = lids == 1 && end_lid.g >= 0.0 ? end_lid.r : bottom;
 			}
 			top = max(top, bottom);
 			// An upper wall over a sector that does not keep it (a room's lower ceiling).

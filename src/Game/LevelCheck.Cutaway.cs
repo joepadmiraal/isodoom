@@ -61,10 +61,17 @@ public partial class LevelCheck
     /// <para>
     /// With lids (T6.13b): <see cref="LidPoints"/> where the first surface on
     /// the ray (nothing cut) is definitely a lid (<see cref="LidStates"/> 1, the
-    /// point's sector set), 0 where the ray meets no lid, 2 near one.
+    /// point's sector set), 0 where the ray meets no lid, 2 near one; T6.13f:
+    /// 3 where it is definitely a lid's end (<see cref="DoorLids.HasEnd"/>,
+    /// its point in <see cref="EndPoints"/>; <see cref="Ends"/> of them), 2
+    /// near one too.
     /// </para>
     private sealed record CutClasses(CutPixel[] Classes, CutPixel[] CapClasses, CapPoint[] CapPoints, (int Left, int Top, int Right, int Bottom) Box,
-        int Cleared, int KeptWalls, int KeptAbove, int ClearedFloors, int Capped, byte[] LidStates, CapPoint[] LidPoints, int Lids);
+        int Cleared, int KeptWalls, int KeptAbove, int ClearedFloors, int Capped, byte[] LidStates, CapPoint[] LidPoints, int Lids,
+        EndPoint[] EndPoints, int Ends);
+
+    /// <summary>Where a pixel's ray meets a lid's end first (T6.13f): its wall section, the map point and its depth along the view.</summary>
+    private readonly record struct EndPoint(WallSection? Section, double X, double Y, double Z, double Depth);
 
     private readonly record struct CutQuad(Vector2 A, Vector2 Dir, float Length, Vector3 Normal, float Bottom, float Top, bool Masked, WallSection Section);
 
@@ -395,7 +402,10 @@ public partial class LevelCheck
         var capPoints = new CapPoint[bw * bh];
         byte[] lidStates = new byte[bw * bh];
         var lidPoints = new CapPoint[bw * bh];
-        int cleared = 0, keptWalls = 0, keptAbove = 0, clearedFloors = 0, capped = 0, lidCount = 0;
+        var endPoints = new EndPoint[bw * bh];
+        // T6.13f: the lids' ends, walls facing the void from the ceiling up to the lid.
+        List<CutQuad> ends = lids is null ? [] : LidEndQuads(m, lids);
+        int cleared = 0, keptWalls = 0, keptAbove = 0, clearedFloors = 0, capped = 0, lidCount = 0, endCount = 0;
         var lidPlanes = new SortedSet<float>();
         if (lids is not null)
         {
@@ -415,7 +425,7 @@ public partial class LevelCheck
         bool WallDoor(WallSection s) => keepDoors && (m.Lids.IsDoor(s.Line.FrontSector!.Index) || s.Line.BackSector is Sector b && m.Lids.IsDoor(b.Index));
         int KeepDoor(int cut, int door) => !keepDoors || door == 0 || cut == 0 ? cut : door == 1 ? 0 : 2;
         Vector3 camera = Cutaway.ToMapAxes(cam.GlobalPosition) * LevelMesh.MapUnitsPerMetre;
-        var hits = new List<(float T, bool Definite, int Cut, bool Wall, float Z, int Lid)>();
+        var hits = new List<(float T, bool Definite, int Cut, bool Wall, float Z, int Lid, int End)>();
         for (int py = top; py < bottom; py++)
         {
             for (int px = left; px < right; px++)
@@ -427,8 +437,9 @@ public partial class LevelCheck
                 int capState = 0; // T3.4a: 0 the ray meets no cap, 1 near a cap's edge, 2 a cap at capT
                 float capT = 0;
                 CapPoint capPoint = default;
-                foreach (CutQuad q in quads)
+                for (int qi = 0; qi < quads.Count + ends.Count; qi++)
                 {
+                    CutQuad q = qi < quads.Count ? quads[qi] : ends[qi - quads.Count];
                     float denom = d.X * q.Normal.X + d.Y * q.Normal.Y;
                     if (denom >= -1e-6f)
                         continue; // seen from behind: culled
@@ -440,7 +451,8 @@ public partial class LevelCheck
                     float margin = Math.Min(Math.Min(along, q.Length - along), Math.Min(p.Z - q.Bottom, q.Top - p.Z));
                     if (margin < -CutMargin)
                         continue;
-                    hits.Add((t, margin > CutMargin && !q.Masked, KeepDoor(CutState(p, q.Normal, centre, settings, toCamera), WallDoor(q.Section) ? 1 : 0), true, p.Z, -1));
+                    hits.Add((t, margin > CutMargin && !q.Masked, KeepDoor(CutState(p, q.Normal, centre, settings, toCamera), WallDoor(q.Section) ? 1 : 0), true, p.Z, -1,
+                        qi < quads.Count ? -1 : qi - quads.Count));
                 }
                 if (d.Z < 0)
                 {
@@ -463,7 +475,7 @@ public partial class LevelCheck
                             }
                         }
                         if (matches > 0)
-                            hits.Add((t, matches == 5, KeepDoor(CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), doors == 0 ? 0 : doors == matches ? 1 : 2), false, p.Z, -1));
+                            hits.Add((t, matches == 5, KeepDoor(CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), doors == 0 ? 0 : doors == matches ? 1 : 2), false, p.Z, -1, -1));
                     }
 
                     // T6.13b: the lid planes, inside a sector with its lid at that height.
@@ -486,7 +498,7 @@ public partial class LevelCheck
                             }
                         }
                         if (matches > 0)
-                            hits.Add((t, matches == 5 && sector >= 0, KeepDoor(CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), doors == 0 ? 0 : doors == matches ? 1 : 2), false, p.Z, Math.Max(sector, 0)));
+                            hits.Add((t, matches == 5 && sector >= 0, KeepDoor(CutState(p, new Vector3(0, 0, 1), centre, settings, toCamera), doors == 0 ? 0 : doors == matches ? 1 : 2), false, p.Z, Math.Max(sector, 0), -1));
                     }
 
                     // T3.4a: the cap plane, inside a floor above it (all five points in one such sector) and the disc.
@@ -530,13 +542,27 @@ public partial class LevelCheck
                     if (texel)
                         lidCount++;
                 }
+                else if (hits.Count > 0 && hits[0].End >= 0 && hits[0].Definite)
+                {
+                    // T6.13f: definitely a lid's end; away from its texels' edges (column along the line, row up).
+                    Vector3 p = o + d * hits[0].T;
+                    CutQuad q = ends[hits[0].End];
+                    Line line = q.Section.Line;
+                    double column = q.Section.TextureOffset / 65536.0 + (p.X - line.V1.X / 65536.0) * q.Dir.X + (p.Y - line.V1.Y / 65536.0) * q.Dir.Y;
+                    double fc = column - Math.Floor(column), fz = p.Z - Math.Floor(p.Z);
+                    bool texel = fc > CapTexelMargin && fc < 1 - CapTexelMargin && fz > CapTexelMargin && fz < 1 - CapTexelMargin;
+                    lidStates[idx] = (byte)(texel ? 3 : 2);
+                    endPoints[idx] = new EndPoint(q.Section, p.X, p.Y, p.Z, (p - camera).Dot(-toCamera));
+                    if (texel)
+                        endCount++;
+                }
                 else
-                    lidStates[idx] = (byte)(hits.Exists(x => x.Lid >= 0) ? 2 : 0);
+                    lidStates[idx] = (byte)(hits.Exists(x => x.Lid >= 0 || x.End >= 0) ? 2 : 0);
 
                 // Keep: every surface up to the first definite one is definitely not cut.
                 bool keep = true;
                 bool firstIsWall = false, firstAbove = false;
-                foreach ((float T, bool Definite, int Cut, bool Wall, float Z, int Lid) hit in hits)
+                foreach ((float T, bool Definite, int Cut, bool Wall, float Z, int Lid, int End) hit in hits)
                 {
                     if (hit.Cut != 0)
                     {
@@ -591,7 +617,7 @@ public partial class LevelCheck
             }
         }
         return new CutClasses(classes, capClasses, capPoints, (left, top, right, bottom), cleared, keptWalls, keptAbove, clearedFloors, capped,
-            lidStates, lidPoints, lidCount);
+            lidStates, lidPoints, lidCount, endPoints, endCount);
     }
 
     /// <summary>Whether <see cref="Cutaway.Hides"/> cuts the surface point: 0 definitely not, 1 definitely, 2 within <see cref="CutMargin"/> of a boundary of the rule.</summary>

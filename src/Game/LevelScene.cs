@@ -2837,7 +2837,7 @@ public partial class LevelScene : Node3D, IGameHost
             Iso?.Snap(Player.Foot);
         else
             Iso?.Snap(Mesh.Bounds.GetCenter());
-        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {mesh.Lids.Sectors.Count} lids, {mesh.Caps.Caps.Count} wall caps ({mesh.WallCapTriangleCount} triangles), {_drawn.Count} things, "
+        string text = $"{map}: {level.Sectors.Length} sectors, {mesh.FloorTriangleCount} floor triangles, {mesh.WallQuads} wall quads, {mesh.MaskedQuads} masked (+{mesh.MaskedBackQuads} back), {mesh.Lids.Sectors.Count} lids ({mesh.LidEndQuads} end quads), {mesh.Caps.Caps.Count} wall caps ({mesh.WallCapTriangleCount} triangles), {_drawn.Count} things, "
             + $"{mesh.SlotNames.Count} textures in a {mesh.Atlas.Image.Width}x{mesh.Atlas.Image.Height} atlas, {mesh.Walls.Missing.Count} missing; "
             + $"built in {clock.ElapsedMilliseconds} ms";
         GD.Print($"Level: {text}");

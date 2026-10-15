@@ -4,6 +4,7 @@ using IsoDoom.Render;
 using IsoDoom.Tests.Support;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
+using IsoDoom.Wad.Graphics;
 using Xunit;
 
 namespace IsoDoom.Tests.Render;
@@ -71,6 +72,35 @@ public class DoorLidsTests
         // A wide room with a low ceiling (sector 74, about 190 thick, ceiling 48 under 72 around it) gets no lid.
         Assert.False(lids.Has(74));
         Assert.True(DoorLids.Thickness(level, floors.BySector.Single(f => f.Sector == 74)) > DoorLids.MaxThickness);
+    }
+
+    [Fact]
+    public void TheSyntheticDoorsJambsCloseItsLidsEnds()
+    {
+        WadArchive wad = Synthetic();
+        (Level level, _, DoorLids lids) = Build(wad, "E1M1");
+        var walls = WallSections.Build(level, Textures.R_InitTextures(wad));
+        // T6.13f: door D's (sector 3) south track (L13, facing north, away from the game camera: its end shows), and
+        // nothing else: its north track (L11) has no texture ("-"), so no wall, cap or end.
+        int[] ends = [.. walls.Sections.Where(lids.HasEnd).Select(s => s.Line.Index).Order()];
+        Assert.Equal([13], ends);
+        Assert.All(walls.Sections.Where(lids.HasEnd), s => Assert.Equal(3, s.FrontSector.Index));
+        Assert.DoesNotContain(walls.Sections, s => lids.HasEnd(s) && s.BackSector is not null);
+    }
+
+    [Fact]
+    public void Doom1E1M1LidEnds()
+    {
+        WadArchive wad = WadArchive.Open(TestWads.RequireDoom1());
+        (Level level, _, DoorLids lids) = Build(wad, "E1M1");
+        var walls = WallSections.Build(level, Textures.R_InitTextures(wad));
+        // T6.13f: the door west of the shotgun room (sector 76) has both jambs (337 at its west end, facing east, its cap
+        // closing the block from above; 338 at its east end, facing west, away from the game camera: its end closes it).
+        int[] door = [.. walls.Sections.Where(s => lids.HasEnd(s) && s.FrontSector.Index == 76).Select(s => s.Line.Index).Order()];
+        Assert.Equal([337, 338], door);
+        // Every lid sector's drawn one-sided middle has one; nothing else.
+        Assert.All(walls.Sections, s => Assert.Equal(
+            s.Texture != 0 && s.BackSector is null && s.Kind == WallSectionKind.Middle && lids.Has(s.FrontSector.Index), lids.HasEnd(s)));
     }
 
     [Fact]
