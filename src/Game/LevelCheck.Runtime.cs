@@ -523,13 +523,17 @@ public partial class LevelCheck
                 }
             }
         }
+        // p_spec.c P_UpdateSpecials scrolls the side once per line: a side shared by several (Plutonia MAP05's, T10.7) goes as fast times their count
+        var linesPerSide = new Dictionary<int, int>();
         for (int i = 0; i < world.numlinespecials; i++)
         {
             int side = world.linespeciallist[i]!.sidenum[0];
-            // p_spec.c P_UpdateSpecials scrolls the side once per line: a side shared by several (Plutonia MAP05's, T10.7) goes as fast times their count
-            int lines = 0;
-            for (int j = 0; j < world.numlinespecials; j++)
-                lines += world.linespeciallist[j]!.sidenum[0] == side ? 1 : 0;
+            linesPerSide[side] = linesPerSide.GetValueOrDefault(side) + 1;
+        }
+        for (int i = 0; i < world.numlinespecials; i++)
+        {
+            int side = world.linespeciallist[i]!.sidenum[0];
+            int lines = linesPerSide[side];
             if (m.SideScroll(side) != world.leveltime * lines)
                 Fail($"{map}: scrolling wall line {world.linespeciallist[i]!.Index}: side {side} drawn scrolled {m.SideScroll(side)} units after {world.leveltime} tics ({lines} line(s) scroll it)");
             _scrollingWalls++;

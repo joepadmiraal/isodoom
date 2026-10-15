@@ -611,9 +611,13 @@ public partial class LevelCheck
     /// tic must teleport it, leave it not interpolated (drawn where it is at
     /// tic fractions 0 and ½), ask for the camera snap
     /// (<see cref="LevelScene.SnapPending"/>), and spawn two teleport fogs
-    /// drawn as billboards, one where the player crossed and one 20 units in
-    /// front of the destination (at the player's height, or on the floor there
-    /// when that is higher). The first line that works is enough.
+    /// drawn as billboards, one where the player crossed, at the height it
+    /// crossed at, and one 20 units in front of the destination, at the
+    /// player's height after the move. The player lands on the floor, but with
+    /// Final Doom's first executable (<see cref="GameVersion.exe_final"/>,
+    /// T10.7) it keeps the height it crossed at (the same tic's
+    /// <c>P_ZMovement</c> only lifting it onto a higher floor), and the
+    /// destination's fog spawns at that height. The first line that works is enough.
     /// </summary>
     private void CheckTeleport(string map)
     {
@@ -657,16 +661,27 @@ public partial class LevelCheck
                 angleturn = _scene.Tweaks.AbsoluteAiming ? Ticcmds.AbsoluteAngle(facing) : (short)0,
             };
             bool teleported = false;
+            int zBefore = me.z; // the height it crosses at: P_XYMovement teleports it before P_ZMovement runs
             for (int t = 0; t < 20 && !teleported; t++)
             {
+                zBefore = me.z;
                 _scene.Tic(cmd);
                 teleported = Math.Abs((long)me.x - dest.x) + Math.Abs((long)me.y - dest.y) < 64L * Fixed.FRACUNIT;
             }
             if (!teleported)
                 continue; // something in the way: try another line
             _teleportMaps++;
-            if (me.interp || !_scene.SnapPending || me.angle != dest.angle || me.z != me.floorz && world.gameversion != GameVersion.exe_final /* T10.7: its teleports keep the height */ || me.reactiontime != 18)
-                Fail($"{map}: line {line.Index}'s teleport: interp {me.interp}, camera snap {_scene.SnapPending}, angle {me.angle} (destination {dest.angle}), z {me.z} (floor {me.floorz}), reactiontime {me.reactiontime}");
+            // EV_Teleport puts the thing on the floor, but Final Doom's first executable keeps the height
+            // it crossed at (T10.7). The fogs spawn at the height it left and at its height after the
+            // move. Then the same tic's P_ZMovement (each fog thinks after the player, as it is spawned
+            // at the end of the thinker list) lifts each onto its floor or lowers it under its ceiling.
+            static int Settled(int z, mobj_t mo) => Math.Min(Math.Max(z, mo.floorz), mo.ceilingz - mo.height);
+            bool keepsHeight = world.gameversion == GameVersion.exe_final;
+            int spawnZ = keepsHeight ? zBefore : me.floorz;
+            int expectedZ = Settled(spawnZ, me);
+            if (me.interp || !_scene.SnapPending || me.angle != dest.angle || me.z != expectedZ || me.reactiontime != 18)
+                Fail($"{map}: line {line.Index}'s teleport: interp {me.interp}, camera snap {_scene.SnapPending}, angle {me.angle} (destination {dest.angle}), "
+                    + $"z {me.z} (floor {me.floorz}, crossed at {zBefore}, expected {expectedZ}{(keepsHeight ? ": the height kept" : "")}), reactiontime {me.reactiontime}");
             _scene.SetTicFraction(0);
             _scene.PresentWorld();
             List<mobj_t> fogs = [.. _scene.DrawnMobjs.Where(mo => mo.type == mobjtype_t.MT_TFOG)];
@@ -674,10 +689,12 @@ public partial class LevelCheck
             (int X, int Y) front = (dest.x + 20 * Tables.finecosine[an], dest.y + 20 * Tables.finesine[an]);
             if (fogs.Count < 2 || fogs.Any(f => f.interp)
                 || Math.Abs((long)fogs[^2].x - fx) + Math.Abs((long)fogs[^2].y - fy) > 64L * Fixed.FRACUNIT
+                || fogs[^2].z != Settled(zBefore, fogs[^2])
                 || (fogs[^1].x, fogs[^1].y) != front
-                || (fogs[^1].z != me.z && fogs[^1].z != fogs[^1].floorz && world.gameversion != GameVersion.exe_final)) // T10.7: at the height the player came from
+                || fogs[^1].z != Settled(spawnZ, fogs[^1]))
                 Fail($"{map}: line {line.Index}'s teleport: {fogs.Count} fogs drawn ({string.Join(", ", fogs.Select(f => $"({f.x / 65536.0:F1}, {f.y / 65536.0:F1}, {f.z / 65536.0:F1})"))}), "
-                    + $"expected one near ({sx:F1}, {sy:F1}) and one at ({front.X / 65536.0:F1}, {front.Y / 65536.0:F1}, {me.z / 65536.0:F1})");
+                    + $"expected one near ({sx:F1}, {sy:F1}, {(fogs.Count < 2 ? zBefore : Settled(zBefore, fogs[^2])) / 65536.0:F1}) "
+                    + $"and one at ({front.X / 65536.0:F1}, {front.Y / 65536.0:F1}, {(fogs.Count < 2 ? spawnZ : Settled(spawnZ, fogs[^1])) / 65536.0:F1}), spawned at {spawnZ / 65536.0:F1}{(keepsHeight ? ": the height kept" : "")}");
             foreach (double f in new[] { 0.0, 0.5 })
             {
                 _scene.SetTicFraction(f);
