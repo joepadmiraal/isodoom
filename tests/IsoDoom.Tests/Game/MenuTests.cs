@@ -130,6 +130,57 @@ public class MenuTests
     }
 
     [Fact]
+    public void TheRegisteredGamesFourthEpisodeUnderTheUltimateDoomStartsTheFirst()
+    {
+        // -gameversion ultimate on a registered IWAD: the fourth episode shows
+        // (Chocolate Doom's M_Init), and linuxdoom-1.10's M_Episode hack starts E1M1
+        var host = new GameFlowTests.Host(GameMode.registered);
+        var flow = new GameFlow(host, GameMode.registered, new DoomRandom(), gameversion: GameVersion.exe_ultimate);
+        var logs = new List<string>();
+        flow.Log = logs.Add;
+        flow.Menu.Host = new MenuHost();
+        flow.D_StartTitle(null);
+        MMenu menu = flow.Menu;
+        Keys(menu, Esc, Enter);
+        Assert.Equal(("episode", 4), (menu.StateName, (int)menu.EpiDef.numitems));
+        Keys(menu, Up, Enter);
+        Assert.Equal("skill", menu.StateName);
+        Keys(menu, Enter);
+        flow.G_Ticker(default);
+        Assert.Equal("new E1M1", host.Loads[^1]);
+        Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
+        Assert.Contains("M_Episode: 4th episode requires UltimateDOOM", logs);
+    }
+
+    [Theory]
+    [InlineData(GameMode.registered, false)]
+    [InlineData(GameMode.retail, true)]
+    public void TheFourthEpisodeWithoutItsPatchShowsItsStandInOnlyInTheRetailGame(GameMode mode, bool standIn)
+    {
+        // Chocolate Doom's M_Drawer draws nothing for an item whose patch the
+        // WAD lacks: the registered game's fourth episode stays blank (the
+        // synthetic IWAD has no M_EPI4; the retail game shows the stand-in)
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+        var hu = new HuStuff(wad);
+        var flow = new GameFlow(new GameFlowTests.Host(mode), mode, new DoomRandom(), gameversion: GameVersion.exe_ultimate);
+        flow.Menu.Host = new MenuHost();
+        flow.D_StartTitle(null);
+        MMenu menu = flow.Menu;
+        menu.Graphics = new ScreenGraphics(wad, hu);
+        Keys(menu, Esc, Enter);
+        Assert.Equal(("episode", 4), (menu.StateName, (int)menu.EpiDef.numitems));
+        var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        menu.M_Drawer(screen);
+        bool drawn = false;
+        for (int y = menu.EpiDef.y + 3 * MMenu.LINEHEIGHT; y < menu.EpiDef.y + 4 * MMenu.LINEHEIGHT; y++)
+        {
+            for (int x = menu.EpiDef.x; x < 320; x++)
+                drawn |= screen.Opaque[y * 320 + x] != 0;
+        }
+        Assert.Equal(standIn, drawn);
+    }
+
+    [Fact]
     public void TheSharewaresOtherEpisodesShowTheOrderMessage()
     {
         (GameFlow flow, GameFlowTests.Host host, MMenu menu, _) = New();
