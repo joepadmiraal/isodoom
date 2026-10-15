@@ -45,6 +45,36 @@ public partial class Main : Node
         Start();
     }
 
+    /// <summary>
+    /// T8.3a: the quit's last word from managed code (the root's exit runs
+    /// after its children's: the music thread is stopped by then). Godot's
+    /// .NET shutdown leaves the runtime's finalizer thread running while the
+    /// engine tears itself down, so a <see cref="GodotObject"/> wrapper
+    /// finalized then calls into freed native memory (seen as a segfault at
+    /// exit in about 1 run in 20 of the ReadyToRun export, its timing's).
+    /// The finalizers are run here, while the engine is whole, and the GC is
+    /// then held off (a no-GC region) so none are queued during the teardown.
+    /// </summary>
+    public override void _ExitTree() => SettleFinalizers();
+
+    private static void SettleFinalizers()
+    {
+        System.GC.Collect();
+        System.GC.WaitForPendingFinalizers();
+        try
+        {
+            System.GC.TryStartNoGCRegion(NoGcBytes); // collects first: finalizers it queues are run below
+        }
+        catch (System.InvalidOperationException)
+        {
+            // already in one
+        }
+        System.GC.WaitForPendingFinalizers();
+    }
+
+    /// <summary>What the teardown may allocate before a GC could run again (it allocates little).</summary>
+    private const long NoGcBytes = 64L * 1024 * 1024;
+
     private async void DownloadSharewareThenStart()
     {
         string path;

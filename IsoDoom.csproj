@@ -10,6 +10,11 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>IsoDoom</RootNamespace>
   </PropertyGroup>
+  <!-- T8.3a: the release exports ship precompiled code (faster loads, no
+       JIT spikes in the first tics); see SPEC §12 and Main._ExitTree. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'ExportRelease'">
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
   <ItemGroup>
     <!-- The SDK globs every .cs file below the project root; the plain
          libraries, tests and tools are compiled by their own projects. -->
