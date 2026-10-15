@@ -428,6 +428,12 @@ public sealed partial class MMenu
         // to show episode four.
         if (flow.gameversion < GameVersion.exe_ultimate)
             EpiDef.numitems--;
+        // Not vanilla's stand-in (T10.7 review): the fourth episode of an
+        // emulated Ultimate Doom on an IWAD without it (registered,
+        // -gameversion ultimate) draws nothing without its patch, as
+        // Chocolate Doom's M_Drawer, instead of a stand-in text.
+        else if (flow.gamemode != GameMode.retail)
+            EpisodeMenu[3] = new(1, EpisodeMenu[3].name, M_Episode, EpisodeMenu[3].alphaKey);
 
         for (int i = 0; i < load_end; i++)
             savegamestrings[i] = EMPTYSTRING;
@@ -762,7 +768,14 @@ public sealed partial class MMenu
         M_ClearMenus();
     }
 
-    /// <summary>m_menu.c <c>M_Episode</c> (Chocolate Doom's): the shareware game's other episodes show the "order the trilogy" message (and the read-this menu behind it).</summary>
+    /// <summary>
+    /// m_menu.c <c>M_Episode</c>: the shareware game's other episodes show
+    /// the "order the trilogy" message (and the read-this menu behind it);
+    /// the registered game's fourth, shown when the Ultimate Doom is emulated
+    /// (<c>-gameversion ultimate</c>), starts the first, as linuxdoom-1.10's
+    /// hack (Chocolate Doom dropped it and crashes on the missing <c>E4M1</c>;
+    /// <see cref="GameFlow.G_InitNew"/>'s clamp would start <c>E3M1</c>).
+    /// </summary>
     private void M_Episode(int choice)
     {
         if (flow.gamemode == GameMode.shareware && choice != 0)
@@ -771,6 +784,14 @@ public sealed partial class MMenu
             M_SetupNextMenu(ReadDef1);
             return;
         }
+
+        // Yet another hack...
+        if (flow.gamemode == GameMode.registered && choice > 2)
+        {
+            flow.Log?.Invoke("M_Episode: 4th episode requires UltimateDOOM");
+            choice = 0;
+        }
+
         epi = choice;
         M_SetupNextMenu(NewDef);
     }
