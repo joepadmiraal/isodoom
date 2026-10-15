@@ -1,0 +1,40 @@
+# Doom II MAP24 on skill 1 with monsters (T9.3): started on the BFG
+# (-1312, -160), walked over (the pickup switches to it: 80 cells on skill
+# 1; the demons south of it and the hell knight behind it wake), fired
+# with fire held at the nearest monster in sight (A_BFGsound, A_FireBFG),
+# the player turned west while each ball flies (A_BFGSpray's tracers fan
+# out from the player along the ball's angle, not the player's: the
+# second ball's kill the knight), then without cells P_CheckAmmo
+# switches to the pistol. Written by tools/RouteGen (map24-bfg).
+iwad doom2
+map MAP24
+skill 1
+monsters
+start -1300 -150 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 -24 0
+25 0 0 0
+21 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x4
+2 0 0 0
+1 0 0 0
+0 0 0 0 x27
+0 0 24 1
+0 0 0 1 x6
+0 0 1 1
+0 0 0 1 x23
+0 0 -65 0
+0 0 0 0 x45
+0 0 -65 1
+0 0 0 1 x30
+0 0 65 0
+0 0 0 0 x82

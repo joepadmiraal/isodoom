@@ -770,19 +770,33 @@ public sealed partial class World
         P_SpawnPlayerMissile(player.mo!, mobjtype_t.MT_ROCKET);
     }
 
-    /// <summary>p_pspr.c <c>A_FirePlasma</c>: the plasma rifle. A stub until T9.3.</summary>
+    /// <summary>
+    /// p_pspr.c <c>A_FirePlasma</c>: the plasma rifle, one cell, a flash of
+    /// either frame (<c>P_Random() &amp; 1</c>) and a plasma ball (T9.3).
+    /// </summary>
     public void A_FirePlasma(player_t player, pspdef_t psp)
     {
+        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+
+        P_SetPsprite(player, ps_flash,
+            Info.weaponinfo[(int)player.readyweapon].flashstate + (P_Random() & 1));
+
+        P_SpawnPlayerMissile(player.mo!, mobjtype_t.MT_PLASMA);
     }
 
-    /// <summary>p_pspr.c <c>A_BFGsound</c>: the BFG's charge sound. A stub until T9.3.</summary>
+    /// <summary>p_pspr.c <c>A_BFGsound</c>: the BFG's charge sound (T9.3).</summary>
     public void A_BFGsound(player_t player, pspdef_t psp)
     {
+        S_StartSound(player.mo, sfxenum_t.sfx_bfg);
     }
 
-    /// <summary>p_pspr.c <c>A_FireBFG</c>: the BFG. A stub until T9.3.</summary>
+    /// <summary>
+    /// p_pspr.c <c>A_FireBFG</c>: the BFG, <see cref="BFGCELLS"/> cells and
+    /// a BFG ball (T9.3); the flash is the weapon's states' own.
+    /// </summary>
     public void A_FireBFG(player_t player, pspdef_t psp)
     {
+        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo] -= BFGCELLS;
+        P_SpawnPlayerMissile(player.mo!, mobjtype_t.MT_BFG);
     }
-
 }

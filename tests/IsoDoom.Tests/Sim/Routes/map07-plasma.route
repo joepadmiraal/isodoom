@@ -1,0 +1,56 @@
+# Doom II MAP07 on skill 3 with monsters (T9.3): every monster but the
+# mancubus spawned at (-864, 96) is killed asleep with route events on the
+# first tic; started on the north-west mancubus' ledge (sector 21) beside
+# the plasma rifle (-416, 32), walked over it (the pickup switches to it:
+# 40 cells), the mancubus woken by the first shot and shot until it dies
+# with fire held (A_FirePlasma, its flash's P_Random, A_ReFire), then the
+# last cells into the west wall until P_CheckAmmo switches to the pistol.
+# Written by tools/RouteGen (map07-plasma).
+iwad doom2
+map MAP07
+skill 3
+monsters
+start -432 80 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -608 640 1000
+damage -608 -1088 1000
+damage 352 -256 1000
+damage -1632 -224 1000
+damage -768 640 1000
+damage 352 -128 1000
+damage -448 -1088 1000
+damage -1632 -384 1000
+damage -864 -544 1000
+damage -352 96 1000
+damage -352 -544 1000
+0 0 0 0
+25 0 13 0
+25 0 0 0 x5
+13 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+0 0 1 0
+-1 0 0 0
+0 0 0 0 x5
+2 0 0 0
+1 0 0 0
+0 0 0 0 x17
+0 0 -80 1
+0 0 0 1 x53
+0 0 -1 1
+0 0 0 1 x16
+0 0 -1 1
+0 0 0 1 x7
+0 0 -1 1
+0 0 0 1 x7
+0 0 -1 1
+0 0 0 1 x5
+0 0 0 0
+0 0 10 1
+0 0 0 1 x61
+0 0 0 0 x36

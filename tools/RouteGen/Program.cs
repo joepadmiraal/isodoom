@@ -1865,6 +1865,94 @@ map MAP07
             Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
             log("out of shells " + State());
         }),
+        ["map07-plasma"] = new(Doom2, "MAP07", """
+# Doom II MAP07 on skill 3 with monsters (T9.3): every monster but the
+# mancubus spawned at (-864, 96) is killed asleep with route events on the
+# first tic; started on the north-west mancubus' ledge (sector 21) beside
+# the plasma rifle (-416, 32), walked over it (the pickup switches to it:
+# 40 cells), the mancubus woken by the first shot and shot until it dies
+# with fire held (A_FirePlasma, its flash's P_Random, A_ReFire), then the
+# last cells into the west wall until P_CheckAmmo switches to the pistol.
+# Written by tools/RouteGen (map07-plasma).
+iwad doom2
+map MAP07
+skill 3
+monsters
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            string State() => $"health {p.health} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}; " + g.Monsters();
+            foreach (IsoDoom.Sim.mobj_t m in g.World.Mobjs().Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0
+                && !(m.spawnpoint.X == -864 && m.spawnpoint.Y == 96)).ToList())
+                g.Damage(m.spawnpoint.X, m.spawnpoint.Y, 1000);
+            g.Wait(1);
+            g.GoTo(-416, 32, 4);
+            g.WaitUntil(() => p.readyweapon == IsoDoom.Sim.weapontype_t.wp_plasma && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange
+                && p.psprites[0].state == IsoDoom.Sim.Info.weaponinfo[(int)IsoDoom.Sim.weapontype_t.wp_plasma].readystate, 200);
+            log("plasma rifle up " + State());
+            IsoDoom.Sim.mobj_t fatso = g.Spawned(-864, 96) ?? throw new InvalidOperationException("no mancubus");
+            g.FireAt(fatso, 400);
+            log("mancubus " + State());
+            for (int i = 0; i < 400 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_plasma; i++)
+                g.Fire(g.X - 400, g.Y - 40);
+            g.Tic(0, 0, 0, 0);
+            g.Wait(35);
+            log("out of cells " + State());
+            if (fatso.health > 0 || p.readyweapon != IsoDoom.Sim.weapontype_t.wp_pistol)
+                throw new InvalidOperationException("the plasma rifle did not do its job");
+        }, (-432, 80, 270), Skill: IsoDoom.Sim.skill_t.sk_medium, Monsters: true),
+        ["map24-bfg"] = new(Doom2, "MAP24", """
+# Doom II MAP24 on skill 1 with monsters (T9.3): started on the BFG
+# (-1312, -160), walked over (the pickup switches to it: 80 cells on skill
+# 1; the demons south of it and the hell knight behind it wake), fired
+# with fire held at the nearest monster in sight (A_BFGsound, A_FireBFG),
+# the player turned west while each ball flies (A_BFGSpray's tracers fan
+# out from the player along the ball's angle, not the player's: the
+# second ball's kill the knight), then without cells P_CheckAmmo
+# switches to the pistol. Written by tools/RouteGen (map24-bfg).
+iwad doom2
+map MAP24
+skill 1
+monsters
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            string State() => $"health {p.health} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}; " + g.Monsters();
+            void Ready(IsoDoom.Sim.weapontype_t wp) => g.WaitUntil(() => p.readyweapon == wp && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange
+                && p.psprites[0].state == IsoDoom.Sim.Info.weaponinfo[(int)wp].readystate, 300);
+            int Balls() => g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BFG);
+            int Sprays() => g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_EXTRABFG);
+            g.Wait(1);
+            g.GoTo(-1312, -168, 4);
+            Ready(IsoDoom.Sim.weapontype_t.wp_bfg);
+            log("bfg up " + State());
+            double Dist(IsoDoom.Sim.mobj_t m) => System.Math.Sqrt(System.Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + System.Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
+            IsoDoom.Sim.mobj_t? Nearest() => g.World.Mobjs()
+                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.World.P_CheckSight(g.Mo, m))
+                .OrderBy(Dist).FirstOrDefault();
+            int sprays = 0;
+            while (p.ammo[(int)IsoDoom.Sim.ammotype_t.am_cell] >= IsoDoom.Sim.World.BFGCELLS && Nearest() is { } target)
+            {
+                // fire held at the nearest monster until the ball flies; then the player turns away (west) while it flies
+                for (int i = 0; i < 200 && Balls() == 0; i++)
+                    g.Fire(target.x / 65536.0, target.y / 65536.0);
+                log($"ball at {target.type} " + State());
+                for (int i = 0; i < 200 && Balls() > 0; i++)
+                {
+                    g.Face(g.X - 400, g.Y);
+                    sprays = System.Math.Max(sprays, Sprays());
+                }
+                log($"burst, {sprays} tracers hit so far " + State());
+                g.Tic(0, 0, 0, 0);
+            }
+            if (sprays == 0)
+                throw new InvalidOperationException("no tracer hit");
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            g.Wait(35);
+            log("done " + State());
+        }, (-1300, -150, 270), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
         ["map31-megasphere"] = new(Doom2, "MAP31", """
 # Doom II MAP31 without monsters (T10.2): started east of the megasphere
 # (2720, -784), walked over it: 200 health and blue armor (P_GiveArmor 2).

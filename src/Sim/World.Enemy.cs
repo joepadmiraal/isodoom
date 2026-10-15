@@ -1174,10 +1174,36 @@ public sealed partial class World
         S_StartSound(mo, sound);
     }
 
-    // ---- stubs ----
-
-    /// <summary>p_pspr.c <c>A_BFGSpray</c>: the BFG ball's 40 tracers. A stub until T9.3.</summary>
-    public void A_BFGSpray(mobj_t actor)
+    /// <summary>
+    /// p_pspr.c <c>A_BFGSpray</c>: the BFG ball's 40 tracers (T9.3), on its
+    /// burst: autoaims (<see cref="P_AimLineAttack"/>, 1024 units) from the
+    /// shooter (the ball's <see cref="mobj_t.target"/>) over a 90° fan
+    /// centred on the ball's angle, the angle it was fired at; each target
+    /// found gets an <c>MT_EXTRABFG</c> at a quarter of its height and
+    /// 15d8 damage from the shooter.
+    /// </summary>
+    public void A_BFGSpray(mobj_t mo)
     {
+        // offset angles from its attack angle
+        for (int i = 0; i < 40; i++)
+        {
+            uint an = unchecked(mo.angle - Tables.ANG90 / 2 + Tables.ANG90 / 40 * (uint)i);
+
+            // mo->target is the originator (player)
+            //  of the missile
+            P_AimLineAttack(mo.target!, an, 16 * 64 * Fixed.FRACUNIT);
+
+            if (linetarget == null)
+                continue;
+
+            P_SpawnMobj(linetarget.x, linetarget.y,
+                linetarget.z + (linetarget.height >> 2), mobjtype_t.MT_EXTRABFG);
+
+            int damage = 0;
+            for (int j = 0; j < 15; j++)
+                damage += (P_Random() & 7) + 1;
+
+            P_DamageMobj(linetarget, mo.target, mo.target, damage);
+        }
     }
 }

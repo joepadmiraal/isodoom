@@ -59,7 +59,11 @@ public class StateMachineTests
             }
             else
             {
+                mobj_t? target = mo.target;
+                if (action == actionf_t.A_BFGSpray)
+                    mo.target = mo; // (a BFG ball's target is its shooter, always set)
                 world.A_Call(action, mo);
+                mo.target = action == actionf_t.A_BFGSpray ? target : mo.target;
                 Assert.Throws<InvalidOperationException>(() => world.A_CallWeapon(action, world.players[0], psp));
             }
         }

@@ -63,9 +63,9 @@ public class WeaponTests
     }
 
     /// <summary>A world with <paramref name="weapon"/> owned, <paramref name="ammo"/> of its ammo, up and ready.</summary>
-    private static World Armed(weapontype_t weapon, int ammo, TestMap? map = null)
+    private static World Armed(weapontype_t weapon, int ammo, TestMap? map = null, GameMode mode = GameMode.shareware)
     {
-        World world = Load(map ?? OneRoom());
+        World world = Load(map ?? OneRoom(), mode);
         player_t p = P(world);
         p.weaponowned[(int)weapon] = true;
         if (Info.weaponinfo[(int)weapon].ammo != ammotype_t.am_noammo)
@@ -278,6 +278,69 @@ public class WeaponTests
         Assert.Equal(4, p.ammo[3]);
         Assert.Contains(world.Mobjs(), m => m.type == mobjtype_t.MT_ROCKET);
         Assert.Contains(p.mo!.state, new[] { statenum_t.S_PLAY_ATK1, statenum_t.S_PLAY_ATK2 }); // (they alternate until A_WeaponReady)
+    }
+
+    [Fact]
+    public void ThePlasmaRifleFiresABallPerCellEveryThreeTicsWithEitherFlash()
+    {
+        World world = Armed(weapontype_t.wp_plasma, 10, mode: GameMode.registered);
+        player_t p = P(world);
+        Tics(world, 1, buttoncode_t.BT_ATTACK); // S_PLASMA1: A_FirePlasma at once
+        Assert.Equal((statenum_t.S_PLASMA1, 9, 1), (Weapon(world).state, p.ammo[(int)ammotype_t.am_cell], world.Mobjs().Count(m => m.type == mobjtype_t.MT_PLASMA)));
+        Assert.Contains(Flash(world).state, new[] { statenum_t.S_PLASMAFLASH1, statenum_t.S_PLASMAFLASH2 });
+        Tics(world, 3, buttoncode_t.BT_ATTACK); // S_PLASMA2's A_ReFire: the next shot
+        Assert.Equal((statenum_t.S_PLASMA1, 8, 2, 1), (Weapon(world).state, p.ammo[(int)ammotype_t.am_cell], world.Mobjs().Count(m => m.type == mobjtype_t.MT_PLASMA), p.refire));
+
+        // the flash's frame is the shot's P_Random & 1: both show over a few shots
+        var flashes = new System.Collections.Generic.HashSet<statenum_t>();
+        for (int i = 0; i < 6; i++)
+        {
+            Tics(world, 3, buttoncode_t.BT_ATTACK);
+            flashes.Add(Flash(world).state);
+        }
+        Assert.Equal(2, flashes.Count);
+        Assert.Equal(2, p.ammo[(int)ammotype_t.am_cell]);
+    }
+
+    [Fact]
+    public void TheBfgChargesThenFiresFortyCells()
+    {
+        World world = Armed(weapontype_t.wp_bfg, 100, mode: GameMode.registered);
+        player_t p = P(world);
+        Tics(world, 1, buttoncode_t.BT_ATTACK); // S_BFG1: A_BFGsound
+        Assert.Contains(world.StartedSounds(), s => s.sfx == sfxenum_t.sfx_bfg && s.origin == p.mo);
+        Tics(world, 29);
+        Assert.Equal((statenum_t.S_BFG2, 100), (Weapon(world).state, p.ammo[(int)ammotype_t.am_cell]));
+        Tics(world, 1); // S_BFG2's 10 tics (A_GunFlash) over, S_BFG3's A_FireBFG
+        Assert.Equal((statenum_t.S_BFG3, 60), (Weapon(world).state, p.ammo[(int)ammotype_t.am_cell]));
+        Assert.Single(world.Mobjs(), m => m.type == mobjtype_t.MT_BFG && m.target == p.mo);
+    }
+
+    [Fact]
+    public void TheBfgSpraysFromTheShooterAlongTheBallsAngle()
+    {
+        // the player in the middle of the room, facing east
+        World world = Armed(weapontype_t.wp_bfg, 40, OneRoom().Player(256, 128), GameMode.registered);
+        player_t p = P(world);
+        Tics(world, 1, buttoncode_t.BT_ATTACK);
+        Tics(world, 30);
+        mobj_t ball = world.Mobjs().Single(m => m.type == mobjtype_t.MT_BFG);
+        Assert.Equal(0u, ball.angle);
+
+        // turned west while the ball flies to the east wall: the tracers still fan out east of the player
+        p.mo!.angle = Tables.ANG180;
+        mobj_t east = Zombie(world, 400, 200); // 32° off the ball's angle, ahead of the player
+        mobj_t west = Zombie(world, 112, 128); // straight along the player's facing
+        int sprays = 0;
+        for (int i = 0; i < 80 && ball.function != think_t.REMOVED; i++)
+        {
+            Tics(world, 1);
+            sprays = Math.Max(sprays, world.Mobjs().Count(m => m.type == mobjtype_t.MT_EXTRABFG));
+        }
+        Assert.Equal(think_t.REMOVED, ball.function);
+        Assert.True(east.health <= 0, $"east zombie at {east.health}");
+        Assert.Equal(east.info.spawnhealth, west.health);
+        Assert.InRange(sprays, 1, 40);
     }
 
     [Fact]
