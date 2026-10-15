@@ -613,7 +613,8 @@ public partial class LevelCheck
     /// (<see cref="LevelScene.SnapPending"/>), and spawn two teleport fogs
     /// drawn as billboards, one where the player crossed, at the height it
     /// crossed at, and one 20 units in front of the destination, at the
-    /// player's height after the move. The player lands on the floor, but with
+    /// player's height after the move (the last two fogs drawn: older ones, from
+    /// a monster's teleport, interpolate, T9.1). The player lands on the floor, but with
     /// Final Doom's first executable (<see cref="GameVersion.exe_final"/>,
     /// T10.7) it keeps the height it crossed at (the same tic's
     /// <c>P_ZMovement</c> only lifting it onto a higher floor), and the
@@ -687,7 +688,9 @@ public partial class LevelCheck
             List<mobj_t> fogs = [.. _scene.DrawnMobjs.Where(mo => mo.type == mobjtype_t.MT_TFOG)];
             int an = (int)(dest.angle >> Tables.ANGLETOFINESHIFT);
             (int X, int Y) front = (dest.x + 20 * Tables.finecosine[an], dest.y + 20 * Tables.finesine[an]);
-            if (fogs.Count < 2 || fogs.Any(f => f.interp)
+            // (only the last two are the player's: a monster's teleport on an earlier tic left fogs too,
+            // which interpolate, as on E2M5 and E3M6 of The Ultimate Doom, T9.1)
+            if (fogs.Count < 2 || fogs.TakeLast(2).Any(f => f.interp)
                 || Math.Abs((long)fogs[^2].x - fx) + Math.Abs((long)fogs[^2].y - fy) > 64L * Fixed.FRACUNIT
                 || fogs[^2].z != Settled(zBefore, fogs[^2])
                 || (fogs[^1].x, fogs[^1].y) != front

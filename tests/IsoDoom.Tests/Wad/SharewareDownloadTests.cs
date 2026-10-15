@@ -154,6 +154,18 @@ public sealed class SharewareDownloadTests : IDisposable
         Assert.True(SharewareDownload.IsVerified(path, _expected));
     }
 
+    /// <summary>T9.1: a symbolic link to the WAD verifies as the WAD (not by the link's own length).</summary>
+    [Fact]
+    public void ALinkToTheWadVerifies()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Symbolic links need privileges on Windows.");
+        Directory.CreateDirectory(_dir);
+        string target = Path.Combine(_dir, "target.wad"), link = Path.Combine(_dir, "link.wad");
+        File.WriteAllBytes(target, _wad);
+        File.CreateSymbolicLink(link, target);
+        Assert.True(SharewareDownload.IsVerified(link, _expected));
+    }
+
     [Fact]
     public void Doom1_IsTheShareware19Wad()
     {

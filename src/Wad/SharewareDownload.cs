@@ -64,7 +64,9 @@ public static class SharewareDownload
         expected ??= Doom1;
         try
         {
-            var info = new FileInfo(path);
+            var link = new FileInfo(path);
+            // (a symbolic link's own length is its target's name's: follow it to the file)
+            FileInfo info = link.LinkTarget is null ? link : link.ResolveLinkTarget(true) as FileInfo ?? link;
             return info.Exists && info.Length == expected.Size && expected.Matches(File.ReadAllBytes(path));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

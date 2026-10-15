@@ -89,6 +89,18 @@ public static class TestWads
     /// <summary>M9: the path of a registered or Ultimate Doom IWAD (any version; no MD5 check), or skips the calling test.</summary>
     public static string RequireDoom() => DoomPath ?? SkipMissing("DOOM.WAD", DoomEnvVar);
 
+    /// <summary>
+    /// T9.1: MD5 of The Ultimate Doom's 2024 re-release IWAD (the one with
+    /// <c>GAMECONF</c> and <c>DMENUPIC</c>); the registered/Ultimate tests assert
+    /// version-specific counts only for this file.
+    /// </summary>
+    public const string DoomUltimate2024Md5 = "3b37188f6337f15718b617c16e6e7a9c";
+
+    private static readonly Lazy<string?> _doomMd5Value = new(() => DoomPath is null ? null : Md5Of(DoomPath));
+
+    /// <summary>T9.1: MD5 (lower-case hex) of <see cref="DoomPath"/>, or null when there is no registered/Ultimate Doom IWAD.</summary>
+    public static string? DoomMd5 => _doomMd5Value.Value;
+
     /// <summary>T10.7: environment variable that overrides the TNT.WAD path (an absent path forces a skip).</summary>
     public const string TntEnvVar = "ISODOOM_TNT_WAD";
 
