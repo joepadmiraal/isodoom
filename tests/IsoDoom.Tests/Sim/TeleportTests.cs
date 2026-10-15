@@ -292,4 +292,42 @@ public class TeleportTests
 
     [Fact]
     public void TheLevelSetsGamemap() => Assert.Equal(2, Specials().gamemap);
+
+    /// <summary>
+    /// T10.7: Chocolate Doom's <c>gameversion</c> quirk in <c>EV_Teleport</c>:
+    /// Final Doom's first executable (<see cref="GameVersion.exe_final"/>)
+    /// leaves the thing's height as it was (and the destination fog there);
+    /// every other version, its alternate executable too, puts it on the floor.
+    /// </summary>
+    [Theory]
+    [InlineData(GameVersion.exe_doom_1_9, 0)]
+    [InlineData(GameVersion.exe_ultimate, 0)]
+    [InlineData(GameVersion.exe_final, 40)]
+    [InlineData(GameVersion.exe_final2, 0)]
+    public void FinalDoomsFirstExecutableKeepsTheHeight(GameVersion version, int z)
+    {
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+        var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, gameversion: version), Tweaks.Vanilla);
+        world.G_DoLoadLevel(Level.Load(wad, "E1M2"));
+        Assert.Equal(version, world.gameversion);
+        mobj_t me = Player(world);
+        world.PlaceMobj(me, F(360), F(196), Deg(0));
+        me.z = F(40);
+        Assert.Equal(1, world.EV_Teleport(world.lines[Line], 0, me));
+        Assert.Equal((Destination(world).x, F(z)), (me.x, me.z));
+        Assert.Equal(F(z) + me.player!.viewheight, me.player.viewz);
+        Assert.Equal(F(z), Fogs(world)[^1].z); // the destination fog at the thing's height
+        for (int t = 0; t < 10; t++)
+            world.G_Ticker(new ticcmd_t());
+        Assert.Equal(0, me.z); // P_ZMovement brings it down (falling from z > floorz)
+    }
+
+    /// <summary>T10.7: without a version the world emulates the game mode's default executable (v1.9; The Ultimate Doom's for retail).</summary>
+    [Theory]
+    [InlineData(GameMode.shareware, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.registered, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.commercial, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.retail, GameVersion.exe_ultimate)]
+    public void TheDefaultVersionIsTheGameModes(GameMode mode, GameVersion version) =>
+        Assert.Equal(version, new World(new SpawnSettings(mode, skill_t.sk_medium), Tweaks.Vanilla).gameversion);
 }

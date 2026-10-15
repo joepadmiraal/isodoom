@@ -3,13 +3,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Game;
 
 /// <summary>
 /// A <c>.route</c> file (T4.8; the format is described at the tests'
 /// <c>VanillaRoute</c>): a header (<c>iwad</c>, <c>map</c>, <c>skill</c>,
-/// <c>start X Y ANGLE</c>, <c>exit normal|secret</c>, <c>monsters</c>) and one vanilla
+/// <c>start X Y ANGLE</c>, <c>exit normal|secret</c>, <c>monsters</c>,
+/// T10.7: <c>gameversion NAME</c>) and one vanilla
 /// <c>ticcmd</c> per tic (<c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>, a demo's
 /// relative turn byte), between which (T6.4) <c>damage X Y AMOUNT</c>,
 /// <c>alert</c> and (T6.5) <c>rocket</c> lines are <see cref="RouteEvent"/>s
@@ -35,6 +37,14 @@ public sealed class RouteFile
     public int Exit { get; private init; }
     public IReadOnlyList<ticcmd_t> Cmds { get; private init; } = [];
 
+    /// <summary>
+    /// The <c>gameversion</c> header (T10.7): the executable vanilla plays the
+    /// route as (Chocolate Doom's <c>-gameversion</c> argument: <c>1.9</c>,
+    /// <c>ultimate</c>, <c>final</c>, …; <see cref="GameVersions.Parse"/>), or
+    /// null for the IWAD's default.
+    /// </summary>
+    public GameVersion? GameVersion { get; private init; }
+
     public static RouteFile Parse(string path) => Parse(File.ReadLines(path), path);
 
     /// <summary>Parses the route's lines; <paramref name="path"/> names it in errors (<see cref="FormatException"/>).</summary>
@@ -44,6 +54,7 @@ public sealed class RouteFile
         int skill = 3, exit = 0;
         (int, int, int)? start = null;
         bool monsters = false;
+        GameVersion? gameversion = null;
         var cmds = new List<ticcmd_t>();
         var events = new List<RouteEvent>();
         int n = 0;
@@ -75,6 +86,12 @@ public sealed class RouteFile
                     if (f.Length != 4)
                         throw new FormatException($"{where}: expected start X Y ANGLE");
                     start = (Int(f[1]), Int(f[2]), Int(f[3]));
+                    continue;
+                case "gameversion":
+                    gameversion = f.Length == 2 ? GameVersions.Parse(f[1]) : null;
+                    if (gameversion is null)
+                        throw new FormatException($"{where}: expected gameversion "
+                            + string.Join("|", System.Linq.Enumerable.Select(GameVersions.gameversions, v => v.Cmdline)));
                     continue;
                 case "monsters":
                     if (f.Length != 1)
@@ -127,7 +144,7 @@ public sealed class RouteFile
             throw new FormatException($"{path}: skill {skill} (1-5)");
         if (events.Count > 0 && events[^1].Tic >= cmds.Count)
             throw new FormatException($"{path}: an event after the last tic");
-        return new RouteFile { Iwad = iwad, Map = map, Skill = skill, Start = start, Exit = exit, Cmds = cmds, Monsters = monsters, Events = events };
+        return new RouteFile { Iwad = iwad, Map = map, Skill = skill, Start = start, Exit = exit, Cmds = cmds, Monsters = monsters, Events = events, GameVersion = gameversion };
     }
 
     /// <summary>The demo version <see cref="FromDemo"/> reads: v1.9's (g_game.c <c>VERSION</c>).</summary>

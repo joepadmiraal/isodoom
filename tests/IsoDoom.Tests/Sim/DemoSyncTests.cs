@@ -30,6 +30,19 @@ public class DemoSyncTests
     [MemberData(nameof(Demos))]
     public void Doom2StaysInSyncWithVanilla(string demo) => VanillaRoute.Demo(demo, doom2: true).Check();
 
+    /// <summary>
+    /// T10.7: Doom II's demos played as Final Doom's first executable
+    /// (<c>-gameversion final</c>: its teleports keep the height, its lost
+    /// souls bounce), to their end against the reference played so
+    /// (<c>tools/VanillaRef/demos.sh --doom2 --gameversion final</c>: dumps
+    /// <c>doom2-final-demoN.vanilla</c>). DEMO3 (MAP26) differs from v1.9's
+    /// from tic 253 (its monsters' teleports).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Demos))]
+    public void Doom2AsFinalDoomStaysInSyncWithVanilla(string demo) =>
+        VanillaRoute.Demo(demo, "doom2", IsoDoom.Wad.GameVersion.exe_final).Check();
+
     /// <summary>DOOM1.WAD v1.9's demos: their maps, Hurt Me Plenty, monsters, and their lengths.</summary>
     [Theory]
     [InlineData("DEMO1", "E1M5", 5026)]

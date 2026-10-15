@@ -80,6 +80,15 @@ public sealed partial class World
 
     public skill_t gameskill => settings.gameskill;
     public GameMode gamemode => settings.gamemode;
+
+    /// <summary>
+    /// Chocolate Doom's <c>gameversion</c> (doomstat.c; T10.7): the executable
+    /// whose behaviour the sim emulates, <see cref="SpawnSettings.gameversion"/>,
+    /// or without one the game mode's default (<see cref="GameVersions.Default"/>:
+    /// The Ultimate Doom's for <see cref="GameMode.retail"/>, else v1.9; the
+    /// host passes Final Doom's for TNT and Plutonia).
+    /// </summary>
+    public GameVersion gameversion => settings.gameversion ?? GameVersions.Default(gamemode, GameMission.none);
     public bool netgame => settings.netgame;
     public int deathmatch => settings.deathmatch;
 

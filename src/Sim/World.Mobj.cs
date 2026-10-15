@@ -1,4 +1,5 @@
 using IsoDoom.Map;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Sim;
 
@@ -354,12 +355,12 @@ public sealed partial class World
     /// ceiling. Missiles explode on floors and ceilings.
     /// <para>
     /// The charging lost soul's floor bounce (Chocolate Doom's
-    /// <c>correct_lost_soul_bounce</c>, by <c>gameversion</c>; T10.3): The
-    /// Ultimate Doom's executable (<see cref="IsoDoom.Wad.GameMode.retail"/>,
-    /// as Chocolate Doom's default version for it; Final Doom's too, T10.7)
-    /// reverses <see cref="mobj_t.momz"/> before the landing zeroes it, as
-    /// linuxdoom-1.10: it bounces; registered Doom 1.9's and Doom II's (every
-    /// other mode) after: no bounce, but a soul a rising floor hits is sent down.
+    /// <c>correct_lost_soul_bounce</c>, by <see cref="gameversion"/>; T10.3,
+    /// T10.7): The Ultimate Doom's and Final Doom's executables
+    /// (<see cref="GameVersion.exe_ultimate"/> on) reverse
+    /// <see cref="mobj_t.momz"/> before the landing zeroes it, as
+    /// linuxdoom-1.10: it bounces; registered Doom 1.9's and Doom II's (the
+    /// older versions) after: no bounce, but a soul a rising floor hits is sent down.
     /// </para>
     /// </summary>
     public void P_ZMovement(mobj_t mo)
@@ -404,7 +405,7 @@ public sealed partial class World
             //  * The version used in registered doom 1.9 + doom2 - no bounce
             //  * The version used in ultimate doom - has bounce
             //  * The version used in final doom - has bounce
-            bool correct_lost_soul_bounce = gamemode == IsoDoom.Wad.GameMode.retail; // gameversion >= exe_ultimate (Final Doom: T10.7)
+            bool correct_lost_soul_bounce = gameversion >= GameVersion.exe_ultimate;
 
             if (correct_lost_soul_bounce && (mo.flags & mobjflag_t.MF_SKULLFLY) != 0)
             {

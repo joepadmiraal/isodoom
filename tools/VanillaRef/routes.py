@@ -13,13 +13,17 @@ non-id content: committed), OUTDIR/NAME.vanilla for one on DOOM1.WAD
 as a -file over DOOM1.WAD, whose status bar and fonts the reference needs to
 start; a test map's lump is E1M1. A Doom II route (iwad doom2, T10.1) plays
 on Doom II's IWAD (doom2_wad(): $ISODOOM_DOOM2_WAD, else wads/doom2.wad or
-wads/DOOM2.WAD) and its dump goes to OUTDIR too. A route with the monsters header (T6.4)
+wads/DOOM2.WAD) and its dump goes to OUTDIR too; T10.7: likewise a Final Doom route
+(iwad tnt|plutonia: $ISODOOM_TNT_WAD / $ISODOOM_PLUTONIA_WAD, else wads/), and a
+gameversion header (1.9, ultimate, final, ...) is the reference's -gameversion
+(Final Doom's IWADs default to final, as Chocolate Doom). A route with the monsters header (T6.4)
 plays without nomonsters, and its damage/alert (and, T6.5, rocket) lines go
 to the reference as $DUMP_EVENTS (dump.c), run before their tics.
 """
 import os, subprocess, sys, tempfile
 
 SKILLS = range(1, 6)
+GAMEVERSIONS = ('1.666', '1.7', '1.8', '1.9', 'ultimate', 'final', 'final2')  # T10.7: the sim's (GameVersions.gameversions)
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -35,19 +39,38 @@ def doom2_wad():
     sys.exit('No Doom II IWAD: put doom2.wad in wads/ or set ISODOOM_DOOM2_WAD')
 
 
+def final_wad(which):
+    """T10.7: Final Doom's IWAD (tnt or plutonia): $ISODOOM_TNT_WAD / $ISODOOM_PLUTONIA_WAD, else wads/ (as the tests' TestWads)."""
+    env = os.environ.get('ISODOOM_TNT_WAD' if which == 'tnt' else 'ISODOOM_PLUTONIA_WAD')
+    if env:
+        return os.path.abspath(env)
+    for name in (which + '.wad', which.upper() + '.WAD'):
+        path = os.path.join(REPO, 'wads', name)
+        if os.path.exists(path):
+            return path
+    sys.exit(f'No {which.upper()}.WAD: put it in wads/ or set ISODOOM_{which.upper()}_WAD')
+
+
+COMMERCIAL = ('doom2', 'tnt', 'plutonia')
+
+
 def iwad(head, doom1):
-    """The IWAD vanilla plays a route on: Doom II's for iwad doom2, else DOOM1.WAD (the others go over it as -file)."""
-    return doom2_wad() if head['iwad'] == 'doom2' else doom1
+    """The IWAD vanilla plays a route on: Doom II's for iwad doom2, Final Doom's for tnt/plutonia (T10.7), else DOOM1.WAD (the others go over it as -file)."""
+    if head['iwad'] == 'doom2':
+        return doom2_wad()
+    if head['iwad'] in ('tnt', 'plutonia'):
+        return final_wad(head['iwad'])
+    return doom1
 
 
 def id_wad(head):
     """Whether the route's dumps are WAD-derived (DOOM1.WAD's or Doom II's: never committed)."""
-    return head['iwad'] in ('doom1', 'doom2')
+    return head['iwad'] in ('doom1',) + COMMERCIAL
 
 
 def parse(path):
     """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
-    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False}
+    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False, 'gameversion': None}
     cmds = []
     events = []  # T6.4: "TIC damage X Y AMOUNT" / "TIC alert" (/ T6.5 "TIC rocket"), TIC the 0-based tic they start
     for n, line in enumerate(open(path), 1):
@@ -64,6 +87,11 @@ def parse(path):
             if len(line) != 2 or line[1] not in ('normal', 'secret'):
                 sys.exit(f'{where}: expected exit normal|secret')
             head['exit'] = line[1]
+            continue
+        if line[0] == 'gameversion':  # T10.7: the reference's -gameversion
+            if len(line) != 2 or line[1] not in GAMEVERSIONS:
+                sys.exit(f'{where}: expected gameversion {"|".join(GAMEVERSIONS)}')
+            head['gameversion'] = line[1]
             continue
         if line[0] == 'monsters':  # T6.4: the demo spawns monsters
             if len(line) != 1:
@@ -97,8 +125,8 @@ def parse(path):
         if not (-128 <= fwd <= 127 and -128 <= side <= 127 and -128 <= turn <= 127 and 0 <= buttons <= 255):
             sys.exit(f'{where}: out of range')
         cmds += [(fwd, side, turn, buttons)] * count
-    if head['iwad'] not in ('synthetic', 'doom1', 'doom2', 'testmap') or head['skill'] not in SKILLS:
-        sys.exit(f'{path}: needs "iwad synthetic|doom1|doom2|testmap" and a skill of 1-5')
+    if head['iwad'] not in ('synthetic', 'doom1', 'testmap') + COMMERCIAL or head['skill'] not in SKILLS:
+        sys.exit(f'{path}: needs "iwad synthetic|doom1|doom2|tnt|plutonia|testmap" and a skill of 1-5')
     if head['iwad'] == 'testmap' and not head['map']:
         sys.exit(f'{path}: "iwad testmap" needs "map NAME"')
     if events and int(events[-1].split()[0]) >= len(cmds):
@@ -110,7 +138,7 @@ def parse(path):
 def demo(head, cmds):
     """A v1.9 demo lump: nomonsters unless the monsters header (T6.4), player 1 alone; angleturn is the turn byte << 8.
     Doom II's (T10.1): MAPxx, episode 1."""
-    if head['iwad'] == 'doom2':
+    if head['iwad'] in COMMERCIAL:
         m = (head['map'] or 'MAP01').upper()
         if len(m) != 5 or not m.startswith('MAP') or not m[3:].isdigit():
             sys.exit(f'{m}: Doom II routes play MAPxx maps')
@@ -138,6 +166,8 @@ def main():
         try:
             open(os.path.join(tmp, 'route.lmp'), 'wb').write(demo(head, cmds))
             args = [ref, '-iwad', iwad(head, doom1), '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui']
+            if head['gameversion']:  # T10.7
+                args += ['-gameversion', head['gameversion']]
             if head['iwad'] == 'synthetic':
                 args[3:3] = ['-file', synthetic]
             elif head['iwad'] == 'testmap':

@@ -85,6 +85,7 @@ public sealed partial class World
         w.Write(settings.nomonsters);
         w.Write(settings.respawnparm);
         w.Write(settings.fastparm);
+        w.Write((int)gameversion); // T10.7: the executable emulated (SaveGameFile.VERSION 4)
         w.Write(tweaks.AbsoluteAiming);
         w.Write(tweaks.AbsoluteMovement);
         w.Write(tweaks.AimAssistCone);
@@ -506,7 +507,8 @@ public sealed partial class World
                 r.ReadInt32(),
                 r.ReadBoolean(),
                 r.ReadBoolean(),
-                r.ReadBoolean());
+                r.ReadBoolean(),
+                ReadEnum<GameVersion>(r));
             var tweaks = new Tweaks
             {
                 AbsoluteAiming = r.ReadBoolean(),

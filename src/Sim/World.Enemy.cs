@@ -1,4 +1,5 @@
 using IsoDoom.Map;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Sim;
 
@@ -1007,13 +1008,13 @@ public sealed partial class World
     /// <summary>
     /// p_enemy.c <c>CheckBossEnd</c> (Chocolate Doom): whether the death of a
     /// <paramref name="motype"/> may trigger the end of episode special. Before
-    /// The Ultimate Doom (every game mode but <see cref="IsoDoom.Wad.GameMode.retail"/>,
-    /// as Chocolate Doom's default <c>gameversion</c>): any boss on map 8,
-    /// barons only in episode 1; The Ultimate Doom: each episode's own boss.
+    /// The Ultimate Doom (<see cref="gameversion"/> below
+    /// <see cref="GameVersion.exe_ultimate"/>): any boss on map 8, barons only
+    /// in episode 1; The Ultimate Doom on (Final Doom's too): each episode's own boss.
     /// </summary>
     private bool CheckBossEnd(mobjtype_t motype)
     {
-        if (gamemode != IsoDoom.Wad.GameMode.retail) // gameversion < exe_ultimate
+        if (gameversion < GameVersion.exe_ultimate)
         {
             if (gamemap != 8)
                 return false;

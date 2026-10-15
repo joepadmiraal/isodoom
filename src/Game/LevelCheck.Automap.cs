@@ -50,7 +50,7 @@ public partial class LevelCheck
         }
         if (am.m_x + am.m_w / 2 - me.x is < -65536 or > 65536 || am.m_y + am.m_h / 2 - me.y is < -65536 or > 65536)
             Fail(Step($"not centred on the player at ({me.x >> 16}, {me.y >> 16})"));
-        string title = HuStuff.HU_Title(_scene.Flow.gamemission, world.gameepisode, world.gamemap, _scene.Flow.gamevariant);
+        string title = HuStuff.HU_Title(_scene.Flow.gamemission, world.gameepisode, world.gamemap, _scene.Flow.gamevariant, _scene.Flow.gameversion);
         if (hu.title != title)
             Fail(Step($"the title is \"{hu.title}\", expected \"{title}\""));
 

@@ -534,6 +534,14 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>T7.5: the IWAD's mission (the finale's texts: Doom II, TNT or Plutonia).</summary>
     public GameMission GameMission { get; private set; }
 
+    /// <summary>
+    /// T10.7: Chocolate Doom's <c>gameversion</c>, the executable emulated:
+    /// <c>-gameversion NAME</c> (<c>1.666</c>, <c>1.7</c>, <c>1.8</c>,
+    /// <c>1.9</c>, <c>ultimate</c>, <c>final</c>, <c>final2</c>), else the
+    /// IWAD's (<see cref="GameVersions.Default"/>: Final Doom's for TNT and Plutonia).
+    /// </summary>
+    public GameVersion GameVersion { get; private set; } = GameVersion.exe_doom_1_9;
+
     /// <summary>The skill whose things are drawn (<c>--level-skill</c>, default 3: <see cref="skill_t.sk_medium"/>).</summary>
     public skill_t Skill { get; private set; } = skill_t.sk_medium;
 
@@ -744,7 +752,7 @@ public partial class LevelScene : Node3D, IGameHost
             if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
-            _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission); // T7.1: g_game.c's flow, d_main.c's title loop
+            _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission, GameVersion); // T7.1: g_game.c's flow, d_main.c's title loop
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
             ApplyAspect(); // T7.11: square under the check but for its 4:3 checks
             InitSaves(); // T7.6: the save slots' directory
@@ -1672,7 +1680,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
         StatusBar?.ConsolePlayer = world.consoleplayer;
-        MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap, Flow.gamevariant); // T7.9: the map's title too
+        MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap, Flow.gamevariant, Flow.gameversion); // T7.9: the map's title too
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }
 
@@ -2688,6 +2696,8 @@ public partial class LevelScene : Node3D, IGameHost
         var wad = WadArchive.Open(found.Path, [.. found.Pwads]);
         _iwadPath = found.Path; // T7.6: the save directory's name
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
+        // T10.7: Chocolate Doom's InitGameVersion: the executable emulated (-gameversion), and the IWAD as it plays it
+        (GameVersion, info) = GameVersions.D_SetGameVersion(info, WadLocator.GetUserArg("-gameversion"));
         ModifiedGame.D_CheckModifiedGame(wad, info);
         Textures = Textures.R_InitTextures(wad);
         GameMode = info.GameMode;
@@ -2710,7 +2720,7 @@ public partial class LevelScene : Node3D, IGameHost
         MapNames = FindMaps(wad);
         Wad = wad;
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
-        GD.Print($"Level: {found.Path}: {info}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms"
+        GD.Print($"Level: {found.Path}: {info}, {GameVersions.Description(GameVersion)}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms"
             + (SpriteAtlas is { } sa ? $" (sprite atlas: {sa.Lumps.Count} lumps in {sa.Atlas.Image.Width}x{sa.Atlas.Image.Height}, {sa.BuildMilliseconds:F0} ms)" : ""));
     }
 
@@ -2940,7 +2950,7 @@ public partial class LevelScene : Node3D, IGameHost
             }
             else
             {
-                world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters), Tweaks)
+                world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters, gameversion: GameVersion), Tweaks)
                 {
                     textures = Textures,
                     map31exists = Wad!.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check (T5.8)

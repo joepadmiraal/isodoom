@@ -183,7 +183,7 @@ public sealed class WiStuff
         if (wbs.maxsecret == 0)
             wbs.maxsecret = 1;
 
-        if (flow.gamemode != GameMode.retail)
+        if (flow.gameversion < GameVersion.exe_ultimate)
         {
             if (wbs.epsd > 2)
                 wbs.epsd -= 3;
@@ -536,9 +536,9 @@ public sealed class WiStuff
         }
     }
 
-    /// <summary>The background (<c>WIMAPn</c>; Doom II and the retail game's fourth episode <c>INTERPIC</c>).</summary>
+    /// <summary>The background (<c>WIMAPn</c>; Doom II and, from The Ultimate Doom's executable on, the fourth episode <c>INTERPIC</c>).</summary>
     private string Background =>
-        flow.gamemode == GameMode.commercial || flow.gamemode == GameMode.retail && wbs!.epsd == 3 ? "INTERPIC" : $"WIMAP{wbs!.epsd}";
+        flow.gamemode == GameMode.commercial || flow.gameversion >= GameVersion.exe_ultimate && wbs!.epsd == 3 ? "INTERPIC" : $"WIMAP{wbs!.epsd}";
 
     /// <summary>wi_stuff.c <c>WI_slamBackground</c>.</summary>
     private void WI_slamBackground(ScreenGraphics g, HudScreen screen) => screen.V_DrawPatch(0, 0, g.Patch(Background));

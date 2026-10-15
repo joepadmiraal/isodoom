@@ -78,6 +78,63 @@ public static class TestWads
     /// <summary>MD5 (lower-case hex) of <see cref="Doom2Path"/>, or null when there is no DOOM II IWAD.</summary>
     public static string? Doom2Md5 => _doom2Md5Value.Value;
 
+    /// <summary>T10.7: environment variable that overrides the TNT.WAD path (an absent path forces a skip).</summary>
+    public const string TntEnvVar = "ISODOOM_TNT_WAD";
+
+    /// <summary>T10.7: environment variable that overrides the PLUTONIA.WAD path (an absent path forces a skip).</summary>
+    public const string PlutoniaEnvVar = "ISODOOM_PLUTONIA_WAD";
+
+    private static readonly Lazy<string?> _tnt = new(() => FindIwad(TntEnvVar, "TNT.WAD", "tnt.wad"));
+    private static readonly Lazy<string?> _plutonia = new(() => FindIwad(PlutoniaEnvVar, "PLUTONIA.WAD", "plutonia.wad"));
+
+    /// <summary>T10.7: Final Doom's TNT: Evilution IWAD (<see cref="TntEnvVar"/>, else <c>wads/TNT.WAD</c> or <c>wads/tnt.wad</c>), or null.</summary>
+    public static string? TntPath => _tnt.Value;
+
+    /// <summary>T10.7: Final Doom's Plutonia IWAD (<see cref="PlutoniaEnvVar"/>, else <c>wads/PLUTONIA.WAD</c> or <c>wads/plutonia.wad</c>), or null.</summary>
+    public static string? PlutoniaPath => _plutonia.Value;
+
+    /// <summary>T10.7: the path of TNT.WAD (any version), or skips the calling test.</summary>
+    public static string RequireTnt() => TntPath ?? SkipMissing("TNT.WAD", TntEnvVar);
+
+    /// <summary>T10.7: the path of PLUTONIA.WAD (any version), or skips the calling test.</summary>
+    public static string RequirePlutonia() => PlutoniaPath ?? SkipMissing("PLUTONIA.WAD", PlutoniaEnvVar);
+
+    /// <summary>T10.7: the path of the Final Doom IWAD <paramref name="iwad"/> (<c>tnt</c> or <c>plutonia</c>), or skips the calling test.</summary>
+    public static string RequireFinalDoom(string iwad) => iwad switch
+    {
+        "tnt" => RequireTnt(),
+        "plutonia" => RequirePlutonia(),
+        _ => throw new ArgumentException($"not a Final Doom IWAD: {iwad}", nameof(iwad)),
+    };
+
+    private static string SkipMissing(string name, string envVar)
+    {
+        string? overridePath = Environment.GetEnvironmentVariable(envVar);
+        Assert.Skip(!string.IsNullOrEmpty(overridePath)
+            ? $"{name} not found at {Path.GetFullPath(overridePath)} (from {envVar})."
+            : $"{name} not found in wads/ (or set {envVar}); put it there to run this test.");
+        return "";
+    }
+
+    private static string? FindIwad(string envVar, params string[] names)
+    {
+        string? overridePath = Environment.GetEnvironmentVariable(envVar);
+        if (!string.IsNullOrEmpty(overridePath))
+        {
+            string full = Path.GetFullPath(overridePath);
+            return File.Exists(full) ? full : null;
+        }
+        if (RepoRoot is null)
+            return null;
+        foreach (string name in names)
+        {
+            string path = Path.Combine(RepoRoot, "wads", name);
+            if (File.Exists(path))
+                return path;
+        }
+        return null;
+    }
+
     [SuppressMessage("Security", "CA5351", Justification = "Identifies a WAD by its well-known MD5; no security use")]
     private static string Md5Of(string path)
     {

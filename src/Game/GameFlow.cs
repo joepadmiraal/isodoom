@@ -102,13 +102,14 @@ public sealed class GameFlow
     private gameaction_t _gameaction;
 
     public GameFlow(IGameHost host, GameMode gamemode, DoomRandom mrandom, GameVariant gamevariant = GameVariant.vanilla,
-        GameMission gamemission = GameMission.none)
+        GameMission gamemission = GameMission.none, GameVersion? gameversion = null)
     {
         this.host = host;
         this.gamemode = gamemode;
         this.gamemission = gamemission != GameMission.none ? gamemission
             : gamemode == GameMode.commercial ? GameMission.doom2 : GameMission.doom;
         this.gamevariant = gamevariant;
+        this.gameversion = gameversion ?? GameVersions.Default(gamemode, this.gamemission);
         MRandom = mrandom;
         Wi = new WiStuff(this);
         Finale = new FFinale(this);
@@ -127,6 +128,14 @@ public sealed class GameFlow
 
     /// <summary>Chocolate Doom's <c>gamevariant</c> (the BFG Edition's workarounds, T7.2).</summary>
     public readonly GameVariant gamevariant;
+
+    /// <summary>
+    /// Chocolate Doom's <c>gameversion</c> (T10.7): the executable emulated,
+    /// the host's (<see cref="GameVersions.D_SetGameVersion"/>), or the game
+    /// mode and mission's default (<see cref="GameVersions.Default"/>). The
+    /// world's is its own (<see cref="World.gameversion"/>, saved with it).
+    /// </summary>
+    public readonly GameVersion gameversion;
 
     /// <summary>The menus (m_menu.c, T7.2).</summary>
     public MMenu Menu { get; }
@@ -1055,11 +1064,12 @@ public sealed class GameFlow
 
     /// <summary>
     /// d_main.c <c>D_DoAdvanceDemo</c>: the title loop's next step. Vanilla
-    /// alternates pages and demos (7 steps for the retail game, else 6):
+    /// alternates pages and demos (7 steps for The Ultimate Doom's and Final
+    /// Doom's first executable, <see cref="gameversion"/>, else 6):
     /// <c>TITLEPIC</c> (170 tics, Doom II 11 s), <c>DEMO1</c>, <c>CREDIT</c>
-    /// (200), <c>DEMO2</c>, <c>HELP2</c> (200; the retail game <c>CREDIT</c>,
-    /// Doom II <c>TITLEPIC</c> again for 11 s), <c>DEMO3</c> (and the retail
-    /// game's <c>DEMO4</c>). There is no demo playback (SPEC §7.6): the demo
+    /// (200), <c>DEMO2</c>, <c>HELP2</c> (200; from The Ultimate Doom on <c>CREDIT</c>,
+    /// Doom II <c>TITLEPIC</c> again for 11 s), <c>DEMO3</c> (and those
+    /// executables' <c>DEMO4</c>). There is no demo playback (SPEC §7.6): the demo
     /// steps are passed, so the pages follow each other; a page the WAD
     /// lacks is passed too (vanilla's <c>I_Error</c>), unless none is there.
     /// The title music (T7.8c): <c>mus_intro</c> once at the first step (Doom
@@ -1076,7 +1086,11 @@ public sealed class GameFlow
         paused = false;
         gameaction = gameaction_t.ga_nothing;
 
-        int steps = gamemode == GameMode.retail ? 7 : 6;
+        // The Ultimate Doom executable changed the demo sequence to add
+        // a DEMO4 demo.  Final Doom was based on Ultimate, so also
+        // includes this change (Chocolate Doom: its IWADs have no DEMO4,
+        // which vanilla's exe_final bombs out on; the demos are passed here).
+        int steps = gameversion is GameVersion.exe_ultimate or GameVersion.exe_final ? 7 : 6;
         for (int tries = 0; ; tries++)
         {
             demosequence = (demosequence + 1) % steps;
@@ -1111,7 +1125,7 @@ public sealed class GameFlow
         0 => ("TITLEPIC", gamemode == GameMode.commercial ? SimInfo.TICRATE * 11 : 170),
         2 => ("CREDIT", 200),
         4 => gamemode == GameMode.commercial ? ("TITLEPIC", SimInfo.TICRATE * 11)
-            : gamemode == GameMode.retail ? ("CREDIT", 200) : ("HELP2", 200),
+            : gameversion >= GameVersion.exe_ultimate ? ("CREDIT", 200) : ("HELP2", 200),
         _ => (null, 0), // demo1, demo2, demo3, demo4
     };
 

@@ -665,7 +665,7 @@ public partial class LevelCheck
             if (!teleported)
                 continue; // something in the way: try another line
             _teleportMaps++;
-            if (me.interp || !_scene.SnapPending || me.angle != dest.angle || me.z != me.floorz || me.reactiontime != 18)
+            if (me.interp || !_scene.SnapPending || me.angle != dest.angle || me.z != me.floorz && world.gameversion != GameVersion.exe_final /* T10.7: its teleports keep the height */ || me.reactiontime != 18)
                 Fail($"{map}: line {line.Index}'s teleport: interp {me.interp}, camera snap {_scene.SnapPending}, angle {me.angle} (destination {dest.angle}), z {me.z} (floor {me.floorz}), reactiontime {me.reactiontime}");
             _scene.SetTicFraction(0);
             _scene.PresentWorld();
@@ -674,7 +674,8 @@ public partial class LevelCheck
             (int X, int Y) front = (dest.x + 20 * Tables.finecosine[an], dest.y + 20 * Tables.finesine[an]);
             if (fogs.Count < 2 || fogs.Any(f => f.interp)
                 || Math.Abs((long)fogs[^2].x - fx) + Math.Abs((long)fogs[^2].y - fy) > 64L * Fixed.FRACUNIT
-                || (fogs[^1].x, fogs[^1].y) != front || (fogs[^1].z != me.z && fogs[^1].z != fogs[^1].floorz))
+                || (fogs[^1].x, fogs[^1].y) != front
+                || (fogs[^1].z != me.z && fogs[^1].z != fogs[^1].floorz && world.gameversion != GameVersion.exe_final)) // T10.7: at the height the player came from
                 Fail($"{map}: line {line.Index}'s teleport: {fogs.Count} fogs drawn ({string.Join(", ", fogs.Select(f => $"({f.x / 65536.0:F1}, {f.y / 65536.0:F1}, {f.z / 65536.0:F1})"))}), "
                     + $"expected one near ({sx:F1}, {sy:F1}) and one at ({front.X / 65536.0:F1}, {front.Y / 65536.0:F1}, {me.z / 65536.0:F1})");
             foreach (double f in new[] { 0.0, 0.5 })

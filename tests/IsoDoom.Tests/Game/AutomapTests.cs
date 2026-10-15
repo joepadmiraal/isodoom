@@ -619,8 +619,11 @@ public class AutomapTests
     [InlineData(GameMission.doom, 5, 1, "NEWLEVEL")]
     [InlineData(GameMission.doom2, 1, 1, "level 1: entryway")]
     [InlineData(GameMission.doom2, 1, 32, "level 32: grosse")]
-    [InlineData(GameMission.doom2, 1, 33, "level 1: congo")] // T10.1: vanilla reads on into Plutonia's names
-    [InlineData(GameMission.doom2, 1, 40, "level 8: realm")]
+    [InlineData(GameMission.doom2, 1, 33, "")] // T10.7: v1.9 does not read on into Plutonia's names (Chocolate Doom's)
+    [InlineData(GameMission.doom2, 1, 40, "")]
+    [InlineData(GameMission.doom2, 1, 33, "level 1: congo", GameVariant.vanilla, GameVersion.exe_final)] // Final Doom's executables do
+    [InlineData(GameMission.doom2, 1, 40, "level 8: realm", GameVariant.vanilla, GameVersion.exe_final2)]
+    [InlineData(GameMission.doom2, 1, 32, "level 32: grosse", GameVariant.vanilla, GameVersion.exe_final)]
     [InlineData(GameMission.pack_plut, 1, 1, "level 1: congo")]
     [InlineData(GameMission.pack_tnt, 1, 32, "level 32: caribbean")]
     [InlineData(GameMission.pack_tnt, 1, 33, "")]
@@ -630,11 +633,12 @@ public class AutomapTests
     [InlineData(GameMission.doom2, 1, 33, "level 33: betray", GameVariant.bfgedition)]
     [InlineData(GameMission.doom2, 1, 30, "level 30: icon of sin", GameVariant.bfgedition)]
     [InlineData(GameMission.doom2, 1, 31, "level 31: wolfenstein", GameVariant.freedoom)]
-    public void TheTitleIsTheMissionsMapName(GameMission mission, int episode, int map, string title, GameVariant variant = GameVariant.vanilla)
+    public void TheTitleIsTheMissionsMapName(GameMission mission, int episode, int map, string title, GameVariant variant = GameVariant.vanilla,
+        GameVersion gameversion = GameVersion.exe_doom_1_9)
     {
-        Assert.Equal(title, HuStuff.HU_Title(mission, episode, map, variant));
+        Assert.Equal(title, HuStuff.HU_Title(mission, episode, map, variant, gameversion));
         var hu = new HuStuff(null);
-        hu.HU_Start(mission, episode, map, variant);
+        hu.HU_Start(mission, episode, map, variant, gameversion);
         Assert.Equal(title, hu.title);
     }
 }

@@ -20,10 +20,12 @@ public enum skill_t
 /// <c>deathmatch</c> (0 cooperative or single player, 1 deathmatch, 2
 /// altdeath) and <c>nomonsters</c>; and (T6.4) d_main.c's <c>respawnparm</c>
 /// (<c>-respawn</c>: monsters respawn as on Nightmare) and <c>fastparm</c>
-/// (<c>-fast</c>: fast monsters as on Nightmare), which the world reads.
+/// (<c>-fast</c>: fast monsters as on Nightmare), which the world reads;
+/// and (T10.7) Chocolate Doom's <c>gameversion</c>, the executable emulated
+/// (null: the game mode's default, <see cref="World.gameversion"/>).
 /// </summary>
 public readonly record struct SpawnSettings(GameMode gamemode, skill_t gameskill, bool netgame = false, int deathmatch = 0, bool nomonsters = false,
-    bool respawnparm = false, bool fastparm = false);
+    bool respawnparm = false, bool fastparm = false, GameVersion? gameversion = null);
 
 /// <summary>What <see cref="MapThingSpawning.Select"/> decided for one map thing.</summary>
 public enum MapThingSpawnKind

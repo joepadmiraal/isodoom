@@ -1,0 +1,18 @@
+# T10.7: Doom II MAP20 played as Final Doom's first executable (gameversion
+# final): started beside the WR teleport line 355 (special 97, tag 8; its
+# front floor 72), the player walks across it to the destination, whose
+# floor is 248: EV_Teleport leaves the player's height as it was
+# (exe_final), so it arrives 176 units under the floor, and
+# P_ZMovement lifts it with the smooth step up (its view height then
+# recovers through P_CalcHeight); the destination fog spawns at the old
+# height. Then waits. Written by tools/RouteGen (map20-line355), the wait
+# lengthened.
+gameversion final
+iwad doom2
+map MAP20
+start 3808 480 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x10
+0 0 0 0 x60

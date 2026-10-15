@@ -79,15 +79,17 @@ public sealed class HuStuff
     /// <paramref name="mission"/> (Chocolate Doom's <c>logical_gamemission</c>),
     /// episode <paramref name="episode"/>, map <paramref name="map"/> (none
     /// for a map the tables lack, where vanilla reads past their end), with
-    /// the BFG Edition's names for <paramref name="variant"/> (T10.1).
+    /// the BFG Edition's names for <paramref name="variant"/> (T10.1), as
+    /// <paramref name="gameversion"/>'s executable reads them (T10.7).
     /// </summary>
-    public void HU_Start(GameMission mission = GameMission.none, int episode = 1, int map = 0, GameVariant variant = GameVariant.vanilla)
+    public void HU_Start(GameMission mission = GameMission.none, int episode = 1, int map = 0, GameVariant variant = GameVariant.vanilla,
+        GameVersion gameversion = GameVersion.exe_doom_1_9)
     {
         message_on = false;
         message_dontfuckwithme = false;
         message_nottobefuckedwith = false;
         text = "";
-        title = HU_Title(mission, episode, map, variant);
+        title = HU_Title(mission, episode, map, variant, gameversion);
         if (title.Length > HU_MAXLINELENGTH)
             title = title[..HU_MAXLINELENGTH]; // hu_lib.c HUlib_addCharToTextLine
     }
@@ -100,13 +102,21 @@ public sealed class HuStuff
     /// <c>HU_TITLET</c> (<see cref="mapnames"/>, <see cref="mapnames_commercial"/>)
     /// for the mission (<see cref="GameMission.none"/>: "Unknown level", as
     /// Chocolate Doom's default); empty when the index is past the table.
-    /// Doom II's maps past 32 read on into Plutonia's names, as vanilla's
-    /// (MAP33: <c>PHUSTR_1</c>); T10.1: the BFG Edition's
-    /// (<paramref name="variant"/>) through Chocolate Doom's
-    /// <c>DEH_AddStringReplacement</c>s (<see cref="DEH_String"/>).
+    /// T10.7: Doom II's maps past 32 read on into Plutonia's names (MAP33:
+    /// <c>PHUSTR_1</c>) only with Final Doom's executables
+    /// (<paramref name="gameversion"/>; Chocolate Doom's "Pre-Final Doom
+    /// compatibility: map33-map35 names don't spill over"), and in the BFG
+    /// Edition (<paramref name="variant"/>), whose MAP33 is named through
+    /// Chocolate Doom's <c>DEH_AddStringReplacement</c>s (<see cref="DEH_String"/>,
+    /// T10.1; not Chocolate Doom's, which drops it: SPEC §12 T10.7).
     /// </summary>
-    public static string HU_Title(GameMission mission, int episode, int map, GameVariant variant = GameVariant.vanilla)
+    public static string HU_Title(GameMission mission, int episode, int map, GameVariant variant = GameVariant.vanilla,
+        GameVersion gameversion = GameVersion.exe_doom_1_9)
     {
+        // Pre-Final Doom compatibility: map33-map35 names don't spill over
+        if (mission == GameMission.doom2 && gameversion <= GameVersion.exe_doom_1_9 && map >= 33 && variant != GameVariant.bfgedition)
+            return "";
+
         int i = mission switch
         {
             GameMission.doom => (episode - 1) * 9 + map - 1,

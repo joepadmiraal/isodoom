@@ -1,4 +1,5 @@
 using IsoDoom.Map;
+using IsoDoom.Wad;
 
 namespace IsoDoom.Sim;
 
@@ -12,7 +13,10 @@ public sealed partial class World
     /// first teleport destination (<c>MT_TELEPORTMAN</c>, in thinker order) in
     /// the first sector with the line's tag (in sector order) that holds one:
     /// <see cref="P_TeleportMove"/> there (killing what stands in the way), onto
-    /// the floor, facing the destination's angle, with no momentum; teleport
+    /// the floor (not with Final Doom's first executable,
+    /// <see cref="GameVersion.exe_final"/>: the thing keeps its height, which
+    /// <see cref="P_ZMovement"/> then brings to the floor; T10.7), facing the
+    /// destination's angle, with no momentum; teleport
     /// fog (<c>MT_TFOG</c>) and its sound at the old position and 20 units in
     /// front of the destination; a player cannot move for 18 tics
     /// (<see cref="mobj_t.reactiontime"/>). Missiles and things crossing from
@@ -58,8 +62,13 @@ public sealed partial class World
                 if (!P_TeleportMove(thing, m.x, m.y))
                     return 0;
 
-                // (Final Doom's executable leaves z as it was: T10.7.)
-                thing.z = thing.floorz; //fixme: not needed?
+                // The first Final Doom executable does not set thing->z
+                // when teleporting. This quirk is unique to this
+                // particular version; the later version included in
+                // some versions of the Id Anthology fixed this.
+                // (Chocolate Doom; T10.7)
+                if (gameversion != GameVersion.exe_final)
+                    thing.z = thing.floorz; //fixme: not needed?
                 if (thing.player is { } player)
                     player.viewz = thing.z + player.viewheight;
 

@@ -36,7 +36,7 @@ public partial class LevelCheck
         {
             ("TITLEPIC", title),
             ("CREDIT", 200),
-            mode == GameMode.commercial ? ("TITLEPIC", title) : mode == GameMode.retail ? ("CREDIT", 200) : ("HELP2", 200)
+            mode == GameMode.commercial ? ("TITLEPIC", title) : _scene.GameVersion >= GameVersion.exe_ultimate ? ("CREDIT", 200) : ("HELP2", 200)
         };
         pages.RemoveAll(p => !_scene.HasLump(p.Item1));
         if (pages.Count == 0)
@@ -187,7 +187,7 @@ public partial class LevelCheck
         }
         for (int t = 0; t < 100; t++)
             _scene.Tic(t % 2 == 0 ? use : new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
-        string page = flow.gamemode == GameMode.retail ? "CREDIT" : "HELP2";
+        string page = flow.gameversion >= GameVersion.exe_ultimate ? "CREDIT" : "HELP2";
         var graphics = new ScreenGraphics(_scene.Wad, _scene.MessageLine);
         var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
         fi.F_Drawer(graphics, screen);

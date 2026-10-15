@@ -1,0 +1,65 @@
+# T10.7: testmap-teleport (T5.6) played as Final Doom's first executable
+# (gameversion final, Chocolate Doom's exe_final): EV_Teleport leaves the
+# player's height as it was, so it falls 16 units into B (floor -16) and
+# steps up 48 into A (floor 32) through P_ZMovement (the smooth step up),
+# and the destination fog spawns at the old height. Same ticcmds.
+gameversion final
+iwad testmap
+map teleport
+50 0 0 0 x36
+0 0 0 0 x25
+25 0 0 0 x24
+25 2 7 0 x5
+0 0 0 0
+25 2 7 0 x5
+0 0 0 0
+25 2 7 0 x5
+0 0 0 0
+25 2 7 0
+25 0 0 0 x3
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x6
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x5
+25 1 0 0
+25 0 0 0 x5
+8 0 0 0 x7
+8 1 0 0
+25 0 0 0 x4
+21 0 0 0
+-3 0 0 0
+-2 0 0 0 x3
+-1 0 0 0 x2
+-2 0 0 0
+-1 0 0 0 x4
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+0 0 -1 0
+-1 0 0 0
+0 0 0 0 x14
+25 1 -6 0
+25 0 0 0 x18
+16 0 0 0
+-2 0 0 0 x2
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x7
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x14
+25 0 127 0
+25 0 1 0
+25 0 0 0 x8
+50 0 0 0 x40
+0 0 0 0 x80

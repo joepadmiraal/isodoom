@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Render;
 using IsoDoom.Sim;
+using IsoDoom.Wad;
 using SectorFloor = IsoDoom.Map.SectorFloor;
 
 namespace IsoDoom.Game;
@@ -1021,6 +1022,8 @@ public partial class LevelScript : Node
             wrong.Add($"needs --level-skill={route.Skill}");
         if (!string.Equals(shown, map, StringComparison.OrdinalIgnoreCase))
             wrong.Add($"is for {map}, the scene shows {shown ?? "no map"}");
+        if (route.GameVersion is { } version && _scene.World is { } world && world.gameversion != version)
+            wrong.Add($"needs -gameversion {GameVersions.Cmdline(version)} (T10.7)");
         if (_scene.PlayerMobj is null)
             wrong.Add("no player");
         if (wrong.Count > 0)

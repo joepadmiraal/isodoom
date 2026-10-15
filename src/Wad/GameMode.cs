@@ -65,3 +65,47 @@ public enum GameVariant
     /// <summary>The Doom 3 BFG Edition IWADs (have a <c>DMENUPIC</c> lump).</summary>
     bfgedition,
 }
+
+/// <summary>
+/// Which executable's behaviour to emulate (Chocolate Doom d_mode.h:
+/// <c>GameVersion_t</c>; not in vanilla, which is one executable). The order
+/// is Chocolate Doom's: the ported code compares versions with
+/// <c>&lt;</c>/<c>&gt;=</c> (<c>gameversion &gt;= exe_ultimate</c>). Picked by
+/// <see cref="GameVersions.D_SetGameVersion"/> from the IWAD or
+/// <c>-gameversion</c> (T10.7; SPEC §12 T10.7).
+/// </summary>
+public enum GameVersion
+{
+    /// <summary>Doom 1.2: shareware and registered (not emulated: <see cref="GameVersions.Emulated"/>).</summary>
+    exe_doom_1_2,
+
+    /// <summary>Doom 1.5 (not emulated).</summary>
+    exe_doom_1_5,
+
+    /// <summary>Doom 1.666: shareware, registered and commercial.</summary>
+    exe_doom_1_666,
+
+    /// <summary>Doom 1.7/1.7a.</summary>
+    exe_doom_1_7,
+
+    /// <summary>Doom 1.8.</summary>
+    exe_doom_1_8,
+
+    /// <summary>Doom 1.9: registered Doom's and Doom II's (the default for them).</summary>
+    exe_doom_1_9,
+
+    /// <summary>Hacx (not emulated).</summary>
+    exe_hacx,
+
+    /// <summary>The Ultimate Doom (the default for <see cref="GameMode.retail"/>).</summary>
+    exe_ultimate,
+
+    /// <summary>Final Doom (the default for TNT and Plutonia): its teleports leave the thing's height as it was.</summary>
+    exe_final,
+
+    /// <summary>Final Doom's alternate executable (the Id Anthology's): the teleport fixed, the sky changes in Doom II.</summary>
+    exe_final2,
+
+    /// <summary>Chex Quest (not emulated).</summary>
+    exe_chex,
+}

@@ -10,7 +10,7 @@ namespace IsoDoom.Game;
 /// <see cref="F_Ticker"/> shows the text for
 /// <c>strlen(finaletext) * TEXTSPEED + TEXTWAIT</c> tics (Doom II's text
 /// screens between maps until any button after 50 tics), then the end
-/// picture (<see cref="F_Drawer"/>: E1 <c>HELP2</c>, the retail game's
+/// picture (<see cref="F_Drawer"/>: E1 <c>HELP2</c>, from The Ultimate Doom's executable on
 /// <c>CREDIT</c>; E2 <c>VICTORY2</c>; E4 <c>ENDPIC</c>), which stays, as
 /// vanilla's, until the menu (T7.2) starts another game or ends this one.
 /// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) is a later task's;
@@ -157,7 +157,7 @@ public sealed partial class FFinale
     /// <summary>The end picture of the episode (<c>F_ArtScreenDrawer</c>), or null (vanilla draws nothing).</summary>
     public string? ArtScreen() => gameepisode switch
     {
-        1 => flow.gamemode == GameMode.retail ? "CREDIT" : "HELP2",
+        1 => flow.gameversion >= GameVersion.exe_ultimate ? "CREDIT" : "HELP2",
         2 => "VICTORY2",
         3 => "PFUB2", // F_BunnyScroll: T9.4
         4 => "ENDPIC",

@@ -401,12 +401,15 @@ public sealed partial class MMenu
         messageString = "";
         messageLastMenuActive = menuactive;
 
-        // gameversion >= exe_ultimate: the retail game (Chocolate Doom's default for it)
-        if (flow.gamemode == GameMode.retail)
+        // The same hacks were used in the original Doom EXEs.
+        if (flow.gameversion >= GameVersion.exe_ultimate)
         {
             MainMenu[readthis].routine = M_ReadThis2;
             ReadDef2.prevMenu = null;
         }
+
+        if (flow.gameversion is >= GameVersion.exe_final and <= GameVersion.exe_final2)
+            ReadDef2.routine = M_DrawReadThisCommercial;
 
         if (flow.gamemode == GameMode.commercial)
         {
@@ -420,8 +423,10 @@ public sealed partial class MMenu
             ReadMenu1[0].routine = M_FinishReadThis;
         }
 
-        // Versions of doom.exe before the Ultimate Doom release only had three episodes.
-        if (flow.gamemode != GameMode.retail)
+        // Versions of doom.exe before the Ultimate Doom release only had
+        // three episodes; if we're emulating one of those then don't try
+        // to show episode four.
+        if (flow.gameversion < GameVersion.exe_ultimate)
             EpiDef.numitems--;
 
         for (int i = 0; i < load_end; i++)
