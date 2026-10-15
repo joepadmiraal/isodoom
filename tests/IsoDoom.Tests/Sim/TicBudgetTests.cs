@@ -19,8 +19,9 @@ namespace IsoDoom.Tests.Sim;
 /// monster hunting the player from the start (target and see state, as the
 /// level script's <c>wake</c>). T10.6: also Doom II's busiest maps at skill 4
 /// with every monster hunting (MAP27 and MAP29: the most mobjs; MAP30: the
-/// Icon's spawn cubes and fires).
+/// Icon's spawn cubes and fires). T8.6a: in the <see cref="TimingGroup"/>.
 /// </summary>
+[Collection(TimingGroup.Name)]
 public class TicBudgetTests
 {
     private readonly ITestOutputHelper _output;
