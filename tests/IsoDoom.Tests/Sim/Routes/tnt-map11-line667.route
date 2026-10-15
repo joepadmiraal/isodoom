@@ -1,0 +1,11 @@
+# TNT: Evilution MAP11 (T10.7): started beside line 667 (special 11, tag 0), on its
+# front, the player uses it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (tnt-map11-line667).
+iwad tnt
+map MAP11
+exit normal
+start 2112 1808 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x2
+0 0 0 2

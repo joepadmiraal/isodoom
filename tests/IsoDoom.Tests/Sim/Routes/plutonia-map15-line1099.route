@@ -1,0 +1,11 @@
+# The Plutonia Experiment MAP15 (T10.7): started beside line 1099 (special 124, tag 0), on its
+# front, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (plutonia-map15-line1099).
+iwad plutonia
+map MAP15
+exit secret
+start -1087 513 45
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x10

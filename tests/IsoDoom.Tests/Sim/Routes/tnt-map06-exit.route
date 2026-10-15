@@ -1,0 +1,16 @@
+# TNT: Evilution MAP06 (T10.7): started in front of the switch (line 937,
+# SR lift tag 13) that lowers the exit's sector 171 (384 units up); onto it
+# while it waits down, across the walk-over exit (line 935, 52), the last
+# tic: the intermission, then TNT's first text screen (T1TEXT) before MAP07.
+# Written by tools/RouteGen (tnt-map06-exit).
+iwad tnt
+map MAP06
+exit normal
+start -784 -248 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x95
+25 0 78 0
+25 0 0 0 x13

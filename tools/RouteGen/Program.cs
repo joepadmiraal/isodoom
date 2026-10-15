@@ -43,8 +43,28 @@ public static class Program
         WadArchive.Open(Environment.GetEnvironmentVariable("ISODOOM_DOOM2_WAD") is { Length: > 0 } p ? p
             : File.Exists(Path.Combine(RepoRoot(), "wads", "doom2.wad")) ? Path.Combine(RepoRoot(), "wads", "doom2.wad") : Path.Combine(RepoRoot(), "wads", "DOOM2.WAD"));
 
-    /// <summary>The IWAD of a map name: Doom II's for <c>MAPxx</c>, else DOOM1.WAD (<see cref="Steer.ModeOf"/>).</summary>
-    private static WadArchive IwadOf(string map) => Steer.ModeOf(map) == GameMode.commercial ? Doom2() : Doom1();
+    /// <summary>T10.7: Final Doom's IWAD (<c>tnt</c> or <c>plutonia</c>: <c>ISODOOM_TNT_WAD</c> / <c>ISODOOM_PLUTONIA_WAD</c>, else <c>wads/</c>, as the tests' <c>TestWads</c>).</summary>
+    private static WadArchive FinalDoom(string which)
+    {
+        if (Environment.GetEnvironmentVariable(which == "tnt" ? "ISODOOM_TNT_WAD" : "ISODOOM_PLUTONIA_WAD") is { Length: > 0 } p)
+            return WadArchive.Open(p);
+        string upper = Path.Combine(RepoRoot(), "wads", which.ToUpperInvariant() + ".WAD");
+        return WadArchive.Open(File.Exists(upper) ? upper : Path.Combine(RepoRoot(), "wads", which + ".wad"));
+    }
+
+    private static WadArchive Tnt() => FinalDoom("tnt");
+
+    private static WadArchive Plutonia() => FinalDoom("plutonia");
+
+    /// <summary>
+    /// The IWAD of a map name: Doom II's for <c>MAPxx</c>, else DOOM1.WAD
+    /// (<see cref="Steer.ModeOf"/>); T10.7: <c>ROUTEGEN_IWAD=tnt|plutonia</c>
+    /// gives Final Doom's for <c>MAPxx</c> (<c>--info</c>, <c>--probe</c>, …).
+    /// </summary>
+    private static WadArchive IwadOf(string map) =>
+        Steer.ModeOf(map) != GameMode.commercial ? Doom1()
+            : Environment.GetEnvironmentVariable("ROUTEGEN_IWAD") is "tnt" or "plutonia" ? FinalDoom(Environment.GetEnvironmentVariable("ROUTEGEN_IWAD")!)
+            : Doom2();
 
     private static WadArchive Synthetic() =>
         new([WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName)]);
@@ -1389,6 +1409,24 @@ exit normal
             g.Tic(0, 0, 0, 0);
             g.Exit(1240, 224);
         }, (1294, 224, 180)),
+        ["tnt-map06-exit"] = new(Tnt, "MAP06", """
+# TNT: Evilution MAP06 (T10.7): started in front of the switch (line 937,
+# SR lift tag 13) that lowers the exit's sector 171 (384 units up); onto it
+# while it waits down, across the walk-over exit (line 935, 52), the last
+# tic: the intermission, then TNT's first text screen (T1TEXT) before MAP07.
+# Written by tools/RouteGen (tnt-map06-exit).
+iwad tnt
+map MAP06
+exit normal
+
+""", (g, log) =>
+        {
+            g.Tic(0, 0, 0, 0); // (G_PlayerReborn's usedown)
+            g.Use(-784, -216);
+            g.WaitUntil(() => g.World.sectors[171].floorheight == g.World.sectors[166].floorheight, 300);
+            log("lift down");
+            g.WalkExit(-896, -288, 25, 60);
+        }, (-784, -248, 90)),
         ["map02-ssg"] = new(Doom2, "MAP02", """
 # Doom II MAP02 on skill 3 with monsters (T10.2): started on the super
 # shotgun in its secret room (sector 62; the pickup switches to it), which
@@ -2086,14 +2124,18 @@ exit normal
         if (args.Length is 1 or 2 && SpecialRoutes.IsName(args[0]))
         {
             // T10.6: a special's route (mapNN-lineK, mapNN-sectorK), started beside it
-            (string specialHeader, (int X, int Y, int Angle) specialStart, Action<Steer, Action<string>> specialRun) = SpecialRoutes.Make(Doom2, args[0]);
-            _scripts[args[0]] = new Script(Doom2, "MAP" + args[0][3..5], specialHeader, specialRun, specialStart);
+            // (T10.7: tnt-mapNN-lineK, plutonia-mapNN-lineK on Final Doom's IWADs)
+            (string specialIwad, string specialMap) = SpecialRoutes.IwadAndMap(args[0]);
+            Func<WadArchive> specialWad = specialIwad == "doom2" ? Doom2 : () => FinalDoom(specialIwad);
+            (string specialHeader, (int X, int Y, int Angle) specialStart, Action<Steer, Action<string>> specialRun) = SpecialRoutes.Make(specialWad, args[0]);
+            _scripts[args[0]] = new Script(specialWad, specialMap, specialHeader, specialRun, specialStart);
         }
         if (args.Length is 1 or 2 && SpecialRoutes.IsExitName(args[0]))
         {
             // T10.6: a map walked from its start to the exit (mapNN-walk-exit)
             (string exitHeader, Action<Steer, Action<string>> exitRun) = SpecialRoutes.MakeExit(args[0]);
-            _scripts[args[0]] = new Script(Doom2, "MAP" + args[0][3..5], exitHeader, exitRun);
+            (string exitIwad, string exitMap) = SpecialRoutes.IwadAndMap(args[0]);
+            _scripts[args[0]] = new Script(exitIwad == "doom2" ? Doom2 : () => FinalDoom(exitIwad), exitMap, exitHeader, exitRun);
         }
         if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))
         {

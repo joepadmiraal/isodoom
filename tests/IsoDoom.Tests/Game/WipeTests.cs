@@ -36,7 +36,9 @@ public class WipeTests
         // its text screen) and out (MAP31 and MAP32 to MAP16)
         "map01-exit", "map06-exit", "map15-secret-exit", "map31-secret-exit", "map31-exit", "map32-exit",
         // T10.5: MAP30 won, its text and the cast call
-        "map30-icon"];
+        "map30-icon",
+        // T10.7: Final Doom's MAP01s walked to their exits, to MAP02
+        "tnt-map01-walk-exit", "plutonia-map01-walk-exit"];
 
     public static TheoryData<string> Dumps()
     {
@@ -114,7 +116,7 @@ public class WipeTests
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
         var host = new RouteHost(route, world, wad, mrandom);
-        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMode == GameMode.commercial ? GameMission.doom2 : GameMission.doom) { Wipes = true };
+        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMission, route.GameVersion) { Wipes = true };
         var g = new ScreenGraphics(wad, new HuStuff(wad));
         var shown = new HudScreen(0, HudScreen.SCREENHEIGHT);
         var now = new HudScreen(0, HudScreen.SCREENHEIGHT);

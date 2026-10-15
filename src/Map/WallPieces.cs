@@ -40,7 +40,8 @@ public readonly record struct WallPiece(PolygonVertex A, PolygonVertex B, int Co
 /// <b>Texture columns</b> follow r_segs.c <c>R_StoreWallRange</c>
 /// (<c>rw_offset = sidedef->textureoffset + curline->offset</c>, plus the
 /// distance along the seg): the seg's <c>offset</c> plus the corner's
-/// distance from the seg's start, projected on the seg.
+/// distance from the seg's start, projected on the seg. A side's segs are
+/// taken in their order along it, which their offsets need not follow (T10.7).
 /// </para>
 /// </summary>
 public sealed class WallPieces
@@ -75,7 +76,7 @@ public sealed class WallPieces
                 pieces[i] = _noPieces;
                 continue;
             }
-            side.Sort((a, b) => a.Offset != b.Offset ? a.Offset.CompareTo(b.Offset) : a.Index.CompareTo(b.Index));
+            side.Sort((a, b) => Along(a) != Along(b) ? Along(a).CompareTo(Along(b)) : a.Offset != b.Offset ? a.Offset.CompareTo(b.Offset) : a.Index.CompareTo(b.Index));
             list.Clear();
             PolygonVertex? previous = null;
             int previousColumn = 0;
@@ -144,6 +145,22 @@ public sealed class WallPieces
             }
         }
         return new WallPieces(pieces) { Connectors = connectors };
+    }
+
+    /// <summary>
+    /// Where <paramref name="seg"/> starts along its linedef side: its start's
+    /// projection on the side's direction, from the side's start (scaled, for
+    /// ordering only). It orders a side's segs; their <c>offset</c> does not:
+    /// some node builders wrote wrong ones (TNT MAP20 line 999's back side:
+    /// 24, 0, 96, 112, 80 from west to east, T10.7), which vanilla only draws
+    /// as texture columns.
+    /// </summary>
+    private static long Along(Seg seg)
+    {
+        Line line = seg.LineDef;
+        (Vertex start, Vertex end) = seg.Side == 0 ? (line.V1, line.V2) : (line.V2, line.V1);
+        long dx = ((long)end.X - start.X) >> 16, dy = ((long)end.Y - start.Y) >> 16;
+        return (((long)seg.V1.X - start.X) >> 16) * dx + (((long)seg.V1.Y - start.Y) >> 16) * dy;
     }
 
     /// <summary>

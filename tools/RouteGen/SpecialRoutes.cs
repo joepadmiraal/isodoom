@@ -56,36 +56,78 @@ public static class SpecialRoutes
     // the teleports: crossed from the front only
     private static readonly HashSet<int> _teleports = [39, 97, 125, 126];
 
-    private static readonly Regex _name = new(@"^map(\d\d)-(line|sector)(\d+)$", RegexOptions.CultureInvariant);
+    private static readonly Regex _name = new(@"^(?:(tnt|plutonia)-)?map(\d\d)-(line|sector)(\d+)$", RegexOptions.CultureInvariant);
 
-    private static readonly Regex _exitName = new(@"^map(\d\d)-walk-exit$", RegexOptions.CultureInvariant);
+    private static readonly Regex _exitName = new(@"^(?:(tnt|plutonia)-)?map(\d\d)-walk-exit$", RegexOptions.CultureInvariant);
 
-    /// <summary>Whether <paramref name="name"/> is a walked exit route's name (<c>mapNN-walk-exit</c>).</summary>
+    /// <summary>Whether <paramref name="name"/> is a walked exit route's name (<c>mapNN-walk-exit</c>; T10.7: <c>tnt-</c> or <c>plutonia-</c> before it on Final Doom's IWADs).</summary>
     public static bool IsExitName(string name) => _exitName.IsMatch(name);
 
     /// <summary>
     /// <c>mapNN-walk-exit</c>: from the map's start, no monsters, the player walks to the
     /// normal exit (switch 11 or walk-over 52), through the manual doors on the way, picking
     /// up the keys it can reach while the exit is out of reach; fails when that does not do.
+    /// T10.7: <c>tnt-mapNN-walk-exit</c> and <c>plutonia-mapNN-walk-exit</c> on Final Doom's IWADs
+    /// (<see cref="IwadAndMap"/>).
     /// </summary>
     public static (string Header, Action<Steer, Action<string>> Run) MakeExit(string name)
     {
-        string map = "MAP" + _exitName.Match(name).Groups[1].Value;
+        (string iwad, string map) = IwadAndMap(name);
+        string game = iwad switch { "tnt" => "TNT: Evilution", "plutonia" => "The Plutonia Experiment", _ => "Doom II" };
         string header = $"""
-# Doom II {map} (T10.6): from the map's start, no monsters: the player walks to the exit,
+# {game} {map} ({(iwad == "doom2" ? "T10.6" : "T10.7")}): from the map's start, no monsters: the player walks to the exit,
 # through the doors on the way (and the keys they need), and leaves the level, the last
 # tic. Written by tools/RouteGen ({name}).
-iwad doom2
+iwad {iwad}
 map {map}
 exit normal
 
 """;
         void Run(Steer g, Action<string> log)
         {
+            // T10.7: the route ends with the tic that leaves the level, wherever (an exit line crossed on the way to another)
+            g.OnTic = () =>
+            {
+                if (g.World.gameaction == gameaction_t.ga_completed)
+                    throw new LevelExitedException();
+            };
+            try
+            {
+                Walk(g, log);
+            }
+            catch (LevelExitedException)
+            {
+                log("left the level");
+            }
+        }
+        void Walk(Steer g, Action<string> log)
+        {
             g.TightCorners = true;
             g.Wait(1);
             var keysTried = new HashSet<mobj_t>();
-            for (int round = 0; round < 8; round++)
+            var switchesTried = new HashSet<int>();
+            // T10.7: the route's hints first, in order (where greedy pressing goes astray)
+            foreach (string hint in _exitHints.GetValueOrDefault(name, []))
+            {
+                if (hint.StartsWith("key:", StringComparison.Ordinal))
+                {
+                    mobj_t k = g.World.Mobjs().First(m => m.type.ToString() == hint[4..]);
+                    g.GoToDoors(k.x / (double)FU, k.y / (double)FU, 4);
+                    keysTried.Add(k);
+                    log($"hint: key {k.type}");
+                }
+                else if (hint.StartsWith("tele:", StringComparison.Ordinal))
+                {
+                    double[] at = [.. hint[5..].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture))];
+                    g.Teleport(at[0], at[1]);
+                    log($"hint: teleported to ({g.X:F0}, {g.Y:F0})");
+                }
+                else if (!PressASwitch(g, log, switchesTried, int.Parse(hint, CultureInfo.InvariantCulture)))
+                {
+                    throw new InvalidOperationException($"hint line {hint}: out of reach");
+                }
+            }
+            for (int round = 0; round < 24; round++)
             {
                 foreach (line_t l in g.World.lines.Where(l => l.special is 11 or 52))
                 {
@@ -118,11 +160,12 @@ exit normal
                 bool got = false;
                 foreach (mobj_t k in g.World.Mobjs().Where(m => m.type is >= mobjtype_t.MT_MISC4 and <= mobjtype_t.MT_MISC9).ToList())
                 {
-                    if (!keysTried.Add(k))
+                    if (keysTried.Contains(k))
                         continue;
                     try
                     {
                         g.GoToDoors(k.x / (double)FU, k.y / (double)FU, 4);
+                        keysTried.Add(k);
                         log($"key {k.type}");
                         got = true;
                         break;
@@ -132,29 +175,175 @@ exit normal
                         log($"key {k.type} at ({k.x >> 16}, {k.y >> 16}): {e.Message.Split(';')[0]}");
                     }
                 }
+                // T10.7: else the nearest switch within reach not pressed yet, its movers waited for
+                if (!got)
+                    got = PressASwitch(g, log, switchesTried);
                 if (!got)
                     break;
+            }
+            // ROUTEGEN_DEBUG="X,Y;X,Y": what the world is at those points now, and whether a path reaches them
+            if (Environment.GetEnvironmentVariable("ROUTEGEN_DEBUG") is { Length: > 1 } points)
+            {
+                foreach (string pt in points.Split(';'))
+                {
+                    double px = double.Parse(pt.Split(',')[0], CultureInfo.InvariantCulture), py = double.Parse(pt.Split(',')[1], CultureInfo.InvariantCulture);
+                    string path;
+                    try
+                    {
+                        path = $"{g.Plan(px, py).Count} steps";
+                    }
+                    catch (InvalidOperationException e)
+                    {
+                        path = e.Message.Split(';')[0];
+                    }
+                    log($"{g.ProbeText(px, py)}: {path}");
+                }
             }
             throw new InvalidOperationException("no way to the exit");
         }
         return (header, Run);
     }
 
-    /// <summary>Whether <paramref name="name"/> is a special route's name (<c>mapNN-lineK</c>, <c>mapNN-sectorK</c>).</summary>
+    /// <summary>
+    /// T10.7: the walked exit routes' hints: line indices to press or cross
+    /// (<see cref="PressASwitch"/>), <c>key:MT_…</c> keys to pick up and
+    /// <c>tele:X,Y</c> teleport pads to walk into (<see cref="Steer.Teleport"/>), in
+    /// order, before the walker's own search.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> _exitHints = new(StringComparer.Ordinal)
+    {
+        // the red skull (east, past the lifts and the doors these open), the red door to the
+        // north room, the switch that lowers the blue skull's pillar, the blue door, the lift up and
+        // the teleporter beside it to the exit's ledge
+        ["plutonia-map01-walk-exit"] = ["294", "379", "821", "981", "910", "key:MT_MISC8", "1099", "1114", "key:MT_MISC9", "659", "613", "tele:1696,-1184"],
+    };
+
+    // the manual doors (Steer.GoToDoors opens them) and the exits: not switches to try
+    private static readonly HashSet<int> _notSwitches = [1, 26, 27, 28, 31, 32, 33, 34, 117, 118, 11, 51];
+
+    // the specials that close, lower ceilings or crush (p_spec.c, p_switch.c): never tried
+    private static readonly HashSet<int> _closing = [3, 6, 16, 25, 41, 42, 43, 44, 49, 50, 73, 75, 76, 77, 107, 110, 113, 116, 141];
+
+    /// <summary>
+    /// T10.7: the walked exit's last resort: goes to the nearest use line (a
+    /// switch: not a walk-over, shoot, manual door or exit special) or
+    /// walk-over line (not a teleport or exit) within reach that it has not
+    /// pressed or crossed (those out of reach are tried again later), none
+    /// that closes or crushes, presses it from in front or walks across it,
+    /// and waits for the movers it started (a door until it waits open, a
+    /// lift until it waits down, then rides it up when it can get on; at most
+    /// 10 s each); false when none is within reach. With <paramref name="only"/>, that line alone (a hint).
+    /// </summary>
+    private static bool PressASwitch(Steer g, Action<string> log, HashSet<int> tried, int only = -1)
+    {
+        var candidates = g.World.lines
+            .Where(l => (only < 0 || l.Index == only) && l.special > 0 && !_shoot.Contains(l.special) && !_notSwitches.Contains(l.special) && !_closing.Contains(l.special)
+                && !_teleports.Contains(l.special) && l.special is not (52 or 124) && !tried.Contains(l.Index) && HasKeyFor(g, l.special))
+            .Select(l =>
+            {
+                double x1 = l.v1.X / (double)FU, y1 = l.v1.Y / (double)FU, x2 = l.v2.X / (double)FU, y2 = l.v2.Y / (double)FU;
+                double len = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+                return (Line: l, Mx: (x1 + x2) / 2, My: (y1 + y2) / 2, Nx: (y2 - y1) / len, Ny: -(x2 - x1) / len);
+            })
+            .OrderBy(c => Math.Abs(c.Mx - g.X) + Math.Abs(c.My - g.Y))
+            .ToList();
+        foreach (var c in candidates)
+        {
+            bool walk = _walk.Contains(c.Line.special);
+            foreach ((double d, int side) in walk ? new[] { (32.0, 1), (32.0, -1), (48.0, 1), (48.0, -1) } : [(24.0, 1), (32.0, 1), (40.0, 1)])
+            {
+                double sx = c.Mx + c.Nx * d * side, sy = c.My + c.Ny * d * side;
+                double ex = c.Mx - c.Nx * 20 * side, ey = c.My - c.Ny * 20 * side; // (walk: just across it, the centre past the line)
+                if (!g.Fits(sx, sy))
+                    continue;
+                try
+                {
+                    g.GoToDoors(sx, sy, 4);
+                }
+                catch (InvalidOperationException e)
+                {
+                    if (Environment.GetEnvironmentVariable("ROUTEGEN_DEBUG") is { Length: > 0 })
+                        log($"line {c.Line.Index} from ({sx:F0}, {sy:F0}): {e.Message.Split(';')[0]}");
+                    continue;
+                }
+                int special = c.Line.special, tag = c.Line.tag;
+                tried.Add(c.Line.Index);
+                var before = new HashSet<sector_t>(g.World.sectors.Where(sec => sec.specialdata is not null)); // (perpetual movers)
+                if (walk)
+                {
+                    for (int t = 0; t < 30 && ((g.X - c.Mx) * c.Nx + (g.Y - c.My) * c.Ny) * side > 0; t++)
+                        g.Tic(25, 0, g.TurnTo(ex, ey), 0);
+                    g.Settle();
+                }
+                else
+                {
+                    g.Use(c.Mx, c.My);
+                }
+                // every mover it started (a staircase's steps are not tagged; a door that closes again: until it waits open; a lift that comes back up: until it waits down)
+                for (int t = 0; t < 350 && g.World.sectors.Any(sec => sec.specialdata is not null and not vldoor_t { direction: 0 } and not plat_t { status: plat_e.waiting } && !before.Contains(sec)); t++)
+                    g.Wait(1);
+                // a lift it lowered, waiting down: onto it and up with it (Plutonia MAP01's 73 to the exit's ledge), if the player fits under the ceiling at its top
+                foreach (sector_t lift in g.World.sectors.Where(sec => sec.specialdata is plat_t { status: plat_e.waiting } p && p.high + g.Mo.height <= sec.ceilingheight
+                    && !before.Contains(sec)).ToList())
+                {
+                    double cx = lift.lines.Average(l => (l.v1.X + (double)l.v2.X) / 2) / FU, cy = lift.lines.Average(l => (l.v1.Y + (double)l.v2.Y) / 2) / FU;
+                    if (!g.Fits(cx, cy))
+                        continue;
+                    try
+                    {
+                        g.GoToDoors(cx, cy, 8);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        continue;
+                    }
+                    for (int t = 0; t < 350 && lift.specialdata != null; t++)
+                        g.Wait(1);
+                    log($"rode lift sector {lift.Index} to {lift.floorheight >> 16}");
+                    break;
+                }
+                log($"{(walk ? "crossed" : "switch")} line {c.Line.Index} (special {special}, tag {tag})");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether the player holds the key a locked switch (p_doors.c EV_DoLockedDoor: 99/133 blue, 134/135 red, 136/137 yellow) needs; true for the others.</summary>
+    private static bool HasKeyFor(Steer g, int special)
+    {
+        bool[] c = g.World.players[0].cards;
+        return special switch
+        {
+            99 or 133 => c[(int)card_t.it_bluecard] || c[(int)card_t.it_blueskull],
+            134 or 135 => c[(int)card_t.it_redcard] || c[(int)card_t.it_redskull],
+            136 or 137 => c[(int)card_t.it_yellowcard] || c[(int)card_t.it_yellowskull],
+            _ => true,
+        };
+    }
+
+    /// <summary>Whether <paramref name="name"/> is a special route's name (<c>mapNN-lineK</c>, <c>mapNN-sectorK</c>; T10.7: <c>tnt-</c> or <c>plutonia-</c> before it on Final Doom's IWADs).</summary>
     public static bool IsName(string name) => _name.IsMatch(name);
+
+    /// <summary>T10.7: the IWAD (<c>doom2</c>, <c>tnt</c> or <c>plutonia</c>) and map of a special or walked exit route's name.</summary>
+    public static (string Iwad, string Map) IwadAndMap(string name)
+    {
+        Match mt = _name.Match(name) is { Success: true } m ? m : _exitName.Match(name);
+        return (mt.Groups[1].Value is { Length: > 0 } iwad ? iwad : "doom2", "MAP" + mt.Groups[2].Value);
+    }
 
     /// <summary>The route <paramref name="name"/>: its header, start and steering, or an exception when it cannot be made.</summary>
     public static (string Header, (int X, int Y, int Angle) Start, Action<Steer, Action<string>> Run) Make(Func<WadArchive> wad, string name)
     {
         Match mt = _name.Match(name);
-        string map = "MAP" + mt.Groups[1].Value;
-        int index = int.Parse(mt.Groups[3].Value, CultureInfo.InvariantCulture);
+        (string iwad, string map) = IwadAndMap(name);
+        int index = int.Parse(mt.Groups[4].Value, CultureInfo.InvariantCulture);
         var probe = new Steer(wad(), map);
-        return mt.Groups[2].Value == "line" ? LineRoute(wad, probe, map, name, index)
+        return mt.Groups[3].Value == "line" ? LineRoute(wad, probe, map, name, index, iwad)
             : SectorRoute(probe, map, name, index, IsoDoom.Map.Level.Load(wad(), map).Sectors[index].Special);
     }
 
-    private static (string, (int, int, int), Action<Steer, Action<string>>) LineRoute(Func<WadArchive> wad, Steer probe, string map, string name, int index)
+    private static (string, (int, int, int), Action<Steer, Action<string>>) LineRoute(Func<WadArchive> wad, Steer probe, string map, string name, int index, string iwad = "doom2")
     {
         line_t l = probe.World.lines[index];
         int special = l.special;
@@ -186,12 +375,14 @@ exit normal
                     int angle = (int)Math.Round(Math.Atan2(ty - sy, tx - sx) * 180 / Math.PI);
                     angle = (angle + 360) % 360;
                     string kind = walk ? "walks across" : shoot ? "shoots" : "uses";
-                    string exit = special is 52 or 124 ? $"exit {(special == 124 ? "secret" : "normal")}\n" : "";
+                    // (T10.7: the switch exits too, 11 and 51: the use leaves the level, the route's last tic)
+                    string exit = special is 52 or 124 or 11 or 51 ? $"exit {(special is 124 or 51 ? "secret" : "normal")}\n" : "";
+                    string game = iwad switch { "tnt" => "TNT: Evilution", "plutonia" => "The Plutonia Experiment", _ => "Doom II" };
                     string header = $"""
-# Doom II {map} (T10.6): started beside line {index} (special {special}, tag {l.tag}), on its
+# {game} {map} ({(iwad == "doom2" ? "T10.6" : "T10.7")}): started beside line {index} (special {special}, tag {l.tag}), on its
 # {(side > 0 ? "front" : "back")}, the player {kind} it, then waits for the movers it set going
 # (at most {MaxWait} tics). Written by tools/RouteGen ({name}).
-iwad doom2
+iwad {iwad}
 map {map}
 {exit}
 """;
@@ -219,6 +410,12 @@ map {map}
                             for (int t = 0; t < 30 && State(g, line) == before; t++)
                                 g.Fire(tx, ty);
                             g.Tic(0, 0, 0, 0);
+                        }
+                        else if (exit.Length > 0)
+                        {
+                            g.Exit(tx, ty); // (T10.7: a switch exit)
+                            log("left the level");
+                            return;
                         }
                         else
                         {
@@ -364,3 +561,6 @@ map {map}
         return 0;
     }
 }
+
+/// <summary>T10.7: thrown by a walked exit route's tic hook once a tic left the level.</summary>
+public sealed class LevelExitedException : Exception;

@@ -86,7 +86,7 @@ def main():
     for spec in args[3:]:
         route, _, presses = spec.partition('@')
         head, cmds = routes.parse(route)
-        doom2 = head['iwad'] == 'doom2'
+        doom2 = head['iwad'] in routes.COMMERCIAL  # (T10.7: Final Doom's flow is Doom II's)
         if doom2 and (head['exit'] is None or not text_screen(head) and not cast(head)):
             sys.exit(f'{route}: only Doom II routes whose exit leads to a text screen or the cast call')
         if not doom2 and (head['iwad'] != 'doom1' or head['exit'] is None or not (head['map'] or 'E1M1').upper().endswith('M8')):

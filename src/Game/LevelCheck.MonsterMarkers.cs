@@ -245,8 +245,8 @@ public partial class LevelCheck
                         impPixels++;
                 }
             }
-            (int chevronPixels, int chevronRed, int chevronAstray) = MarkerPixels(marked);
-            (int beamPixels, int beamRed, int beamAstray) = MarkerPixels(beamed);
+            (int chevronPixels, int chevronRed, int chevronAstray, _) = MarkerPixels(marked);
+            (int beamPixels, _, int beamAstray, int beamRed) = MarkerPixels(beamed);
             _pixels += 3 * size.X * size.Y;
             int texels = atlas.Images[shown.Slot].Opaque.Count(o => o != 0);
             if (impPixels * 4 >= texels)
@@ -260,16 +260,18 @@ public partial class LevelCheck
                 if (chevronRed < 20 || chevronAstray > 0)
                     Fail($"{what}: hidden whole, its chevron drew {chevronPixels} pixels, {chevronRed} red, {chevronAstray} off the vertical through its foot or below it");
                 if (beamRed < 20 || beamAstray > 0)
-                    Fail($"{what}: hidden whole, its beam drew {beamPixels} pixels, {beamRed} red, {beamAstray} off the vertical through its foot or below it");
+                    Fail($"{what}: hidden whole, its beam drew {beamPixels} pixels, {beamRed} redder, {beamAstray} off the vertical through its foot or below it");
                 hidden = $"the imp at ({foot.X:F0}, {foot.Y:F0})";
                 (hiddenPixels, hiddenBeamPixels) = (chevronPixels, beamPixels);
             }
             return true;
 
-            // The pixels a marker changed from the imp alone: all, the red ones, and those off the vertical through the foot or below it.
-            (int Pixels, int Red, int Astray) MarkerPixels(byte[] shot)
+            // The pixels a marker changed from the imp alone: all, the red ones, those off the vertical through the foot or below
+            // it, and those it made redder (T10.7: the beam is translucent, depth-tested and fades: behind Plutonia MAP01's tall
+            // walls only a dim strip of it shows, red over what is behind but not red itself).
+            (int Pixels, int Red, int Astray, int Redder) MarkerPixels(byte[] shot)
             {
-                int pixels = 0, red = 0, astray = 0;
+                int pixels = 0, red = 0, astray = 0, redder = 0;
                 for (int y = 0; y < size.Y; y++)
                 {
                     for (int x = 0; x < size.X; x++)
@@ -280,11 +282,14 @@ public partial class LevelCheck
                         int i = (y * size.X + x) * 4;
                         if (shot[i] >= 160 && shot[i + 1] <= 90 && shot[i + 2] <= 90)
                             red++;
+                        int dr = shot[i] - alone[i], dg = shot[i + 1] - alone[i + 1], db = shot[i + 2] - alone[i + 2];
+                        if (dr >= dg + 8 && dr >= db + 8)
+                            redder++;
                         if (Math.Abs(x + 0.5f - size.X / 2f) > 16 || y >= footY)
                             astray++;
                     }
                 }
-                return (pixels, red, astray);
+                return (pixels, red, astray, redder);
             }
         }
     }

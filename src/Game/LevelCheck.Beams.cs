@@ -492,9 +492,13 @@ public partial class LevelCheck
             int i = (q.Y * w + q.X) * 4;
             double[] got = [.. Enumerable.Range(0, 3).Select(c => Linear(hidden.BeamCapture[i + c] / 255.0))];
             double[] under = [.. Enumerable.Range(0, 3).Select(c => Linear(hidden.ItemCapture[i + c] / 255.0))];
-            int k = Enumerable.Range(0, 3).MaxBy(c => Math.Abs(colour[c] - under[c]));
-            double alpha = Math.Clamp((got[k] - under[k]) / (colour[k] - under[k]), 0, 1);
-            bool fits = Enumerable.Range(0, 3).All(c => Math.Abs(Srgb(under[c] + alpha * (colour[c] - under[c])) - hidden.BeamCapture[i + c]) <= 3);
+            // the opacity from any channel that differs (T10.7: at a faint edge one 8-bit step of the most contrasted channel
+            // is too coarse an estimate: Plutonia MAP01's beam over the background)
+            bool fits = Enumerable.Range(0, 3).Where(k => Math.Abs(colour[k] - under[k]) > 1e-6).Any(k =>
+            {
+                double alpha = Math.Clamp((got[k] - under[k]) / (colour[k] - under[k]), 0, 1);
+                return Enumerable.Range(0, 3).All(c => Math.Abs(Srgb(under[c] + alpha * (colour[c] - under[c])) - hidden.BeamCapture[i + c]) <= 3);
+            });
             if (!fits && wrong++ == 0)
                 firstWrong = $"pixel ({q.X}, {q.Y}): drew {(hidden.BeamCapture[i], hidden.BeamCapture[i + 1], hidden.BeamCapture[i + 2])} over {(hidden.ItemCapture[i], hidden.ItemCapture[i + 1], hidden.ItemCapture[i + 2])}";
         }

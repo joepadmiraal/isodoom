@@ -11,7 +11,8 @@ namespace IsoDoom.Game;
 
 // T6.13l: the fog of war. On every map (no renderer needed): after the load
 // the player has looked (its start sector visible), no sector that no open
-// line joins to it is visible (nor discovered, but next to one), every visible sector has a mapped line and
+// line joins to it is visible (nor discovered, but next to one or mapped in the WAD; T10.7: a
+// self-referencing sector, which no line joins to anything, is not judged), every visible sector has a mapped line and
 // every mapped line's sectors are discovered; the sector_fog texels are the
 // fog's states; with the fog on (FogEverywhere: the check has no game
 // camera) the drawn things are those the fog's rule lets through (an acting
@@ -45,14 +46,22 @@ public partial class LevelCheck
         // Out of sight for certain: not joined to the start sector through lines with an opening (REJECT is no
         // help: it is 3D sight, and the fog's is 2D, over ledges). Not even discovered unless next to one joined.
         bool[] joined = Joined(level, start);
+        HashSet<int>? mappedInWad = null;
         for (int s = 0; s < n; s++)
         {
-            if (joined[s])
+            // T10.7: a self-referencing sector (every line with it on both sides: Plutonia's deep water and
+            // bridges) lies inside another with no line joining them: lines tell nothing of it
+            if (joined[s] || level.Sectors[s].Lines.All(l => l.FrontSector == l.BackSector))
                 continue;
             if (fog.IsVisible(s))
                 Fail($"{map}: fog (T6.13l): sector {s} is visible, but no open line joins it to the start sector {start}");
             else if (fog.IsDiscovered(s) && !level.Sectors[s].Lines.Any(l => l.FrontSector is { } f && joined[f.Index] || l.BackSector is { } b && joined[b.Index]))
-                Fail($"{map}: fog (T6.13l): sector {s} is discovered, but neither it nor a neighbour is joined to the start sector {start}");
+            {
+                // T10.7: nor a sector whose lines the WAD itself maps (ML_MAPPED in the lump: Plutonia MAP04's sector 128)
+                mappedInWad ??= [.. Level.Load(_scene.Wad!, map).Lines.Where(l => (l.Flags & Line.ML_MAPPED) != 0).Select(l => l.Index)];
+                if (!level.Sectors[s].Lines.Any(l => mappedInWad.Contains(l.Index)))
+                    Fail($"{map}: fog (T6.13l): sector {s} is discovered, but neither it nor a neighbour is joined to the start sector {start}");
+            }
         }
         if (n > 1 && Enumerable.Range(0, n).All(fog.IsDiscovered))
             Fail($"{map}: fog (T6.13l): every sector is discovered from the start");

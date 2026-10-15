@@ -127,7 +127,7 @@ public class IntermissionTests
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
         var host = new RouteHost(world, wad, mrandom);
-        var flow = new GameFlow(host, route.GameMode, mrandom);
+        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMission, route.GameVersion);
         for (int tic = 0; tic < route.Cmds.Count; tic++)
         {
             Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);

@@ -43,7 +43,7 @@ DOOM2_CAST = ([20, 40, 50 + 52], 50 + 52 + 200)  # T10.5: MAP30's text skipped a
 def tail(head):
     if head['exit'] is None:
         return [], 0
-    if head['iwad'] == 'doom2':
+    if head['iwad'] in routes.COMMERCIAL:  # (T10.7: Final Doom's flow is Doom II's)
         return DOOM2_CAST if finales.cast(head) else DOOM2_TEXT if finales.text_screen(head) else DOOM2
     if (head['map'] or 'E1M1').upper().endswith('M8'):
         return FINALE

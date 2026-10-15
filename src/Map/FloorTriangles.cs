@@ -410,7 +410,8 @@ public sealed class FloorTriangles
     /// The ring's corners from <paramref name="start"/> to <paramref name="end"/>
     /// (both included, in ring order), when both are corners of the ring and
     /// every corner between them lies along <paramref name="seg"/> (within
-    /// <see cref="SubsectorPolygons.SegSnapEpsilon"/> of its line); otherwise
+    /// <see cref="SubsectorPolygons.SegSnapEpsilon"/> of its line, and between
+    /// its ends within <see cref="PastEdgeDistance"/>); otherwise
     /// (a hidden floor, or a chain that would leave the seg) just the two ends.
     /// </summary>
     private static PolygonVertex[] Chain(PolygonVertex[] ring, Seg seg, PolygonVertex start, PolygonVertex end)
@@ -420,12 +421,17 @@ public sealed class FloorTriangles
             return [start, end];
         long sdx = (long)seg.V2.X - seg.V1.X, sdy = (long)seg.V2.Y - seg.V1.Y;
         Int128 tol = (Int128)SubsectorPolygons.SegSnapEpsilon * (Math.Abs(sdx) + Math.Abs(sdy));
+        // T10.7: and between the seg's ends (within PastEdgeDistance): a sliver of a subsector along
+        // the seg's line can lead the ring far past them (TNT MAP14 line 1379, 285 units on)
+        Int128 length2 = (Int128)sdx * sdx + (Int128)sdy * sdy;
+        Int128 slack = (Int128)PastEdgeDistance * (Math.Abs(sdx) + Math.Abs(sdy));
         var chain = new List<PolygonVertex> { start };
         for (int k = (i0 + 1) % ring.Length; k != i1; k = (k + 1) % ring.Length)
         {
             PolygonVertex p = ring[k];
             Int128 cross = (Int128)((long)p.X - seg.V1.X) * sdy - (Int128)((long)p.Y - seg.V1.Y) * sdx;
-            if (cross > tol || cross < -tol)
+            Int128 along = (Int128)((long)p.X - seg.V1.X) * sdx + (Int128)((long)p.Y - seg.V1.Y) * sdy;
+            if (cross > tol || cross < -tol || along < -slack || along > length2 + slack)
                 return [start, end];
             chain.Add(p);
         }
@@ -454,6 +460,29 @@ public sealed class FloorTriangles
             }
         }
         return -1;
+    }
+
+    /// <summary>
+    /// Whether sector <paramref name="sector"/>'s floor triangles cover the point
+    /// (<paramref name="x"/>, <paramref name="y"/>) (fixed_t; edges count as
+    /// inside): where floors overlap (TNT MAP31's sectors 294 and 301, T10.7),
+    /// <see cref="SectorAt"/> gives only the first.
+    /// </summary>
+    public bool Covers(int sector, int x, int y)
+    {
+        var p = new PolygonVertex(x, y);
+        foreach (SectorFloor floor in BySector)
+        {
+            if (floor.Sector != sector)
+                continue;
+            for (int t = 0; t < floor.TriangleCount; t++)
+            {
+                PolygonVertex a = floor.Corner(t, 0), b = floor.Corner(t, 1), c = floor.Corner(t, 2);
+                if (TwiceArea(a, b, p) >= 0 && TwiceArea(b, c, p) >= 0 && TwiceArea(c, a, p) >= 0)
+                    return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

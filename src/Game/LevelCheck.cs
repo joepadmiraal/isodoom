@@ -340,7 +340,7 @@ public partial class LevelCheck : Godot.Node
                 }
                 int fx = (int)Math.Round(got.X * 65536.0), fy = (int)Math.Round(got.Y * 65536.0);
                 int drawn = m.Floors.SectorAt(fx, fy);
-                if (drawn != hit.Sector && (drawn < 0 || m.Level.Sectors[drawn].FloorHeight != hitFloor))
+                if (drawn != hit.Sector && (drawn < 0 || m.Level.Sectors[drawn].FloorHeight != hitFloor) && !m.Floors.Covers(hit.Sector, fx, fy))
                     Fail($"{what}: picked sector {hit.Sector}, but the floor drawn at ({got.X:F1}, {got.Y:F1}) is {drawn}");
             }
         }
@@ -1007,7 +1007,7 @@ public partial class LevelCheck : Godot.Node
     /// snap tolerance (<see cref="SubsectorPolygons.SegSnapEpsilon"/>, measured
     /// with the L1 length, so up to √2 times that for a diagonal) plus rounding.
     /// </summary>
-    private const long PieceTolerance = 3 * Fixed.FRACUNIT;
+    private const long PieceTolerance = 7 * Fixed.FRACUNIT / 2; // (3.5; T10.7: TNT MAP02 line 43's floor corner, 3.2 units past its seg)
 
     /// <summary>
     /// A section's pieces (T2.9) against vanilla's segs: every seg of the side
@@ -1117,9 +1117,20 @@ public partial class LevelCheck : Godot.Node
     /// <summary>The back sector of the first drawn, pegged, axis-aligned lower (and the lower) that can rise <see cref="MoveUnits"/>.</summary>
     private static (WallSection Lower, Sector Sector)? PickMovedSector(LevelMesh m)
     {
+        // T10.7: a floor the oblique view can see: 64 × 64 units' area and 48 across (TNT MAP01's sector 0 is a sliver)
         bool[] hasFloor = new bool[m.Level.Sectors.Length];
         foreach (SectorFloor f in m.Floors.BySector)
-            hasFloor[f.Sector] |= f.TriangleCount > 0;
+        {
+            double area = 0, minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
+            for (int t = 0; t < f.TriangleCount; t++)
+                area += Math.Abs((double)FloorTriangles.TwiceArea(f.Corner(t, 0), f.Corner(t, 1), f.Corner(t, 2))) / 2 / 65536.0 / 65536.0;
+            foreach (PolygonVertex v in f.Vertices)
+            {
+                (minX, maxX) = (Math.Min(minX, v.X / 65536.0), Math.Max(maxX, v.X / 65536.0));
+                (minY, maxY) = (Math.Min(minY, v.Y / 65536.0), Math.Max(maxY, v.Y / 65536.0));
+            }
+            hasFloor[f.Sector] |= f.TriangleCount > 0 && area >= 64 * 64 && maxX - minX >= 48 && maxY - minY >= 48;
+        }
         const int Room = 2 * MoveUnits << Fixed.FRACBITS;
         foreach (WallSection s in m.Walls.Sections)
         {
@@ -1612,7 +1623,10 @@ public partial class LevelCheck : Godot.Node
         int sign = behind ? -1 : 1;
         double dcLine = behind ? len - dc : dc; // the view centre's distance from V1
         var basis = new Basis(new Vector3(sign * dirX, 0, -sign * dirY), new Vector3(0, 1, 0), new Vector3(sign * nX, 0, -sign * nY));
-        Ortho(basis, new Vector3((float)(v1x + dirX * dcLine + sign * nX * 0.5), (float)(v1y + dirY * dcLine + sign * nY * 0.5), (float)zc), 0.1f, 1.5f);
+        // The far plane 1 unit behind the line; T10.7: a wall without openings up to PieceTolerance behind it too, where its
+        // pieces bend with the floor's edge (TNT MAP01 line 251's first seg, 1.4 units back at its end)
+        float far = masked ? 1.5f : 1.5f + (float)(PieceTolerance / 65536.0);
+        Ortho(basis, new Vector3((float)(v1x + dirX * dcLine + sign * nX * 0.5), (float)(v1y + dirY * dcLine + sign * nY * 0.5), (float)zc), 0.1f, far);
 
         // The viewed side's other drawn sections may overlap this one's span: leave those rows out.
         int viewedSide = behind ? s.Side ^ 1 : s.Side;
@@ -1844,7 +1858,7 @@ public partial class LevelCheck : Godot.Node
         if (frame is null)
             return expectedColours;
 
-        int compared = 0, bad = 0;
+        int compared = 0, bad = 0, outside = 0, occluded = 0, unlit = 0;
         string first = "";
         for (int py = 0; py < h; py++)
         {
@@ -1856,11 +1870,22 @@ public partial class LevelCheck : Godot.Node
             for (int px = 0; px < w; px++)
             {
                 double hx = cx + px + 0.5 - w / 2.0;
-                if (!InsideFloor(floor, hx, hy, 2) || Occluded(sector, hx, hy, ceilingZ - floorZ + 2))
+                if (!InsideFloor(floor, hx, hy, 2))
+                {
+                    outside++;
                     continue;
+                }
+                if (Occluded(sector, hx, hy, ceilingZ - floorZ + 2))
+                {
+                    occluded++;
+                    continue;
+                }
                 int map0 = ExpectedColormap(m, false, sector.LightLevel, 0, hx, hy, 0);
                 if (map0 < 0)
+                {
+                    unlit++;
                     continue;
+                }
                 (int col, int row) = TextureWrap.FlatTexel((int)Math.Floor(hx * 65536), (int)Math.Floor(hy * 65536));
                 (int R, int G, int B) expected = Shade(ShownFlat(m, sector.FloorPic)[col, row], map0);
                 expectedColours[py * w + px] = (expected.R << 16) | (expected.G << 8) | expected.B;
@@ -1874,7 +1899,7 @@ public partial class LevelCheck : Godot.Node
         if (bad > 0)
             Fail($"{what}: {bad} of {compared} pixel(s) differ, first at {first}");
         if (compared < 100)
-            Fail($"{what}: only {compared} pixels could be compared");
+            Fail($"{what}: only {compared} pixels could be compared ({outside} outside the floor, {occluded} occluded, {unlit} without a colormap)");
         _pixels += compared;
         return expectedColours;
     }

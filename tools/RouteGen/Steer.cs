@@ -58,12 +58,20 @@ public sealed class Steer
 
     public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
     {
-        World = new World(new SpawnSettings(ModeOf(map), skill, nomonsters: !monsters), Tweaks.Vanilla)
+        World = new World(new SpawnSettings(ModeOf(map), skill, nomonsters: !monsters, gameversion: GameVersionOf(wad, map)), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
         World.G_DoLoadLevel(Level.Load(wad, map));
     }
+
+    /// <summary>
+    /// T10.7: the executable a route on a <c>MAPxx</c> map plays as: its IWAD's
+    /// default (Final Doom's <c>final</c> for TNT and Plutonia, as the routes'
+    /// <c>iwad tnt|plutonia</c>), else the game mode's.
+    /// </summary>
+    private static GameVersion? GameVersionOf(WadArchive wad, string map) =>
+        ModeOf(map) == GameMode.commercial ? GameVersions.D_SetGameVersion(IwadIdentification.D_IdentifyVersion(wad)).Version : null;
 
     /// <summary>T10.1: the game mode a map name implies: <c>MAPxx</c> is Doom II's (<c>commercial</c>), anything else DOOM1.WAD's (<c>shareware</c>).</summary>
     public static GameMode ModeOf(string map) =>
@@ -235,6 +243,13 @@ public sealed class Steer
         bool Open() => IsOpen(sec);
         if (!Open())
             Use(fx, fy);
+        // T10.7: nothing started (a special line nearer ends vanilla's use trace, P_UseLines: TNT MAP01's line 389
+        // before the blue door): a step closer and use again
+        for (int i = 0; i < 6 && !Open() && sec.specialdata == null; i++)
+        {
+            Walk(fx, fy, 4);
+            Use(fx, fy);
+        }
         WaitUntil(() => sec.ceilingheight - sec.floorheight >= 72 * FU || sec.specialdata is vldoor_t { direction: 0 }
             || (sec.specialdata == null && sec.ceilingheight - sec.floorheight >= 56 * FU));
     }

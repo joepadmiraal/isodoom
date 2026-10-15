@@ -1,0 +1,11 @@
+# The Plutonia Experiment MAP11 (T10.7): started beside line 1171 (special 52, tag 0), on its
+# front, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (plutonia-map11-line1171).
+iwad plutonia
+map MAP11
+exit normal
+start -1791 2753 45
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x10

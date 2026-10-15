@@ -194,6 +194,12 @@ public partial class LevelCheck
                 _exitsEnded++; // the next map is not in the WAD: the title loop
                 return;
             }
+            if (flow.gamemode == GameMode.commercial && world.gamemap == 30 && _scene.GameState == gamestate_t.GS_FINALE
+                && flow.Finale.finalestage == FFinale.F_STAGE_CAST && text)
+            {
+                _exitsEnded++; // T10.7: MAP30's switch exit (TNT's; Doom II's is the Icon's death): its text, then the cast call, which stays
+                return;
+            }
             if (_scene.GameState != gamestate_t.GS_LEVEL)
             {
                 Fail($"{map}: the intermission (and text screen) did not end in {intermission} tics: {_scene.Flow.StateText()}");
@@ -520,8 +526,12 @@ public partial class LevelCheck
         for (int i = 0; i < world.numlinespecials; i++)
         {
             int side = world.linespeciallist[i]!.sidenum[0];
-            if (m.SideScroll(side) != world.leveltime)
-                Fail($"{map}: scrolling wall line {world.linespeciallist[i]!.Index}: side {side} drawn scrolled {m.SideScroll(side)} units after {world.leveltime} tics");
+            // p_spec.c P_UpdateSpecials scrolls the side once per line: a side shared by several (Plutonia MAP05's, T10.7) goes as fast times their count
+            int lines = 0;
+            for (int j = 0; j < world.numlinespecials; j++)
+                lines += world.linespeciallist[j]!.sidenum[0] == side ? 1 : 0;
+            if (m.SideScroll(side) != world.leveltime * lines)
+                Fail($"{map}: scrolling wall line {world.linespeciallist[i]!.Index}: side {side} drawn scrolled {m.SideScroll(side)} units after {world.leveltime} tics ({lines} line(s) scroll it)");
             _scrollingWalls++;
         }
         if (CanCapture)

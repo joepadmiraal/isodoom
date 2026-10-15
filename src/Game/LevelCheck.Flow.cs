@@ -200,7 +200,7 @@ public partial class LevelCheck
     }
 
     /// <summary>
-    /// T10.5 (Doom II, headless): MAP30 left, its text (C4TEXT on RROCK17)
+    /// T10.5 (Doom II, headless): MAP30 left, its text (C4TEXT on RROCK17; T10.7: the mission's)
     /// skipped after 50 tics into the cast call (<c>mus_evil</c>); a key
     /// through the scene's input glue kills the zombieman (its death sound),
     /// the shotgun guy walks in; every member's walking frame drawn over
@@ -213,9 +213,11 @@ public partial class LevelCheck
         GameFlow flow = _scene.Flow;
         if (StartFinale(30) is not { } fi)
             return;
-        if (fi.finaleflat != "RROCK17" || fi.finaletext != FFinale.C4TEXT)
+        // T10.7: the mission's (Doom II's C4TEXT, TNT's T4TEXT, Plutonia's P4TEXT)
+        FFinale.textscreen_t vanilla = FFinale.textscreens.FirstOrDefault(t => t.mission == flow.gamemission && t.episode == 1 && t.level == 30);
+        if (vanilla.text is null || fi.finaleflat != vanilla.background || fi.finaletext != vanilla.text)
         {
-            Fail($"the cast call: MAP30's text on {fi.finaleflat}, not C4TEXT on RROCK17");
+            Fail($"the cast call: MAP30's text on {fi.finaleflat}, not {flow.gamemission}'s on {vanilla.background}");
             return;
         }
         while (fi.finalecount <= 50)

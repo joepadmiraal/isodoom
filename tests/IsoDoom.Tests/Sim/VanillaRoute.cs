@@ -107,6 +107,15 @@ public sealed class VanillaRoute
     /// <summary>The game mode vanilla plays the route in: Doom II's <c>commercial</c> for <c>doom2</c>, else DOOM1.WAD's <c>shareware</c>.</summary>
     public GameMode GameMode => Commercial ? GameMode.commercial : GameMode.shareware;
 
+    /// <summary>T10.7: the mission vanilla plays the route in: Final Doom's for <c>tnt</c> and <c>plutonia</c>, Doom II's for <c>doom2</c>, else Doom's.</summary>
+    public GameMission GameMission => Iwad switch
+    {
+        "tnt" => GameMission.pack_tnt,
+        "plutonia" => GameMission.pack_plut,
+        "doom2" => GameMission.doom2,
+        _ => GameMission.doom,
+    };
+
     /// <summary>Whether the route is on a <c>commercial</c> IWAD: Doom II's, or (T10.7) Final Doom's <c>tnt</c> or <c>plutonia</c>.</summary>
     public bool Commercial => Iwad is "doom2" or "tnt" or "plutonia";
 

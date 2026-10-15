@@ -110,7 +110,7 @@ public class MusicTests
         World world = route.NewWorld(out WadArchive wad);
         var host = new RouteHost(route, world, wad);
         bool commercial = route.GameMode == GameMode.commercial;
-        var flow = new GameFlow(host, route.GameMode, new DoomRandom(), GameVariant.vanilla, commercial ? GameMission.doom2 : GameMission.doom);
+        var flow = new GameFlow(host, route.GameMode, new DoomRandom(), GameVariant.vanilla, route.GameMission, route.GameVersion);
         var device = new RecordingMusicDevice();
         flow.Sound = new SSound(null, SSound.DefaultChannels, device, Lumps(wad)) { commercial = commercial };
         var actual = new List<string>();

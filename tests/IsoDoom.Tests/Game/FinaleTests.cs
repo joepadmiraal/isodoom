@@ -39,14 +39,14 @@ public class FinaleTests
         [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)
             || IntermissionTests.TextScreenAfter(r))];
 
-    /// <summary>The routes and their dumps' suffixes: <c>fi</c>, and for Doom II <c>firead</c> (its text typed out before the skip).</summary>
+    /// <summary>The routes and their dumps' suffixes: <c>fi</c>, and for Doom II and Final Doom <c>firead</c> (its text typed out before the skip).</summary>
     public static TheoryData<string, string> Routes()
     {
         var data = new TheoryData<string, string>();
         foreach (VanillaRoute r in EndRoutes())
         {
             data.Add(r.Name, "fi");
-            if (r.Iwad == "doom2")
+            if (r.Commercial) // (T10.7: Final Doom's too)
                 data.Add(r.Name, "firead");
         }
         return data;
@@ -61,6 +61,20 @@ public class FinaleTests
     public void DoomIIsTextScreensHaveRoutesToCompare() =>
         Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:2"],
             EndRoutes().Where(r => r.Iwad == "doom2").Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
+
+    /// <summary>
+    /// T10.7: every Final Doom text screen has a route to compare: TNT's after
+    /// MAP06, MAP11, MAP20, MAP30 (then the cast call) and the secret exits of
+    /// MAP15 and MAP31; Plutonia's the same but MAP30's (the Icon's death).
+    /// </summary>
+    [Fact]
+    public void FinalDoomsTextScreensHaveRoutesToCompare()
+    {
+        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP30:1", "MAP31:2"],
+            EndRoutes().Where(r => r.Iwad == "tnt").Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
+        Assert.Equal(["MAP06:1", "MAP11:1", "MAP15:2", "MAP20:1", "MAP31:2"],
+            EndRoutes().Where(r => r.Iwad == "plutonia").Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
+    }
 
     [Theory]
     [MemberData(nameof(Routes))]
@@ -97,7 +111,7 @@ public class FinaleTests
         World world = route.NewWorld(out WadArchive wad);
         var mrandom = new DoomRandom(); // G_InitNew's M_ClearRandom
         var host = new IntermissionTests.RouteHost(world, wad, mrandom);
-        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMode == GameMode.commercial ? GameMission.doom2 : GameMission.doom);
+        var flow = new GameFlow(host, route.GameMode, mrandom, GameVariant.vanilla, route.GameMission, route.GameVersion);
         for (int tic = 0; tic < cmds.Count; tic++)
         {
             Assert.Equal(tic < route.Cmds.Count ? gamestate_t.GS_LEVEL : gamestate_t.GS_INTERMISSION, flow.gamestate);
