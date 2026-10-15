@@ -1498,7 +1498,9 @@ public sealed class LevelMesh : IDisposable
             {
                 if (c is null)
                     continue;
-                var arrays = new Godot.Collections.Array();
+                // T8.3b: disposed, never finalized. Godot's binding passes the native array by a
+                // borrowed pointer, so a GC during the call could otherwise finalize (free) it.
+                using var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
                 arrays[(int)Mesh.ArrayType.Vertex] = c.Vertices.ToArray();
                 arrays[(int)Mesh.ArrayType.TexUV] = c.Uv.ToArray();

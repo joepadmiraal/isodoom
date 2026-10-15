@@ -37,12 +37,56 @@ public partial class Main : Node
         GD.Print($"IsoDoom started (version {Version}, Sim assembly: {typeof(IsoDoom.Sim.SimInfo).Assembly.GetName().Name})");
         if (!WadLocator.HasUserArg("--no-jit-warmup"))
             JitWarmup.Start(); // T8.3: the sim compiled in the background, before its first tics need it
+        if (System.Environment.GetEnvironmentVariable("ISODOOM_GC_STRESS") is { Length: > 0 })
+            StartGcStress();
         if (WadLocator.HasUserArg("--download-shareware"))
         {
             DownloadSharewareThenStart();
             return;
         }
         Start();
+    }
+
+    /// <summary>
+    /// T8.3b, debugging: a thread collecting garbage and running the
+    /// finalizers every 2 ms (<c>ISODOOM_GC_STRESS=1</c>), so a Godot wrapper
+    /// left to the finalizer while native code still uses it fails at once
+    /// rather than once in 50 loaded runs.
+    /// </summary>
+    private static void StartGcStress()
+    {
+        GD.Print("GC stress: collecting every 2 ms (ISODOOM_GC_STRESS)");
+        _gcStress = new GcStress();
+    }
+
+    private static GcStress? _gcStress;
+
+    /// <summary>The stress thread; stopped before the exit's no-GC region, which its collections would end.</summary>
+    private sealed class GcStress
+    {
+        private volatile bool _stop;
+        private readonly System.Threading.Thread _thread;
+
+        public GcStress()
+        {
+            _thread = new System.Threading.Thread(() =>
+            {
+                while (!_stop)
+                {
+                    System.GC.Collect();
+                    System.GC.WaitForPendingFinalizers();
+                    System.Threading.Thread.Sleep(2);
+                }
+            })
+            { IsBackground = true, Name = "GC stress" };
+            _thread.Start();
+        }
+
+        public void Stop()
+        {
+            _stop = true;
+            _thread.Join();
+        }
     }
 
     /// <summary>
@@ -59,6 +103,7 @@ public partial class Main : Node
 
     private static void SettleFinalizers()
     {
+        _gcStress?.Stop();
         System.GC.Collect();
         System.GC.WaitForPendingFinalizers();
         try
@@ -98,7 +143,7 @@ public partial class Main : Node
     {
         if (UseViewer())
         {
-            AddChild(GD.Load<PackedScene>(WadViewerScene).Instantiate());
+            AddChild(Instantiate(WadViewerScene));
             return;
         }
         if (IwadChoice() is { } menu)
@@ -114,7 +159,19 @@ public partial class Main : Node
         OpenGame();
     }
 
-    private void OpenGame() => AddChild(GD.Load<PackedScene>(LevelScenePath).Instantiate());
+    private void OpenGame() => AddChild(Instantiate(LevelScenePath));
+
+    /// <summary>
+    /// T8.3b: a scene instantiated with its wrapper kept alive. Godot's binding
+    /// calls a method on a bare pointer, so a wrapper last used as the call's
+    /// receiver can be finalized during it, and with no other reference (the
+    /// resource cache holds none) the scene is freed under the instantiation.
+    /// </summary>
+    private static Node Instantiate(string path)
+    {
+        using PackedScene scene = GD.Load<PackedScene>(path);
+        return scene.Instantiate();
+    }
 
     private static bool UseViewer() =>
         WadLocator.HasUserArg("--viewer") || WadLocator.HasUserArg("--viewer-check") || WadLocator.HasUserArg("--viewer-screenshots");

@@ -91,17 +91,18 @@ public partial class ThingSprites : MultiMeshInstance3D
     public const string ShadowShaderPath = "res://shaders/sprite_shadow.gdshader";
 
     /// <summary>The blob shadows (T3.6): one instance per entry, drawn with the shadow material given to <see cref="Bind"/>.</summary>
-    public MultiMeshInstance3D Shadows { get; } = new()
-    {
-        Name = "Shadows",
-        CastShadow = ShadowCastingSetting.Off,
-        Multimesh = new MultiMesh
-        {
-            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-            UseCustomData = true,
-            Mesh = ShadowMesh(),
-        },
-    };
+    public MultiMeshInstance3D Shadows { get; }
+
+    // T8.3b: the multimeshes and their meshes, held here and never fetched back
+    // from the nodes. Fetching a RefCounted back (MultiMeshInstance3D.Multimesh,
+    // MultiMesh.Mesh) swaps its wrapper's GC handle, which under frequent
+    // collections raced with the finalizer thread ("Handle is not
+    // initialized" in Godot's SwapGCHandleForType); it also saves a native
+    // call per instance and frame.
+    private readonly MultiMesh _multimesh;
+    private readonly MultiMesh _shadowMultimesh;
+    private readonly ArrayMesh _quad;
+    private readonly ArrayMesh _shadowQuad;
 
     /// <summary>What an instance shows: atlas slot (−1: nothing), flip, rotation slot (0–7; 0 for rotation-0 frames).</summary>
     public readonly record struct Shown(int Slot, bool Flip, int Rot);
@@ -136,11 +137,22 @@ public partial class ThingSprites : MultiMeshInstance3D
     public ThingSprites()
     {
         CastShadow = ShadowCastingSetting.Off;
-        Multimesh = new MultiMesh
+        Multimesh = _multimesh = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
             UseCustomData = true,
-            Mesh = QuadMesh(),
+            Mesh = _quad = QuadMesh(),
+        };
+        Shadows = new MultiMeshInstance3D
+        {
+            Name = "Shadows",
+            CastShadow = ShadowCastingSetting.Off,
+            Multimesh = _shadowMultimesh = new MultiMesh
+            {
+                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+                UseCustomData = true,
+                Mesh = _shadowQuad = ShadowMesh(),
+            },
         };
         AddChild(Shadows);
     }
@@ -152,19 +164,18 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// </summary>
     public void ReleaseResources()
     {
-        foreach (MultiMeshInstance3D node in new[] { this, Shadows })
-        {
-            MultiMesh? multimesh = node.Multimesh;
-            node.Multimesh = null;
-            multimesh?.Mesh?.Dispose();
-            multimesh?.Dispose();
-        }
+        Multimesh = null;
+        Shadows.Multimesh = null;
+        _quad.Dispose();
+        _shadowQuad.Dispose();
+        _multimesh.Dispose();
+        _shadowMultimesh.Dispose();
     }
 
     /// <summary>The shadow mesh: a horizontal square, x and z in −1…1 (the shader sizes it).</summary>
     private static ArrayMesh ShadowMesh()
     {
-        var arrays = new Godot.Collections.Array();
+        using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, -1), new Vector3(1, 0, -1), new Vector3(1, 0, 1), new Vector3(-1, 0, 1) };
         arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 0, 2, 3 };
@@ -188,7 +199,7 @@ public partial class ThingSprites : MultiMeshInstance3D
             new Vector3(0, 0, 1), new Vector3(1, 0, 1), new Vector3(1, 1, 1), new Vector3(0, 1, 1),
             new Vector3(0, 1, 0), new Vector3(1, 1, 0), new Vector3(1, 2, 0), new Vector3(0, 2, 0),
         ];
-        var arrays = new Godot.Collections.Array();
+        using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = vertices;
         arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6 };
@@ -234,8 +245,8 @@ public partial class ThingSprites : MultiMeshInstance3D
             _shown.Add(default);
             _custom.Add(default);
         }
-        Multimesh.InstanceCount = _entries.Count;
-        Shadows.Multimesh.InstanceCount = _entries.Count;
+        _multimesh.InstanceCount = _entries.Count;
+        _shadowMultimesh.InstanceCount = _entries.Count;
         for (int i = 0; i < _entries.Count; i++)
             WriteTransform(i);
         MissingFrames = 0;
@@ -352,9 +363,9 @@ public partial class ThingSprites : MultiMeshInstance3D
     private void WriteTransform(int i)
     {
         Entry e = _entries[i];
-        Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(e.MapPosition)));
+        _multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(e.MapPosition)));
         Vector3 floor = e.FloorZ is float z ? new Vector3(e.MapPosition.X, e.MapPosition.Y, z) : e.MapPosition;
-        Shadows.Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(floor)));
+        _shadowMultimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, ToGodot(floor)));
     }
 
     private void Refresh()
@@ -379,7 +390,7 @@ public partial class ThingSprites : MultiMeshInstance3D
         int flags = (shown.Flip ? FlagFlip : 0) | (e.FullBright ? FlagFullBright : 0) | (e.Actor ? FlagActor : 0) | (e.Own ? FlagOwn : 0) | (e.Shadow ? FlagShadow : 0)
             | (Math.Clamp(e.SightDim, 0, SightDim.MaxRows) << FlagSightDimShift);
         _custom[i] = new Color(hidden ? -1 : shown.Slot, flags, e.Sector, e.Radius);
-        Multimesh.SetInstanceCustomData(i, _custom[i]);
-        Shadows.Multimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));
+        _multimesh.SetInstanceCustomData(i, _custom[i]);
+        _shadowMultimesh.SetInstanceCustomData(i, new Color(hidden || shown.Slot < 0 ? 0 : e.ShadowRadius, 0, 0, 0));
     }
 }

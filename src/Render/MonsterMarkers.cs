@@ -52,6 +52,9 @@ public partial class MonsterMarkers : MultiMeshInstance3D
 
     private readonly ShaderMaterial _chevron, _beam;
     private readonly NearActors _actors = new();
+    // T8.3b: held here, never fetched back from the node (Godot's wrapper of
+    // it races with the finalizer thread; see ThingSprites).
+    private readonly MultiMesh _multimesh;
     private Marker[] _markers = [];
     private SpriteSettings? _sprites;
     private MonsterMarkerMode _mode = MonsterMarkerMode.Beam;
@@ -69,7 +72,7 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         _beam.SetShaderParameter("beam_height", ItemBeams.Height);
         _beam.SetShaderParameter("beam_half_width", ItemBeams.HalfWidth);
         MaterialOverride = _chevron;
-        Multimesh = new MultiMesh
+        Multimesh = _multimesh = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
             UseColors = true,
@@ -96,7 +99,7 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// <summary>The marker mesh: a quad, x −1…1 across, y 0 (tip, or the beam's foot) … 1 (top); the shader sizes and places it (the chevron up to 320 units above the foot, the beam <see cref="ItemBeams.Height"/>).</summary>
     private static ArrayMesh QuadMesh()
     {
-        var arrays = new Godot.Collections.Array();
+        using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 1, 0), new Vector3(-1, 1, 0) };
         arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 1, 0, 3, 2 };
@@ -164,7 +167,7 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         if (resized)
         {
             _markers = new Marker[markers.Count];
-            Multimesh.InstanceCount = markers.Count;
+            _multimesh.InstanceCount = markers.Count;
         }
         for (int i = 0; i < markers.Count; i++)
         {
@@ -172,9 +175,9 @@ public partial class MonsterMarkers : MultiMeshInstance3D
             if (!resized && m == _markers[i])
                 continue;
             _markers[i] = m;
-            Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, new Vector3(m.MapPosition.X, m.MapPosition.Z, -m.MapPosition.Y) / LevelMesh.MapUnitsPerMetre));
-            Multimesh.SetInstanceCustomData(i, new Color(m.Slot, m.Flip ? ThingSprites.FlagFlip : 0, m.Radius, i));
-            Multimesh.SetInstanceColor(i, m.Hot ? HotColor : MarkerColor);
+            _multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, new Vector3(m.MapPosition.X, m.MapPosition.Z, -m.MapPosition.Y) / LevelMesh.MapUnitsPerMetre));
+            _multimesh.SetInstanceCustomData(i, new Color(m.Slot, m.Flip ? ThingSprites.FlagFlip : 0, m.Radius, i));
+            _multimesh.SetInstanceColor(i, m.Hot ? HotColor : MarkerColor);
         }
     }
 

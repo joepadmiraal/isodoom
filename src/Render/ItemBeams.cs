@@ -66,6 +66,9 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// </summary>
     public const float ActorReach = 160f;
 
+    // T8.3b: held here, never fetched back from the node (Godot's wrapper of
+    // it races with the finalizer thread; see ThingSprites).
+    private readonly MultiMesh _multimesh;
     private readonly ShaderMaterial _material;
     private Beam[] _beams = [];
     private readonly NearActors _actors = new();
@@ -82,7 +85,7 @@ public partial class ItemBeams : MultiMeshInstance3D
         _material.SetShaderParameter("beam_half_width", HalfWidth);
         _material.SetShaderParameter("thing_actors", _actors.Texture);
         MaterialOverride = _material;
-        Multimesh = new MultiMesh
+        Multimesh = _multimesh = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
             UseColors = true,
@@ -94,7 +97,7 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// <summary>The beam mesh: a quad, x −1…1 across, y 0 (foot) … 1 (top); the shader sizes it.</summary>
     private static ArrayMesh QuadMesh()
     {
-        var arrays = new Godot.Collections.Array();
+        using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 1, 0), new Vector3(-1, 1, 0) };
         arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 1, 0, 3, 2 };
@@ -137,7 +140,7 @@ public partial class ItemBeams : MultiMeshInstance3D
         if (resized)
         {
             _beams = new Beam[beams.Count];
-            Multimesh.InstanceCount = beams.Count;
+            _multimesh.InstanceCount = beams.Count;
         }
         for (int i = 0; i < beams.Count; i++)
         {
@@ -145,10 +148,10 @@ public partial class ItemBeams : MultiMeshInstance3D
             if (!resized && b == _beams[i])
                 continue;
             _beams[i] = b;
-            Multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, new Vector3(b.MapPosition.X, b.MapPosition.Z, -b.MapPosition.Y) / LevelMesh.MapUnitsPerMetre));
-            Multimesh.SetInstanceCustomData(i, new Color(b.Slot, b.Flip ? ThingSprites.FlagFlip : 0, b.Radius, i));
+            _multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, new Vector3(b.MapPosition.X, b.MapPosition.Z, -b.MapPosition.Y) / LevelMesh.MapUnitsPerMetre));
+            _multimesh.SetInstanceCustomData(i, new Color(b.Slot, b.Flip ? ThingSprites.FlagFlip : 0, b.Radius, i));
             (float r, float g, float bl) = ItemKinds.ColorOf(b.Kind);
-            Multimesh.SetInstanceColor(i, new Color(r, g, bl));
+            _multimesh.SetInstanceColor(i, new Color(r, g, bl));
         }
     }
 
