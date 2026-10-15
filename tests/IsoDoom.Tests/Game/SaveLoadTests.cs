@@ -237,6 +237,90 @@ public sealed class SaveLoadTests : IDisposable
         Assert.NotSame(before, host.World);
     }
 
+    /// <summary>
+    /// T10.7 review: a save made as another executable than the run's
+    /// (<see cref="GameFlow.gameversion"/>) is refused with a message, before
+    /// the trial load: the game goes on as it was, under one version.
+    /// </summary>
+    [Fact]
+    public void ASaveOfAnotherGameVersionIsRefusedWithAMessage()
+    {
+        (GameFlow flow, GameFlowTests.Host host, MMenu menu, _) = New();
+        Assert.Equal(GameVersion.exe_doom_1_9, flow.gameversion);
+        flow.G_InitNewMap(skill_t.sk_medium, "E1M2");
+        Play(flow, host.World!, 0, 20);
+        flow.savegameslot = 0;
+        Assert.True(flow.G_DoSaveGame());
+        World before = host.World!;
+        ulong sum = before.Checksum();
+        SaveGameFile save = SaveGameFile.Read(File.ReadAllBytes(flow.SaveGamePath(0)!));
+        Assert.Equal(GameVersion.exe_doom_1_9, save.ReadGameVersion());
+
+        // the same game saved as Final Doom's executable
+        byte[] state = (byte[])save.State.Clone();
+        BitConverter.GetBytes((int)GameVersion.exe_final).CopyTo(state, VersionOffset);
+        File.WriteAllBytes(flow.SaveGamePath(1)!, new SaveGameFile("FINAL", save.Map, save.GameMode, save.Skill, save.LevelTime, state).ToBytes());
+        Assert.Equal(GameVersion.exe_final, SaveGameFile.Read(File.ReadAllBytes(flow.SaveGamePath(1)!)).ReadGameVersion());
+        flow.G_LoadGame(1);
+        flow.G_DoGameActions();
+        Assert.Equal(SaveGameFile.OTHERVERSION, flow.LoadRefused);
+        Assert.Equal(SaveGameFile.OTHERVERSION + "\n\n" + MMenu.PRESSKEY, menu.messageString);
+        Assert.Equal(["new E1M2"], host.Loads); // refused before the trial load: nothing loaded
+        Assert.Same(before, host.World);
+        Assert.Equal((sum, gamestate_t.GS_LEVEL, GameVersion.exe_doom_1_9), (host.World!.Checksum(), flow.gamestate, host.World.gameversion));
+        Keys(menu, ' ');
+
+        // and a run as Final Doom's executable refuses the 1.9 save, but loads the Final Doom one
+        (GameFlow final, GameFlowTests.Host finalHost) = GameFlowTests.New(GameMode.shareware, GameVersion.exe_final);
+        final.SaveDir = _dir;
+        final.Menu.Host = new MenuHost(final);
+        final.D_StartTitle(null);
+        final.G_LoadGame(0);
+        final.G_DoGameActions();
+        Assert.Equal(SaveGameFile.OTHERVERSION, final.LoadRefused);
+        Assert.Null(finalHost.World);
+        Assert.Equal(gamestate_t.GS_DEMOSCREEN, final.gamestate);
+        final.Menu.M_Responder(' ', 0);
+        final.G_LoadGame(1);
+        final.G_DoGameActions();
+        Assert.Null(final.LoadRefused);
+        Assert.Equal(GameVersion.exe_final, finalHost.World!.gameversion);
+    }
+
+    /// <summary>The offset of the game version in a save's state (<see cref="World.P_ArchiveGame"/>: the game mode, skill, netgame, deathmatch, nomonsters, respawnparm and fastparm before it).</summary>
+    private const int VersionOffset = 4 + 4 + 1 + 4 + 1 + 1 + 1;
+
+    /// <summary>T10.7 review: a save whose game version is one the sim does not emulate (v1.2, v1.5, Hacx, Chex Quest; <see cref="GameVersions.Emulated"/>) is damaged.</summary>
+    [Theory]
+    [InlineData(GameVersion.exe_doom_1_2)]
+    [InlineData(GameVersion.exe_doom_1_5)]
+    [InlineData(GameVersion.exe_hacx)]
+    [InlineData(GameVersion.exe_chex)]
+    public void ASaveOfAVersionNotEmulatedIsDamaged(GameVersion version)
+    {
+        Assert.False(GameVersions.Emulated(version));
+        (GameFlow flow, GameFlowTests.Host host, MMenu menu, _) = New();
+        flow.G_InitNewMap(skill_t.sk_medium, "E1M2");
+        Play(flow, host.World!, 0, 20);
+        flow.savegameslot = 0;
+        Assert.True(flow.G_DoSaveGame());
+        World before = host.World!;
+        SaveGameFile save = SaveGameFile.Read(File.ReadAllBytes(flow.SaveGamePath(0)!));
+        Assert.Equal((int)GameVersion.exe_doom_1_9, BitConverter.ToInt32(save.State, VersionOffset));
+
+        byte[] state = (byte[])save.State.Clone();
+        BitConverter.GetBytes((int)version).CopyTo(state, VersionOffset);
+        var patched = new SaveGameFile("", save.Map, save.GameMode, save.Skill, save.LevelTime, state);
+        Assert.Equal(SaveGameFile.DAMAGED, Assert.Throws<SaveGameException>(() => patched.ReadGameVersion()).Message);
+        Assert.Throws<SaveGameException>(() => World.P_ReadSaveStart(new BinaryReader(new MemoryStream(state))));
+        File.WriteAllBytes(flow.SaveGamePath(1)!, patched.ToBytes());
+        flow.G_LoadGame(1);
+        flow.G_DoGameActions();
+        Assert.Equal(SaveGameFile.DAMAGED, flow.LoadRefused);
+        Assert.Equal(SaveGameFile.DAMAGED + "\n\n" + MMenu.PRESSKEY, menu.messageString);
+        Assert.Same(before, host.World);
+    }
+
     [Fact]
     public void QuicksaveAsksForASlotOnceThenSavesOverIt()
     {

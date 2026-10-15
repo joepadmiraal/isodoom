@@ -44,6 +44,7 @@ public sealed class SaveGameFile
     public const string OLDER = "this savegame is from an older\nversion of isodoom and can't\nbe loaded.";
     public const string NEWER = "this savegame is from a newer\nversion of isodoom and can't\nbe loaded.";
     public const string OTHERGAME = "this savegame is for another\ngame and can't be loaded.";
+    public const string OTHERVERSION = "this savegame is for another\ngame version and can't be\nloaded.";
     public const string NOTASAVE = "this is not an isodoom savegame.";
 
     public SaveGameFile(string description, string map, GameMode gamemode, skill_t skill, int leveltime, byte[] state)
@@ -159,6 +160,27 @@ public sealed class SaveGameFile
         catch (Exception e) when (e is EndOfStreamException or IOException or FormatException or ArgumentException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// T10.7: the executable the saved world emulates (its start's
+    /// <see cref="World.gameversion"/>, <see cref="World.P_ReadSaveStart"/>),
+    /// for refusing a save of another version (<see cref="OTHERVERSION"/>)
+    /// before it is loaded. Throws a <see cref="SaveGameException"/> with
+    /// <see cref="DAMAGED"/> when the start can't be read or names a version
+    /// the sim does not emulate.
+    /// </summary>
+    public GameVersion ReadGameVersion()
+    {
+        try
+        {
+            using var r = new BinaryReader(new MemoryStream(State), Encoding.UTF8);
+            return World.P_ReadSaveStart(r).settings.gameversion ?? throw new SaveGameException("no game version");
+        }
+        catch (SaveGameException e)
+        {
+            throw new SaveGameException(DAMAGED, e);
         }
     }
 
