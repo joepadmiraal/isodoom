@@ -130,6 +130,18 @@ public sealed class DoorLids
     public bool KeepsUppers(int sector, Func<int, float> ceiling) =>
         MovesCeiling(sector) || Shows(LidHeight(sector, ceiling), ceiling(sector));
 
+    /// <summary>
+    /// Whether <paramref name="s"/> closes an end of its sector's lid block
+    /// (T6.13f, SPEC §12): a drawn (a texture set) one-sided wall of a lid
+    /// sector: a door's jamb, the end of a lintel or a window. <c>LevelMesh</c>
+    /// draws its quads again from the sector's ceiling up to its lid, facing
+    /// the void: the block's end, seen when the wall faces away from the
+    /// camera (then it has no cap, T6.13e, and the void beside the door
+    /// showed).
+    /// </summary>
+    public bool HasEnd(WallSection s) =>
+        s.Texture != 0 && s.BackSector is null && s.Kind == WallSectionKind.Middle && Has(s.FrontSector.Index);
+
     /// <summary>The door sectors (<see cref="IsDoor"/>) of <paramref name="level"/>.</summary>
     public static bool[] FindDoors(Level level)
     {

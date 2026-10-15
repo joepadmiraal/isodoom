@@ -68,7 +68,10 @@ namespace IsoDoom.Render;
 /// from the <c>sector_lids</c> data texture (the lowest neighbouring
 /// ceiling, as drawn) while the sector's ceiling is below it, showing its
 /// ceiling flat: the top of a closed door or a lintel. <see cref="SetDoorLids"/>
-/// turns them off. The caps also cap a lid's solid where it spans the cutoff.</item>
+/// turns them off. The caps also cap a lid's solid where it spans the cutoff.
+/// A lid sector's one-sided walls are drawn again from its ceiling up to its
+/// lid, facing the void (<see cref="KindLidEnd"/>, T6.13f): the block's ends,
+/// where a jamb faces away from the camera and has no cap.</item>
 /// <item><b>Wall caps</b> (T6.13e): a top on each one-sided wall, the strip of
 /// the void behind it (<see cref="WallCaps"/>; <see cref="KindWallCap"/>), which
 /// the vertex shader places at the wall's top (its sector's ceiling, or its lid
@@ -129,9 +132,12 @@ public sealed class LevelMesh : IDisposable
     /// (<see cref="SwitchMarkers"/>), placed on its sector's floor.
     /// <see cref="KindLedge"/> (T6.13s) is a piece of a ledge edge (<see cref="LedgeEdges"/>),
     /// placed on its sector's floor (<c>CUSTOM0.w</c> the sector across its line).
+    /// <see cref="KindLidEnd"/> (T6.13f) is a quad of a lid sector's one-sided wall
+    /// again (<see cref="DoorLids.HasEnd"/>), from its sector's ceiling up to its lid,
+    /// wound the other way: the end of the lid's block, facing the void.
     /// </summary>
     public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7,
-        KindWallExtension = 8, KindSwitchMarker = 9, KindLedge = 10;
+        KindWallExtension = 8, KindSwitchMarker = 9, KindLedge = 10, KindLidEnd = 11;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -331,6 +337,9 @@ public sealed class LevelMesh : IDisposable
 
     /// <summary>Number of quads that draw the islands' walls on above their ceilings (T6.13e, <see cref="KindWallExtension"/>).</summary>
     public int WallExtensionQuads { get; private set; }
+
+    /// <summary>Number of quads that close the ends of the lids' blocks (T6.13f, <see cref="KindLidEnd"/>).</summary>
+    public int LidEndQuads { get; private set; }
 
     /// <summary>The islands' data texture (T6.13e, <c>wall_islands</c>, R float, one texel per island): its top, map units.</summary>
     public ImageTexture IslandDataTexture { get; private set; } = null!;
@@ -1440,6 +1449,30 @@ public sealed class LevelMesh : IDisposable
                 c.Add(p2, new Vector2(u2, 0), c0, c1, c2);
                 c.Indices.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
                 WallExtensionQuads++;
+            }
+        }
+
+        // T6.13f: a lid sector's one-sided walls once more, from its ceiling up to its lid, facing the void.
+        foreach (WallSection s in Walls.Sections)
+        {
+            if (!Lids.HasEnd(s))
+                continue;
+            Chunk c = ChunkOf(s.FrontSector.Index);
+            var c0 = new Vector4(KindLidEnd, SidePartId(s), s.FrontSector.Index, -1);
+            var c1 = new Vector4((int)WallPlane.FrontCeiling, 0, (int)WallPlane.FrontCeiling, 0);
+            foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
+            {
+                // The wall's columns, so its texture joins its cap's (seen from behind: mirrored, as a back face).
+                var c2 = new Vector4(TexturePlane(s, s.TextureTop.Plane), TextureTopOffset(s), piece.Contrast, PieceAngle(piece));
+                (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
+                Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
+                int first = c.Vertices.Count;
+                c.Add(p1, new Vector2(u1, 0), c0, c1, c2);
+                c.Add(p1, new Vector2(u1, 1), c0, c1, c2);
+                c.Add(p2, new Vector2(u2, 1), c0, c1, c2);
+                c.Add(p2, new Vector2(u2, 0), c0, c1, c2);
+                c.Indices.AddRange(BackFaceIndices(first));
+                LidEndQuads++;
             }
         }
 
