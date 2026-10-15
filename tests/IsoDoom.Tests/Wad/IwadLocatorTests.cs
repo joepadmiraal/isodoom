@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using IsoDoom.Wad;
 using Xunit;
 
@@ -340,12 +341,16 @@ public sealed class IwadLocatorTests : IDisposable
     [Fact]
     public void FindsTheRepoTestIwads()
     {
-        // The real wads/ folder as the game folder: with DOOM1.WAD and doom2.wad there, DOOM1.WAD wins.
+        // The real wads/ folder as the game folder: the first IWAD name in iwads[]'s order
+        // that is there wins (DOOM1.WAD over doom2.wad, but doom.wad over DOOM1.WAD).
         string? repo = Support.TestWads.RepoRoot;
         string wads = Path.Combine(repo ?? _root, "wads");
         if (!File.Exists(Path.Combine(wads, "DOOM1.WAD")))
             Assert.Skip("wads/DOOM1.WAD not present");
+        string? expected = IwadLocator.iwads
+            .Select(iwad => IwadLocator.M_FileCaseExists(Path.Combine(wads, iwad.Name)))
+            .First(path => path is not null);
         IwadSearchResult r = Locator(gameDirs: [wads]).D_FindIWAD();
-        Assert.Equal(Path.Combine(wads, "DOOM1.WAD"), r.Path);
+        Assert.Equal(expected, r.Path);
     }
 }
