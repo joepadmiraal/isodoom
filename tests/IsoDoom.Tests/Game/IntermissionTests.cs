@@ -68,9 +68,9 @@ public class IntermissionTests
         public void EndGame(string? why) => World = null;
     }
 
-    /// <summary>The DOOM1.WAD and (T10.1) Doom II exit routes with an intermission (all but E1M8's; T10.4: MAP30's too, the Icon's death).</summary>
+    /// <summary>The DOOM1.WAD and (T10.1) Doom II exit routes with an intermission (all but the ExM8 ones, whose exits go to the finale, T9.2; T10.4: MAP30's too, the Icon's death).</summary>
     private static List<VanillaRoute> ExitRoutes() =>
-        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.IdWad && r.Exit != 0 && r.Map is not "E1M8")];
+        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.IdWad && r.Exit != 0 && !(r.GameMode != GameMode.commercial && r.Map.EndsWith("M8", StringComparison.Ordinal)))];
 
     /// <summary>The exit routes with an intermission and the dumps' suffixes (<c>wi</c>: counted out; <c>wiskip</c>: skipped).</summary>
     public static TheoryData<string, string> Dumps()

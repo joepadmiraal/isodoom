@@ -130,6 +130,97 @@ public static class Program
         log($"done h{g.Mo.health} {mon.state}; {b}");
     };
 
+    /// <summary>
+    /// T9.2: a boss ending: <see cref="Duel"/>'s fight with the boss spawned at (<paramref name="x"/>,
+    /// <paramref name="y"/>), every other monster killed asleep, until <paramref name="done"/>; then it is
+    /// hurt and killed with route events and its <c>A_BossDeath</c> runs: with <paramref name="exit"/>
+    /// the route ends with the tic that leaves the level (<c>G_ExitLevel</c>), else it waits for the
+    /// movers of the sectors tagged 666 to stop (and 30 tics more).
+    /// </summary>
+    private static Action<Steer, Action<string>> BossEnd(int x, int y, Func<Brawler, bool> done, bool exit, int max = 1500) => (g, log) =>
+    {
+        var b = new Brawler(g) { Firing = false };
+        b.KillAllBut(m => m.spawnpoint.X == x && m.spawnpoint.Y == y);
+        g.Wait(1);
+        IsoDoom.Sim.mobj_t boss = g.Spawned(x, y) ?? throw new InvalidOperationException($"nothing spawned at {x}, {y}");
+        g.Damage(x, y, 1); // (deaf or not: wakes to the hurt)
+        for (int t = 0; t < max && !done(b) && g.Mo.health > 0; t++)
+        {
+            g.Wait(1);
+            if (t % 50 == 0)
+                log($"h{g.Mo.health} {boss.type} {boss.state} ({boss.x >> 16},{boss.y >> 16}) h{boss.health}; {b}");
+        }
+        if (!done(b) || g.Mo.health <= 0)
+            throw new InvalidOperationException($"the fight did not end as planned (player health {g.Mo.health}): " + b);
+        log("fought " + b);
+        g.Damage(x, y, boss.health / 2);
+        g.Wait(20);
+        log($"hurt h{g.Mo.health} {boss.state} h{boss.health}");
+        if (boss.health > 0)
+            g.Damage(x, y, boss.health);
+        if (exit)
+        {
+            g.WaitExit(400);
+            log($"left the level h{g.Mo.health}; {b}");
+            return;
+        }
+        IsoDoom.Sim.sector_t[] tagged = [.. g.World.sectors.Where(sec => sec.tag == 666)];
+        g.WaitUntil(() => tagged.Any(sec => sec.specialdata != null), 400);
+        if (!tagged.Any(sec => sec.specialdata != null))
+            throw new InvalidOperationException("A_BossDeath moved no sector tagged 666");
+        log("666 moving " + g.Heights([.. tagged.Select(sec => sec.Index)]));
+        foreach (IsoDoom.Sim.sector_t sec in tagged)
+            g.WaitIdle(sec.Index);
+        g.Wait(30);
+        log("666 stopped " + g.Heights([.. tagged.Select(sec => sec.Index)]) + "; " + b);
+    };
+
+    /// <summary>
+    /// T10.3 (map05-skull-floor), T9.2: the lost soul spawned at (<paramref name="x"/>, <paramref name="y"/>),
+    /// every other monster killed asleep with route events, wakes to a hurt of 1 and charges the player, who
+    /// steps aside while each charge flies, until two charges hit the floor (P_ZMovement's lost soul bounce);
+    /// then it is hurt and killed with route events.
+    /// </summary>
+    private static Action<Steer, Action<string>> SkullFloor(int x, int y) => (g, log) =>
+    {
+        var b = new Brawler(g) { Firing = false };
+        b.KillAllBut(m => m.spawnpoint.X == x && m.spawnpoint.Y == y);
+        g.Wait(1);
+        IsoDoom.Sim.mobj_t skull = g.Spawned(x, y)!;
+        g.Damage(x, y, 1);
+        int floorHits = 0, charges = 0, side = 1;
+        for (int t = 0; t < 1200 && floorHits < 2 && g.Mo.health > 0; t++)
+        {
+            bool flying = (skull.flags & IsoDoom.Sim.mobjflag_t.MF_SKULLFLY) != 0;
+            if (flying && skull.z <= skull.floorz)
+                floorHits++;
+            if (flying && t % 1 == 0)
+            {
+                charges++;
+                g.Tic(0, 40 * side, 0, 0); // step aside
+            }
+            else
+            {
+                if (charges > 0)
+                    side = -side;
+                charges = 0;
+                g.Tic(0, 0, g.TurnTo(skull.x / 65536.0, skull.y / 65536.0), 0);
+            }
+            if (t % 25 == 0)
+                log($"h{g.Mo.health} skull {skull.state} z {skull.z >> 16} floor {skull.floorz >> 16} momz {skull.momz} flying {flying} floor hits {floorHits}");
+        }
+        log($"floor hits {floorHits}");
+        if (floorHits == 0)
+            throw new InvalidOperationException("the soul never hit the floor charging");
+        g.Wait(10);
+        g.Damage(x, y, 50);
+        g.Wait(40);
+        if (skull.health > 0)
+            g.Damage(x, y, skull.health);
+        g.Wait(60);
+        log("done " + b);
+    };
+
     /// <summary>T10.3: whether a <see cref="Brawler"/> logged every action of <paramref name="actions"/> for monster <paramref name="type"/> (<c>mobjtype_t</c> without <c>MT_</c>).</summary>
     private static Func<Brawler, bool> Seen(string type, params string[] actions) =>
         b => b.Attacks.TryGetValue(type, out SortedSet<string>? a) && actions.All(a.Contains);
@@ -1531,6 +1622,69 @@ exit normal
             log("at the exit");
             g.Exit(-608, -180);
         }, Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["doom-e2m8-cyber"] = new(Doom, "E2M8", """
+# The Ultimate Doom E2M8 on skill 1 with monsters (T9.2): the Cyberdemon at (-1472, 576) wakes to a
+# hurt of 1 and walks (A_Hoof, A_Metal) and fires rockets (A_CyberAttack) at the player, south of it;
+# then it is hurt and killed with route events, and its A_BossDeath (E2M8: the last Cyberdemon)
+# ends the level, the last tic. Written by tools/RouteGen (doom-e2m8-cyber).
+iwad doom
+map E2M8
+skill 1
+monsters
+exit normal
+
+""", BossEnd(-1472, 576, Seen("CYBORG", "A_Hoof", "A_Metal", "A_CyberAttack"), exit: true), (-1472, 64, 90), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["doom-e3m8-spider"] = new(Doom, "E3M8", """
+# The Ultimate Doom E3M8 on skill 1 with monsters (T9.2): the cacodemons killed asleep with route
+# events, the Spider Mastermind at (1600, -768) wakes to a hurt of 1, walks (A_Metal) and fires
+# (A_SPosAttack, A_SpidRefire) at the player; then it is hurt and killed with route events, and its
+# A_BossDeath (E3M8: the last Spider Mastermind) ends the level, the last tic.
+# Written by tools/RouteGen (doom-e3m8-spider).
+iwad doom
+map E3M8
+skill 1
+monsters
+exit normal
+
+""", BossEnd(1600, -768, Seen("SPIDER", "A_Metal", "A_SPosAttack", "A_SpidRefire"), exit: true), (1728, -1088, 112), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["doom-e4m6-cyber"] = new(Doom, "E4M6", """
+# The Ultimate Doom E4M6 on skill 1 with monsters (T9.2): every other monster killed asleep with
+# route events, the Cyberdemon at (1584, -240) wakes to a hurt of 1 and fires rockets
+# (A_CyberAttack) at the player, south of its cage; then it is hurt and killed with route events,
+# and its A_BossDeath (E4M6: the last Cyberdemon) opens the doors tagged 666 (blazeOpen).
+# Written by tools/RouteGen (doom-e4m6-cyber).
+iwad doom
+map E4M6
+skill 1
+monsters
+
+""", BossEnd(1584, -240, Seen("CYBORG", "A_CyberAttack"), exit: false), (1584, -720, 90), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["doom-e4m8-spider"] = new(Doom, "E4M8", """
+# The Ultimate Doom E4M8 on skill 1 with monsters (T9.2): every other monster killed asleep with
+# route events, the deaf Spider Mastermind at (-2720, 32) wakes to a hurt of 1 and fires
+# (A_SPosAttack, A_SpidRefire) at the player, south of it; then it is hurt and killed with route
+# events, and its A_BossDeath (E4M8: the last Spider Mastermind) lowers the floors tagged 666.
+# Written by tools/RouteGen (doom-e4m8-spider).
+iwad doom
+map E4M8
+skill 1
+monsters
+
+""", BossEnd(-2720, 32, Seen("SPIDER", "A_SPosAttack", "A_SpidRefire"), exit: false), (-2784, -416, 82), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+        ["doom-e2m1-skull-floor"] = new(Doom, "E2M1", """
+# The Ultimate Doom E2M1 on skill 1 with monsters (T9.2): every monster but the lost soul at
+# (-256, -464) killed asleep with route events on the first tic, a hurt of 1 wakes it. The player
+# stands south of it in the corridor below (floor 0, the soul's 64) and steps aside while each
+# charge flies (A_SkullAttack); a charge that hits the floor bounces before the landing zeroes its
+# momz, as The Ultimate Doom's P_ZMovement (Chocolate Doom's correct_lost_soul_bounce, retail and
+# Final Doom), unlike Doom II's map05-skull-floor; then it is hurt and killed with route events.
+# Written by tools/RouteGen (doom-e2m1-skull-floor).
+iwad doom
+map E2M1
+skill 1
+monsters
+
+""", SkullFloor(-256, -464), (-256, -784, 90), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
         ["map10-revenant"] = new(Doom2, "MAP10", """
 # Doom II MAP10 on skill 1 with monsters (T10.3): every monster but the
 # revenant at (1184, -32) killed asleep with route events on the first
@@ -1811,45 +1965,7 @@ map MAP05
 skill 1
 monsters
 
-""", (g, log) =>
-        {
-            var b = new Brawler(g) { Firing = false };
-            b.KillAllBut(m => m.spawnpoint.X == 2848 && m.spawnpoint.Y == -496);
-            g.Wait(1);
-            IsoDoom.Sim.mobj_t skull = g.Spawned(2848, -496)!;
-            g.Damage(2848, -496, 1);
-            int floorHits = 0, charges = 0, side = 1;
-            for (int t = 0; t < 1200 && floorHits < 2 && g.Mo.health > 0; t++)
-            {
-                bool flying = (skull.flags & IsoDoom.Sim.mobjflag_t.MF_SKULLFLY) != 0;
-                if (flying && skull.z <= skull.floorz)
-                    floorHits++;
-                if (flying && t % 1 == 0)
-                {
-                    charges++;
-                    g.Tic(0, 40 * side, 0, 0); // step aside
-                }
-                else
-                {
-                    if (charges > 0)
-                        side = -side;
-                    charges = 0;
-                    g.Tic(0, 0, g.TurnTo(skull.x / 65536.0, skull.y / 65536.0), 0);
-                }
-                if (t % 25 == 0)
-                    log($"h{g.Mo.health} skull {skull.state} z {skull.z >> 16} floor {skull.floorz >> 16} momz {skull.momz} flying {flying} floor hits {floorHits}");
-            }
-            log($"floor hits {floorHits}");
-            if (floorHits == 0)
-                throw new InvalidOperationException("the soul never hit the floor charging");
-            g.Wait(10);
-            g.Damage(2848, -496, 50);
-            g.Wait(40);
-            if (skull.health > 0)
-                g.Damage(2848, -496, skull.health);
-            g.Wait(60);
-            log("done " + b);
-        }, (2686, -786, 45), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
+""", SkullFloor(2848, -496), (2686, -786, 45), Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true),
         ["map07-ssg"] = new(Doom2, "MAP07", """
 # Doom II MAP07 without monsters (T10.2), in the start room: the super
 # shotgun north of the start walked over (the pickup switches to it: 8

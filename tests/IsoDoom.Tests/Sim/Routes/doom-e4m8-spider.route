@@ -1,0 +1,71 @@
+# The Ultimate Doom E4M8 on skill 1 with monsters (T9.2): every other monster killed asleep with
+# route events, the deaf Spider Mastermind at (-2720, 32) wakes to a hurt of 1 and fires
+# (A_SPosAttack, A_SpidRefire) at the player, south of it; then it is hurt and killed with route
+# events, and its A_BossDeath (E4M8: the last Spider Mastermind) lowers the floors tagged 666.
+# Written by tools/RouteGen (doom-e4m8-spider).
+iwad doom
+map E4M8
+skill 1
+monsters
+start -2784 -416 82
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -544 -1312 1000
+damage -352 -1248 30
+damage -352 -1376 30
+damage -992 -928 20
+damage -1120 -864 20
+damage -1120 -992 20
+damage -96 -1952 20
+damage -96 -2272 20
+damage -336 -2080 20
+damage -96 -1696 20
+damage -512 -2704 20
+damage -992 144 1000
+damage -880 32 30
+damage -992 -80 30
+damage -640 -1888 30
+damage -1072 -2016 30
+damage -1376 -1504 30
+damage -1280 -1696 30
+damage -32 288 60
+damage -32 -224 60
+damage -1504 -224 150
+damage -1504 352 150
+damage -1248 640 20
+damage -1056 720 20
+damage -608 416 20
+damage -496 208 20
+damage -1280 -688 20
+damage -944 -672 20
+damage -688 -432 20
+damage -560 -128 20
+damage -992 256 30
+damage -992 -192 30
+damage -1040 -640 20
+damage -800 -624 20
+damage -544 -336 20
+damage -528 368 20
+damage -944 704 20
+damage -2976 288 400
+damage -2976 -224 400
+damage -2704 -688 30
+damage -2960 -688 30
+damage -3088 -688 30
+damage -2704 752 30
+damage -2960 752 30
+damage -3088 752 30
+damage -2832 -688 60
+damage -2832 752 60
+damage -3200 736 60
+damage -3200 -688 60
+damage -2704 224 100
+damage -2688 -160 100
+damage -1104 32 30
+0 0 0 0
+damage -2720 32 1
+0 0 0 0 x112
+damage -2720 32 1499
+0 0 0 0 x20
+damage -2720 32 1500
+0 0 0 0 x414

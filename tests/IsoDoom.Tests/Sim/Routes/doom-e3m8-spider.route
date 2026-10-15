@@ -1,0 +1,22 @@
+# The Ultimate Doom E3M8 on skill 1 with monsters (T9.2): the cacodemons killed asleep with route
+# events, the Spider Mastermind at (1600, -768) wakes to a hurt of 1, walks (A_Metal) and fires
+# (A_SPosAttack, A_SpidRefire) at the player; then it is hurt and killed with route events, and its
+# A_BossDeath (E3M8: the last Spider Mastermind) ends the level, the last tic.
+# Written by tools/RouteGen (doom-e3m8-spider).
+iwad doom
+map E3M8
+skill 1
+monsters
+exit normal
+start 1728 -1088 112
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -1408 -832 400
+damage 1664 2112 400
+0 0 0 0
+damage 1600 -768 1
+0 0 0 0 x106
+damage 1600 -768 1499
+0 0 0 0 x20
+damage 1600 -768 1500
+0 0 0 0 x128

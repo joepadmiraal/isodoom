@@ -1,0 +1,19 @@
+# The Ultimate Doom E2M8 on skill 1 with monsters (T9.2): the Cyberdemon at (-1472, 576) wakes to a
+# hurt of 1 and walks (A_Hoof, A_Metal) and fires rockets (A_CyberAttack) at the player, south of it;
+# then it is hurt and killed with route events, and its A_BossDeath (E2M8: the last Cyberdemon)
+# ends the level, the last tic. Written by tools/RouteGen (doom-e2m8-cyber).
+iwad doom
+map E2M8
+skill 1
+monsters
+exit normal
+start -1472 64 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+damage -1472 576 1
+0 0 0 0 x39
+damage -1472 576 1999
+0 0 0 0 x20
+damage -1472 576 2000
+0 0 0 0 x109

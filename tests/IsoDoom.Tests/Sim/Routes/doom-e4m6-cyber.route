@@ -1,0 +1,69 @@
+# The Ultimate Doom E4M6 on skill 1 with monsters (T9.2): every other monster killed asleep with
+# route events, the Cyberdemon at (1584, -240) wakes to a hurt of 1 and fires rockets
+# (A_CyberAttack) at the player, south of its cage; then it is hurt and killed with route events,
+# and its A_BossDeath (E4M6: the last Cyberdemon) opens the doors tagged 666 (blazeOpen).
+# Written by tools/RouteGen (doom-e4m6-cyber).
+iwad doom
+map E4M6
+skill 1
+monsters
+start 1584 -720 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -656 736 30
+damage -720 624 30
+damage -848 208 30
+damage -480 368 30
+damage -336 128 30
+damage 304 96 30
+damage 336 720 30
+damage -64 736 30
+damage -224 384 30
+damage 208 368 30
+damage 832 96 30
+damage 608 400 30
+damage 1568 1216 30
+damage 1344 1184 30
+damage 1808 1184 30
+damage 1248 -272 30
+damage 1120 -432 30
+damage 2288 48 30
+damage 2352 736 30
+damage 2176 496 30
+damage 2384 976 30
+damage 2496 528 30
+damage 2960 496 30
+damage 2944 1072 30
+damage 2704 64 30
+damage 1872 800 30
+damage 1792 288 30
+damage 928 1024 30
+damage 1872 912 60
+damage 992 400 60
+damage 208 448 60
+damage 144 720 60
+damage -688 416 60
+damage 1152 -336 60
+damage 2112 144 60
+damage 2384 560 60
+damage 2464 784 60
+damage 2256 832 60
+damage 2080 -80 60
+damage 2080 -336 60
+damage 2272 -96 60
+damage 2240 -224 60
+damage 2256 -336 60
+damage 2896 272 60
+damage 2960 864 60
+damage 2912 1184 60
+damage 1648 1232 60
+damage 1136 1184 1000
+damage 3072 224 400
+damage 816 736 60
+0 0 0 0
+damage 1584 -240 1
+0 0 0 0 x6
+damage 1584 -240 1999
+0 0 0 0 x20
+damage 1584 -240 2000
+0 0 0 0 x155

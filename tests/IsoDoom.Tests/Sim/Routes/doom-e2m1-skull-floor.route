@@ -1,0 +1,37 @@
+# The Ultimate Doom E2M1 on skill 1 with monsters (T9.2): every monster but the lost soul at
+# (-256, -464) killed asleep with route events on the first tic, a hurt of 1 wakes it. The player
+# stands south of it in the corridor below (floor 0, the soul's 64) and steps aside while each
+# charge flies (A_SkullAttack); a charge that hits the floor bounces before the landing zeroes its
+# momz, as The Ultimate Doom's P_ZMovement (Chocolate Doom's correct_lost_soul_bounce, retail and
+# Final Doom), unlike Doom II's map05-skull-floor; then it is hurt and killed with route events.
+# Written by tools/RouteGen (doom-e2m1-skull-floor).
+iwad doom
+map E2M1
+skill 1
+monsters
+start -256 -784 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage 816 368 20
+damage 1152 32 60
+damage 1152 -64 30
+damage 1456 -816 30
+damage 288 -48 30
+damage 528 -240 30
+damage 224 80 150
+damage 368 -464 30
+damage 400 -768 30
+damage 304 -752 30
+damage 416 -896 60
+damage 2144 -1184 60
+damage -112 -1040 150
+damage 1984 128 20
+0 0 0 0
+damage -256 -464 1
+0 0 0 0 x16
+0 40 0 0 x2
+0 0 0 0 x10
+damage -256 -464 50
+0 0 0 0 x40
+damage -256 -464 49
+0 0 0 0 x60
