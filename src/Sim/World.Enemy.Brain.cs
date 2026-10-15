@@ -106,7 +106,15 @@ public sealed partial class World
     /// <see cref="mobj_t.reactiontime"/> the flight's length in its
     /// frames, by the north-south distance; the spit sound, everywhere.
     /// Without targets (vanilla reads past the array and crashes) it does
-    /// nothing (SPEC §12 T10.4).
+    /// nothing (SPEC §12 T10.4). The divisions are vanilla's, unguarded:
+    /// neither divisor can be 0. <c>finesine</c> has no zero entry (it is
+    /// sampled at half fine angles, ±25 at least), so a cube's <c>momy</c>
+    /// is at least ±250 even due east or west; the cube is
+    /// <c>MF_NOCLIP</c>, so <c>P_CheckMissileSpawn</c> never explodes it
+    /// (zeroing its momentum); and <c>S_SPAWN1</c> lasts 3 tics. A target
+    /// level with the shooter gets a flight of 0, which
+    /// <see cref="A_SpawnFly"/> counts past: the cube flies on, as vanilla's
+    /// (T10.7 review).
     /// </summary>
     public void A_BrainSpit(mobj_t mo)
     {

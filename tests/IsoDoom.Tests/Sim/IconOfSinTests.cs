@@ -85,6 +85,56 @@ public class IconOfSinTests
         Assert.Equal(4, All(world, mobjtype_t.MT_SPAWNSHOT).Length);
     }
 
+    /// <summary>
+    /// T10.7 review: <c>A_BrainSpit</c> divides by the cube's <c>momy</c>
+    /// and its state's tics, as vanilla, unguarded. Neither can be 0:
+    /// <c>finesine</c> is sampled at half fine angles, so its smallest
+    /// entry is ±25 and a cube's <c>momy</c> at least ±250 even due east or
+    /// west; the cube is <c>MF_NOCLIP</c>, so <c>P_CheckMissileSpawn</c>
+    /// never explodes it (which would zero its momentum); and its spawn
+    /// state, <c>S_SPAWN1</c>, lasts 3 tics, fast monsters or not. A target
+    /// level with the shooter gets vanilla's flight of 0, which
+    /// <c>A_SpawnFly</c> counts down past (the cube flies on, as vanilla's).
+    /// </summary>
+    [Theory]
+    [InlineData(900, 500, skill_t.sk_medium)] // due east
+    [InlineData(100, 500, skill_t.sk_medium)] // due west
+    [InlineData(512, 900, skill_t.sk_medium)] // due north
+    [InlineData(512, 100, skill_t.sk_medium)] // due south
+    [InlineData(900, 501, skill_t.sk_medium)] // a unit off east: the angle's fine index still 0
+    [InlineData(900, 500, skill_t.sk_nightmare)] // fast monsters
+    public void ASpitAtATargetLevelWithTheShooterDoesNotDivideByZero(int tx, int ty, skill_t skill)
+    {
+        World world = Room(skill);
+        mobj_t spit = Spawn(world, 512, 500, mobjtype_t.MT_BOSSSPIT);
+        mobj_t target = Spawn(world, tx, ty, mobjtype_t.MT_BOSSTARGET);
+        world.A_BrainAwake(spit);
+        world.A_BrainSpit(spit);
+        mobj_t cube = Assert.Single(All(world, mobjtype_t.MT_SPAWNSHOT));
+        Assert.Same(target, cube.target);
+        Assert.Equal(statenum_t.S_SPAWN1, cube.state);
+        Assert.Equal(3, world.StateTics(cube.state));
+        Assert.True(Math.Abs(cube.momy) >= 250, $"momy {cube.momy}");
+        Assert.Equal((target.y - spit.y) / cube.momy / 3, cube.reactiontime);
+        if (ty == 500)
+            Assert.Equal(0, cube.reactiontime);
+
+        // A_SpawnFly counts 0 down to -1: the cube flies on, nothing comes out
+        world.A_SpawnSound(cube);
+        Assert.NotEqual(think_t.REMOVED, cube.function);
+        Assert.Empty(All(world, mobjtype_t.MT_SPAWNFIRE));
+    }
+
+    [Fact]
+    public void NoFineSineIsZeroSoNoCubeFliesWithoutANorthSouthSpeed()
+    {
+        int speed = Info.mobjinfo[(int)mobjtype_t.MT_SPAWNSHOT].speed;
+        for (int i = 0; i < Tables.FINEANGLES; i++)
+            Assert.True(Math.Abs(Fixed.FixedMul(speed, Tables.finesine[i])) >= 250, $"finesine[{i}]");
+        Assert.True((Info.mobjinfo[(int)mobjtype_t.MT_SPAWNSHOT].flags & mobjflag_t.MF_NOCLIP) != 0);
+        Assert.Equal(3, Info.states[(int)statenum_t.S_SPAWN1].tics);
+    }
+
     [Theory]
     [InlineData(skill_t.sk_baby, 2)]
     [InlineData(skill_t.sk_easy, 2)]
