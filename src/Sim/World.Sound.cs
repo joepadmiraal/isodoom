@@ -14,7 +14,7 @@ public enum simevent_t
     /// <summary>A player's message (<see cref="player_t.message"/>, taken after the tic as hu_stuff.c <c>HU_Ticker</c> does).</summary>
     se_message,
 
-    /// <summary>A hitscan (p_map.c <c>P_LineAttack</c>): <see cref="sim_event_t.shot"/> is its line, for the shot tracers.</summary>
+    /// <summary>A hitscan (p_map.c <c>P_LineAttack</c>), or a BFG spray's aim line that found a target (p_pspr.c <c>A_BFGSpray</c>, T9.3a): <see cref="sim_event_t.shot"/> is its line, for the shot tracers.</summary>
     se_shot,
 }
 
@@ -34,8 +34,12 @@ public readonly record struct sound_event_t(sfxenum_t sfx, mobj_t? origin, secto
 /// or a melee's) from (<see cref="x1"/>, <see cref="y1"/>, <see cref="z1"/>)
 /// to where it stopped (<see cref="x2"/>, <see cref="y2"/>, <see cref="z2"/>):
 /// its puff or blood, the sky, or the end of its range (all fixed_t).
+/// With <see cref="spray"/> (T9.3a) it is one of a BFG burst's 40 aim lines
+/// (<c>P_AimLineAttack</c>, <see cref="range"/> 1024 units) that found a
+/// target: from the shooter (the player who fired the ball) to the target's
+/// middle.
 /// </summary>
-public readonly record struct shot_event_t(mobj_t shooter, int range, int x1, int y1, int z1, int x2, int y2, int z2);
+public readonly record struct shot_event_t(mobj_t shooter, int range, int x1, int y1, int z1, int x2, int y2, int z2, bool spray = false);
 
 /// <summary>
 /// Not vanilla (T6.10, SPEC §12): an event from the sim to the presentation,

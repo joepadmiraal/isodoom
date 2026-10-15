@@ -1865,15 +1865,15 @@ public partial class LevelScene : Node3D, IGameHost
     }
 
     /// <summary>
-    /// A hitscan's tracer (<see cref="Tracers"/>): a gun's shot (not a melee's)
-    /// of the console player, or with <see cref="TracerMode.All"/> anyone's
+    /// A hitscan's tracer (<see cref="Tracers"/>): a gun's shot (not a melee's),
+    /// or a BFG spray's line to its target (T9.3a), of the console player, or with <see cref="TracerMode.All"/> anyone's
     /// in the player's sight (the fog of war, T6.13l), from the shooter's edge
     /// to where it stopped.
     /// </summary>
     private void AddTracer(shot_event_t shot)
     {
         bool own = shot.shooter.player is { } p && World is { } world && p == world.players[world.consoleplayer];
-        if (Tracers == TracerMode.Off || (Tracers == TracerMode.Player && !own) || shot.range < World.MISSILERANGE)
+        if (Tracers == TracerMode.Off || (Tracers == TracerMode.Player && !own) || (shot.range < World.MISSILERANGE && !shot.spray))
             return;
         if (!own && !FogShows(shot.shooter))
             return; // T6.13l: a shooter the fog hides

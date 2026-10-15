@@ -1180,7 +1180,9 @@ public sealed partial class World
     /// shooter (the ball's <see cref="mobj_t.target"/>) over a 90° fan
     /// centred on the ball's angle, the angle it was fired at; each target
     /// found gets an <c>MT_EXTRABFG</c> at a quarter of its height and
-    /// 15d8 damage from the shooter.
+    /// 15d8 damage from the shooter. Not vanilla (T9.3a): queues an
+    /// <see cref="simevent_t.se_shot"/> event (output only) for each line
+    /// that found a target, from the shooter to the target.
     /// </summary>
     public void A_BFGSpray(mobj_t mo)
     {
@@ -1195,6 +1197,12 @@ public sealed partial class World
 
             if (linetarget == null)
                 continue;
+
+            // Not vanilla (T9.3a): the aim line as an event, for the presentation's tracers.
+            mobj_t source = mo.target!;
+            events.Add(new sim_event_t(simevent_t.se_shot, leveltime, default, source.x, source.y, -1, null,
+                new shot_event_t(source, 16 * 64 * Fixed.FRACUNIT, source.x, source.y, shootz,
+                    linetarget.x, linetarget.y, linetarget.z + (linetarget.height >> 1), spray: true)));
 
             P_SpawnMobj(linetarget.x, linetarget.y,
                 linetarget.z + (linetarget.height >> 2), mobjtype_t.MT_EXTRABFG);

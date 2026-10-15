@@ -132,6 +132,50 @@ public class SimEventTests
     }
 
     [Fact]
+    public void ABfgSprayQueuesALinePerTargetFound()
+    {
+        // T9.3a: the synthetic E1M1's west room (x and y -128..128), the player at its north
+        // facing south, two barons ahead in the fan and one behind it (the map's monsters left out).
+        var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, nomonsters: true), Tweaks.Vanilla);
+        world.G_DoLoadLevel(Level.Load(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]), "E1M1"));
+        mobj_t mo = Player(world);
+        world.PlaceMobj(mo, 0, F(100), Deg(270));
+        mobj_t left = world.P_SpawnMobj(F(-50), F(-80), 0, mobjtype_t.MT_BRUISER);
+        mobj_t right = world.P_SpawnMobj(F(60), F(-60), 0, mobjtype_t.MT_BRUISER);
+        mobj_t behind = world.P_SpawnMobj(F(90), F(100), 0, mobjtype_t.MT_BRUISER);
+        mobj_t ball = world.P_SpawnMobj(mo.x, mo.y, mo.z, mobjtype_t.MT_BFG);
+        ball.angle = mo.angle;
+        ball.target = mo;
+        left.threshold = right.threshold = 100; // (so the first hit does not wake them into A_Chase's step)
+
+        // The targets the 40 aim lines find, as A_BFGSpray's (aiming draws no P_Random).
+        var expected = new List<mobj_t>();
+        for (int i = 0; i < 40; i++)
+        {
+            world.P_AimLineAttack(mo, unchecked(ball.angle - (0x40000000u / 2) + 0x40000000u / 40 * (uint)i), F(1024));
+            if (world.linetarget is { } t)
+                expected.Add(t);
+        }
+        Assert.Contains(left, expected);
+        Assert.Contains(right, expected);
+        Assert.DoesNotContain(behind, expected);
+
+        world.events.Clear();
+        world.A_BFGSpray(ball);
+        shot_event_t[] shots = [.. world.events.Where(e => e.type == simevent_t.se_shot).Select(e => e.shot)];
+        Assert.Equal(expected, shots.Select(s => s.shooter == mo ? Target(s) : null));
+        Assert.All(shots, s =>
+        {
+            Assert.True(s.spray);
+            Assert.Equal(F(1024), s.range);
+            Assert.Equal((mo.x, mo.y, mo.z + mo.height / 2 + F(8)), (s.x1, s.y1, s.z1));
+        });
+
+        mobj_t? Target(shot_event_t s) =>
+            new[] { left, right }.SingleOrDefault(t => (t.x, t.y, t.z + t.height / 2) == (s.x2, s.y2, s.z2));
+    }
+
+    [Fact]
     public void TheUseGruntWaitsForTheFallback()
     {
         // The synthetic E1M1's west room (x and y -128..128): its north wall (line 0) is an S1
