@@ -127,21 +127,36 @@ public static class WadLocator
     public static Task<string> DownloadShareware(IProgress<SharewareDownload.Progress>? progress = null, CancellationToken cancel = default) =>
         SharewareDownload.DownloadAsync(_http.Value, SharewareDirectory, progress, cancel: cancel);
 
+    // T8.3: the user arguments, read once (they do not change while the game runs; the scene asks
+    // for some every frame, and each OS.GetCmdlineUserArgs marshals the whole array anew).
+    private static readonly Lazy<string[]> _userArgs = new(OS.GetCmdlineUserArgs);
+
     /// <summary>The value of <c>name VALUE</c> or <c>name=VALUE</c> among the user arguments, or null.</summary>
     public static string? GetUserArg(string name)
     {
-        string[] args = OS.GetCmdlineUserArgs();
+        string[] args = _userArgs.Value;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == name && i + 1 < args.Length)
                 return args[i + 1];
-            if (args[i].StartsWith(name + "=", StringComparison.Ordinal))
+            if (IsNameEquals(args[i], name))
                 return args[i][(name.Length + 1)..];
         }
         return null;
     }
 
     /// <summary>True if <paramref name="name"/> (alone or as <c>name=…</c>) is among the user arguments.</summary>
-    public static bool HasUserArg(string name) =>
-        Array.Exists(OS.GetCmdlineUserArgs(), a => a == name || a.StartsWith(name + "=", StringComparison.Ordinal));
+    public static bool HasUserArg(string name)
+    {
+        foreach (string a in _userArgs.Value)
+        {
+            if (a == name || IsNameEquals(a, name))
+                return true;
+        }
+        return false;
+    }
+
+    // name=… (without building the string name + "=").
+    private static bool IsNameEquals(string arg, string name) =>
+        arg.Length > name.Length && arg[name.Length] == '=' && arg.StartsWith(name, StringComparison.Ordinal);
 }

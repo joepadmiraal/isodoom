@@ -943,24 +943,33 @@ public partial class LevelScript : Node
             throw new ArgumentException("no world");
         var times = new List<double>(n);
         int gcs = GC.CollectionCount(0), start = world.leveltime;
+        // T8.3: the bytes allocated meanwhile, by the tics, by the main thread's frames (the tics
+        // included) and by the whole process (the audio threads too).
+        long mainBytes = GC.GetAllocatedBytesForCurrentThread(), allBytes = GC.GetTotalAllocatedBytes();
+        ulong frames = Engine.GetProcessFrames();
+        _scene.TicAllocatedBytes = 0;
         _scene.TicTimes = times;
         while (times.Count < n && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.PlayerMobj is not null)
             await Frames(1);
         _scene.TicTimes = null;
         gcs = GC.CollectionCount(0) - gcs;
+        mainBytes = GC.GetAllocatedBytesForCurrentThread() - mainBytes;
+        allBytes = GC.GetTotalAllocatedBytes() - allBytes;
+        frames = Math.Max(1, Engine.GetProcessFrames() - frames);
         int worstTic = times.Count == 0 ? 0 : start + 1 + times.IndexOf(System.Linq.Enumerable.Max(times));
         if (times.Count == 0)
         {
             GD.PrintErr("Level script: tictime: no tic ran");
             return;
         }
-        double mean = 0;
+        double first = times[0], mean = 0;
         foreach (double t in times)
             mean += t;
         mean /= times.Count;
         times.Sort();
         static string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
-        GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: mean {F(mean)} ms, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])} (tic {worstTic}); {gcs} garbage collections meanwhile");
+        GD.Print($"Level script: tic time over {times.Count} tics, {System.Linq.Enumerable.Count(world.Mobjs())} mobjs: first {F(first)} ms, mean {F(mean)}, median {F(times[times.Count / 2])}, p95 {F(times[(int)(times.Count * 0.95)])}, worst {F(times[^1])} (tic {worstTic}); {gcs} garbage collections meanwhile; "
+            + $"allocated {_scene.TicAllocatedBytes / times.Count} bytes a tic, {mainBytes / (long)frames} a frame on the main thread, {allBytes / (long)frames} a frame in all ({frames} frames)");
     }
 
     /// <summary>

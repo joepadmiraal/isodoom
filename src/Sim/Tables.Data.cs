@@ -13,7 +13,11 @@ public static partial class Tables
     /// <c>(i - 2048 + 0.5)</c> fine angles, i.e. from just above -90° to just
     /// below +90°, in fixed point.
     /// </summary>
-    public static ReadOnlySpan<int> finetangent =>
+    public static ReadOnlySpan<int> finetangent => _finetangent;
+
+    // T8.3: the data in a static array, the span over it: a span over static data of more than a byte
+    // per entry (RuntimeHelpers.CreateSpan) allocates at each read in a Debug build (the editor's).
+    private static readonly int[] _finetangent =
     [
         -170910304, -56965752, -34178904, -24413316, -18988036, -15535599, -13145455, -11392683,
         -10052327, -8994149, -8137527, -7429880, -6835455, -6329090, -5892567, -5512368,
@@ -534,7 +538,11 @@ public static partial class Tables
     /// fine angles in fixed point; the last quarter repeats the first, so
     /// <see cref="finecosine"/> is a view of it.
     /// </summary>
-    public static ReadOnlySpan<int> finesine =>
+    public static ReadOnlySpan<int> finesine => _finesine;
+
+    // T8.3: the data in a static array, the span over it: a span over static data of more than a byte
+    // per entry (RuntimeHelpers.CreateSpan) allocates at each read in a Debug build (the editor's).
+    private static readonly int[] _finesine =
     [
         25, 75, 125, 175, 226, 276, 326, 376,
         427, 477, 527, 578, 628, 678, 728, 779,
@@ -1822,7 +1830,11 @@ public static partial class Tables
     /// tables.c <c>tantoangle[SLOPERANGE+1]</c>: the BAM angle of the slope
     /// <c>i / SLOPERANGE</c> (0 to 45°), indexed by <see cref="SlopeDiv"/>.
     /// </summary>
-    public static ReadOnlySpan<uint> tantoangle =>
+    public static ReadOnlySpan<uint> tantoangle => _tantoangle;
+
+    // T8.3: the data in a static array, the span over it: a span over static data of more than a byte
+    // per entry (RuntimeHelpers.CreateSpan) allocates at each read in a Debug build (the editor's).
+    private static readonly uint[] _tantoangle =
     [
         0, 333772, 667544, 1001315, 1335086, 1668857, 2002626, 2336395,
         2670163, 3003929, 3337694, 3671457, 4005219, 4338979, 4672736, 5006492,

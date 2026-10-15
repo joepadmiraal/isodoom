@@ -65,16 +65,32 @@ public sealed class GameInput
     /// </summary>
     public const ulong StickEchoMs = 250;
 
+    // T8.3: the actions read every frame as StringNames made once (a string passed to Input
+    // makes a StringName at each call, garbage for the collector).
+    private static readonly StringName _moveLeft = MoveLeft, _moveRight = MoveRight, _moveUp = MoveUp, _moveDown = MoveDown;
+    private static readonly StringName _aimLeft = AimLeft, _aimRight = AimRight, _aimUp = AimUp, _aimDown = AimDown;
+    private static readonly StringName _run = Run, _runToggle = RunToggle, _turnLeft = TurnLeft, _turnRight = TurnRight;
+    private static readonly StringName _attack = Attack, _use = Use, _pause = Pause;
+    private static readonly StringName[] _weapons = WeaponNames();
+
+    private static StringName[] WeaponNames()
+    {
+        var names = new StringName[TiccmdBuilder.WeaponSlots + 1];
+        for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
+            names[i] = Weapon(i);
+        return names;
+    }
+
     private readonly InputLatches _latches = new();
     private bool _cursorMoved;
     private float _mouseX;
     private ulong? _aimStickAt;
 
     /// <summary>The move axes, screen-relative (X right, Y up), each in [−1, 1]; keys give whole steps (W+D = (1, 1)).</summary>
-    public static Vector2 Move() => new(Input.GetAxis(MoveLeft, MoveRight), Input.GetAxis(MoveDown, MoveUp));
+    public static Vector2 Move() => new(Input.GetAxis(_moveLeft, _moveRight), Input.GetAxis(_moveDown, _moveUp));
 
     /// <summary>The aim stick's axes, screen-relative (X right, Y up), each in [−1, 1], past the actions' dead zone.</summary>
-    public static Vector2 AimStick() => new(Input.GetAxis(AimLeft, AimRight), Input.GetAxis(AimDown, AimUp));
+    public static Vector2 AimStick() => new(Input.GetAxis(_aimLeft, _aimRight), Input.GetAxis(_aimDown, _aimUp));
 
     /// <summary>
     /// Whether the pad aims: the aim stick is deflected now, or <see cref="StickEchoMs"/>
@@ -90,7 +106,7 @@ public sealed class GameInput
     }
 
     /// <summary>The run key is held.</summary>
-    public static bool RunHeld() => Input.IsActionPressed(Run);
+    public static bool RunHeld() => Input.IsActionPressed(_run);
 
     /// <summary>Records mouse motion (call from <c>_Input</c>): the cursor takes over the aim; <paramref name="dx"/> (pixels) turns as vanilla's mouse (T7.3).</summary>
     public void CursorMoved(float dx = 0)
@@ -122,13 +138,13 @@ public sealed class GameInput
         int weapon = 0;
         for (int i = 1; i <= TiccmdBuilder.WeaponSlots; i++)
         {
-            if (Input.IsActionJustPressed(Weapon(i)))
+            if (Input.IsActionJustPressed(_weapons[i]))
             {
                 weapon = i;
                 break;
             }
         }
-        _latches.Poll(Engine.GetProcessFrames(), Input.IsActionPressed(Attack), Input.IsActionPressed(Use), Input.IsActionJustPressed(RunToggle), weapon, Input.IsActionJustPressed(Pause));
+        _latches.Poll(Engine.GetProcessFrames(), Input.IsActionPressed(_attack), Input.IsActionPressed(_use), Input.IsActionJustPressed(_runToggle), weapon, Input.IsActionJustPressed(_pause));
     }
 
     /// <summary>
@@ -143,12 +159,12 @@ public sealed class GameInput
         {
             MoveX = move.X,
             MoveY = move.Y,
-            AimX = Input.GetAxis(AimLeft, AimRight),
-            AimY = Input.GetAxis(AimDown, AimUp),
+            AimX = Input.GetAxis(_aimLeft, _aimRight),
+            AimY = Input.GetAxis(_aimDown, _aimUp),
             Run = RunHeld(),
             RunToggle = _latches.RunToggle,
-            TurnLeft = Input.IsActionPressed(TurnLeft),
-            TurnRight = Input.IsActionPressed(TurnRight),
+            TurnLeft = Input.IsActionPressed(_turnLeft),
+            TurnRight = Input.IsActionPressed(_turnRight),
             CursorMoved = _cursorMoved,
             MouseX = _mouseX,
             Cursor = cursor,

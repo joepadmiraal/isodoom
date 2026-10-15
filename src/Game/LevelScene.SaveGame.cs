@@ -49,6 +49,8 @@ public partial class LevelScene
 
     public override void _ExitTree()
     {
+        if (!IsCheckRun)
+            SyncSettings(); // T8.3: a change since the last frame's sync is saved too
         RemoveTempSaves();
         if (_crosshairScale > 0)
             CrosshairPointer.Apply(0); // T7.12: free the pointer's texture before the renderer goes

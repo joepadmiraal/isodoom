@@ -45,7 +45,10 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// and its index in the actors given to <see cref="Set"/> (−1: none); T10.4:
     /// whether it shows in <see cref="HotColor"/> (a shot fired now would reach it).
     /// </summary>
-    public readonly record struct Marker(mobj_t Mobj, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector, int Actor, bool Hot = false);
+    public readonly record struct Marker(mobj_t Mobj, Vector3 MapPosition, int Slot, bool Flip, float Radius, int Sector, int Actor, bool Hot = false) : NearActors.IThing
+    {
+        int NearActors.IThing.Self => Actor;
+    }
 
     private readonly ShaderMaterial _chevron, _beam;
     private readonly NearActors _actors = new();
@@ -156,7 +159,7 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// </summary>
     public void Set(IReadOnlyList<Marker> markers, IReadOnlyList<ItemBeams.Actor> actors)
     {
-        _actors.Set(markers.Count, i => markers[i].MapPosition, actors, i => markers[i].Actor);
+        _actors.Set(markers, actors);
         bool resized = markers.Count != _markers.Length;
         if (resized)
         {

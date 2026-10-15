@@ -1,4 +1,5 @@
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Game;
 
@@ -42,7 +43,7 @@ public static class ScreenRects
             _shader ??= new Shader { Code = SharpBilinear.ShaderCode };
             node.Material = material = new ShaderMaterial { Shader = _shader };
         }
-        material.SetShaderParameter("scale", new Vector2(rect.W / (float)width, rect.H / (float)height));
+        material.SetParam("scale", new Vector2(rect.W / (float)width, rect.H / (float)height)); // (T8.3: a StringName made once)
         node.TextureFilter = CanvasItem.TextureFilterEnum.Linear;
     }
 

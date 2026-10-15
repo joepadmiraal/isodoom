@@ -130,7 +130,8 @@ public partial class LevelScene : ISetupHost
     /// <summary>
     /// T7.3: notes what changed in the settings since the last call (the
     /// menus, the debug keys, the camera's zoom) and saves the file when
-    /// something did. Every frame; the bindings only with <paramref name="bindings"/>
+    /// something did. Four times a second (T8.3) and at each change made
+    /// through <see cref="SetSetting"/>; the bindings only with <paramref name="bindings"/>
     /// (they change only through <see cref="BindAction"/> and the resets).
     /// </summary>
     public void SyncSettings(bool bindings = false)
@@ -145,11 +146,17 @@ public partial class LevelScene : ISetupHost
             foreach (string action in Settings.BoundActions)
                 dirty |= SettingsValues.Observe(Settings.BindingKey(action), _settingAccess[Settings.BindingKey(action)].Get());
         }
+        ApplyLiveSettings();
+        if (dirty)
+            SaveSettings();
+    }
+
+    // The menus' mouse sensitivity and volumes, applied at once (T8.3: every frame, between the syncs).
+    private void ApplyLiveSettings()
+    {
         if (_flow is not null)
             TiccmdBuilder.MouseSensitivity = Menu.mouseSensitivity;
         UpdateAudioBuses();
-        if (dirty)
-            SaveSettings();
     }
 
     /// <summary>Writes the settings that differ from their defaults to <see cref="SettingsPath"/> (keeping its other sections, the IWAD's).</summary>
@@ -496,7 +503,7 @@ public partial class LevelScene : ISetupHost
 
     private static void SetBusVolume(string bus, int volume, float db)
     {
-        int i = AudioServer.GetBusIndex(bus);
+        int i = AudioServer.GetBusIndex(Render.StringNames.Get(bus)); // (T8.3: a StringName made once, not one a frame)
         if (i < 0)
             return;
         if (AudioServer.GetBusVolumeDb(i) != db)

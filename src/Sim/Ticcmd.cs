@@ -88,7 +88,10 @@ public static class Ticcmds
     public static ReadOnlySpan<sbyte> sidemove => [0x18, 0x28];
 
     /// <summary>g_game.c <c>angleturn</c>: walk, run, slow turn (the first <see cref="SLOWTURNTICS"/> tics).</summary>
-    public static ReadOnlySpan<short> angleturn => [640, 1280, 320];
+    public static ReadOnlySpan<short> angleturn => _angleturn;
+
+    // T8.3: an array, as Tables' (a span over static shorts allocates at each read in a Debug build).
+    private static readonly short[] _angleturn = [640, 1280, 320];
 
     /// <summary>g_game.c <c>MAXPLMOVE</c>: <c>forwardmove[1]</c>, the builder's clamp on both moves.</summary>
     public const int MAXPLMOVE = 0x32;

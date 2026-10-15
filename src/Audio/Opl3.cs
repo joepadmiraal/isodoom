@@ -211,7 +211,11 @@ public static class Opl3
     /*
         logsin table
     */
-    private static ReadOnlySpan<ushort> logsinrom => /* a span over static data: no bounds checks on & 0xff */
+    private static ReadOnlySpan<ushort> logsinrom => _logsinrom;
+
+    // T8.3: the data in a static array, the span over it: a span over static data of more than a byte
+    // per entry (RuntimeHelpers.CreateSpan) allocates at each read in a Debug build (the editor's).
+    private static readonly ushort[] _logsinrom =
     [
         0x859, 0x6c3, 0x607, 0x58b, 0x52e, 0x4e4, 0x4a6, 0x471,
         0x443, 0x41a, 0x3f5, 0x3d3, 0x3b5, 0x398, 0x37e, 0x365,
@@ -250,7 +254,11 @@ public static class Opl3
     /*
         exp table
     */
-    private static ReadOnlySpan<ushort> exprom =>
+    private static ReadOnlySpan<ushort> exprom => _exprom;
+
+    // T8.3: the data in a static array, the span over it: a span over static data of more than a byte
+    // per entry (RuntimeHelpers.CreateSpan) allocates at each read in a Debug build (the editor's).
+    private static readonly ushort[] _exprom =
     [
         0x7fa, 0x7f5, 0x7ef, 0x7ea, 0x7e4, 0x7df, 0x7da, 0x7d4,
         0x7cf, 0x7c9, 0x7c4, 0x7bf, 0x7b9, 0x7b4, 0x7ae, 0x7a9,

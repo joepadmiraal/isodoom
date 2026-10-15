@@ -1334,9 +1334,11 @@ public partial class LevelScene : Node3D, IGameHost
                 break;
             case Key.F1:
                 _showHelp = !_showHelp;
+                _overlayDue = 0;
                 break;
             case Key.F3:
                 Overlay.Visible = !Overlay.Visible;
+                _overlayDue = 0; // (its text at once)
                 break;
             default:
                 return;
@@ -1398,13 +1400,37 @@ public partial class LevelScene : Node3D, IGameHost
             UpdateHud();
             UpdateScreens();
             WipeLayer.Show(flow.Wipe, _wipeStartPending);
-            SyncSettings(); // T7.3: what the menus, the keys and the zoom changed is saved
+            // T7.3: what the menus, the keys and the zoom changed is saved; T8.3: four times a second, not
+            // every frame (it formats every setting as text to compare), and when the scene leaves; the
+            // volumes and the mouse's sensitivity apply every frame.
+            if (Time.GetTicksMsec() is ulong msec && msec >= _settingsDue)
+            {
+                _settingsDue = msec + SettingsSyncIntervalMs;
+                SyncSettings();
+            }
+            else
+                ApplyLiveSettings();
             UpdatePointer(flow);
         }
         _crosshair.Visible = FreeFlyActive;
-        if (!IsCheckRun && Overlay.Visible)
+        // T8.3: the overlay's text ten times a second, not every frame (it is a page of formatted
+        // strings: garbage for the collector at every frame).
+        if (!IsCheckRun && Overlay.Visible && Time.GetTicksMsec() is ulong now && now >= _overlayDue)
+        {
+            _overlayDue = now + OverlayIntervalMs;
             _message.Text = OverlayText();
+        }
     }
+
+    /// <summary>T8.3: how often the settings are compared with the saved ones (and saved when they changed), ms.</summary>
+    public const ulong SettingsSyncIntervalMs = 250;
+
+    private ulong _settingsDue;
+
+    /// <summary>T8.3: how often the overlay's text is rebuilt while it shows, ms.</summary>
+    public const ulong OverlayIntervalMs = 100;
+
+    private ulong _overlayDue;
 
     /// <summary>
     /// The cursor ground point under the mouse (T3.3) while the game camera
@@ -1647,9 +1673,11 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (TicTimes is { } times)
         {
+            long bytes = GC.GetAllocatedBytesForCurrentThread();
             long start = Stopwatch.GetTimestamp();
             World!.G_Ticker(cmd);
             times.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            TicAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - bytes;
         }
         else
             World!.G_Ticker(cmd);
@@ -2124,6 +2152,9 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>While not null, each tic's <see cref="World.G_Ticker(in ticcmd_t)"/> wall-clock time in ms is added (T4.9: the level script's <c>tictime</c>, SPEC §9's budget).</summary>
     public List<double>? TicTimes { get; set; }
 
+    /// <summary>T8.3: the bytes the timed tics (<see cref="TicTimes"/>) allocated on the main thread, for the level script's <c>tictime</c>.</summary>
+    public long TicAllocatedBytes { get; set; }
+
     /// <summary>Sets <see cref="TicFraction"/> (the level check draws the world between two tics; the game loop sets it every frame).</summary>
     public void SetTicFraction(double fraction) => TicFraction = Math.Clamp(fraction, 0, 1);
 
@@ -2238,15 +2269,17 @@ public partial class LevelScene : Node3D, IGameHost
         {
             _drawn.Clear();
             _drawn.AddRange(_scratch);
-            var entries = new ThingSprites.Entry[_drawn.Count];
-            for (int i = 0; i < entries.Length; i++)
-                entries[i] = DrawnEntry(_drawn[i]);
-            Things.SetEntries(entries);
+            _entryScratch.Clear();
+            for (int i = 0; i < _drawn.Count; i++)
+                _entryScratch.Add(DrawnEntry(_drawn[i]));
+            Things.SetEntries(_entryScratch);
             return;
         }
         for (int i = 0; i < _drawn.Count; i++)
             Things.SetEntry(i, DrawnEntry(_drawn[i]));
     }
+
+    private readonly List<ThingSprites.Entry> _entryScratch = []; // (T8.3: refilled, not made anew)
 
     // A drawn mobj's billboard this frame: where it is interpolated to, dimmed out of the player's sight (T6.13t).
     private ThingSprites.Entry DrawnEntry(mobj_t mo) => ThingEntry(mo, Interpolated(mo)) with { SightDim = SightDimOf(mo) };
@@ -2485,11 +2518,30 @@ public partial class LevelScene : Node3D, IGameHost
     /// its position in map units, angle, and the subsector and sector under it
     /// (<see cref="Level.R_PointInSubsector"/>); then the build status.
     /// </summary>
+    // T8.3: the process's allocation rate, bytes per second, over the last second or more (the overlay's own text included).
+    private double AllocationRate()
+    {
+        long bytes = GC.GetTotalAllocatedBytes();
+        ulong now = Time.GetTicksMsec();
+        if (now >= _allocationAt + 1000)
+        {
+            if (_allocationAt > 0)
+                _allocationRate = (bytes - _allocationBytes) * 1000.0 / (now - _allocationAt);
+            (_allocationAt, _allocationBytes) = (now, bytes);
+        }
+        return _allocationRate;
+    }
+
+    private ulong _allocationAt;
+    private long _allocationBytes;
+    private double _allocationRate;
+
     public string OverlayText()
     {
         var text = new System.Text.StringBuilder();
         string map = Mesh?.Level.Name ?? "no map";
         text.Append(CultureInfo.InvariantCulture, $"{map} ({IndexOfMap(map) + 1}/{MapNames.Count})   FPS {Engine.GetFramesPerSecond():F0}   ");
+        text.Append(CultureInfo.InvariantCulture, $"GC {GC.CollectionCount(0)} ({AllocationRate() / 1024:F0} KB/s)   ");
         if (FreeFly is { } fly && fly.Current)
         {
             text.Append(fly.IsOrthographic

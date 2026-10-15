@@ -107,9 +107,10 @@ public partial class ThingSprites : MultiMeshInstance3D
     public readonly record struct Shown(int Slot, bool Flip, int Rot);
 
     private SpriteAtlas? _atlas;
-    private Entry[] _entries = [];
-    private Shown[] _shown = [];
-    private Color[] _custom = [];
+    // T8.3: lists refilled in place, not arrays made anew at each change of the set (a spawn, a death).
+    private readonly List<Entry> _entries = [];
+    private readonly List<Shown> _shown = [];
+    private readonly List<Color> _custom = [];
     private int? _isolated;
     private HashSet<int>? _isolatedSet;
     private (bool Ortho, Vector3 Forward, Vector3 Position)? _view;
@@ -224,17 +225,21 @@ public partial class ThingSprites : MultiMeshInstance3D
     /// <summary>Replaces every entry (one instance each).</summary>
     public void SetEntries(IReadOnlyList<Entry> entries)
     {
-        _entries = new Entry[entries.Count];
+        _entries.Clear();
+        _shown.Clear();
+        _custom.Clear();
         for (int i = 0; i < entries.Count; i++)
-            _entries[i] = entries[i];
-        _shown = new Shown[_entries.Length];
-        _custom = new Color[_entries.Length];
-        Multimesh.InstanceCount = _entries.Length;
-        Shadows.Multimesh.InstanceCount = _entries.Length;
-        for (int i = 0; i < _entries.Length; i++)
+        {
+            _entries.Add(entries[i]);
+            _shown.Add(default);
+            _custom.Add(default);
+        }
+        Multimesh.InstanceCount = _entries.Count;
+        Shadows.Multimesh.InstanceCount = _entries.Count;
+        for (int i = 0; i < _entries.Count; i++)
             WriteTransform(i);
         MissingFrames = 0;
-        for (int i = 0; i < _entries.Length; i++)
+        for (int i = 0; i < _entries.Count; i++)
         {
             if (FrameOf(_entries[i]) is null)
                 MissingFrames++;
@@ -291,7 +296,7 @@ public partial class ThingSprites : MultiMeshInstance3D
     public void UpdateRotations(bool ortho, Vector3 forward, Vector3 position)
     {
         _view = (ortho, forward, position);
-        for (int i = 0; i < _entries.Length; i++)
+        for (int i = 0; i < _entries.Count; i++)
             UpdateInstance(i);
     }
 
@@ -354,7 +359,7 @@ public partial class ThingSprites : MultiMeshInstance3D
 
     private void Refresh()
     {
-        for (int i = 0; i < _entries.Length; i++)
+        for (int i = 0; i < _entries.Count; i++)
             UpdateInstance(i, force: true);
     }
 

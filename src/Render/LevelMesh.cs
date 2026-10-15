@@ -858,7 +858,7 @@ public sealed class LevelMesh : IDisposable
     public void SetFuzzPhase(int phase)
     {
         FuzzPhase = ((phase % Fuzz.FUZZTABLE) + Fuzz.FUZZTABLE) % Fuzz.FUZZTABLE;
-        FuzzMaterial.SetShaderParameter("fuzz_phase", FuzzPhase);
+        FuzzMaterial.SetParam("fuzz_phase", FuzzPhase);
     }
 
     /// <summary>The PLAYPAL palette as last set (<see cref="SetPalette"/>).</summary>
@@ -985,8 +985,12 @@ public sealed class LevelMesh : IDisposable
     /// <summary>Sets a shader parameter on every material (the sprite shader ignores the ones it lacks).</summary>
     private void SetParameter(string name, Variant value)
     {
-        foreach (ShaderMaterial material in Materials)
-            material.SetShaderParameter(name, value);
+        // T8.3: set every frame for some (the light origin, the cutaway): no StringName or array made per call.
+        StringName stringName = StringNames.Get(name);
+        Material.SetShaderParameter(stringName, value);
+        MaskedMaterial.SetShaderParameter(stringName, value);
+        SpriteMaterial.SetShaderParameter(stringName, value);
+        FuzzMaterial.SetShaderParameter(stringName, value);
     }
 
     // One sector's texel; returns whether it changed.
@@ -1017,8 +1021,10 @@ public sealed class LevelMesh : IDisposable
     private bool WriteLids()
     {
         bool dirty = false;
-        foreach (int i in Lids.Sectors)
+        IReadOnlyList<int> lids = Lids.Sectors;
+        for (int l = 0; l < lids.Count; l++) // (T8.3: no enumerator a frame)
         {
+            int i = lids[l];
             Sector s = Level.Sectors[i];
             float slot = _lidTexels[i].G;
             if (!ReferenceEquals(_lidFlats[i], s.CeilingPic))
@@ -1046,7 +1052,7 @@ public sealed class LevelMesh : IDisposable
         bool dirty = false;
         for (int i = 0; i < _islandTops.Length; i++)
         {
-            float top = Caps.IslandTop(i, n => _sectorTexels[n].G);
+            float top = Caps.IslandTop(i, _drawnCeiling ??= n => _sectorTexels[n].G); // (T8.3: one delegate, not one a frame)
             if (top == _islandTops[i])
                 continue;
             _islandTops[i] = top;
