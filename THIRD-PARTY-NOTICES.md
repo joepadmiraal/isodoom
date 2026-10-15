@@ -2,7 +2,7 @@
 
 IsoDoom is licensed under the GNU General Public License, version 2 or (at
 your option) any later version. It includes the third-party code listed
-here under its own licence. T7.8a started this file and T8.7 completes it.
+here under its own licence. The GPL-2.0 text is in `COPYING`.
 
 ## Chocolate Doom (OPL music)
 

@@ -468,7 +468,8 @@ jobs:
 
   # A pushed tag v* (e.g. `git tag v0.1.0 && git push origin v0.1.0`)
   # publishes a GitHub release of that commit once every job above passed:
-  # the three builds (stamped with the tag's version by the export job), zipped, with notes generated from the commits since the
+  # the three builds (stamped with the tag's version by the export job), zipped
+  # with the player README, COPYING and the notices, with notes generated from the commits since the
   # previous tag. A tag with a hyphen (v0.2.0-rc1) makes a pre-release.
   release:
     name: Release
@@ -478,6 +479,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -486,10 +489,24 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          mkdir dist
+          # Each zip also holds the player README, the GPL text and the
+          # notices (T8.7a), beside the build (macOS: beside IsoDoom.app).
+          mkdir dist docs-dist
+          cp docs/player-readme.txt docs-dist/README.txt
+          cp COPYING THIRD-PARTY-NOTICES.md docs-dist/
+          for f in README.txt COPYING THIRD-PARTY-NOTICES.md; do
+            cp "docs-dist/$f" artifacts/IsoDoom-linux-x86_64/
+            cp "docs-dist/$f" artifacts/IsoDoom-windows-x86_64/
+          done
           (cd artifacts/IsoDoom-linux-x86_64 && chmod +x IsoDoom.x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-linux-x86_64.zip" .)
           (cd artifacts/IsoDoom-windows-x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-windows-x86_64.zip" .)
           cp artifacts/IsoDoom-macos-universal/IsoDoom.zip "dist/IsoDoom-$TAG-macos-universal.zip"
+          (cd docs-dist && zip -9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-macos-universal.zip" README.txt COPYING THIRD-PARTY-NOTICES.md)
+          for z in dist/*.zip; do
+            for f in README.txt COPYING THIRD-PARTY-NOTICES.md; do
+              unzip -l "$z" | grep -q " $f$" || { echo "::error::$z lacks $f"; exit 1; }
+            done
+          done
           ls -la dist
 
       - name: Create the release
