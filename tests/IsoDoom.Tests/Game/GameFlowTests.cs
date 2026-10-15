@@ -23,8 +23,13 @@ public class GameFlowTests
     internal sealed class Host : IGameHost
     {
         private readonly GameMode _mode;
+        private readonly GameVersion? _gameversion;
 
-        public Host(GameMode mode) => this._mode = mode;
+        public Host(GameMode mode, GameVersion? gameversion = null)
+        {
+            _mode = mode;
+            _gameversion = gameversion; // as the game scene's: the flow's version is its worlds'
+        }
 
         public World? World { get; private set; }
 
@@ -42,7 +47,7 @@ public class GameFlowTests
             Loads.Add("new " + map);
             if (_wad.W_CheckNumForName(map) < 0)
                 return false;
-            World = new World(new SpawnSettings(_mode, skill), Tweaks.Vanilla);
+            World = new World(new SpawnSettings(_mode, skill, gameversion: _gameversion), Tweaks.Vanilla);
             World.P_InitPicAnims(null, PicAnims.FlatNames(_wad)); // P_Init's, as the game scene's (T7.6: a save loads into the same)
             World.G_DoLoadLevel(Level.Load(_wad, map));
             return true;
@@ -97,10 +102,10 @@ public class GameFlowTests
         }
     }
 
-    internal static (GameFlow Flow, Host Host) New(GameMode mode = GameMode.shareware)
+    internal static (GameFlow Flow, Host Host) New(GameMode mode = GameMode.shareware, GameVersion? gameversion = null)
     {
-        var host = new Host(mode);
-        return (new GameFlow(host, mode, new DoomRandom()), host);
+        var host = new Host(mode, gameversion);
+        return (new GameFlow(host, mode, new DoomRandom(), gameversion: gameversion), host);
     }
 
     private static ticcmd_t None => default;

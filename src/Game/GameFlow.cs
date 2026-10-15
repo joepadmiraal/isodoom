@@ -735,7 +735,9 @@ public sealed class GameFlow
     /// g_game.c <c>G_DoLoadGame</c> (<see cref="gameaction_t.ga_loadgame"/>):
     /// slot <see cref="savegameslot"/>'s file, refused with the menus' message
     /// box when it is no save, from another version, damaged or another
-    /// game's (vanilla returns silently on another version); else as
+    /// game's (vanilla returns silently on another version), or (T10.7)
+    /// saved as another executable than <see cref="gameversion"/> (vanilla
+    /// refuses another version's save); else as
     /// <see cref="G_InitNew"/> (unpaused, <c>M_ClearRandom</c>, a user game,
     /// its skill, the forced wipe of <c>G_DoLoadLevel</c>, so a load melts
     /// over a level too) the host shows the save's level and world
@@ -753,6 +755,10 @@ public sealed class GameFlow
             save = SaveGameFile.Read(System.IO.File.ReadAllBytes(path));
             if (save.GameMode != gamemode)
                 throw new SaveGameException(SaveGameFile.OTHERGAME);
+            // T10.7: a save plays as the executable it was saved as; this run's flow (title loop, menus, titles, intermission, finale) is another's
+            GameVersion version = save.ReadGameVersion();
+            if (version != gameversion)
+                throw new SaveGameException(SaveGameFile.OTHERVERSION, new SaveGameException($"saved as {GameVersions.Cmdline(version)}, this game is {GameVersions.Cmdline(gameversion)}"));
             host.G_CheckLoadGame(save);
         }
         catch (Exception e) when (e is SaveGameException or System.IO.IOException or UnauthorizedAccessException)

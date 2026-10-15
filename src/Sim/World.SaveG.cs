@@ -508,7 +508,7 @@ public sealed partial class World
                 r.ReadBoolean(),
                 r.ReadBoolean(),
                 r.ReadBoolean(),
-                ReadEnum<GameVersion>(r));
+                ReadGameVersion(r));
             var tweaks = new Tweaks
             {
                 AbsoluteAiming = r.ReadBoolean(),
@@ -650,6 +650,20 @@ public sealed partial class World
         if (!Enum.IsDefined(kind))
             throw new SaveGameException($"bad thinker kind {(int)kind}");
         return kind;
+    }
+
+    /// <summary>
+    /// The saved <see cref="gameversion"/>: one the sim emulates
+    /// (<see cref="GameVersions.Emulated"/>, as <c>-gameversion</c>'s), else
+    /// the save is damaged (v1.2's, v1.5's, Hacx's or Chex Quest's rules are
+    /// not ported).
+    /// </summary>
+    private static GameVersion ReadGameVersion(BinaryReader r)
+    {
+        GameVersion version = ReadEnum<GameVersion>(r);
+        if (!GameVersions.Emulated(version))
+            throw new SaveGameException($"bad GameVersion {version}: not emulated");
+        return version;
     }
 
     private static T ReadEnum<T>(BinaryReader r) where T : struct, Enum
