@@ -45,6 +45,35 @@ public sealed class RouteFile
     /// </summary>
     public GameVersion? GameVersion { get; private init; }
 
+    /// <summary>
+    /// T10.7: the mission of the <c>iwad</c> header <paramref name="iwad"/>:
+    /// Final Doom's for <c>tnt</c> and <c>plutonia</c>, Doom II's for
+    /// <c>doom2</c>, Doom's for the others (<c>doom1</c>, <c>synthetic</c>, <c>testmap</c>).
+    /// </summary>
+    public static GameMission MissionOf(string iwad) => iwad switch
+    {
+        "tnt" => GameMission.pack_tnt,
+        "plutonia" => GameMission.pack_plut,
+        "doom2" => GameMission.doom2,
+        _ => GameMission.doom,
+    };
+
+    /// <summary>T10.1, T10.7: the game mode of the <c>iwad</c> header <paramref name="iwad"/>: <c>commercial</c> for <c>doom2</c>, <c>tnt</c> and <c>plutonia</c>, else DOOM1.WAD's <c>shareware</c>.</summary>
+    public static GameMode ModeOf(string iwad) =>
+        iwad is "doom2" or "tnt" or "plutonia" ? GameMode.commercial : GameMode.shareware;
+
+    /// <summary>
+    /// T10.7: the executable vanilla plays the route as (the reference's
+    /// <c>-gameversion</c>): the <c>gameversion</c> header, else its IWAD's
+    /// default (<see cref="GameVersions.Default"/>: Final Doom's for <c>tnt</c>
+    /// and <c>plutonia</c>, v1.9 for the others); null without an <c>iwad</c>
+    /// header (a demo lump, <see cref="FromDemo"/>). The tests' routes and the
+    /// level script's <c>route</c> both read it, so a script played as another
+    /// version fails instead of drifting.
+    /// </summary>
+    public GameVersion? ImpliedGameVersion =>
+        GameVersion ?? (Iwad is { } iwad ? GameVersions.Default(ModeOf(iwad), MissionOf(iwad)) : null);
+
     public static RouteFile Parse(string path) => Parse(File.ReadLines(path), path);
 
     /// <summary>Parses the route's lines; <paramref name="path"/> names it in errors (<see cref="FormatException"/>).</summary>

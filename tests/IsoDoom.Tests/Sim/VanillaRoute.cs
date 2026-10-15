@@ -104,28 +104,23 @@ public sealed class VanillaRoute
     /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom2</c> (T10.1) or <c>testmap</c>.</summary>
     public string Iwad { get; }
 
-    /// <summary>The game mode vanilla plays the route in: Doom II's <c>commercial</c> for <c>doom2</c>, else DOOM1.WAD's <c>shareware</c>.</summary>
-    public GameMode GameMode => Commercial ? GameMode.commercial : GameMode.shareware;
+    /// <summary>The game mode vanilla plays the route in: Doom II's <c>commercial</c> for <c>doom2</c>, <c>tnt</c> and <c>plutonia</c>, else DOOM1.WAD's <c>shareware</c> (<see cref="RouteFile.ModeOf"/>).</summary>
+    public GameMode GameMode => RouteFile.ModeOf(Iwad);
 
-    /// <summary>T10.7: the mission vanilla plays the route in: Final Doom's for <c>tnt</c> and <c>plutonia</c>, Doom II's for <c>doom2</c>, else Doom's.</summary>
-    public GameMission GameMission => Iwad switch
-    {
-        "tnt" => GameMission.pack_tnt,
-        "plutonia" => GameMission.pack_plut,
-        "doom2" => GameMission.doom2,
-        _ => GameMission.doom,
-    };
+    /// <summary>T10.7: the mission vanilla plays the route in: Final Doom's for <c>tnt</c> and <c>plutonia</c>, Doom II's for <c>doom2</c>, else Doom's (<see cref="RouteFile.MissionOf"/>).</summary>
+    public GameMission GameMission => RouteFile.MissionOf(Iwad);
 
     /// <summary>Whether the route is on a <c>commercial</c> IWAD: Doom II's, or (T10.7) Final Doom's <c>tnt</c> or <c>plutonia</c>.</summary>
-    public bool Commercial => Iwad is "doom2" or "tnt" or "plutonia";
+    public bool Commercial => GameMode == GameMode.commercial;
 
     /// <summary>
-    /// T10.7: the executable vanilla plays the route as (<c>gameversion</c>
-    /// header, the reference's <c>-gameversion</c>), or the IWAD's default:
-    /// Final Doom's for <c>tnt</c> and <c>plutonia</c> (Chocolate Doom's), else
-    /// the game mode's (<see cref="World.gameversion"/>).
+    /// T10.7: the executable vanilla plays the route as: a demo's version
+    /// (the reference's <c>-gameversion</c>), else the file's
+    /// (<see cref="RouteFile.ImpliedGameVersion"/>: its <c>gameversion</c>
+    /// header, or the IWAD's default, Final Doom's for <c>tnt</c> and
+    /// <c>plutonia</c>), else (a demo lump) the IWAD's default.
     /// </summary>
-    public GameVersion? GameVersion => _gameversion ?? File.GameVersion ?? (Iwad is "tnt" or "plutonia" ? IsoDoom.Wad.GameVersion.exe_final : null);
+    public GameVersion GameVersion => _gameversion ?? File.ImpliedGameVersion ?? GameVersions.Default(GameMode, GameMission);
 
     /// <summary>A demo's version (<see cref="Demo(string, string, GameVersion?)"/>), over the file's.</summary>
     private GameVersion? _gameversion;
@@ -270,7 +265,7 @@ public sealed class VanillaRoute
             "testmap" => new WadArchive([WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad")]),
             _ => WadArchive.Open(RequireWad()),
         };
-        var world = new World(new SpawnSettings(GameMode, Skill, nomonsters: !Monsters, gameversion: GameVersion), Tweaks.Vanilla)
+        var world = new World(new SpawnSettings(GameMode, Skill, nomonsters: !Monsters, gameversion: GameVersion, gamemission: GameMission), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
             map31exists = wad.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check
@@ -565,7 +560,7 @@ public sealed class VanillaRoute
         var st = new StStuff(graphics is null ? new StStuff.Graphics() : StStuff.Graphics.Load(graphics), new DoomRandom());
         var hu = new HuStuff(graphics);
         st.ST_Start(world.players[world.consoleplayer]);
-        hu.HU_Start();
+        hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
         Assert.True(expected.Length == Cmds.Count,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
@@ -574,7 +569,7 @@ public sealed class VanillaRoute
             {
                 // T6.12: vanilla's P_SpawnPlayer starts them again for the reborn console player.
                 st.ST_Start(world.players[world.consoleplayer]);
-                hu.HU_Start();
+                hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
             }
             File.RunEvents(world, tic);
             world.G_Ticker(Cmds[tic]);

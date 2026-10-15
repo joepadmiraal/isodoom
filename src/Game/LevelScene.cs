@@ -2950,7 +2950,7 @@ public partial class LevelScene : Node3D, IGameHost
             }
             else
             {
-                world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters, gameversion: GameVersion), Tweaks)
+                world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission), Tweaks)
                 {
                     textures = Textures,
                     map31exists = Wad!.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check (T5.8)

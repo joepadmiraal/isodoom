@@ -164,6 +164,23 @@ public class FinalDoomTests
         Assert.Equal(GameVersion.exe_ultimate, new GameFlow(new GameFlowTests.Host(GameMode.retail), GameMode.retail, new DoomRandom()).gameversion);
     }
 
+    /// <summary>
+    /// T10.7 review: a world built without a version takes its IWAD's default
+    /// from its mode and mission (Final Doom's for TNT and Plutonia, whose
+    /// teleports then keep the height), and an explicit version wins.
+    /// </summary>
+    [Theory]
+    [InlineData(GameMode.shareware, GameMission.none, null, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.retail, GameMission.none, null, GameVersion.exe_ultimate)]
+    [InlineData(GameMode.commercial, GameMission.none, null, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.commercial, GameMission.doom2, null, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.commercial, GameMission.pack_tnt, null, GameVersion.exe_final)]
+    [InlineData(GameMode.commercial, GameMission.pack_plut, null, GameVersion.exe_final)]
+    [InlineData(GameMode.commercial, GameMission.pack_tnt, GameVersion.exe_doom_1_9, GameVersion.exe_doom_1_9)]
+    [InlineData(GameMode.commercial, GameMission.doom2, GameVersion.exe_final2, GameVersion.exe_final2)]
+    public void TheWorldDefaultsToTheIwadsVersion(GameMode mode, GameMission mission, GameVersion? version, GameVersion expected) =>
+        Assert.Equal(expected, new World(new SpawnSettings(mode, skill_t.sk_medium, gameversion: version, gamemission: mission), Tweaks.Vanilla).gameversion);
+
     /// <summary>d_englsh.h's first and last map names of TNT and Plutonia (hu_stuff.c <c>HU_TITLET</c>, <c>HU_TITLEP</c>).</summary>
     [Theory]
     [InlineData(GameMission.pack_tnt, 1, "level 1: system control")]
@@ -215,11 +232,13 @@ public class FinalDoomTests
         for (int map = 1; map <= 32; map++)
         {
             var clock = Stopwatch.StartNew();
-            var world = new World(new SpawnSettings(GameMode.commercial, skill_t.sk_hard, gameversion: GameVersion.exe_final), Tweaks.Vanilla)
+            // T10.7 review: no version, the identified mission's default (Final Doom's)
+            var world = new World(new SpawnSettings(GameMode.commercial, skill_t.sk_hard, gamemission: IwadIdentification.D_IdentifyVersion(wad).GameMission), Tweaks.Vanilla)
             {
                 textures = textures,
                 map31exists = true,
             };
+            Assert.Equal(GameVersion.exe_final, world.gameversion);
             world.P_InitPicAnims(textures, PicAnims.FlatNames(wad));
             world.G_DoLoadLevel(Level.Load(wad, $"MAP{map:00}"));
             Assert.True(clock.Elapsed.TotalSeconds < 1, $"MAP{map:00} took {clock.Elapsed.TotalMilliseconds:F0} ms");

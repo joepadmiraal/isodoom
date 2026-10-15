@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using IsoDoom.Game;
+using IsoDoom.Wad;
 using Xunit;
 
 namespace IsoDoom.Tests.Game;
@@ -62,5 +64,28 @@ public class RouteFileTests
     {
         FormatException e = Assert.Throws<FormatException>(() => RouteFile.Parse(["iwad doom1", line], "bad.route"));
         Assert.Contains("bad.route", e.Message);
+    }
+
+    /// <summary>
+    /// T10.7: the executable a route plays as, which the tests' routes and the
+    /// level script's <c>route</c> share: the header's, else the IWAD's default
+    /// (Final Doom's for <c>tnt</c> and <c>plutonia</c>), none without an IWAD.
+    /// </summary>
+    [Theory]
+    [InlineData("iwad tnt", null, GameVersion.exe_final)]
+    [InlineData("iwad plutonia", null, GameVersion.exe_final)]
+    [InlineData("iwad tnt", "1.9", GameVersion.exe_doom_1_9)]
+    [InlineData("iwad doom2", null, GameVersion.exe_doom_1_9)]
+    [InlineData("iwad doom2", "final", GameVersion.exe_final)]
+    [InlineData("iwad doom1", null, GameVersion.exe_doom_1_9)]
+    [InlineData("iwad synthetic", null, GameVersion.exe_doom_1_9)]
+    [InlineData("iwad testmap", "ultimate", GameVersion.exe_ultimate)]
+    [InlineData(null, null, null)]
+    [InlineData(null, "final2", GameVersion.exe_final2)]
+    public void ImpliesTheIwadsVersion(string? iwad, string? gameversion, GameVersion? expected)
+    {
+        string[] lines = [.. new[] { iwad, gameversion is null ? null : "gameversion " + gameversion }.OfType<string>(), "0 0 0 0"];
+        RouteFile r = RouteFile.Parse(lines, "test.route");
+        Assert.Equal(expected, r.ImpliedGameVersion);
     }
 }

@@ -53,7 +53,7 @@ public class AutomapTests
         World world = route.NewWorld(out WadArchive wad);
         var am = new AmMap(wad) { World = world };
         var hu = new HuStuff(wad);
-        hu.HU_Start(GameMission.doom, world.gameepisode, world.gamemap);
+        hu.HU_Start(GameMission.doom, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
         var fog = new FogOfWar(world.level); // ours, to report how far its mapped lines are vanilla's
         fog.See(world.players[0].mo!.x, world.players[0].mo!.y);
         int shots = 0, vanillaMapped = 0, oursMissing = 0, oursExtra = 0;

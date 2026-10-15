@@ -84,11 +84,12 @@ public sealed partial class World
     /// <summary>
     /// Chocolate Doom's <c>gameversion</c> (doomstat.c; T10.7): the executable
     /// whose behaviour the sim emulates, <see cref="SpawnSettings.gameversion"/>,
-    /// or without one the game mode's default (<see cref="GameVersions.Default"/>:
-    /// The Ultimate Doom's for <see cref="GameMode.retail"/>, else v1.9; the
-    /// host passes Final Doom's for TNT and Plutonia).
+    /// or without one the IWAD's default (<see cref="GameVersions.Default"/> of
+    /// the game mode and <see cref="SpawnSettings.gamemission"/>: Final Doom's
+    /// for TNT and Plutonia, The Ultimate Doom's for <see cref="GameMode.retail"/>,
+    /// else v1.9).
     /// </summary>
-    public GameVersion gameversion => settings.gameversion ?? GameVersions.Default(gamemode, GameMission.none);
+    public GameVersion gameversion => settings.gameversion ?? GameVersions.Default(gamemode, settings.gamemission);
     public bool netgame => settings.netgame;
     public int deathmatch => settings.deathmatch;
 

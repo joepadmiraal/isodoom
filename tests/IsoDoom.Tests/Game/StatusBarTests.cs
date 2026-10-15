@@ -290,7 +290,7 @@ public class StatusBarTests
     public void AMessageShowsForFourSeconds()
     {
         var hu = new HuStuff(null);
-        hu.HU_Start();
+        hu.HU_Start(GameMission.doom, 1, 1, GameVariant.vanilla, GameVersion.exe_doom_1_9);
         hu.HU_Ticker(World.GOTREDSKULL);
         Assert.Equal(World.GOTREDSKULL, hu.Message);
         for (int i = 1; i < HuStuff.HU_MSGTIMEOUT; i++)
@@ -320,7 +320,7 @@ public class StatusBarTests
     {
         var hu = new HuStuff(null);
         hu.HU_Ticker("one");
-        hu.HU_Start();
+        hu.HU_Start(GameMission.doom, 1, 1, GameVariant.vanilla, GameVersion.exe_doom_1_9);
         Assert.Null(hu.Message);
         Assert.Equal(HuStuff.HU_MSGTIMEOUT, hu.message_counter);
     }
@@ -380,7 +380,7 @@ public class StatusBarTests
         var st = new StStuff(StStuff.Graphics.Load(Synthetic()), new DoomRandom());
         var hu = new HuStuff(Synthetic());
         st.ST_Start(watched.players[0]);
-        hu.HU_Start();
+        hu.HU_Start(GameMission.doom, 1, 1, GameVariant.vanilla, GameVersion.exe_doom_1_9);
         for (int tic = 0; tic < route.Cmds.Count; tic++)
         {
             route.File.RunEvents(plain, tic);
