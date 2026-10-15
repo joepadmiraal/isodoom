@@ -136,7 +136,7 @@ public static class TestWads
     }
 
     [SuppressMessage("Security", "CA5351", Justification = "Identifies a WAD by its well-known MD5; no security use")]
-    private static string Md5Of(string path)
+    internal static string Md5Of(string path)
     {
         using FileStream stream = File.OpenRead(path);
         return Convert.ToHexStringLower(MD5.HashData(stream));

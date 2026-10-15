@@ -545,24 +545,24 @@ public sealed class VanillaRoute
         [.. world.sectors.Select(s => (s.floorheight, s.ceilingheight))];
 
     /// <summary>
-    /// Plays the route in a new world and fails at the first tic whose state
-    /// differs from vanilla's, naming the differing columns.
+    /// Plays the route in a new world (<see cref="NewWorld(out WadArchive)"/>,
+    /// with its events and reborns), yielding after each tic its index, the
+    /// world, the status bar and message line after their tickers, and the
+    /// tic's dump line (<see cref="Line"/>; the HUD's pixels hashed only with
+    /// <paramref name="graphics"/>, T6.11). T8.6: <see cref="RouteChecksums"/>
+    /// hashes the same lines, without graphics.
     /// </summary>
-    public void Check()
+    public IEnumerable<(int Tic, World World, StStuff St, HuStuff Hu, string Line)> Play(WadArchive? graphics)
     {
-        string[] expected = Reference();
         World world = NewWorld(out WadArchive wad);
         (int, int)[] mapHeights = MapHeights(world);
         string[] mapTextures = MapTextures(world);
         short[] mapLights = MapLights(world);
         // T6.11: the status bar and message line, as vanilla's P_SpawnPlayer starts them (after M_ClearRandom in G_InitNew).
-        WadArchive? graphics = HudGraphics();
         var st = new StStuff(graphics is null ? new StStuff.Graphics() : StStuff.Graphics.Load(graphics), new DoomRandom());
         var hu = new HuStuff(graphics);
         st.ST_Start(world.players[world.consoleplayer]);
         hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
-        Assert.True(expected.Length == Cmds.Count,
-            $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
             if (Reborn(world, wad))
@@ -581,7 +581,23 @@ public sealed class VanillaRoute
                     message = ev.message;
             }
             hu.HU_Ticker(message);
-            string actual = Line(world, mapHeights, mapTextures, mapLights, Hud(st, hu, graphics is not null));
+            yield return (tic, world, st, hu, Line(world, mapHeights, mapTextures, mapLights, Hud(st, hu, graphics is not null)));
+        }
+    }
+
+    /// <summary>
+    /// Plays the route in a new world and fails at the first tic whose state
+    /// differs from vanilla's, naming the differing columns.
+    /// </summary>
+    public void Check()
+    {
+        string[] expected = Reference();
+        WadArchive? graphics = HudGraphics();
+        Assert.True(expected.Length == Cmds.Count,
+            $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
+        foreach ((int tic, World world, StStuff st, HuStuff hu, string actual0) in Play(graphics))
+        {
+            string actual = actual0;
             if (graphics is not null)
                 WriteHud(Name, graphics, world, st, hu);
             if (actual == expected[tic])

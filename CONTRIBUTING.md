@@ -81,6 +81,14 @@ The output should report `drawn pixels compared`. Use `--viewer-check` the same 
 
 A change to the sim must keep the route, demo-sync and wipe tests passing tic for tic. With `wads/DOOM1.WAD` present, `dotnet test` compares the sim with vanilla's own dumps.
 
+`dotnet test` also plays every route of `tests/IsoDoom.Tests/Sim/Routes` (and the IWADs' demos) against the committed checksums in `Routes/checksums.txt` (`RouteChecksumTests`): the synthetic IWAD's and the test maps' always, as in CI, the others when their WAD is in `wads/`. A failure names the first second of the route whose state differs. If your change to the sim is meant to change play, regenerate them and commit the file with the change, saying why:
+
+```sh
+ISODOOM_UPDATE_CHECKSUMS=1 dotnet test --filter "FullyQualifiedName~RouteChecksumTests"
+```
+
+Without an IWAD that rewrites only the entries of the routes that ran (the synthetic IWAD's and the test maps'), so a change that also moves DOOM1's or Doom II's routes needs a maintainer with those WADs to rewrite theirs.
+
 ## Pull requests
 
 - Keep each pull request to one change, and say which task in `docs/TASKS.md` it does, if any.
