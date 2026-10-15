@@ -30,7 +30,9 @@ namespace IsoDoom.Tests.Sim;
 /// level by its exit or secret exit, in vanilla and the sim) and (T10.7)
 /// <c>gameversion NAME</c> (the executable both play it as, the reference's
 /// <c>-gameversion</c>: <see cref="GameVersion"/>; <c>iwad tnt|plutonia</c>,
-/// Final Doom's IWADs, play as <c>final</c> without one);
+/// Final Doom's IWADs, play as <c>final</c> without one; M9: <c>iwad doom</c>,
+/// The Ultimate Doom's IWAD (<see cref="TestWads.DoomPath"/>, <c>ExMy</c> of E1-E4,
+/// <c>retail</c>), as <c>ultimate</c>);
 /// then one line per <c>ticcmd</c>: <c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>,
 /// <c>forwardmove</c> and <c>sidemove</c> as signed bytes, <c>TURN</c> the
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
@@ -101,14 +103,27 @@ public sealed class VanillaRoute
 
     public string Name { get; }
     public string Path { get; }
-    /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom2</c> (T10.1) or <c>testmap</c>.</summary>
+    /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom2</c> (T10.1), <c>tnt</c>, <c>plutonia</c> (T10.7), <c>doom</c> (M9) or <c>testmap</c>.</summary>
     public string Iwad { get; }
 
-    /// <summary>The game mode vanilla plays the route in: Doom II's <c>commercial</c> for <c>doom2</c>, <c>tnt</c> and <c>plutonia</c>, else DOOM1.WAD's <c>shareware</c> (<see cref="RouteFile.ModeOf"/>).</summary>
-    public GameMode GameMode => RouteFile.ModeOf(Iwad);
+    /// <summary>
+    /// The game mode vanilla plays the route in: Doom II's <c>commercial</c> for <c>doom2</c>, <c>tnt</c> and <c>plutonia</c>,
+    /// (M9) <c>retail</c> for <c>doom</c>, else DOOM1.WAD's <c>shareware</c> (<see cref="RouteFile.ModeOf"/>), as
+    /// <see cref="GameVersion"/>'s executable plays it (<see cref="GameVersions.D_SetGameVersion"/>: <c>retail</c> as
+    /// <c>registered</c> before The Ultimate Doom's).
+    /// </summary>
+    public GameMode GameMode => Played.GameMode;
 
-    /// <summary>T10.7: the mission vanilla plays the route in: Final Doom's for <c>tnt</c> and <c>plutonia</c>, Doom II's for <c>doom2</c>, else Doom's (<see cref="RouteFile.MissionOf"/>).</summary>
-    public GameMission GameMission => RouteFile.MissionOf(Iwad);
+    /// <summary>
+    /// T10.7: the mission vanilla plays the route in: Final Doom's for <c>tnt</c> and <c>plutonia</c>, Doom II's for <c>doom2</c>,
+    /// else Doom's (<see cref="RouteFile.MissionOf"/>), as <see cref="GameVersion"/>'s executable plays it (Final Doom's
+    /// as Doom II's before Final Doom's).
+    /// </summary>
+    public GameMission GameMission => Played.GameMission;
+
+    /// <summary>The IWAD as <see cref="GameVersion"/>'s executable plays it (<see cref="GameVersions.D_SetGameVersion"/>).</summary>
+    private IwadInfo Played =>
+        GameVersions.D_SetGameVersion(new IwadInfo(RouteFile.ModeOf(Iwad), RouteFile.MissionOf(Iwad)), GameVersions.Cmdline(GameVersion)).Iwad;
 
     /// <summary>Whether the route is on a <c>commercial</c> IWAD: Doom II's, or (T10.7) Final Doom's <c>tnt</c> or <c>plutonia</c>.</summary>
     public bool Commercial => GameMode == GameMode.commercial;
@@ -120,13 +135,13 @@ public sealed class VanillaRoute
     /// header, or the IWAD's default, Final Doom's for <c>tnt</c> and
     /// <c>plutonia</c>), else (a demo lump) the IWAD's default.
     /// </summary>
-    public GameVersion GameVersion => _gameversion ?? File.ImpliedGameVersion ?? GameVersions.Default(GameMode, GameMission);
+    public GameVersion GameVersion => _gameversion ?? File.ImpliedGameVersion ?? GameVersions.Default(RouteFile.ModeOf(Iwad), RouteFile.MissionOf(Iwad));
 
     /// <summary>A demo's version (<see cref="Demo(string, string, GameVersion?)"/>), over the file's.</summary>
     private GameVersion? _gameversion;
 
     /// <summary>Whether the route's dumps are WAD-derived (DOOM1.WAD's or Doom II's: in <see cref="DumpDirEnvVar"/>, never committed).</summary>
-    public bool IdWad => Iwad is "doom1" or "doom2" or "tnt" or "plutonia";
+    public bool IdWad => Iwad is "doom1" or "doom" or "doom2" or "tnt" or "plutonia";
     public string Map { get; }
     public skill_t Skill { get; }
     /// <summary>The <c>start</c> header (map units, degrees), or null for the map's player 1 start (T5.6).</summary>
@@ -177,7 +192,9 @@ public sealed class VanillaRoute
     /// <see cref="Demo(string, bool)"/> for the IWAD <paramref name="iwad"/>:
     /// <c>doom1</c>, <c>doom2</c> or (T10.7) <c>tnt</c>/<c>plutonia</c>, whose
     /// dumps are <c>tnt-demo1.vanilla</c>, … (<c>demos.sh --tnt</c>,
-    /// <c>--plutonia</c>), played as Final Doom's executable; skips without the IWAD.
+    /// <c>--plutonia</c>), played as Final Doom's executable, or (M9) <c>doom</c>,
+    /// The Ultimate Doom's (<c>doom-demo1.vanilla</c>, … <c>demo4</c>: <c>demos.sh --doom</c>),
+    /// played as <c>ultimate</c>; skips without the IWAD.
     /// </summary>
     /// <remarks>
     /// T10.7: with <paramref name="gameversion"/>, played as that executable
@@ -190,10 +207,11 @@ public sealed class VanillaRoute
         {
             "doom1" => TestWads.RequireDoom1(),
             "doom2" => TestWads.RequireDoom2(),
+            "doom" => TestWads.RequireUltimateDoom(),
             _ => TestWads.RequireFinalDoom(iwad),
         };
         var wad = WadArchive.Open(path);
-        var route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump, commercial: iwad != "doom1");
+        var route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump, commercial: iwad is not ("doom1" or "doom"));
         string prefix = (iwad == "doom1" ? "" : iwad + "-") + (gameversion is { } v ? GameVersions.Cmdline(v) + "-" : "");
         return new VanillaRoute(prefix + lump.ToLowerInvariant(), iwad, route.Map!, (skill_t)(route.Skill - 1), null, 0, route.Cmds, route)
         {
@@ -206,8 +224,8 @@ public sealed class VanillaRoute
     {
         var route = RouteFile.Parse(path);
         string? iwad = route.Iwad, map = route.Map;
-        if (iwad is not ("synthetic" or "doom1" or "doom2" or "tnt" or "plutonia" or "testmap"))
-            throw new FormatException($"{path}: needs \"iwad synthetic|doom1|doom2|tnt|plutonia|testmap\" and a skill of 1-5");
+        if (iwad is not ("synthetic" or "doom1" or "doom" or "doom2" or "tnt" or "plutonia" or "testmap"))
+            throw new FormatException($"{path}: needs \"iwad synthetic|doom1|doom|doom2|tnt|plutonia|testmap\" and a skill of 1-5");
         if (iwad == "testmap")
         {
             if (map is null || !RouteTestMaps.Maps.ContainsKey(map))
@@ -219,6 +237,8 @@ public sealed class VanillaRoute
             map = (map ?? (commercial ? "MAP01" : "E1M1")).ToUpperInvariant();
             if (commercial != map.StartsWith("MAP", StringComparison.Ordinal))
                 throw new FormatException($"{path}: \"iwad doom2|tnt|plutonia\" play MAPxx maps, the others ExMy");
+            if (!commercial && (map.Length != 4 || map[0] != 'E' || map[2] != 'M' || map[1] < '1' || map[1] > (iwad == "doom" ? '4' : '3') || map[3] is < '1' or > '9'))
+                throw new FormatException($"{path}: map {map}: ExMy, E1-E3 (M9: E1-E4 for \"iwad doom\")");
         }
         return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds, route);
     }
@@ -277,10 +297,14 @@ public sealed class VanillaRoute
         return world;
     }
 
-    /// <summary>The path of the route's id IWAD (DOOM1.WAD, or Doom II's for <c>doom2</c>); skips the test without it.</summary>
+    /// <summary>
+    /// The path of the route's id IWAD (DOOM1.WAD, or Doom II's for <c>doom2</c>, or, M9, The Ultimate Doom's for <c>doom</c>:
+    /// a registered DOOM.WAD, without E4, skips); skips the test without it.
+    /// </summary>
     public string RequireWad() => Iwad switch
     {
         "doom2" => TestWads.RequireDoom2(),
+        "doom" => TestWads.RequireUltimateDoom(),
         "tnt" or "plutonia" => TestWads.RequireFinalDoom(Iwad),
         _ => TestWads.RequireDoom1(),
     };
@@ -464,6 +488,8 @@ public sealed class VanillaRoute
             return TestWads.Doom2Path is string doom2 ? WadArchive.Open(doom2) : null; // T10.1: Doom II's own
         if (Iwad is "tnt" or "plutonia")
             return (Iwad == "tnt" ? TestWads.TntPath : TestWads.PlutoniaPath) is string final ? WadArchive.Open(final) : null; // T10.7
+        if (Iwad == "doom")
+            return TestWads.UltimateDoomPath is string doom ? WadArchive.Open(doom) : null; // M9: The Ultimate Doom's own
         if (TestWads.Doom1Path is not string doom1)
             return null;
         var files = new List<WadFile> { WadFile.Open(doom1) };

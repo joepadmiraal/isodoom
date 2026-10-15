@@ -56,11 +56,14 @@ public static class SpecialRoutes
     // the teleports: crossed from the front only
     private static readonly HashSet<int> _teleports = [39, 97, 125, 126];
 
-    private static readonly Regex _name = new(@"^(?:(tnt|plutonia)-)?map(\d\d)-(line|sector)(\d+)$", RegexOptions.CultureInvariant);
+    // (M9: doom-exmy-… on The Ultimate Doom's IWAD)
+    private const string MapPart = @"(?:(?:(?<iwad>tnt|plutonia)-)?map(?<map>\d\d)|(?<iwad>doom)-(?<map>e[1-4]m[1-9]))";
 
-    private static readonly Regex _exitName = new(@"^(?:(tnt|plutonia)-)?map(\d\d)-walk-exit$", RegexOptions.CultureInvariant);
+    private static readonly Regex _name = new($@"^{MapPart}-(?<kind>line|sector)(?<index>\d+)$", RegexOptions.CultureInvariant);
 
-    /// <summary>Whether <paramref name="name"/> is a walked exit route's name (<c>mapNN-walk-exit</c>; T10.7: <c>tnt-</c> or <c>plutonia-</c> before it on Final Doom's IWADs).</summary>
+    private static readonly Regex _exitName = new($@"^{MapPart}-walk-exit$", RegexOptions.CultureInvariant);
+
+    /// <summary>Whether <paramref name="name"/> is a walked exit route's name (<c>mapNN-walk-exit</c>; T10.7: <c>tnt-</c> or <c>plutonia-</c> before it on Final Doom's IWADs; M9: <c>doom-exmy-walk-exit</c> on The Ultimate Doom's).</summary>
     public static bool IsExitName(string name) => _exitName.IsMatch(name);
 
     /// <summary>
@@ -73,9 +76,8 @@ public static class SpecialRoutes
     public static (string Header, Action<Steer, Action<string>> Run) MakeExit(string name)
     {
         (string iwad, string map) = IwadAndMap(name);
-        string game = iwad switch { "tnt" => "TNT: Evilution", "plutonia" => "The Plutonia Experiment", _ => "Doom II" };
         string header = $"""
-# {game} {map} ({(iwad == "doom2" ? "T10.6" : "T10.7")}): from the map's start, no monsters: the player walks to the exit,
+# {Game(iwad)} {map} ({Task(iwad)}): from the map's start, no monsters: the player walks to the exit,
 # through the doors on the way (and the keys they need), and leaves the level, the last
 # tic. Written by tools/RouteGen ({name}).
 iwad {iwad}
@@ -325,11 +327,29 @@ exit normal
     /// <summary>Whether <paramref name="name"/> is a special route's name (<c>mapNN-lineK</c>, <c>mapNN-sectorK</c>; T10.7: <c>tnt-</c> or <c>plutonia-</c> before it on Final Doom's IWADs).</summary>
     public static bool IsName(string name) => _name.IsMatch(name);
 
-    /// <summary>T10.7: the IWAD (<c>doom2</c>, <c>tnt</c> or <c>plutonia</c>) and map of a special or walked exit route's name.</summary>
+    /// <summary>The game an <c>iwad</c> header names, for a route's comment.</summary>
+    private static string Game(string iwad) => iwad switch
+    {
+        "tnt" => "TNT: Evilution",
+        "plutonia" => "The Plutonia Experiment",
+        "doom" => "The Ultimate Doom",
+        _ => "Doom II",
+    };
+
+    /// <summary>The task that brought a route kind to an IWAD, for a route's comment.</summary>
+    private static string Task(string iwad) => iwad switch
+    {
+        "doom2" => "T10.6",
+        "doom" => "M9",
+        _ => "T10.7",
+    };
+
+    /// <summary>T10.7: the IWAD (<c>doom2</c>, <c>tnt</c> or <c>plutonia</c>; M9: <c>doom</c>) and map of a special or walked exit route's name.</summary>
     public static (string Iwad, string Map) IwadAndMap(string name)
     {
         Match mt = _name.Match(name) is { Success: true } m ? m : _exitName.Match(name);
-        return (mt.Groups[1].Value is { Length: > 0 } iwad ? iwad : "doom2", "MAP" + mt.Groups[2].Value);
+        string iwad = mt.Groups["iwad"].Value is { Length: > 0 } i ? i : "doom2";
+        return (iwad, iwad == "doom" ? mt.Groups["map"].Value.ToUpperInvariant() : "MAP" + mt.Groups["map"].Value);
     }
 
     /// <summary>The route <paramref name="name"/>: its header, start and steering, or an exception when it cannot be made.</summary>
@@ -337,10 +357,10 @@ exit normal
     {
         Match mt = _name.Match(name);
         (string iwad, string map) = IwadAndMap(name);
-        int index = int.Parse(mt.Groups[4].Value, CultureInfo.InvariantCulture);
+        int index = int.Parse(mt.Groups["index"].Value, CultureInfo.InvariantCulture);
         var probe = new Steer(wad(), map);
-        return mt.Groups[3].Value == "line" ? LineRoute(wad, probe, map, name, index, iwad)
-            : SectorRoute(probe, map, name, index, IsoDoom.Map.Level.Load(wad(), map).Sectors[index].Special);
+        return mt.Groups["kind"].Value == "line" ? LineRoute(wad, probe, map, name, index, iwad)
+            : SectorRoute(probe, map, name, index, IsoDoom.Map.Level.Load(wad(), map).Sectors[index].Special, iwad);
     }
 
     private static (string, (int, int, int), Action<Steer, Action<string>>) LineRoute(Func<WadArchive> wad, Steer probe, string map, string name, int index, string iwad = "doom2")
@@ -377,9 +397,8 @@ exit normal
                     string kind = walk ? "walks across" : shoot ? "shoots" : "uses";
                     // (T10.7: the switch exits too, 11 and 51: the use leaves the level, the route's last tic)
                     string exit = special is 52 or 124 or 11 or 51 ? $"exit {(special is 124 or 51 ? "secret" : "normal")}\n" : "";
-                    string game = iwad switch { "tnt" => "TNT: Evilution", "plutonia" => "The Plutonia Experiment", _ => "Doom II" };
                     string header = $"""
-# {game} {map} ({(iwad == "doom2" ? "T10.6" : "T10.7")}): started beside line {index} (special {special}, tag {l.tag}), on its
+# {Game(iwad)} {map} ({Task(iwad)}): started beside line {index} (special {special}, tag {l.tag}), on its
 # {(side > 0 ? "front" : "back")}, the player {kind} it, then waits for the movers it set going
 # (at most {MaxWait} tics). Written by tools/RouteGen ({name}).
 iwad {iwad}
@@ -450,7 +469,7 @@ map {map}
         throw new InvalidOperationException($"{map} line {index} (special {special}): no place to start beside it from which it works");
     }
 
-    private static (string, (int, int, int), Action<Steer, Action<string>>) SectorRoute(Steer probe, string map, string name, int index, int special)
+    private static (string, (int, int, int), Action<Steer, Action<string>>) SectorRoute(Steer probe, string map, string name, int index, int special, string iwad = "doom2")
     {
         sector_t s = probe.World.sectors[index]; // (P_SpawnSpecials clears some specials: the map's)
         if (special == 0)
@@ -478,9 +497,9 @@ map {map}
             throw new InvalidOperationException($"{map} sector {index}: no place to stand in it");
         int wait = special == 10 ? SectorDoorWait : SectorWait;
         string header = $"""
-# Doom II {map} (T10.6): started {(outside ? "beside" : "in")} sector {index} (special {special}), the player stands
+# {Game(iwad)} {map} ({Task(iwad)}): started {(outside ? "beside" : "in")} sector {index} (special {special}), the player stands
 # there for {wait} tics. Written by tools/RouteGen ({name}).
-iwad doom2
+iwad {iwad}
 map {map}
 
 """;

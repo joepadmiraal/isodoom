@@ -261,6 +261,98 @@ index e25accc..d174cf3 100644
  
  void ST_doPaletteStuff(void)
  {
+diff --git a/doomgeneric/v_video.c b/doomgeneric/v_video.c
+index 6db28aa..7aaadff 100644
+--- a/doomgeneric/v_video.c
++++ b/doomgeneric/v_video.c
+@@ -145,9 +145,15 @@ void V_DrawPatch(int x, int y, patch_t *patch)
+     byte *dest;
+     byte *source;
+     int w;
++    boolean wide;
+ 
+     y -= SHORT(patch->topoffset);
+     x -= SHORT(patch->leftoffset);
++    // IsoDoom (M9): a patch wider than the screen (the 2024 re-release's
++    // widescreen STBAR, TITLEPIC, ...) is centred on it and cropped to it.
++    wide = SHORT(patch->width) > SCREENWIDTH;
++    if (wide)
++        x -= (SHORT(patch->width) - SCREENWIDTH) / 2;
+ 
+     // haleyjd 08/28/10: Strife needs silent error checking here.
+     if(patchclip_callback)
+@@ -157,8 +163,7 @@ void V_DrawPatch(int x, int y, patch_t *patch)
+     }
+ 
+ #ifdef RANGECHECK
+-    if (x < 0
+-     || x + SHORT(patch->width) > SCREENWIDTH
++    if ((!wide && (x < 0 || x + SHORT(patch->width) > SCREENWIDTH))
+      || y < 0
+      || y + SHORT(patch->height) > SCREENHEIGHT)
+     {
+@@ -166,7 +171,7 @@ void V_DrawPatch(int x, int y, patch_t *patch)
+     }
+ #endif
+ 
+-    V_MarkRect(x, y, SHORT(patch->width), SHORT(patch->height));
++    V_MarkRect(wide ? 0 : x, y, wide ? SCREENWIDTH : SHORT(patch->width), SHORT(patch->height));
+ 
+     col = 0;
+     desttop = dest_screen + y * SCREENWIDTH + x;
+@@ -175,6 +180,8 @@ void V_DrawPatch(int x, int y, patch_t *patch)
+ 
+     for ( ; col<w ; x++, col++, desttop++)
+     {
++        if (wide && (x < 0 || x >= SCREENWIDTH))
++            continue;
+         column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+ 
+         // step through the posts in a column
+@@ -209,9 +216,15 @@ void V_DrawPatchFlipped(int x, int y, patch_t *patch)
+     byte *dest;
+     byte *source; 
+     int w; 
++    boolean wide;
+  
+     y -= SHORT(patch->topoffset); 
+     x -= SHORT(patch->leftoffset); 
++    // IsoDoom (M9): a patch wider than the screen (the 2024 re-release's
++    // widescreen STBAR, TITLEPIC, ...) is centred on it and cropped to it.
++    wide = SHORT(patch->width) > SCREENWIDTH;
++    if (wide)
++        x -= (SHORT(patch->width) - SCREENWIDTH) / 2;
+ 
+     // haleyjd 08/28/10: Strife needs silent error checking here.
+     if(patchclip_callback)
+@@ -221,8 +234,7 @@ void V_DrawPatchFlipped(int x, int y, patch_t *patch)
+     }
+ 
+ #ifdef RANGECHECK 
+-    if (x < 0
+-     || x + SHORT(patch->width) > SCREENWIDTH
++    if ((!wide && (x < 0 || x + SHORT(patch->width) > SCREENWIDTH))
+      || y < 0
+      || y + SHORT(patch->height) > SCREENHEIGHT)
+     {
+@@ -230,7 +242,7 @@ void V_DrawPatchFlipped(int x, int y, patch_t *patch)
+     }
+ #endif
+ 
+-    V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height));
++    V_MarkRect(wide ? 0 : x, y, wide ? SCREENWIDTH : SHORT(patch->width), SHORT(patch->height));
+ 
+     col = 0;
+     desttop = dest_screen + y * SCREENWIDTH + x;
+@@ -239,6 +251,8 @@ void V_DrawPatchFlipped(int x, int y, patch_t *patch)
+ 
+     for ( ; col<w ; x++, col++, desttop++)
+     {
++        if (wide && (x < 0 || x >= SCREENWIDTH))
++            continue;
+         column = (column_t *)((byte *)patch + LONG(patch->columnofs[w-1-col]));
+ 
+         // step through the posts in a column
 diff --git a/doomgeneric/wi_stuff.c b/doomgeneric/wi_stuff.c
 index ddb9a66..b08ac62 100644
 --- a/doomgeneric/wi_stuff.c

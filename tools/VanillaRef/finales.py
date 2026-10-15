@@ -3,7 +3,7 @@
 
     finales.py REF DOOM1.WAD OUTDIR ROUTE[@PRESSES]... [--images DIR TICS]
 
-Plays each DOOM1.WAD route that ends an episode (an exit header on ExM8,
+Plays each DOOM1.WAD (or, M9, The Ultimate Doom's: iwad doom) route that ends an episode (an exit header on ExM8,
 tests/IsoDoom.Tests/Sim/Routes), or (T10.1) each Doom II route whose exit
 leads to a text screen (MAP06, MAP11 and MAP20's exits, MAP15's and MAP31's
 secret exits), in the vanilla reference (REF, dump.c built by build.sh) as
@@ -89,7 +89,7 @@ def main():
         doom2 = head['iwad'] in routes.COMMERCIAL  # (T10.7: Final Doom's flow is Doom II's)
         if doom2 and (head['exit'] is None or not text_screen(head) and not cast(head)):
             sys.exit(f'{route}: only Doom II routes whose exit leads to a text screen or the cast call')
-        if not doom2 and (head['iwad'] != 'doom1' or head['exit'] is None or not (head['map'] or 'E1M1').upper().endswith('M8')):
+        if not doom2 and (head['iwad'] not in ('doom1', 'doom') or head['exit'] is None or not (head['map'] or 'E1M1').upper().endswith('M8')):
             sys.exit(f'{route}: only DOOM1.WAD routes with an exit header on an episode\'s last map')
         schedules = [p for p in presses.split('@') if p] if presses else [CAST, CAST_READ] if doom2 and cast(head) \
             else [DEFAULT, READ] if doom2 else [DEFAULT]

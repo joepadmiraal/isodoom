@@ -13,7 +13,8 @@
 # IntermissionTests compares the game's intermission with them. Needs
 # DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD), and for Doom II's routes Doom II's
 # IWAD (wads/doom2.wad or $ISODOOM_DOOM2_WAD), for Final Doom's theirs (wads/ or
-# $ISODOOM_TNT_WAD, $ISODOOM_PLUTONIA_WAD).
+# $ISODOOM_TNT_WAD, $ISODOOM_PLUTONIA_WAD), for The Ultimate Doom's (M9, iwad doom)
+# its IWAD (wads/doom.wad or $ISODOOM_DOOM_WAD).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -28,7 +29,7 @@ out=${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes}
 if [ $# -eq 0 ]; then
     for r in "$repo"/tests/IsoDoom.Tests/Sim/Routes/*.route; do
         body=$(sed -e 's/#.*//' "$r")
-        if grep -qE '^ *iwad +(doom[12]|tnt|plutonia)' <<< "$body" && grep -qE '^ *exit +' <<< "$body" && ! grep -qiE '^ *map +e[1-4]m8' <<< "$body"; then
+        if grep -qE '^ *iwad +(doom[12]?|tnt|plutonia) *$' <<< "$body" && grep -qE '^ *exit +' <<< "$body" && ! grep -qiE '^ *map +e[1-4]m8' <<< "$body"; then
             set -- "$@" "$r"
         fi
     done

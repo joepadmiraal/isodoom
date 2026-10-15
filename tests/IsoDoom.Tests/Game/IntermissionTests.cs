@@ -155,7 +155,7 @@ public class IntermissionTests
             Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
             return;
         }
-        Assert.Equal((gamestate_t.GS_LEVEL, World.MapName(route.GameMode, 1, wi.wbs!.next + 1)), (flow.gamestate, world.level.Name));
+        Assert.Equal((gamestate_t.GS_LEVEL, World.MapName(route.GameMode, route.GameMode == GameMode.commercial ? 1 : route.Map[1] - '0', wi.wbs!.next + 1)), (flow.gamestate, world.level.Name));
     }
 
     /// <summary>T10.1: whether Doom II's <c>G_WorldDone</c> shows a text screen after the route's exit (maps 6, 11, 20, 30, and the secret exits of 15 and 31).</summary>

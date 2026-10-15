@@ -3,7 +3,7 @@
 
     intermissions.py REF DOOM1.WAD OUTDIR ROUTE[@PRESSES]... [--images DIR TICS]
 
-Plays each DOOM1.WAD or (T10.1) Doom II exit route (a .route file with an exit header,
+Plays each DOOM1.WAD, (T10.1) Doom II, (T10.7) Final Doom or (M9) The Ultimate Doom exit route (a .route file with an exit header,
 tests/IsoDoom.Tests/Sim/Routes) in the vanilla reference (REF, dump.c built
 by build.sh) as a v1.9 demo (routes.py's), followed by the intermission's
 ticcmds: nothing but BT_USE pressed for one tic at each intermission tic
@@ -41,7 +41,7 @@ def main():
         route, _, presses = spec.partition('@')
         head, cmds = routes.parse(route)
         if not routes.id_wad(head) or head['exit'] is None:
-            sys.exit(f'{route}: only DOOM1.WAD or Doom II routes with an exit header')
+            sys.exit(f'{route}: only the id IWADs\' routes with an exit header')
         schedules = [p for p in presses.split('@') if p] if presses else [DEFAULT, SKIP]
         name = os.path.splitext(os.path.basename(route))[0]
         for n, schedule in enumerate(schedules):

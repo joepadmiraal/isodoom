@@ -59,7 +59,7 @@ public sealed class Steer
 
     public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
     {
-        World = new World(new SpawnSettings(ModeOf(map), skill, nomonsters: !monsters, gamemission: MissionOf(wad, map)), Tweaks.Vanilla)
+        World = new World(new SpawnSettings(ModeOf(wad, map), skill, nomonsters: !monsters, gamemission: MissionOf(wad, map)), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
@@ -80,6 +80,20 @@ public sealed class Steer
 
     /// <summary>Each WAD's mission (boxed), identified once (<see cref="MissionOf"/>).</summary>
     private static readonly ConditionalWeakTable<WadArchive, object> _missions = new();
+
+    /// <summary>
+    /// M9: the game mode of a route on <paramref name="map"/> of <paramref name="wad"/>:
+    /// <see cref="ModeOf(string)"/>, but The Ultimate Doom's <c>retail</c> on its IWAD
+    /// (the routes' <c>iwad doom</c>, played as <c>ultimate</c>).
+    /// </summary>
+    private static GameMode ModeOf(WadArchive wad, string map) =>
+        ModeOf(map) != GameMode.commercial && wad.Files[0].Type == WadType.Iwad
+            && (GameMode)_modes.GetValue(wad, w => IwadIdentification.D_IdentifyVersion(w).GameMode) == GameMode.retail
+            ? GameMode.retail
+            : ModeOf(map);
+
+    /// <summary>Each WAD's game mode (boxed), identified once (<see cref="ModeOf(WadArchive, string)"/>).</summary>
+    private static readonly ConditionalWeakTable<WadArchive, object> _modes = new();
 
     /// <summary>T10.1: the game mode a map name implies: <c>MAPxx</c> is Doom II's (<c>commercial</c>), anything else DOOM1.WAD's (<c>shareware</c>).</summary>
     public static GameMode ModeOf(string map) =>

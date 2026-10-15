@@ -62,13 +62,16 @@ public sealed class HudScreen
     /// <paramref name="x"/>, <paramref name="y"/> less its offsets; the
     /// pixels outside the strip are dropped (vanilla's are errors). A null
     /// patch (a lump the WAD lacks, e.g. the synthetic IWAD's) draws nothing.
+    /// M9: a patch wider than vanilla's screen (the 2024 re-release's
+    /// widescreen <c>STBAR</c>, <c>TITLEPIC</c>, …) is centred on it
+    /// (<see cref="WideShift"/>), as the reference's patched one (SPEC §12 M9).
     /// </summary>
     [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]
     public void V_DrawPatch(int x, int y, IndexedImage? patch)
     {
         if (patch is null)
             return;
-        x -= patch.LeftOffset;
+        x -= patch.LeftOffset + WideShift(patch);
         y -= patch.TopOffset + Top;
         for (int py = 0; py < patch.Height; py++)
         {
@@ -87,6 +90,14 @@ public sealed class HudScreen
     }
 
     /// <summary>
+    /// M9: how far left a patch wider than vanilla's 320-wide screen is moved so
+    /// its middle 320 columns cover it (the 2024 re-release's widescreen
+    /// graphics: 560 or 576 wide, their 4:3 picture in the middle); 0 for the others.
+    /// </summary>
+    public static int WideShift(IndexedImage patch) =>
+        patch.Width > SCREENWIDTH ? (patch.Width - SCREENWIDTH) / 2 : 0;
+
+    /// <summary>
     /// v_video.c <c>V_DrawPatchFlipped</c> (T10.5, the cast call's): as
     /// <see cref="V_DrawPatch"/> with the patch's columns mirrored (column
     /// <c>w - 1 - col</c> at <c>x + col</c>; the offsets as they are).
@@ -96,7 +107,7 @@ public sealed class HudScreen
     {
         if (patch is null)
             return;
-        x -= patch.LeftOffset;
+        x -= patch.LeftOffset + WideShift(patch);
         y -= patch.TopOffset + Top;
         for (int py = 0; py < patch.Height; py++)
         {

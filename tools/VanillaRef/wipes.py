@@ -3,7 +3,7 @@
 
     wipes.py REF DOOM1.WAD OUTDIR ROUTE... [--images DIR STEPS]
 
-Plays each DOOM1.WAD or (T10.1) Doom II route (tests/IsoDoom.Tests/Sim/Routes) in the vanilla
+Plays each DOOM1.WAD, (T10.1) Doom II, (T10.7) Final Doom or (M9) The Ultimate Doom route (tests/IsoDoom.Tests/Sim/Routes) in the vanilla
 reference (REF, dump.c built by build.sh) as a v1.9 demo (routes.py's) with
 the game drawn (not -nodraw's nodrawers, so d_main.c's D_Display wipes),
 followed by a tail of ticcmds: for a route that exits to an intermission,

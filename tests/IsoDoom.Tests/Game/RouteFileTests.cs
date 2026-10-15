@@ -78,6 +78,8 @@ public class RouteFileTests
     [InlineData("iwad doom2", null, GameVersion.exe_doom_1_9)]
     [InlineData("iwad doom2", "final", GameVersion.exe_final)]
     [InlineData("iwad doom1", null, GameVersion.exe_doom_1_9)]
+    [InlineData("iwad doom", null, GameVersion.exe_ultimate)]
+    [InlineData("iwad doom", "1.9", GameVersion.exe_doom_1_9)]
     [InlineData("iwad synthetic", null, GameVersion.exe_doom_1_9)]
     [InlineData("iwad testmap", "ultimate", GameVersion.exe_ultimate)]
     [InlineData(null, null, null)]

@@ -185,7 +185,8 @@ public static class RouteChecksums
 
     /// <summary>The demos whose checksums are committed, as <see cref="VanillaRoute.Demo(string, string, IsoDoom.Wad.GameVersion?)"/> names them.</summary>
     public static readonly string[] Demos =
-        [.. new[] { "", "doom2-", "doom2-final-", "tnt-", "plutonia-" }.SelectMany(p => new[] { 1, 2, 3 }.Select(n => $"{p}demo{n}"))];
+        [.. new[] { "", "doom2-", "doom2-final-", "tnt-", "plutonia-" }.SelectMany(p => new[] { 1, 2, 3 }.Select(n => $"{p}demo{n}")),
+            .. new[] { 1, 2, 3, 4 }.Select(n => $"doom-demo{n}")]; // (M9: The Ultimate Doom's four)
 
     /// <summary>The demo <paramref name="name"/> of <see cref="Demos"/> as a route (skips without its IWAD).</summary>
     public static VanillaRoute Demo(string name)
@@ -198,6 +199,7 @@ public static class RouteChecksums
             "doom2-final-" => VanillaRoute.Demo(lump, "doom2", IsoDoom.Wad.GameVersion.exe_final),
             "tnt-" => VanillaRoute.Demo(lump, "tnt"),
             "plutonia-" => VanillaRoute.Demo(lump, "plutonia"),
+            "doom-" => VanillaRoute.Demo(lump, "doom"),
             _ => throw new ArgumentException($"no demo {name}", nameof(name)),
         };
     }

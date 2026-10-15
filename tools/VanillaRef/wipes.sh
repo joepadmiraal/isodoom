@@ -1,7 +1,7 @@
 #!/bin/bash
 # The vanilla screen wipe reference (T7.1a; dev tool). Usage:
 #   tools/VanillaRef/wipes.sh [ROUTE.route...] [--images DIR STEPS]
-# Plays each DOOM1.WAD or Doom II route (default: e1m1-exit, e1m3-secret-exit,
+# Plays each DOOM1.WAD, Doom II, Final Doom or (M9) The Ultimate Doom route (default: e1m1-exit, e1m3-secret-exit,
 # e1m8-exit, e1m8-death, and T10.1's Doom II flow: map01-exit, map06-exit,
 # map15-secret-exit, map31-exit, map31-secret-exit, map32-exit, and T10.5's
 # map30-icon, to the cast call, and T10.7's Final Doom MAP01s: tnt-map01-walk-exit,
@@ -16,7 +16,8 @@
 # WipeTests compares the game's wipes with the dumps. Needs DOOM1.WAD
 # (wads/ or $ISODOOM_DOOM1_WAD), and Doom II's IWAD for its routes
 # (wads/doom2.wad or $ISODOOM_DOOM2_WAD), Final Doom's for theirs (wads/ or
-# $ISODOOM_TNT_WAD, $ISODOOM_PLUTONIA_WAD).
+# $ISODOOM_TNT_WAD, $ISODOOM_PLUTONIA_WAD), The Ultimate Doom's for its (M9, iwad
+# doom: wads/doom.wad or $ISODOOM_DOOM_WAD).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)

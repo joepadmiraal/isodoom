@@ -52,17 +52,37 @@ public static class Program
         return WadArchive.Open(File.Exists(upper) ? upper : Path.Combine(RepoRoot(), "wads", which + ".wad"));
     }
 
+    /// <summary>M9: The Ultimate Doom's IWAD (<c>ISODOOM_DOOM_WAD</c>, else <c>wads/DOOM.WAD</c> or <c>wads/doom.wad</c>, as the tests' <c>TestWads</c>).</summary>
+    private static WadArchive Doom()
+    {
+        if (Environment.GetEnvironmentVariable("ISODOOM_DOOM_WAD") is { Length: > 0 } p)
+            return WadArchive.Open(p);
+        string upper = Path.Combine(RepoRoot(), "wads", "DOOM.WAD");
+        return WadArchive.Open(File.Exists(upper) ? upper : Path.Combine(RepoRoot(), "wads", "doom.wad"));
+    }
+
+    /// <summary>The IWAD of an <c>iwad</c> header's name: <c>doom2</c>, <c>tnt</c>, <c>plutonia</c> or (M9) <c>doom</c>.</summary>
+    private static Func<WadArchive> IwadNamed(string iwad) => iwad switch
+    {
+        "doom2" => Doom2,
+        "doom" => Doom,
+        _ => () => FinalDoom(iwad),
+    };
+
     private static WadArchive Tnt() => FinalDoom("tnt");
 
     private static WadArchive Plutonia() => FinalDoom("plutonia");
 
     /// <summary>
     /// The IWAD of a map name: Doom II's for <c>MAPxx</c>, else DOOM1.WAD
-    /// (<see cref="Steer.ModeOf"/>); T10.7: <c>ROUTEGEN_IWAD=tnt|plutonia</c>
-    /// gives Final Doom's for <c>MAPxx</c> (<c>--info</c>, <c>--probe</c>, …).
+    /// (<see cref="Steer.ModeOf(string)"/>); T10.7: <c>ROUTEGEN_IWAD=tnt|plutonia</c>
+    /// gives Final Doom's for <c>MAPxx</c> (<c>--info</c>, <c>--probe</c>, …);
+    /// M9: <c>ROUTEGEN_IWAD=doom</c> The Ultimate Doom's for <c>ExMy</c>, which
+    /// E2-E4 maps get without it (DOOM1.WAD has only E1).
     /// </summary>
     private static WadArchive IwadOf(string map) =>
-        Steer.ModeOf(map) != GameMode.commercial ? Doom1()
+        Steer.ModeOf(map) != GameMode.commercial
+            ? Environment.GetEnvironmentVariable("ROUTEGEN_IWAD") == "doom" || !map.StartsWith("E1", StringComparison.OrdinalIgnoreCase) ? Doom() : Doom1()
             : Environment.GetEnvironmentVariable("ROUTEGEN_IWAD") is "tnt" or "plutonia" ? FinalDoom(Environment.GetEnvironmentVariable("ROUTEGEN_IWAD")!)
             : Doom2();
 
@@ -2214,7 +2234,7 @@ exit normal
             // T10.6: a special's route (mapNN-lineK, mapNN-sectorK), started beside it
             // (T10.7: tnt-mapNN-lineK, plutonia-mapNN-lineK on Final Doom's IWADs)
             (string specialIwad, string specialMap) = SpecialRoutes.IwadAndMap(args[0]);
-            Func<WadArchive> specialWad = specialIwad == "doom2" ? Doom2 : () => FinalDoom(specialIwad);
+            Func<WadArchive> specialWad = IwadNamed(specialIwad);
             (string specialHeader, (int X, int Y, int Angle) specialStart, Action<Steer, Action<string>> specialRun) = SpecialRoutes.Make(specialWad, args[0]);
             _scripts[args[0]] = new Script(specialWad, specialMap, specialHeader, specialRun, specialStart);
         }
@@ -2223,7 +2243,7 @@ exit normal
             // T10.6: a map walked from its start to the exit (mapNN-walk-exit)
             (string exitHeader, Action<Steer, Action<string>> exitRun) = SpecialRoutes.MakeExit(args[0]);
             (string exitIwad, string exitMap) = SpecialRoutes.IwadAndMap(args[0]);
-            _scripts[args[0]] = new Script(exitIwad == "doom2" ? Doom2 : () => FinalDoom(exitIwad), exitMap, exitHeader, exitRun);
+            _scripts[args[0]] = new Script(IwadNamed(exitIwad), exitMap, exitHeader, exitRun);
         }
         if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))
         {

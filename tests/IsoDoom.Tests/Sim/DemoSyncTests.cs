@@ -43,6 +43,18 @@ public class DemoSyncTests
     public void Doom2AsFinalDoomStaysInSyncWithVanilla(string demo) =>
         VanillaRoute.Demo(demo, "doom2", IsoDoom.Wad.GameVersion.exe_final).Check();
 
+    /// <summary>
+    /// M9: The Ultimate Doom's four demos (E1M5, E2M2, E3M5, E4M2), played as
+    /// <c>ultimate</c>, to their end; dumps <c>doom-demoN.vanilla</c>
+    /// (<c>tools/VanillaRef/demos.sh --doom</c>). Skips without The Ultimate Doom's IWAD.
+    /// </summary>
+    [Theory]
+    [InlineData("DEMO1")]
+    [InlineData("DEMO2")]
+    [InlineData("DEMO3")]
+    [InlineData("DEMO4")]
+    public void UltimateDoomStaysInSyncWithVanilla(string demo) => VanillaRoute.Demo(demo, "doom").Check();
+
     /// <summary>DOOM1.WAD v1.9's demos: their maps, Hurt Me Plenty, monsters, and their lengths.</summary>
     [Theory]
     [InlineData("DEMO1", "E1M5", 5026)]

@@ -16,7 +16,9 @@ on Doom II's IWAD (doom2_wad(): $ISODOOM_DOOM2_WAD, else wads/doom2.wad or
 wads/DOOM2.WAD) and its dump goes to OUTDIR too; T10.7: likewise a Final Doom route
 (iwad tnt|plutonia: $ISODOOM_TNT_WAD / $ISODOOM_PLUTONIA_WAD, else wads/), and a
 gameversion header (1.9, ultimate, final, ...) is the reference's -gameversion
-(Final Doom's IWADs default to final, as Chocolate Doom). A route with the monsters header (T6.4)
+(Final Doom's IWADs default to final, as Chocolate Doom). M9: an iwad doom route
+plays on The Ultimate Doom's IWAD (doom_wad(): $ISODOOM_DOOM_WAD, else
+wads/doom.wad or wads/DOOM.WAD; ExMy of E1-E4, as ultimate by default) and its dump goes to OUTDIR. A route with the monsters header (T6.4)
 plays without nomonsters, and its damage/alert (and, T6.5, rocket) lines go
 to the reference as $DUMP_EVENTS (dump.c), run before their tics.
 """
@@ -51,6 +53,18 @@ def final_wad(which):
     sys.exit(f'No {which.upper()}.WAD: put it in wads/ or set ISODOOM_{which.upper()}_WAD')
 
 
+def doom_wad():
+    """M9: The Ultimate Doom's IWAD: $ISODOOM_DOOM_WAD, else wads/doom.wad or wads/DOOM.WAD (as the tests' TestWads)."""
+    env = os.environ.get('ISODOOM_DOOM_WAD')
+    if env:
+        return os.path.abspath(env)
+    for name in ('DOOM.WAD', 'doom.wad'):
+        path = os.path.join(REPO, 'wads', name)
+        if os.path.exists(path):
+            return path
+    sys.exit('No DOOM.WAD: put The Ultimate Doom\'s doom.wad in wads/ or set ISODOOM_DOOM_WAD')
+
+
 COMMERCIAL = ('doom2', 'tnt', 'plutonia')
 
 
@@ -60,12 +74,14 @@ def iwad(head, doom1):
         return doom2_wad()
     if head['iwad'] in ('tnt', 'plutonia'):
         return final_wad(head['iwad'])
+    if head['iwad'] == 'doom':  # M9
+        return doom_wad()
     return doom1
 
 
 def id_wad(head):
     """Whether the route's dumps are WAD-derived (DOOM1.WAD's or Doom II's: never committed)."""
-    return head['iwad'] in ('doom1',) + COMMERCIAL
+    return head['iwad'] in ('doom1', 'doom') + COMMERCIAL
 
 
 def parse(path):
@@ -125,8 +141,8 @@ def parse(path):
         if not (-128 <= fwd <= 127 and -128 <= side <= 127 and -128 <= turn <= 127 and 0 <= buttons <= 255):
             sys.exit(f'{where}: out of range')
         cmds += [(fwd, side, turn, buttons)] * count
-    if head['iwad'] not in ('synthetic', 'doom1', 'testmap') + COMMERCIAL or head['skill'] not in SKILLS:
-        sys.exit(f'{path}: needs "iwad synthetic|doom1|doom2|tnt|plutonia|testmap" and a skill of 1-5')
+    if head['iwad'] not in ('synthetic', 'doom1', 'doom', 'testmap') + COMMERCIAL or head['skill'] not in SKILLS:
+        sys.exit(f'{path}: needs "iwad synthetic|doom1|doom|doom2|tnt|plutonia|testmap" and a skill of 1-5')
     if head['iwad'] == 'testmap' and not head['map']:
         sys.exit(f'{path}: "iwad testmap" needs "map NAME"')
     if events and int(events[-1].split()[0]) >= len(cmds):
@@ -145,8 +161,8 @@ def demo(head, cmds):
         episode, mapnum = 1, int(m[3:])
     else:
         m = 'E1M1' if head['iwad'] == 'testmap' else (head['map'] or 'E1M1').upper()
-        if len(m) != 4 or m[0] != 'E' or m[2] != 'M':
-            sys.exit(f'{m}: only ExMy maps')
+        if len(m) != 4 or m[0] != 'E' or m[2] != 'M' or m[1] not in ('1234' if head['iwad'] == 'doom' else '123') or m[3] not in '123456789':
+            sys.exit(f'{m}: only ExMy maps (E4 with iwad doom, M9)')
         episode, mapnum = int(m[1]), int(m[3])
     data = bytearray([109, head['skill'] - 1, episode, mapnum, 0, 0, 0, 0 if head['monsters'] else 1, 0, 1, 0, 0, 0])
     for fwd, side, turn, buttons in cmds:

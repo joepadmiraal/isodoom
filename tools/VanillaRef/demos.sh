@@ -1,6 +1,6 @@
 #!/bin/bash
 # The vanilla demo reference (T6.13; dev tool). Usage:
-#   tools/VanillaRef/demos.sh [--doom2|--tnt|--plutonia] [--gameversion V] [DEMO1 DEMO2 DEMO3]
+#   tools/VanillaRef/demos.sh [--doom|--doom2|--tnt|--plutonia] [--gameversion V] [DEMO1 DEMO2 DEMO3]
 # Plays each demo lump of DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD; default
 # all three) in the vanilla reference (build.sh; $VANILLA_REF or
 # ~/.cache/isodoom/vanilla-ref) with -playdemo and writes its per-tic dump
@@ -16,6 +16,9 @@
 # --gameversion V plays them as that executable instead (1.9, ultimate,
 # final, final2), the dumps named PREFIX-V-demoN.vanilla (T10.7:
 # --doom2 --gameversion final, DemoSyncTests' doom2-final-demoN).
+# M9: with --doom, The Ultimate Doom's IWAD (wads/DOOM.WAD or wads/doom.wad,
+# $ISODOOM_DOOM_WAD) as doom-demoN.vanilla (default all four, DEMO4 E4's),
+# played as ultimate (Chocolate Doom's default for retail).
 # WAD-derived: never commit them. DemoSyncTests compares the sim with them.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -33,6 +36,15 @@ if [ "${1:-}" = --doom2 ]; then
     [ -f "$iwad" ] || iwad=$repo/wads/DOOM2.WAD
     iwad=$(realpath "$iwad")
     prefix=doom2-
+elif [ "${1:-}" = --doom ]; then
+    shift
+    iwad=${ISODOOM_DOOM_WAD:-$repo/wads/DOOM.WAD}
+    [ -f "$iwad" ] || iwad=$repo/wads/doom.wad
+    [ -f "$iwad" ] || { echo "No DOOM.WAD: put it in wads/ or set ISODOOM_DOOM_WAD" >&2; exit 1; }
+    iwad=$(realpath "$iwad")
+    prefix=doom-
+    ultimate=1
+    demo4=1
 elif [ "${1:-}" = --tnt ] || [ "${1:-}" = --plutonia ]; then
     game=${1#--}
     shift
@@ -53,7 +65,7 @@ if [ "${1:-}" = --gameversion ]; then
 fi
 out=$(realpath -m "${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes}")
 mkdir -p "$out"
-if [ $# -eq 0 ]; then set -- DEMO1 DEMO2 DEMO3; fi
+if [ $# -eq 0 ]; then set -- DEMO1 DEMO2 DEMO3; if [ -n "${demo4:-}" ]; then set -- "$@" DEMO4; fi; fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 for demo in "$@"; do
@@ -74,6 +86,7 @@ for i in range(n):
     # The lump by name (no NAME.lmp in the working directory); dump.c's
     # patched G_ReadDemoTiccmd exits at the demo's marker.
     if [ -n "${final:-}" ]; then version=final; fi
+    if [ -n "${ultimate:-}" ]; then version=ultimate; fi
     if [ -n "$forced" ]; then version=$forced; fi
     (cd "$tmp" && env -u VIEWS -u DUMP_START -u DUMP_EVENTS DUMP_TICS="$dump" \
         "$ref" -iwad "$iwad" -gameversion "$version" -playdemo "$name" -nosound -nomusic -nogui >/dev/null)

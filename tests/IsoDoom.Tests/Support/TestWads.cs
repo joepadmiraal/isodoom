@@ -101,6 +101,22 @@ public static class TestWads
     /// <summary>T9.1: MD5 (lower-case hex) of <see cref="DoomPath"/>, or null when there is no registered/Ultimate Doom IWAD.</summary>
     public static string? DoomMd5 => _doomMd5Value.Value;
 
+    private static readonly Lazy<string?> _ultimateDoom = new(() =>
+        DoomPath is string p && IsoDoom.Wad.IwadIdentification.D_IdentifyVersion(IsoDoom.Wad.WadFile.Open(p)).GameMode == IsoDoom.Wad.GameMode.retail ? p : null);
+
+    /// <summary>M9: <see cref="DoomPath"/> when it is The Ultimate Doom (<c>retail</c>: with E4), else null (none, or a registered one).</summary>
+    public static string? UltimateDoomPath => _ultimateDoom.Value;
+
+    /// <summary>M9: the path of The Ultimate Doom's IWAD (any version: v1.9ud, the 2024 re-release, …), or skips the calling test (none, or a registered DOOM.WAD without E4).</summary>
+    public static string RequireUltimateDoom()
+    {
+        if (UltimateDoomPath is string p)
+            return p;
+        if (DoomPath is not null)
+            Assert.Skip($"{DoomPath} is not The Ultimate Doom (no E4M1): the iwad doom routes need it.");
+        return RequireDoom();
+    }
+
     /// <summary>T10.7: environment variable that overrides the TNT.WAD path (an absent path forces a skip).</summary>
     public const string TntEnvVar = "ISODOOM_TNT_WAD";
 

@@ -14,7 +14,8 @@
 # FinaleTests compares the game's finale with them. Needs DOOM1.WAD (wads/
 # or $ISODOOM_DOOM1_WAD), and Doom II's IWAD for its routes (wads/doom2.wad
 # or $ISODOOM_DOOM2_WAD), Final Doom's for theirs (wads/ or $ISODOOM_TNT_WAD,
-# $ISODOOM_PLUTONIA_WAD).
+# $ISODOOM_PLUTONIA_WAD), The Ultimate Doom's for its ExM8 routes (M9, iwad doom:
+# wads/doom.wad or $ISODOOM_DOOM_WAD; its finales are T9.4's).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -30,7 +31,7 @@ if [ $# -eq 0 ]; then
     for r in "$repo"/tests/IsoDoom.Tests/Sim/Routes/*.route; do
         body=$(sed -e 's/#.*//' "$r")
         has() { grep -qiE "$1" <<< "$body"; }
-        if { has '^ *iwad +doom1' && has '^ *exit +' && has '^ *map +e[1-4]m8'; } \
+        if { has '^ *iwad +doom1? *$' && has '^ *exit +' && has '^ *map +e[1-4]m8'; } \
             || { has '^ *iwad +(doom2|tnt|plutonia)' && { { has '^ *exit +normal' && has '^ *map +map(06|11|20|30)'; } \
                 || { has '^ *exit +secret' && has '^ *map +map(15|31)'; }; }; }; then
             set -- "$@" "$r"

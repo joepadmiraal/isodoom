@@ -25,7 +25,7 @@ public sealed class RouteFile
     /// <summary>The route's events (T6.4), in order, each before the tic of its <see cref="RouteEvent.Tic"/> (0-based).</summary>
     public IReadOnlyList<RouteEvent> Events { get; private init; } = [];
 
-    /// <summary><c>synthetic</c>, <c>doom1</c> or <c>testmap</c> (not checked here).</summary>
+    /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom</c> (M9), <c>doom2</c>, <c>tnt</c>, <c>plutonia</c> or <c>testmap</c> (not checked here).</summary>
     public string? Iwad { get; private init; }
     /// <summary>The <c>map</c> header as written, or null.</summary>
     public string? Map { get; private init; }
@@ -58,15 +58,25 @@ public sealed class RouteFile
         _ => GameMission.doom,
     };
 
-    /// <summary>T10.1, T10.7: the game mode of the <c>iwad</c> header <paramref name="iwad"/>: <c>commercial</c> for <c>doom2</c>, <c>tnt</c> and <c>plutonia</c>, else DOOM1.WAD's <c>shareware</c>.</summary>
-    public static GameMode ModeOf(string iwad) =>
-        iwad is "doom2" or "tnt" or "plutonia" ? GameMode.commercial : GameMode.shareware;
+    /// <summary>
+    /// T10.1, T10.7: the game mode of the <c>iwad</c> header <paramref name="iwad"/>:
+    /// <c>commercial</c> for <c>doom2</c>, <c>tnt</c> and <c>plutonia</c>, (M9)
+    /// The Ultimate Doom's <c>retail</c> for <c>doom</c>, else DOOM1.WAD's
+    /// <c>shareware</c>. An executable before The Ultimate Doom's plays
+    /// <c>retail</c> as <c>registered</c> (<see cref="GameVersions.D_SetGameVersion"/>).
+    /// </summary>
+    public static GameMode ModeOf(string iwad) => iwad switch
+    {
+        "doom2" or "tnt" or "plutonia" => GameMode.commercial,
+        "doom" => GameMode.retail,
+        _ => GameMode.shareware,
+    };
 
     /// <summary>
     /// T10.7: the executable vanilla plays the route as (the reference's
     /// <c>-gameversion</c>): the <c>gameversion</c> header, else its IWAD's
     /// default (<see cref="GameVersions.Default"/>: Final Doom's for <c>tnt</c>
-    /// and <c>plutonia</c>, v1.9 for the others); null without an <c>iwad</c>
+    /// and <c>plutonia</c>, The Ultimate Doom's for <c>doom</c>, M9, v1.9 for the others); null without an <c>iwad</c>
     /// header (a demo lump, <see cref="FromDemo"/>). The tests' routes and the
     /// level script's <c>route</c> both read it, so a script played as another
     /// version fails instead of drifting.

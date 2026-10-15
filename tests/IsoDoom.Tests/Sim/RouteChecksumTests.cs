@@ -42,6 +42,6 @@ public class RouteChecksumTests
             Assert.Equal((e.Value.Tics + RouteChecksums.Interval - 1) / RouteChecksums.Interval, e.Value.Hashes.Length);
             Assert.All(e.Value.Hashes, h => Assert.Matches("^[0-9a-f]{8}$", h));
         });
-        Assert.Equal(["doom1", "doom2", "plutonia", "tnt"], entries.Iwads.Keys);
+        Assert.Equal(["doom", "doom1", "doom2", "plutonia", "tnt"], entries.Iwads.Keys);
     }
 }
