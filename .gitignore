@@ -2,8 +2,6 @@
 # Godot importing these folders) are tracked.
 wads/*
 !wads/.gdignore
-doom_20230531/*
-!doom_20230531/.gdignore
 *.wad
 *.WAD
 
