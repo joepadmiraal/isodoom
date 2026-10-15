@@ -1,0 +1,62 @@
+# The Ultimate Doom E1M8 (T9.4): e1m8-exit's way on The Ultimate Doom's
+# IWAD (its finale ends on CREDIT, not HELP2): from the arena, the stairs
+# switch line 233, up and across the teleport line 299 into the
+# damage-and-exit sector 66 (11) until its hits leave 10 health or less:
+# G_ExitLevel, the last tic. Written by tools/RouteGen (doom-e1m8-exit).
+iwad doom
+map E1M8
+exit normal
+start 320 4384 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+0 0 0 2
+0 0 0 0 x448
+50 -1 -51 0
+50 0 0 0 x4
+50 1 0 0
+50 0 0 0
+50 -1 0 0
+50 -40 40 0
+50 -40 10 0
+50 -40 1 0
+50 -40 0 0 x2
+50 -12 1 0
+50 0 0 0
+50 1 0 0 x2
+50 17 -3 0
+50 6 -1 0
+50 -2 0 0
+50 10 0 0
+50 5 -1 0
+50 -1 0 0
+50 5 -1 0
+50 0 0 0
+50 8 0 0
+50 4 -1 0
+50 0 0 0 x5
+50 -1 0 0
+50 0 0 0 x5
+50 -1 0 0
+50 0 0 0 x3
+10 0 0 0
+-5 0 0 0
+-4 0 0 0
+-3 0 0 0
+-4 0 0 0
+-2 0 0 0
+-3 0 0 0
+-2 0 0 0 x4
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x5
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x13
+25 0 6 0
+25 0 0 0 x16
+0 0 0 0 x157

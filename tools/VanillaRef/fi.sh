@@ -18,6 +18,7 @@
 # --images writes DIR/cTIC.png). Everything in DIR is WAD-derived: keep it
 # out of the repo. Needs DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD), and Doom
 # II's IWAD for its routes (wads/doom2.wad or $ISODOOM_DOOM2_WAD).
+# T9.4: also The Ultimate Doom's ExM8 exit routes (iwad doom: wads/doom.wad or $ISODOOM_DOOM_WAD).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -35,8 +36,11 @@ if [ "$(header iwad)" = doom2 ] && [ -n "$(header exit)" ]; then
     # T10.5: Doom II: its intermission first, as finales.py's (BT_USE at its tics 20 and 40, 50 tics)
     iwad=$(realpath "${ISODOOM_DOOM2_WAD:-$repo/wads/doom2.wad}")
     intermission="gamestate intermission; cmd 0 0 0 0 19; cmd 0 0 0 2 1; cmd 0 0 0 0 19; cmd 0 0 0 2 1; cmd 0 0 0 0 10; "
+elif [ "$(header iwad)" = doom ] && [ -n "$(header exit)" ] && [[ "${map^^}" =~ M8$ ]]; then
+    # T9.4: The Ultimate Doom's episode ends (E3's bunny scroll among them)
+    iwad=$(realpath "${ISODOOM_DOOM_WAD:-$repo/wads/doom.wad}")
 elif [ "$(header iwad)" != doom1 ] || [ -z "$(header exit)" ] || [[ ! "${map^^}" =~ M8$ ]]; then
-    echo "$route: only DOOM1.WAD routes that end the episode, or Doom II ones that end at a text screen" >&2; exit 1
+    echo "$route: only DOOM1.WAD (or The Ultimate Doom's) routes that end the episode, or Doom II ones that end at a text screen" >&2; exit 1
 fi
 skill=$(header skill); skill=${skill:-3}
 monsters=off

@@ -285,14 +285,14 @@ public partial class LevelCheck
         flow.D_StartTitle(null);
     }
 
-    /// <summary>Whether every opaque pixel of <paramref name="patch"/> at 0, 0 (less its offsets) is on <paramref name="screen"/>.</summary>
+    /// <summary>Whether every opaque pixel of <paramref name="patch"/> at 0, 0 (less its offsets; M9: a wide one centred) is on <paramref name="screen"/>.</summary>
     private static bool PageDrawn(HudScreen screen, IndexedImage patch)
     {
         for (int y = 0; y < patch.Height; y++)
         {
             for (int x = 0; x < patch.Width; x++)
             {
-                int sx = x - patch.LeftOffset, sy = y - patch.TopOffset;
+                int sx = x - patch.LeftOffset - HudScreen.WideShift(patch), sy = y - patch.TopOffset;
                 if (!patch.IsOpaque(x, y) || sx < 0 || sy < 0 || sx >= screen.Width || sy >= screen.Height)
                     continue;
                 int i = sy * screen.Width + sx;

@@ -1,5 +1,7 @@
+using System;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
+using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Game;
 
@@ -11,9 +13,9 @@ namespace IsoDoom.Game;
 /// <c>strlen(finaletext) * TEXTSPEED + TEXTWAIT</c> tics (Doom II's text
 /// screens between maps until any button after 50 tics), then the end
 /// picture (<see cref="F_Drawer"/>: E1 <c>HELP2</c>, from The Ultimate Doom's executable on
-/// <c>CREDIT</c>; E2 <c>VICTORY2</c>; E4 <c>ENDPIC</c>), which stays, as
+/// <c>CREDIT</c>; E2 <c>VICTORY2</c>; E3 the bunny scroll, <see cref="F_BunnyScroll"/>, T9.4;
+/// E4 <c>ENDPIC</c>), which stays, as
 /// vanilla's, until the menu (T7.2) starts another game or ends this one.
-/// E3's bunny scroll (<c>PFUB2</c> shown still until T9.4) is a later task's;
 /// Doom II's cast call after MAP30 is <c>FFinale.Cast.cs</c> (T10.5); the music
 /// (<c>mus_victor</c>, <c>mus_read_m</c>, E3's <c>mus_bunny</c>, the cast
 /// call's <c>mus_evil</c>) changes as vanilla's (T7.8c). The
@@ -136,6 +138,90 @@ public sealed partial class FFinale
                 flow.S_StartMusic(musicenum_t.mus_bunny);
         }
         // finalestage 1 (the end picture) stays until the menu starts a new game or ends this one (T7.2), as vanilla's
+        if (finalestage == F_STAGE_ARTSCREEN && gameepisode == 3)
+            F_BunnySound();
+    }
+
+    // f_finale.c F_BunnyScroll's static laststage: the "THE END" letters shown so far
+    private int _laststage;
+
+    /// <summary>
+    /// The sound half of f_finale.c <c>F_BunnyScroll</c> (T9.4): from
+    /// <c>finalecount</c> 1180 a letter of <c>END1</c>–<c>END6</c> every 5
+    /// tics, each with <c>sfx_pistol</c> (no origin). Vanilla starts it in
+    /// the drawer, which runs after every tic (the reference's dump draws
+    /// after each, D_Display after the last); here after the tic, so the
+    /// sound is the tic's as in vanilla's dump and the drawer stays pure
+    /// (SPEC §12 T9.4). <c>laststage</c> goes back to 0 while <c>END0</c> shows.
+    /// </summary>
+    private void F_BunnySound()
+    {
+        if (finalecount < 1130)
+            return;
+        if (finalecount < 1180)
+        {
+            _laststage = 0;
+            return;
+        }
+        int stage = Math.Min((finalecount - 1180) / 5, 6);
+        if (stage > _laststage)
+        {
+            S_StartSound(sfxenum_t.sfx_pistol, sounds);
+            _laststage = stage;
+        }
+    }
+
+    /// <summary>
+    /// f_finale.c <c>F_BunnyScroll</c> (T9.4, E3's end): <c>PFUB2</c> and
+    /// <c>PFUB1</c> side by side, 640 columns, scrolled from <c>PFUB1</c>
+    /// (until <c>finalecount</c> 230) to <c>PFUB2</c> (from 870; a wide one's
+    /// middle 320 columns) a column every 2 tics, drawn column by column (<see cref="F_DrawPatchCol"/>);
+    /// from 1130 <c>END0</c> over it, from 1180 <c>END1</c>–<c>END6</c>,
+    /// a stage every 5 tics, centred as a 13 × 8 block of 8 × 8.
+    /// </summary>
+    private void F_BunnyScroll(ScreenGraphics g, HudScreen screen)
+    {
+        IndexedImage? p1 = g.Patch("PFUB2"), p2 = g.Patch("PFUB1");
+        // T9.4: a PFUB2 wider than the screen (the 2024 re-release's 560-wide one) scrolls by its
+        // middle 320 columns, as V_DrawPatch centres it: the scroll ends on the classic picture (SPEC §12 T9.4)
+        int shift = p1 is null ? 0 : HudScreen.WideShift(p1);
+        int scrolled = 320 - (finalecount - 230) / 2;
+        if (scrolled > 320)
+            scrolled = 320;
+        if (scrolled < 0)
+            scrolled = 0;
+        for (int x = 0; x < HudScreen.SCREENWIDTH; x++)
+        {
+            if (x + scrolled < 320)
+                F_DrawPatchCol(screen, x, p1, x + scrolled + shift);
+            else
+                F_DrawPatchCol(screen, x, p2, x + scrolled - 320);
+        }
+        if (finalecount < 1130)
+            return;
+        int stage = finalecount < 1180 ? 0 : Math.Min((finalecount - 1180) / 5, 6);
+        screen.V_DrawPatch((HudScreen.SCREENWIDTH - 13 * 8) / 2, (HudScreen.SCREENHEIGHT - 8 * 8) / 2, g.Patch($"END{stage}"));
+    }
+
+    /// <summary>
+    /// f_finale.c <c>F_DrawPatchCol</c>: column <paramref name="col"/> of
+    /// <paramref name="patch"/> at screen column <paramref name="x"/> from
+    /// the top, its offsets ignored. A missing patch or column draws nothing.
+    /// </summary>
+    private static void F_DrawPatchCol(HudScreen screen, int x, IndexedImage? patch, int col)
+    {
+        if (patch is null)
+            return;
+        if (col < 0 || col >= patch.Width)
+            return;
+        for (int py = 0; py < patch.Height; py++)
+        {
+            int sy = py - screen.Top;
+            if (sy < 0 || sy >= screen.Height || !patch.IsOpaque(col, py))
+                continue;
+            screen.Pixels[sy * screen.Width + x] = patch[col, py];
+            screen.Opaque[sy * screen.Width + x] = 1;
+        }
     }
 
     /// <summary>
@@ -159,15 +245,17 @@ public sealed partial class FFinale
     {
         1 => flow.gameversion >= GameVersion.exe_ultimate ? "CREDIT" : "HELP2",
         2 => "VICTORY2",
-        3 => "PFUB2", // F_BunnyScroll: T9.4
+        3 => "PFUB2", // (F_BunnyScroll: PFUB2 and PFUB1 scrolled, T9.4)
         4 => "ENDPIC",
         _ => null,
     };
 
-    /// <summary>f_finale.c <c>F_ArtScreenDrawer</c>: the end picture at 0, 0 (E3's bunny scroll shown still until T9.4).</summary>
+    /// <summary>f_finale.c <c>F_ArtScreenDrawer</c>: the end picture at 0, 0, or E3's bunny scroll (<see cref="F_BunnyScroll"/>).</summary>
     private void F_ArtScreenDrawer(ScreenGraphics g, HudScreen screen)
     {
-        if (ArtScreen() is { } page)
+        if (gameepisode == 3)
+            F_BunnyScroll(g, screen);
+        else if (ArtScreen() is { } page)
             g.DrawPage(screen, page);
     }
 

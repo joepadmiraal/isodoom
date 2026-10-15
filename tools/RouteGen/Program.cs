@@ -548,6 +548,26 @@ map E1M8
             g.GoToDoors(416, 3300, 8, 50);
             log("at the wall");
         }),
+        ["doom-e1m8-exit"] = new(Doom, "E1M8", """
+# The Ultimate Doom E1M8 (T9.4): e1m8-exit's way on The Ultimate Doom's
+# IWAD (its finale ends on CREDIT, not HELP2): from the arena, the stairs
+# switch line 233, up and across the teleport line 299 into the
+# damage-and-exit sector 66 (11) until its hits leave 10 health or less:
+# G_ExitLevel, the last tic. Written by tools/RouteGen (doom-e1m8-exit).
+iwad doom
+map E1M8
+exit normal
+""", (g, log) =>
+        {
+            g.TightCorners = true;
+            g.Wait(1);
+            g.Use(320, 4440);
+            g.WaitUntil(() => g.World.sectors.All(s => s.specialdata is not IsoDoom.Sim.floormove_t));
+            g.GoTo(448, 4980, 8, 50);
+            g.Teleport(448, 5120);
+            g.WaitExit();
+            log("health " + g.World.players[0].health);
+        }, (320, 4384, 90)),
         ["e1m8-exit"] = new(Doom1, "E1M8", """
 # DOOM1.WAD E1M8 (T5.9): the way to the exit opens when the barons die
 # (A_BossDeath lowers the pillar, sector 30, tag 666, into the arena,

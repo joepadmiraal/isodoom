@@ -127,6 +127,7 @@ public partial class LevelCheck : Godot.Node
             CheckAspectMouse();
             CheckSettings(); // T7.3: every setting applies at once and survives a restart (through a file of its own)
             CheckWipes(); // T7.1a: the screen wipes' timing and M_Random
+            CheckEpisodes(); // T9.4: each episode from the menu, and their ends
             CheckSaves(); // T7.6: quicksave, quickload, the loaded game going on as the saved one, a damaged save refused
             CheckSound(); // T7.7: the sound effects through the scene
             CheckMusic(); // T7.8c: the music changes through the scene
@@ -148,6 +149,7 @@ public partial class LevelCheck : Godot.Node
             {
                 await RenderChecks(m, move);
                 await CheckScreensDrawn(); // T7.1: last, it drops the level for the title loop and starts a new game
+                await CheckBunnyDrawn(); // T9.4: E3's bunny scroll
                 await CheckMenuDrawn(); // T7.2: the main menu over the title page
                 await CheckWipeDrawn(); // T7.1a: the melt from the title page into a new game
                 await CheckAspectDrawn(); // T7.11: the title page, the menu, the bar and the automap at 4:3

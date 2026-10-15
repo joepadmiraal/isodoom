@@ -12,6 +12,24 @@ index 9012e5f..42c574f 100644
  	    I_Error(DEH_String("\nYou cannot -file with the shareware "
  			       "version. Register!"));
  
+diff --git a/doomgeneric/f_finale.c b/doomgeneric/f_finale.c
+index ca6775e..91af7e8 100644
+--- a/doomgeneric/f_finale.c
++++ b/doomgeneric/f_finale.c
+@@ -626,8 +626,12 @@ void F_BunnyScroll (void)
+ 		
+     for ( x=0 ; x<SCREENWIDTH ; x++)
+     {
++	// IsoDoom (T9.4): a PFUB2 wider than the screen (the 2024 re-release's
++	// 560-wide one) scrolls by its middle 320 columns, as V_DrawPatch
++	// centres it: the scroll ends on the classic picture.
+ 	if (x+scrolled < 320)
+-	    F_DrawPatchCol (x, p1, x+scrolled);
++	    F_DrawPatchCol (x, p1, x+scrolled
++	                    + (SHORT(p1->width) > SCREENWIDTH ? (SHORT(p1->width) - SCREENWIDTH) / 2 : 0));
+ 	else
+ 	    F_DrawPatchCol (x, p2, x+scrolled - 320);		
+     }
 diff --git a/doomgeneric/f_wipe.c b/doomgeneric/f_wipe.c
 index 05852fd..0ee7f55 100644
 --- a/doomgeneric/f_wipe.c

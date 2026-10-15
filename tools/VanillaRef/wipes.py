@@ -33,6 +33,8 @@ import finales  # noqa: E402
 
 INTERMISSION = ([20, 40, 60], 200)  # skip the stats, the next location, then the next level's first tics
 FINALE = ([], 1650)  # E1's text gives way to the end picture at finale tic 1571
+# T9.4: the other episodes' texts are longer: E2's gives way at 1650, E3's (to the bunny scroll, mus_bunny) at 1727, E4's at 1761
+FINALES = {'E2M8': ([], 1730), 'E3M8': ([], 1810), 'E4M8': ([], 1840)}
 
 
 DOOM2 = ([20, 40], 200)  # T10.1: Doom II's intermission has no next location: it ends at its tic 50
@@ -46,7 +48,7 @@ def tail(head):
     if head['iwad'] in routes.COMMERCIAL:  # (T10.7: Final Doom's flow is Doom II's)
         return DOOM2_CAST if finales.cast(head) else DOOM2_TEXT if finales.text_screen(head) else DOOM2
     if (head['map'] or 'E1M1').upper().endswith('M8'):
-        return FINALE
+        return FINALES.get(head['map'].upper(), FINALE)
     return INTERMISSION
 
 

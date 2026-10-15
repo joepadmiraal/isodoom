@@ -1,0 +1,11 @@
+# The Ultimate Doom E4M8 (M9): started beside line 877 (special 52, tag 0), on its
+# back, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (doom-e4m8-line877).
+iwad doom
+map E4M8
+exit normal
+start -2368 64 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x10

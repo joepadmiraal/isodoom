@@ -1,0 +1,16 @@
+# The Ultimate Doom E3M9 (M9): started beside line 289 (special 52, tag 0), on its
+# front, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (doom-e3m9-line289).
+iwad doom
+map E3M9
+exit normal
+start 464 -352 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x7
+25 0 1 0
+25 0 0 0
+25 0 1 0
+25 0 0 0
+25 0 1 0

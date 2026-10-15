@@ -578,7 +578,9 @@ void dump_witic(void)
 // each of those tics (F_Responder with an ev_keydown, as D_ProcessEvents
 // before the next tic; its sound goes in the next line), and the first line
 // is "presses $DUMP_FI_PRESSES keys $DUMP_FI_KEYS"; the cast call never
-// ends: the run ends with the demo.
+// ends: the run ends with the demo. E3's bunny scroll (T9.4) adds the
+// sounds its drawer started (F_BunnyScroll's sfx_pistol, "-" for none) to
+// the lines of its end picture.
 void dump_fitic(void)
 {
     static FILE *fifile;
@@ -630,6 +632,8 @@ void dump_fitic(void)
         fprintf(fifile, " %d %d %d %d %d %d %d %s", castnum, (int)(caststate - states), casttics, castframes, castdeath,
                 castonmelee, castattacking, soundslen ? sounds : "-");
     }
+    else if (finalestage == 1 && gameepisode == 3)
+        fprintf(fifile, " %s", soundslen ? sounds : "-"); // T9.4: F_BunnyScroll's sfx_pistol (drawn above)
     fprintf(fifile, "\n");
     soundslen = 0;
     char *keys = getenv("DUMP_FI_KEYS");

@@ -128,7 +128,7 @@ public class MusicTests
         // and the device plays the last song asked for, from its lump
         string last = expected[^1].Split(' ')[3];
         Assert.Equal("D_" + last.ToUpperInvariant(), device.Song);
-        Assert.True(device.Playing && device.Looping && !device.Paused);
+        Assert.True(device.Playing && device.Looping == (expected[^1].Split(' ')[4] == "1") && !device.Paused); // (T9.4: E3's mus_bunny plays once)
         Assert.Equal(1, device.Registered);
     }
 

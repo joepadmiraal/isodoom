@@ -38,7 +38,11 @@ public class WipeTests
         // T10.5: MAP30 won, its text and the cast call
         "map30-icon",
         // T10.7: Final Doom's MAP01s walked to their exits, to MAP02
-        "tnt-map01-walk-exit", "plutonia-map01-walk-exit"];
+        "tnt-map01-walk-exit", "plutonia-map01-walk-exit",
+        // T9.4: The Ultimate Doom's episode ends (E1's CREDIT, E2's VICTORY2, E3's bunny scroll and mus_bunny, E4's ENDPIC) and its
+        // secret maps in (E2M5, E3M6, E4M2) and back (E2M9 to E2M6, E3M9 to E3M7, E4M9 to E4M3)
+        "doom-e1m8-exit", "doom-e2m8-cyber", "doom-e3m8-spider", "doom-e4m8-line877",
+        "doom-e2m5-line1166", "doom-e2m9-walk-exit", "doom-e3m6-line662", "doom-e3m9-line289", "doom-e4m2-line674", "doom-e4m9-line1622"];
 
     public static TheoryData<string> Dumps()
     {

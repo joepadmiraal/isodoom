@@ -1,0 +1,11 @@
+# The Ultimate Doom E4M2 (M9): started beside line 674 (special 51, tag 0), on its
+# front, the player uses it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (doom-e4m2-line674).
+iwad doom
+map E4M2
+exit secret
+start -456 928 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x2
+0 0 0 2

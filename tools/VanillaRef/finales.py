@@ -12,7 +12,7 @@ a v1.9 demo (routes.py's), followed for Doom II by its intermission skipped
 "intermission 20,40 50"), then the finale's ticcmds: nothing but BT_USE pressed for one tic at each finale tic (1-based)
 of PRESSES ("N,M,..."; default DEFAULT: presses, which skip nothing before
 Doom II, through the text and on the end picture), until the end picture
-has shown 35 tics, or for Doom II until the press that skips its text
+has shown 35 tics (T9.4: E3's bunny scroll BUNNY tics), or for Doom II until the press that skips its text
 (by default at finale tic 52, the first that may: NAME.fi; and READ, once
 the longest text is typed out: NAME.firead). Writes dump.c's $DUMP_FI dump, OUTDIR/NAME.fi for the
 default schedule or OUTDIR/NAME.fiN for the Nth schedule given after the
@@ -37,6 +37,7 @@ import routes  # noqa: E402
 DEFAULT = '1,51,52,300,1000,1580'  # E1's text (440 characters) is typed out by finale tic 1330 and gives way to the end picture at 1571
 LONGEST = 4 * 1000 * 3  # finale tics enough for any text (under 1000 characters) and the end picture
 READ = '2000'  # T10.1: Doom II's longest text (C2TEXT, 617 characters) is typed out by finale tic 1852
+BUNNY = 1250  # T9.4: E3's end picture is the bunny scroll: scrolled by tic 870, END0 at 1130, END6 at 1210 (dump.c's $DUMP_FI_ART)
 INTERMISSION = ([20, 40], 50)  # T10.1: Doom II's intermission before its text: the stats, then its end at tic 50
 
 
@@ -109,8 +110,10 @@ def main():
             try:
                 open(os.path.join(tmp, 'route.lmp'), 'wb').write(routes.demo(head, cmds + wi + fin))
                 env = dict(os.environ, DUMP_TICS=os.path.join(tmp, 'route.vanilla'), DUMP_FI=out, DUMP_FI_PRESSES=parts[0], DUMP_FI_KEYS=keys)
-                for k in ('VIEWS', 'DUMP_START', 'DUMP_EVENTS', 'DUMP_FI_DIR', 'DUMP_FI_TICS', 'DUMP_WI'):
+                for k in ('VIEWS', 'DUMP_START', 'DUMP_EVENTS', 'DUMP_FI_DIR', 'DUMP_FI_TICS', 'DUMP_WI', 'DUMP_FI_ART'):
                     env.pop(k, None)
+                if not doom2 and (head['map'] or '').upper() == 'E3M8':
+                    env['DUMP_FI_ART'] = str(BUNNY)  # T9.4: the bunny scroll to its last letter and on
                 if head['start']:
                     env['DUMP_START'] = head['start']
                 if head['events']:

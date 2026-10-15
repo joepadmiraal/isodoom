@@ -36,7 +36,7 @@ public class FinaleTests
     /// T10.4's <c>map30-icon</c>, to its text and the cast call).
     /// </summary>
     private static List<VanillaRoute> EndRoutes() =>
-        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad == "doom1" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)
+        [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.Iwad is "doom1" or "doom" && r.Exit != 0 && r.Map.EndsWith("M8", StringComparison.OrdinalIgnoreCase)
             || IntermissionTests.TextScreenAfter(r))];
 
     /// <summary>The routes and their dumps' suffixes: <c>fi</c>, and for Doom II and Final Doom <c>firead</c> (its text typed out before the skip).</summary>
@@ -55,6 +55,11 @@ public class FinaleTests
     [Fact]
     public void Episode1sEndHasAFinaleToCompare() =>
         Assert.Contains(EndRoutes(), r => r.Map == "E1M8" && r.Exit == 1);
+
+    /// <summary>T9.4: every episode of The Ultimate Doom has its end to compare (E1's on <c>CREDIT</c>, E2's <c>VICTORY2</c>, E3's bunny scroll, E4's <c>ENDPIC</c>).</summary>
+    [Fact]
+    public void TheUltimateDoomsEpisodesHaveTheirEndsToCompare() =>
+        Assert.Equal(["E1M8", "E2M8", "E3M8", "E4M8"], EndRoutes().Where(r => r.Iwad == "doom").Select(r => r.Map).Order(StringComparer.Ordinal));
 
     /// <summary>T10.1: every Doom II text screen has a route to compare (T10.5: MAP30's, then the cast call; T10.6: MAP15's W1 secret exit too).</summary>
     [Fact]
@@ -139,6 +144,11 @@ public class FinaleTests
                 actual += $" {fi.castnum} {(int)fi.caststate} {fi.casttics} {fi.castframes} {(fi.castdeath ? 1 : 0)} {fi.castonmelee} {(fi.castattacking ? 1 : 0)} {sounds}";
                 casts.Add(fi.castnum);
             }
+            else if (fi.finalestage == FFinale.F_STAGE_ARTSCREEN && world.gameepisode == 3)
+            {
+                // T9.4: the bunny scroll's sfx_pistol, a letter of "THE END" at a time
+                actual += " " + (fi.sounds.Count == 0 ? "-" : string.Join(',', fi.sounds.Select(x => x.ToString()["sfx_".Length..] + "@-")));
+            }
             if (actual != expected[t + 1])
                 Assert.Fail($"{name}.{suffix}: finale tic {t} differs from vanilla\n  vanilla: {expected[t + 1]}\n  game:    {actual}");
             if (keys.Contains(t))
@@ -160,7 +170,9 @@ public class FinaleTests
             return;
         }
         // the end picture stays (vanilla's: until the menu ends the game or starts another)
-        Assert.Equal((gamestate_t.GS_FINALE, FFinale.F_STAGE_ARTSCREEN, "HELP2"), (flow.gamestate, fi.finalestage, fi.ArtScreen()));
+        // T9.4: the episode's (The Ultimate Doom's E1 CREDIT; E3 the bunny scroll's last frame)
+        string page = world.gameepisode switch { 1 => route.Iwad == "doom" ? "CREDIT" : "HELP2", 2 => "VICTORY2", 3 => "PFUB2", _ => "ENDPIC" };
+        Assert.Equal((gamestate_t.GS_FINALE, FFinale.F_STAGE_ARTSCREEN, page), (flow.gamestate, fi.finalestage, fi.ArtScreen()));
     }
 
     /// <summary>dump.c's text hash: the 32-bit FNV-1a of the text's bytes.</summary>

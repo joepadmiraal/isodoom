@@ -68,7 +68,7 @@ public class IntermissionTests
         public void EndGame(string? why) => World = null;
     }
 
-    /// <summary>The DOOM1.WAD and (T10.1) Doom II exit routes with an intermission (all but the ExM8 ones, whose exits go to the finale, T9.2; T10.4: MAP30's too, the Icon's death).</summary>
+    /// <summary>The DOOM1.WAD, (T10.1) Doom II and (T9.4) The Ultimate Doom exit routes with an intermission (all but the ExM8 ones, whose exits go to the finale, T9.2; T10.4: MAP30's too, the Icon's death).</summary>
     private static List<VanillaRoute> ExitRoutes() =>
         [.. VanillaRoute.Names().Select(VanillaRoute.Load).Where(r => r.IdWad && r.Exit != 0 && !(r.GameMode != GameMode.commercial && r.Map.EndsWith("M8", StringComparison.Ordinal)))];
 
@@ -90,6 +90,20 @@ public class IntermissionTests
         List<VanillaRoute> routes = [.. ExitRoutes().Where(r => r.Iwad == "doom1")];
         Assert.Equal(["E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M9"], routes.Select(r => r.Map).Distinct().Order());
         Assert.Contains(routes, r => r.Map == "E1M3" && r.Exit == 2);
+    }
+
+    /// <summary>
+    /// T9.4: The Ultimate Doom's flow has its intermissions to compare: the
+    /// secret exits of E2M5, E3M6 and E4M2 (to the secret maps: <c>WIMAP1</c>,
+    /// <c>WIMAP2</c> with their animations, E4's <c>INTERPIC</c>, no par for E4) and the secret maps'
+    /// exits back (E2M9 to E2M6, E3M9 to E3M7, E4M9 to E4M3); M9: E3M2's and E4M1's exits.
+    /// </summary>
+    [Fact]
+    public void TheUltimateDoomsSecretMapsHaveIntermissionsToCompare()
+    {
+        List<VanillaRoute> routes = [.. ExitRoutes().Where(r => r.Iwad == "doom")];
+        Assert.Equal(["E2M5:2", "E2M9:1", "E3M2:1", "E3M6:2", "E3M9:1", "E4M1:1", "E4M2:2", "E4M9:1"],
+            routes.Select(r => $"{r.Map}:{r.Exit}").Order(StringComparer.Ordinal));
     }
 
     /// <summary>
@@ -156,6 +170,18 @@ public class IntermissionTests
             return;
         }
         Assert.Equal((gamestate_t.GS_LEVEL, World.MapName(route.GameMode, route.GameMode == GameMode.commercial ? 1 : route.Map[1] - '0', wi.wbs!.next + 1)), (flow.gamestate, world.level.Name));
+        // T9.4: the secret maps' way in and back, as vanilla's G_DoCompleted
+        string? next = route.Map switch
+        {
+            "E1M3" or "E2M5" or "E3M6" or "E4M2" when route.Exit == 2 => $"{route.Map[..2]}M9",
+            "E1M9" => "E1M4",
+            "E2M9" => "E2M6",
+            "E3M9" => "E3M7",
+            "E4M9" => "E4M3",
+            _ => null,
+        };
+        if (next is not null)
+            Assert.Equal(next, world.level.Name);
     }
 
     /// <summary>T10.1: whether Doom II's <c>G_WorldDone</c> shows a text screen after the route's exit (maps 6, 11, 20, 30, and the secret exits of 15 and 31).</summary>

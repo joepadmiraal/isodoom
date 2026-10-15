@@ -136,6 +136,9 @@ exit normal
                     double x1 = l.v1.X / (double)FU, y1 = l.v1.Y / (double)FU, x2 = l.v2.X / (double)FU, y2 = l.v2.Y / (double)FU;
                     double len = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
                     double mx = (x1 + x2) / 2, my = (y1 + y2) / 2, nx = (y2 - y1) / len, ny = -(x2 - x1) / len;
+                    // T9.4: from the back when the front has no room (E2M9's exit line runs along its door's far side)
+                    if (!new[] { 24.0, 32, 40 }.Any(d => g.Fits(mx + nx * d, my + ny * d)))
+                        (nx, ny) = (-nx, -ny);
                     foreach (double d in new[] { 24.0, 32, 40 })
                     {
                         double sx = mx + nx * d, sy = my + ny * d;

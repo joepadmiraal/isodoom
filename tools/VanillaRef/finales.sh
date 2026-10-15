@@ -15,7 +15,7 @@
 # or $ISODOOM_DOOM1_WAD), and Doom II's IWAD for its routes (wads/doom2.wad
 # or $ISODOOM_DOOM2_WAD), Final Doom's for theirs (wads/ or $ISODOOM_TNT_WAD,
 # $ISODOOM_PLUTONIA_WAD), The Ultimate Doom's for its ExM8 routes (M9, iwad doom:
-# wads/doom.wad or $ISODOOM_DOOM_WAD; its finales are T9.4's).
+# wads/doom.wad or $ISODOOM_DOOM_WAD; T9.4: E3M8's, the bunny scroll, to 1250 end-picture tics).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)

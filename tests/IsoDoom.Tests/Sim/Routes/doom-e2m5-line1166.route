@@ -1,0 +1,11 @@
+# The Ultimate Doom E2M5 (M9): started beside line 1166 (special 51, tag 0), on its
+# front, the player uses it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (doom-e2m5-line1166).
+iwad doom
+map E2M5
+exit secret
+start -352 2336 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x2
+0 0 0 2
