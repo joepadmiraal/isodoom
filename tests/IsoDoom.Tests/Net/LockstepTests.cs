@@ -102,17 +102,24 @@ public class LockstepTests
     [InlineData(4, 50, 30, 0.1)]
     public void Synthetic_worlds_stay_checksum_equal(int players, int maxLatencyMs, int jitterMs, double loss)
     {
-        // The synthetic E1M1 has player 1's start only: player 1 plays, the
-        // others' commands travel and are bundled, and every world runs them.
+        // The synthetic E1M1 has four starts (T11.5a): every player is in
+        // game, walking, using and firing among its imps and barrel.
         WadArchive wad = Synthetic();
         var h = new LockstepHarness(_coop, Setups(players, maxLatencyMs, jitterMs, loss), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true),
-            start => LockstepHarness.MakeWorld(wad, start, allPlayers: false), seed: 7 + players);
+            start => LockstepHarness.MakeWorld(wad, start), seed: 7 + players);
         h.JoinAndReady();
         int delay = DelayFor(maxLatencyMs, jitterMs);
         long start = h.Network.NowUs;
         h.Play(delay, Tics, 200_000_000);
         AssertPlayedWell(h, delay, maxLatencyMs, jitterMs, loss, start);
-        Assert.All(h.Players, p => Assert.Equal(h.Players[0].World!.Checksum(), p.World!.Checksum()));
+        World first = h.Players[0].World!;
+        Assert.All(h.Players, p => Assert.Equal(first.Checksum(), p.World!.Checksum()));
+        Assert.All(h.Players, p => Assert.Equal(p.Client.Slot, p.World!.consoleplayer));
+        for (int i = 0; i < players; i++)
+        {
+            Assert.True(first.playeringame[i]);
+            Assert.NotNull(first.players[i].mo);
+        }
     }
 
     [Theory]
@@ -123,7 +130,7 @@ public class LockstepTests
         // DOOM1 E1M1 has four starts: every player is in game, with monsters, walking, using and firing.
         WadArchive wad = new([WadFile.Open(TestWads.RequireDoom1())]);
         var h = new LockstepHarness(_coop, Setups(players, maxLatencyMs, jitterMs, loss), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true),
-            start => LockstepHarness.MakeWorld(wad, start, allPlayers: true), seed: 11 + players);
+            start => LockstepHarness.MakeWorld(wad, start), seed: 11 + players);
         h.JoinAndReady();
         int delay = DelayFor(maxLatencyMs, jitterMs);
         long start = h.Network.NowUs;
@@ -144,7 +151,7 @@ public class LockstepTests
     {
         WadArchive wad = Synthetic();
         var h = new LockstepHarness(_coop, Setups(3, 50, 20, 0.05), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true),
-            worlds ? start => LockstepHarness.MakeWorld(wad, start, allPlayers: false) : null, seed: 5)
+            worlds ? start => LockstepHarness.MakeWorld(wad, start) : null, seed: 5)
         {
             AllowDesync = true,
             BumpRandom = (2, bumpTic),
@@ -166,7 +173,7 @@ public class LockstepTests
         // carries an x the others' worlds do not have.
         WadArchive wad = Synthetic();
         var h = new LockstepHarness(_coop, Setups(3, 20, 5, 0), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: false),
-            start => LockstepHarness.MakeWorld(wad, start, allPlayers: false), seed: 3)
+            start => LockstepHarness.MakeWorld(wad, start), seed: 3)
         {
             AllowDesync = true,
             BeforeTic = (p, tic) =>

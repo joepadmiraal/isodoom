@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using IsoDoom.Map;
 using IsoDoom.Net;
 using IsoDoom.Sim;
+using IsoDoom.Tests.Support;
 using IsoDoom.Wad;
 using Xunit;
 
@@ -281,24 +281,29 @@ public sealed class LockstepHarness
     }
 
     /// <summary>
-    /// A co-op world from <paramref name="start"/>'s settings on <paramref name="wad"/>,
-    /// the players in its mask in game (when <paramref name="allPlayers"/>, else
-    /// player 1 only: a map with one start), in god mode so nobody dies (no netgame reborn yet).
+    /// A player's world from <paramref name="start"/> on <paramref name="wad"/>:
+    /// T11.1's <see cref="NetSim.MakeWorld"/> with the Start's settings (the
+    /// players in its mask in game through <see cref="SpawnSettings.playersingame"/>,
+    /// which <c>DecodeStart</c> holds equal to it) and its <c>consoleplayer</c>,
+    /// every player in game in god mode so nobody dies (no netgame reborn
+    /// until T11.3).
     /// </summary>
-    public static World MakeWorld(WadArchive wad, NetStart start, bool allPlayers)
+    public static World MakeWorld(WadArchive wad, NetStart start)
     {
         NetGameSettings s = start.Settings;
-        // The players in game through the spawn settings (T11.1), as the Start sets them.
-        SpawnSettings spawn = allPlayers ? s.Spawn : s.Spawn with { playersingame = 1 };
-        var world = new World(spawn, s.Tweaks);
+        Assert.Equal(start.PlayerMask, s.Spawn.playersingame);
         string map = s.Spawn.gamemode == GameMode.commercial ? $"MAP{s.Map:00}" : $"E{s.Episode}M{s.Map}";
-        world.G_DoLoadLevel(Level.Load(wad, map));
+        return NetSim.MakeWorld(wad, map, s.Spawn, s.Tweaks, start.ConsolePlayer, GodMode);
+    }
+
+    /// <summary>God mode for every player in game (the same on every machine).</summary>
+    private static void GodMode(World world)
+    {
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)
         {
             if (world.playeringame[i])
                 world.players[i].cheats |= player_t.CF_GODMODE;
         }
-        return world;
     }
 
     /// <summary>

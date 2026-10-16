@@ -20,7 +20,7 @@ public class SyntheticMapTests
     {
         Level map = Load();
         Assert.Equal("E1M1", map.Name);
-        Assert.Equal(12, map.Things.Length);
+        Assert.Equal(15, map.Things.Length);
         Assert.Equal(20, map.Lines.Length);
         Assert.Equal(24, map.Sides.Length);
         Assert.Equal(18, map.Vertexes.Length);
@@ -31,7 +31,10 @@ public class SyntheticMapTests
         Assert.Equal(new MapThing(0, 0, 90, 1, 7), map.Things.Single(t => t.Type == 1));
         Assert.Equal(new MapThing(320, 64, 180, 3001, 7), map.Things[2]);
         Assert.Equal(new MapThing(0, 0, 90, 1, 7), map.PlayerStart(0));
-        Assert.Null(map.PlayerStart(1));
+        // T11.5a: co-op starts 2-4 in the west room.
+        Assert.Equal(new MapThing(-40, 40, 90, 2, 7), map.PlayerStart(1));
+        Assert.Equal(new MapThing(-40, -40, 90, 3, 7), map.PlayerStart(2));
+        Assert.Equal(new MapThing(40, -40, 90, 4, 7), map.PlayerStart(3));
         Assert.Throws<ArgumentOutOfRangeException>(() => map.PlayerStart(4));
     }
 

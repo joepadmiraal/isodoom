@@ -401,7 +401,11 @@ public class WorldTests
         var world = new World(_medium, Tweaks.Vanilla);
         world.playeringame[1] = true;
         world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
-        Assert.Null(world.players[1].mo); // the synthetic map has no player 2 start
+        // The synthetic map's player 2 start (T11.5a) spawns it; player 3 is not in the game.
+        Assert.NotNull(world.players[1].mo);
+        Assert.Equal((-40 * Fixed.FRACUNIT, 40 * Fixed.FRACUNIT), (world.players[1].mo!.x, world.players[1].mo!.y));
+        Assert.Null(world.players[2].mo);
+        Assert.Equal(new MapThing(-40, -40, 90, 3, 7), world.playerstarts[2]);
 
         mobj_t? mo = world.P_SpawnMapThing(new MapThingSpawn(new MapThing(32, 32, 180, 2, 7), MapThingSpawnKind.PlayerStart, mobjtype_t.NUMMOBJTYPES, SpawnsPlayer: true));
         Assert.NotNull(mo);

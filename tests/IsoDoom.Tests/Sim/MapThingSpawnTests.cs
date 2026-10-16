@@ -166,8 +166,10 @@ public class MapThingSpawnTests
         Assert.Equal(0x80000000u, list[2].Angle);
         // T3.5's imps facing the other seven directions, the lamp and the hanging body.
         Assert.Equal(new uint[] { 0, 0x20000000, 0x40000000, 0x60000000, 0xA0000000, 0xC0000000, 0xE0000000 }, list.Skip(3).Take(7).Select(s => s.Angle));
-        Assert.Equal([mobjtype_t.MT_MISC31, mobjtype_t.MT_MISC56], list.Skip(10).Select(s => s.Type));
-        Assert.Equal("Mobj 11; PlayerStart 1; MT_TROOP 8; MT_BARREL 1; MT_MISC31 1; MT_MISC56 1; player 1", Summary(list));
+        Assert.Equal([mobjtype_t.MT_MISC31, mobjtype_t.MT_MISC56], list.Skip(10).Take(2).Select(s => s.Type));
+        // T11.5a's co-op starts, last.
+        Assert.All(list.Skip(12), s => Assert.Equal(MapThingSpawnKind.PlayerStart, s.Kind));
+        Assert.Equal("Mobj 11; PlayerStart 4; MT_TROOP 8; MT_BARREL 1; MT_MISC31 1; MT_MISC56 1; player 1; player 2; player 3; player 4", Summary(list));
     }
 
     // Checked once against vanilla (doomgeneric at T2.9's pinned commit, the

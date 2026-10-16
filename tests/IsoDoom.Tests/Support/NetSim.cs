@@ -32,19 +32,30 @@ public sealed class NetSim
     {
         Worlds = new World[consoleplayers.Length];
         for (int k = 0; k < consoleplayers.Length; k++)
-        {
-            var world = new World(settings, tweaks)
-            {
-                textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
-                map31exists = wad.W_CheckNumForName("MAP31") >= 0,
-                consoleplayer = consoleplayers[k],
-            };
-            world.P_InitPicAnims(world.textures, PicAnims.FlatNames(wad));
-            world.G_DoLoadLevel(Level.Load(wad, map));
-            setup?.Invoke(world);
-            Worlds[k] = world;
-        }
+            Worlds[k] = MakeWorld(wad, map, settings, tweaks, consoleplayers[k], setup);
         Checksum = AssertInSync();
+    }
+
+    /// <summary>
+    /// One machine's world of the game: <paramref name="map"/> of
+    /// <paramref name="wad"/> freshly loaded with <paramref name="settings"/>
+    /// (its <see cref="SpawnSettings.playersingame"/> the players in game) and
+    /// <paramref name="tweaks"/>, showing <paramref name="consoleplayer"/>,
+    /// <paramref name="setup"/> run on it after the load. The lockstep
+    /// protocol's tests (T11.5a) make each player's world with it too.
+    /// </summary>
+    public static World MakeWorld(WadArchive wad, string map, SpawnSettings settings, Tweaks tweaks, int consoleplayer, Action<World>? setup = null)
+    {
+        var world = new World(settings, tweaks)
+        {
+            textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
+            map31exists = wad.W_CheckNumForName("MAP31") >= 0,
+            consoleplayer = consoleplayer,
+        };
+        world.P_InitPicAnims(world.textures, PicAnims.FlatNames(wad));
+        world.G_DoLoadLevel(Level.Load(wad, map));
+        setup?.Invoke(world);
+        return world;
     }
 
     /// <summary>The worlds, one per machine.</summary>

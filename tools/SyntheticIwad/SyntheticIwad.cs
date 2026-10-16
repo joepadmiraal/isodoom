@@ -702,7 +702,15 @@ public static class SyntheticIwad
             80, 0, 270, 3001, 7,
             0, 80, 315, 3001, 7,
             784, 0, 0, 2028, 7,       // floor lamp (COLU, full bright) in courtyard A
-            576, 0, 0, 59, 7));       // hanging body (GOR2, MF_SPAWNCEILING) in room C
+            576, 0, 0, 59, 7,         // hanging body (GOR2, MF_SPAWNCEILING) in room C
+
+            // T11.5a: co-op starts for players 2-4 in the west room, between the imps, so a
+            // netgame has every player in game. Last, so nothing before them moves; a player
+            // not in game spawns nothing from its start (P_SpawnPlayer), so single-player
+            // play is unchanged.
+            -40, 40, 90, 2, 7,        // player 2 start
+            -40, -40, 90, 3, 7,       // player 3 start
+            40, -40, 90, 4, 7));      // player 4 start
         var linedefs = new List<short>();
         for (int i = 0; i < _mapLinedefs.GetLength(0); i++)
         {
