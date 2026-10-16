@@ -24,20 +24,8 @@ public sealed class NetSimTests
     // a shotgun at x = 300 only in a netgame (options bit 16).
     private static readonly int[] _lineY = [64, 192, 320, 448];
 
-    private static TestMap CoopMap()
-    {
-        var map = TestMap.Strip(0, 0, 512, new TestMap.Room(512, 0, 128), new TestMap.Room(16, 0, 0), new TestMap.Room(256, 0, 128));
-        map.Special(map.Boundaries[2], 1);
-        for (int i = 0; i < 4; i++)
-        {
-            map.Thing(400, _lineY[i], 2014);
-            map.Thing(100, _lineY[i], i % 2 == 0 ? 3004 : 3001, 180);
-        }
-        map.Thing(300, _lineY[3], 2001, 0, 7 | MapThingSpawning.MTF_NOTSINGLE);
-        for (int i = 0; i < 4; i++)
-            map.Thing(700, _lineY[i], 1 + i, 180);
-        return map;
-    }
+    // (T11.2: the map is RouteTestMaps' "coop", which the testmap-coop route plays against vanilla.)
+    private static TestMap CoopMap() => RouteTestMaps.Coop();
 
     /// <summary>The co-op test map (as <c>E1M1</c>), with the four players' starts.</summary>
     internal static WadArchive CoopWad() => new([WadFile.FromBytes(CoopMap().Build(), "coop.wad")]);

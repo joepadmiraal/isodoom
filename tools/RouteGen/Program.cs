@@ -93,7 +93,7 @@ public static class Program
         new([WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad")]);
 
     private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null,
-        IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false);
+        IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false, int Players = 1);
 
     /// <summary>
     /// T10.3: a duel with the monster spawned at (<paramref name="x"/>,
@@ -224,6 +224,52 @@ public static class Program
     /// <summary>T10.3: whether a <see cref="Brawler"/> logged every action of <paramref name="actions"/> for monster <paramref name="type"/> (<c>mobjtype_t</c> without <c>MT_</c>).</summary>
     private static Func<Brawler, bool> Seen(string type, params string[] actions) =>
         b => b.Attacks.TryGetValue(type, out SortedSet<string>? a) && actions.All(a.Contains);
+
+    /// <summary>
+    /// T11.2: co-op on DOOM1.WAD's E1M1 with <paramref name="players"/> players, steered one after
+    /// another (the others stand): each opens door 4 if it is shut, goes through it and on into the
+    /// nukage room across line 195, shooting the monsters that attacked with its own weapon.
+    /// </summary>
+    private static Action<Steer, Action<string>> CoopE1M1(int players) => (g, log) =>
+    {
+        var gun = new Gunner(g) { Guns = true };
+        string State() => string.Join("; ", Enumerable.Range(0, players).Select(i =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[i];
+            return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} a{p.armorpoints} {p.readyweapon} k{p.killcount} i{p.itemcount}";
+        })) + "; " + g.Monsters();
+        int[] lanes = [-2496, -2456, -2536, -2496];
+        for (int i = 0; i < players; i++)
+        {
+            g.Player = i;
+            log($"player {i + 1} to door 4: {State()}");
+            g.GoTo(1500, lanes[i]);
+            g.Door(4, 1544, lanes[i]);
+            gun.Clear(300);
+            g.GoTo(1600 + (48 * i), lanes[i]);
+            gun.Clear(300);
+            log($"player {i + 1} through door 4: {State()}");
+        }
+        // on the ledge above the nukage (floor -24), one spot each
+        (int X, int Y)[] ledge = [(2900, -2900), (2980, -2900), (2900, -2800), (2980, -2800)];
+        for (int i = 0; i < players; i++)
+        {
+            g.Player = i;
+            g.GoToDoors(ledge[i].X, ledge[i].Y, 12);
+            gun.Clear(300);
+            log($"player {i + 1} on the ledge: {State()}");
+            for (int k = 0; k < players; k++)
+            {
+                if (g.World.players[k].health <= 0)
+                    throw new InvalidOperationException($"player {k + 1} died");
+            }
+        }
+        // the last player down into the nukage across line 195 (the lift lowers)
+        g.GoTo(2900, -3100, 12);
+        gun.Clear(300);
+        g.Wait(35);
+        log($"done: {State()}; {gun}");
+    };
 
     /// <summary>The steering scripts by route name.</summary>
     private static readonly SortedDictionary<string, Script> _scripts = new(StringComparer.Ordinal)
@@ -1024,6 +1070,136 @@ monsters
             log("waited " + State());
             log(gun.ToString());
         }, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true),
+        ["coop-e1m1-2p"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op, two players, skill 3 with monsters (T11.2): a
+# netgame (vanilla's netdemo). The players are steered one after another (a
+# player not steered stands): each opens door 4 when it is shut and goes
+# through it, then each walks to its spot on the ledge above the nukage room,
+# shooting the monsters that attacked with its pistol (BT_ATTACK); the last
+# drops into the nukage across line 195 (the lift lowers). Written by
+# tools/RouteGen (coop-e1m1-2p).
+iwad doom1
+players 2
+monsters
+
+""", CoopE1M1(2), Monsters: true, Players: 2),
+        ["synthetic-coop"] = new(Synthetic, "E1M1", """
+# The synthetic E1M1 in co-op (T11.2), four players (T11.5a's starts 2-4
+# around player 1's), skill 1 with monsters: six of the nine imps die asleep
+# on the first tic, to damage events of players 1-4 in turn (pN: the kills are
+# theirs); the three left (two around the start, the one east) wake, scratch
+# and throw fireballs at the players, who take turns of 20 tics shooting the
+# nearest that attacked with their pistols (BT_ATTACK; the others stand
+# meanwhile) until none is left. Written by
+# tools/RouteGen (synthetic-coop); its dump is committed (CI).
+iwad synthetic
+skill 1
+players 4
+monsters
+""", (g, log) =>
+        {
+            var gun = new Gunner(g) { Guns = true };
+            string State() => string.Join("; ", Enumerable.Range(0, 4).Select(i =>
+            {
+                IsoDoom.Sim.player_t p = g.World.players[i];
+                return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} k{p.killcount} a{p.ammo[0]}";
+            })) + "; " + g.Monsters();
+            // six of the nine imps die asleep on the first tic, each to a damage event of another player (pN)
+            (int X, int Y)[] spared = [(-80, 80), (80, -80), (320, 64)];
+            var asleep = g.World.Mobjs().Where(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP && !spared.Contains((m.spawnpoint.X, m.spawnpoint.Y))).ToList();
+            for (int k = 0; k < asleep.Count; k++)
+            {
+                g.Player = k % 4;
+                g.Damage(asleep[k].spawnpoint.X, asleep[k].spawnpoint.Y, 100);
+            }
+            g.Player = 0;
+            g.Wait(30);
+            log("awake " + State());
+            for (int turn = 0; turn < 60 && g.World.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP && m.health > 0); turn++)
+            {
+                g.Player = turn % 4;
+                gun.Clear(20);
+                if (g.World.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TROOP && m.health > 0) && g.Cmds.Count % 20 != 0)
+                    g.Wait(20 - (g.Cmds.Count % 20)); // (a turn without targets in sight)
+                if (turn % 4 == 3)
+                    log($"turn {turn}: {State()}");
+                for (int k = 0; k < 4; k++)
+                {
+                    if (g.World.players[k].health <= 0)
+                        throw new InvalidOperationException($"player {k + 1} died");
+                }
+            }
+            g.Player = 0;
+            g.Wait(35);
+            log($"done {State()}; {gun}");
+        }, Skill: IsoDoom.Sim.skill_t.sk_baby, Monsters: true, Players: 4),
+        ["testmap-coop"] = new(() => TestMapWad("coop"), "E1M1", """
+# The co-op test map (T11.2, RouteTestMaps "coop": T11.1's NetSimTests map),
+# four players in co-op, skill 3 with monsters: player 1 opens the DR door
+# (line D | A), then each player in turn walks west through it to its line's
+# health bonus (player 4 first over the netgame-only shotgun, which it
+# switches to) and shoots the monster on its line with its own weapon
+# (BT_ATTACK); the others stand meanwhile. Written by tools/RouteGen
+# (testmap-coop); its dump is committed (CI).
+iwad testmap
+map coop
+players 4
+monsters
+
+""", (g, log) =>
+        {
+            int[] lanes = [64, 192, 320, 448];
+            string State() => string.Join("; ", Enumerable.Range(0, 4).Select(i =>
+            {
+                IsoDoom.Sim.player_t p = g.World.players[i];
+                return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} {p.readyweapon} k{p.killcount} i{p.itemcount}";
+            })) + "; " + g.Monsters();
+            int door = Array.FindIndex(g.World.sectors, s => s.ceilingheight == s.floorheight);
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            g.GoTo(560, 64);
+            g.Door(door, 520, 64);
+            log("door open " + State());
+            for (int i = 0; i < 4; i++)
+            {
+                g.Player = i;
+                if (i == 3)
+                    g.GoToDoors(300, lanes[i]); // the netgame's shotgun
+                g.GoToDoors(400, lanes[i]);
+                log($"player {i + 1} at its bonus: {State()}");
+                IsoDoom.Sim.mobj_t? target = g.World.Mobjs().Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0)
+                    .OrderBy(m => System.Math.Abs((m.y >> 16) - lanes[i])).FirstOrDefault();
+                if (target != null)
+                {
+                    g.FireAt(target);
+                }
+                else
+                {
+                    for (int t = 0; t < 40; t++)
+                        g.Fire(0, lanes[i]); // nothing left: at the west wall
+                    g.Wait(1);
+                }
+                log($"player {i + 1} fired: {State()}");
+                for (int k = 0; k < 4; k++)
+                {
+                    if (g.World.players[k].health <= 0)
+                        throw new InvalidOperationException($"player {k + 1} died");
+                }
+            }
+            g.Player = 0;
+            g.Wait(35);
+            log("done " + State());
+        }, Monsters: true, Players: 4),
+        ["coop-e1m1-4p"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op, four players, skill 3 with monsters (T11.2):
+# coop-e1m1-2p's way for all four, each through door 4 (reopening it when it
+# shut) and then to its spot on the ledge, shooting what attacked; player 4
+# drops into the nukage across line 195. Written by tools/RouteGen
+# (coop-e1m1-4p).
+iwad doom1
+players 4
+monsters
+
+""", CoopE1M1(4), Monsters: true, Players: 4),
         ["e1m1-rockets"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 on skill 4 with monsters (T6.5): e1m1-monsters' way
 # through door 4, but the monsters that attacked are shot with rocket events
@@ -2471,16 +2647,16 @@ exit normal
             int[] v = [.. tryStart.Split(',').Select(t => int.Parse(t, CultureInfo.InvariantCulture))];
             script = script with { Start = (v[0], v[1], v[2]) };
         }
-        var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
+        var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters, script.Players);
         void Log(string s) => Console.Error.WriteLine($"[{g.World.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
         script.Run(g, Log);
         Log($"done, {g.Cmds.Count} tics");
 
         // The planning must not have changed the play: replay the ticcmds in a fresh world.
-        var replay = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters);
+        var replay = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters, script.Players);
         replay.Events.AddRange(g.Events);
-        foreach ((int Forward, int Side, int Turn, int Buttons) c in g.Cmds)
-            replay.Tic(c.Forward, c.Side, c.Turn, c.Buttons); // (with the events)
+        foreach (IsoDoom.Sim.ticcmd_t[] c in g.NetCmds)
+            replay.Tic(c); // (with the events; T11.2: every player's commands)
         if (replay.World.Checksum() != g.World.Checksum())
         {
             Console.Error.WriteLine("The replayed ticcmds end in another state: the planning changed the play.");

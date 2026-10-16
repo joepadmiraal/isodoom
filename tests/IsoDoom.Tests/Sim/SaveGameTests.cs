@@ -90,7 +90,7 @@ public class SaveGameTests
         for (int tic = 0; tic < n / 4; tic++)
         {
             route.File.RunEvents(world, tic);
-            world.G_Ticker(route.Cmds[tic]);
+            world.G_Ticker(route.NetCmds[tic]);
         }
         Assert.True(world.numbraintargets > 0, "the shooter is awake a quarter in");
         World loaded = Load(Save(world), wad);
@@ -120,7 +120,7 @@ public class SaveGameTests
             if (at.Contains(tic) && world.gameaction == gameaction_t.ga_nothing)
                 saves[tic] = Save(world);
             route.File.RunEvents(world, tic);
-            world.G_Ticker(route.Cmds[tic]);
+            world.G_Ticker(route.NetCmds[tic]);
             checksums[tic] = world.Checksum();
             if ((tic % 35 == 0 || tic == n - 1) && world.gameaction == gameaction_t.ga_nothing)
                 states[tic] = Save(world);
@@ -137,7 +137,7 @@ public class SaveGameTests
             {
                 route.Reborn(loaded, wad);
                 route.File.RunEvents(loaded, tic);
-                loaded.G_Ticker(route.Cmds[tic]);
+                loaded.G_Ticker(route.NetCmds[tic]);
                 Assert.True(checksums[tic] == loaded.Checksum(),
                     $"{route.Name}: saved before tic {from + 1} and loaded, tic {tic + 1}'s checksum differs");
                 if (states.TryGetValue(tic, out byte[]? state) && loaded.gameaction == gameaction_t.ga_nothing)
@@ -153,7 +153,7 @@ public class SaveGameTests
         var route = VanillaRoute.Load("synthetic-monsters");
         World world = route.NewWorld(out WadArchive wad);
         for (int tic = 0; tic < 100; tic++)
-            world.G_Ticker(route.Cmds[tic]);
+            world.G_Ticker(route.NetCmds[tic]);
         byte[] save = Save(world);
         Load(save, wad); // whole: loads
 

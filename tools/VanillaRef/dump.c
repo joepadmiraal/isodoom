@@ -75,8 +75,10 @@
 // think: P_DamageMobj(thing, mo, mo, AMOUNT) on the first mobj in thinker
 // order spawned at map point X, Y (spawnpoint) that is shootable and alive
 // (none: exit 1), or P_NoiseAlert(mo, mo), or (T6.5, "TIC rocket")
-// P_SpawnPlayerMissile(mo, MT_ROCKET), mo player 1's mobj: the route's
-// stand-ins for the player's shots.
+// P_SpawnPlayerMissile(mo, MT_ROCKET), mo player 1's mobj (T11.2: player N's
+// with a last " pN"): the route's stand-ins for the player's shots.
+// T11.2: in a game with another player than player 1 (a multi-player demo),
+// the line ends with a column for every player in the game (dump_player).
 #include "doomgeneric.h"
 #include "doomstat.h"
 #include "d_player.h"
@@ -180,7 +182,7 @@ extern char **textures;
 // $DUMP_EVENTS (T6.4): "TIC damage X Y AMOUNT;TIC alert;TIC rocket;..." in tic order.
 // kind: 0 damage, 1 alert, 2 rocket (T6.5).
 #define MAX_EVENTS 4096
-static struct { int tic, kind, x, y, amount; } events[MAX_EVENTS];
+static struct { int tic, kind, x, y, amount, player; } events[MAX_EVENTS];
 static int nevents, nextevent;
 static int routetic; // the route's tics so far (T6.12: leveltime starts again after a reborn)
 
@@ -189,13 +191,21 @@ static void parse_events(void)
     char *e = getenv("DUMP_EVENTS");
     for (char *tok = strtok(strdup(e ? e : ""), ";"); tok && nevents < MAX_EVENTS; tok = strtok(NULL, ";"))
     {
-        int tic, x, y, amount;
+        int tic, x, y, amount, player = 1;
+        char *p = strrchr(tok, 'p'); // T11.2: a last " pN" names the event's player (default player 1)
+        if (p && p > tok && p[-1] == ' ' && sscanf(p, "p%d", &player) == 1)
+            p[-1] = 0;
+        if (player < 1 || player > MAXPLAYERS)
+        {
+            fprintf(stderr, "DUMP_EVENTS: bad player in \"%s\"\n", tok);
+            exit(1);
+        }
         if (sscanf(tok, "%d damage %d %d %d", &tic, &x, &y, &amount) == 4)
-            events[nevents++] = (typeof(events[0])){ tic, 0, x, y, amount };
+            events[nevents++] = (typeof(events[0])){ tic, 0, x, y, amount, player - 1 };
         else if (sscanf(tok, "%d alert", &tic) == 1 && strstr(tok, "alert"))
-            events[nevents++] = (typeof(events[0])){ tic, 1, 0, 0, 0 };
+            events[nevents++] = (typeof(events[0])){ tic, 1, 0, 0, 0, player - 1 };
         else if (sscanf(tok, "%d rocket", &tic) == 1 && strstr(tok, "rocket"))
-            events[nevents++] = (typeof(events[0])){ tic, 2, 0, 0, 0 };
+            events[nevents++] = (typeof(events[0])){ tic, 2, 0, 0, 0, player - 1 };
         else
         {
             fprintf(stderr, "DUMP_EVENTS: bad event \"%s\"\n", tok);
@@ -256,6 +266,7 @@ void dump_pretic(void)
     {
         if (events[nextevent].tic < routetic)
             continue;
+        mo = players[events[nextevent].player].mo; // T11.2: the event's player
         if (events[nextevent].kind == 1)
         {
             P_NoiseAlert(mo, mo);
@@ -392,8 +403,52 @@ void dump_tic(void)
     // (T6.11: the line goes on in dump_posttic, after ST_Ticker and HU_Ticker.)
 }
 
+// T11.2: player i's column (multi-player games only), colon-joined: N (1-4), its
+// ticcmd (forwardmove, sidemove, angleturn, buttons), its mobj's x, y, z, momx,
+// momy, momz, angle (unsigned), state, tics, health and flags (- for each without
+// a mobj), then viewz, playerstate, health, armorpoints, armortype, cards (bit
+// i for card_t i), killcount, itemcount, secretcount, ammo[4], maxammo[4],
+// weaponowned (bit i for weapontype_t i), backpack, frags[4], readyweapon,
+// pendingweapon, extralight, refire, attackdown, usedown, each psprite's
+// state (-1 for none), tics, sx and sy, powers[6], damagecount, bonuscount,
+// fixedcolormap and cheats.
+static void dump_player(int i)
+{
+    player_t *p = &players[i];
+    mobj_t *mo = p->mo;
+    fprintf(ticfile, " %d:%d:%d:%d:%d:", i + 1, p->cmd.forwardmove, p->cmd.sidemove, p->cmd.angleturn, p->cmd.buttons);
+    if (mo)
+        fprintf(ticfile, "%d:%d:%d:%d:%d:%d:%u:%d:%d:%d:%d", mo->x, mo->y, mo->z, mo->momx, mo->momy, mo->momz, mo->angle,
+                (int)(mo->state - states), mo->tics, mo->health, mo->flags);
+    else
+        fprintf(ticfile, "-:-:-:-:-:-:-:-:-:-:-");
+    int cards = 0, owned = 0;
+    for (int k = 0; k < NUMCARDS; k++)
+        cards |= p->cards[k] ? 1 << k : 0;
+    for (int k = 0; k < NUMWEAPONS; k++)
+        owned |= p->weaponowned[k] ? 1 << k : 0;
+    fprintf(ticfile, ":%d:%d:%d:%d:%d:%d:%d:%d:%d", p->viewz, p->playerstate, p->health, p->armorpoints, p->armortype, cards,
+            p->killcount, p->itemcount, p->secretcount);
+    for (int k = 0; k < NUMAMMO; k++)
+        fprintf(ticfile, ":%d", p->ammo[k]);
+    for (int k = 0; k < NUMAMMO; k++)
+        fprintf(ticfile, ":%d", p->maxammo[k]);
+    fprintf(ticfile, ":%d:%d", owned, p->backpack ? 1 : 0);
+    for (int k = 0; k < MAXPLAYERS; k++)
+        fprintf(ticfile, ":%d", p->frags[k]);
+    fprintf(ticfile, ":%d:%d:%d:%d:%d:%d", p->readyweapon, p->pendingweapon, p->extralight, p->refire, p->attackdown ? 1 : 0,
+            p->usedown ? 1 : 0);
+    for (int k = 0; k < NUMPSPRITES; k++)
+        fprintf(ticfile, ":%d:%d:%d:%d", p->psprites[k].state ? (int)(p->psprites[k].state - states) : -1,
+                p->psprites[k].tics, p->psprites[k].sx, p->psprites[k].sy);
+    for (int k = 0; k < NUMPOWERS; k++)
+        fprintf(ticfile, ":%d", p->powers[k]);
+    fprintf(ticfile, ":%d:%d:%d:%d", p->damagecount, p->bonuscount, p->fixedcolormap, p->cheats);
+}
+
 // Called by the patched g_game.c after HU_Ticker in every G_Ticker of a level
-// (T6.11): the HUD column, then the exit, ending the tic's line.
+// (T6.11): the HUD column, then the exit, ending the tic's line (T11.2: after
+// the players' columns of a multi-player game, dump_player).
 static void dump_wipetic(void);
 static void dump_amtic(void);
 
@@ -464,7 +519,13 @@ void dump_posttic(void)
     // The exit (T5.9): G_ExitLevel/G_SecretExitLevel this tic.
     extern boolean secretexit;
     extern gameaction_t gameaction;
-    fprintf(ticfile, "%d\n", gameaction == ga_completed ? secretexit ? 2 : 1 : 0);
+    fprintf(ticfile, "%d", gameaction == ga_completed ? secretexit ? 2 : 1 : 0);
+    // T11.2: with another player than player 1 in the game, a column for every player in the game.
+    if (playeringame[1] || playeringame[2] || playeringame[3])
+        for (int i = 0; i < MAXPLAYERS; i++)
+            if (playeringame[i])
+                dump_player(i);
+    fputc('\n', ticfile);
     fflush(ticfile);
 }
 

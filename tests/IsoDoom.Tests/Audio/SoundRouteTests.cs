@@ -62,7 +62,7 @@ public class SoundRouteTests
             if (route.Reborn(world, wad))
                 sound.S_Start(world.gameepisode, world.gamemap); // P_SetupLevel's
             route.File.RunEvents(world, tic);
-            world.G_Ticker(route.Cmds[tic]);
+            world.G_Ticker(route.NetCmds[tic]);
             sound.gamemap = world.gamemap;
             mobj_t mo = world.players[0].mo!;
             var listener = new sound_listener_t(mo, mo.x, mo.y, ScreenUp);

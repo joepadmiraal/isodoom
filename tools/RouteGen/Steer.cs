@@ -57,9 +57,11 @@ public sealed class Steer
     /// <summary>T6.4: called after every tic (e.g. a <see cref="Gunner"/> adding the next tic's events).</summary>
     public Action? OnTic { get; set; }
 
-    public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false)
+    public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1)
     {
-        World = new World(new SpawnSettings(ModeOf(wad, map), skill, nomonsters: !monsters, gamemission: MissionOf(wad, map)), Tweaks.Vanilla)
+        Players = players;
+        World = new World(new SpawnSettings(ModeOf(wad, map), skill, netgame: players > 1, nomonsters: !monsters, gamemission: MissionOf(wad, map),
+            playersingame: (1 << players) - 1), Tweaks.Vanilla)
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
@@ -100,14 +102,30 @@ public sealed class Steer
         map.StartsWith("MAP", StringComparison.OrdinalIgnoreCase) ? GameMode.commercial : GameMode.shareware;
 
     /// <summary>T5.6: a route's <c>start X Y ANGLE</c> (<see cref="RouteStart.Place"/>), before the first tic.</summary>
-    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start, skill_t skill = skill_t.sk_medium, bool monsters = false)
-        : this(wad, map, skill, monsters)
+    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1)
+        : this(wad, map, skill, monsters, players)
     {
         if (start is { } s)
             RouteStart.Place(World, s.X, s.Y, s.Angle);
     }
 
-    public mobj_t Mo => World.players[0].mo!;
+    /// <summary>T11.2: the players in the game, 1 to <see cref="Players"/> (a netgame from 2).</summary>
+    public int Players { get; }
+
+    /// <summary>
+    /// T11.2: the player steered (0-based): every method moves this one, the
+    /// others in the game get <see cref="Others"/>' commands meanwhile (none: they stand).
+    /// A multi-player route steers its players one after another.
+    /// </summary>
+    public int Player { get; set; }
+
+    /// <summary>T11.2: the command of a player not steered (its index) each tic; null: it stands still.</summary>
+    public Func<int, ticcmd_t>? Others { get; set; }
+
+    /// <summary>T11.2: every player's command of each tic (<see cref="World.MAXPLAYERS"/> long), as played.</summary>
+    public List<ticcmd_t[]> NetCmds { get; } = [];
+
+    public mobj_t Mo => World.players[Player].mo!;
     public double X => Mo.x / (double)FU;
     public double Y => Mo.y / (double)FU;
     public double Z => Mo.z / (double)FU;
@@ -121,21 +139,40 @@ public sealed class Steer
                 e.Run(World);
         }
         Cmds.Add((forward, side, turn, buttons));
-        World.G_Ticker(new ticcmd_t { forwardmove = (sbyte)forward, sidemove = (sbyte)side, angleturn = (short)(turn << 8), buttons = (byte)buttons });
+        var netcmds = new ticcmd_t[World.MAXPLAYERS];
+        for (int i = 0; i < Players; i++)
+            netcmds[i] = i == Player ? new ticcmd_t { forwardmove = (sbyte)forward, sidemove = (sbyte)side, angleturn = (short)(turn << 8), buttons = (byte)buttons } : Others?.Invoke(i) ?? default;
+        NetCmds.Add(netcmds);
+        World.G_Ticker(netcmds);
+        OnTic?.Invoke();
+    }
+
+    /// <summary>T11.2: runs one tic of every player's commands (a replay), with the events.</summary>
+    public void Tic(ticcmd_t[] netcmds)
+    {
+        foreach (RouteEvent e in Events)
+        {
+            if (e.Tic == NetCmds.Count)
+                e.Run(World);
+        }
+        ticcmd_t c = netcmds[Player];
+        Cmds.Add((c.forwardmove, c.sidemove, c.angleturn >> 8, c.buttons));
+        NetCmds.Add(netcmds);
+        World.G_Ticker(netcmds);
         OnTic?.Invoke();
     }
 
     /// <summary>T6.4: player 1 hurts the live thing spawned at (x, y) by <paramref name="amount"/> at the start of the next tic (a route <c>damage</c> line).</summary>
     public void Damage(int x, int y, int amount) =>
-        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Damage, x, y, amount));
+        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Damage, x, y, amount, Player));
 
     /// <summary>T6.4: player 1 makes a noise at the start of the next tic (a route <c>alert</c> line).</summary>
     public void Alert() =>
-        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Alert, 0, 0, 0));
+        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Alert, 0, 0, 0, Player));
 
     /// <summary>T6.5: player 1 fires a rocket at the start of the next tic (a route <c>rocket</c> line).</summary>
     public void Rocket() =>
-        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Rocket, 0, 0, 0));
+        Events.Add(new IsoDoom.Game.RouteEvent(Cmds.Count, IsoDoom.Game.RouteEventKind.Rocket, 0, 0, 0, Player));
 
     /// <summary>T6.4: the live mobj spawned at (x, y) (a damage event's target), or null.</summary>
     public mobj_t? Spawned(int x, int y) =>
@@ -143,7 +180,7 @@ public sealed class Steer
 
     /// <summary>T6.4: the monsters out of their spawn state (type, spawn point, position, health, state) and the player's health, for the log.</summary>
     public string Monsters() =>
-        $"health {World.players[0].health} armor {World.players[0].armorpoints}; " + string.Join("; ", World.Mobjs()
+        $"health {World.players[Player].health} armor {World.players[Player].armorpoints}; " + string.Join("; ", World.Mobjs()
             .Where(m => (m.flags & mobjflag_t.MF_COUNTKILL) != 0 && m.state != m.info.spawnstate && m.state != Info.states[(int)m.info.spawnstate].nextstate)
             .Select(m => $"{m.type.ToString()[3..]}@{m.spawnpoint.X},{m.spawnpoint.Y} ({m.x >> 16},{m.y >> 16}) h{m.health} {m.state.ToString()[2..]}"));
 
@@ -289,6 +326,8 @@ public sealed class Steer
     /// <summary>"F S T B [xN]" lines with the header (comments, iwad, map) first.</summary>
     public string Route(string header)
     {
+        if (Players > 1) // T11.2: a ticcmd per player, "|" between them
+            return header + "# each player's forwardmove sidemove turn buttons, | between them [xcount]; turn << 8 = angleturn\n" + RouteFile.Lines(NetCmds, Players, Events);
         var sb = new StringBuilder(header);
         sb.Append("# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn\n");
         for (int k = 0; k < Cmds.Count;)
@@ -585,7 +624,7 @@ public sealed class Steer
     /// </summary>
     private bool CanOpen(int special)
     {
-        bool[] c = World.players[0].cards;
+        bool[] c = World.players[Player].cards;
         return _manualDoors.Contains(special) || special switch
         {
             26 or 32 => c[(int)card_t.it_bluecard] || c[(int)card_t.it_blueskull],

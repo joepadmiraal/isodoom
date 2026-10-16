@@ -1096,6 +1096,9 @@ public partial class LevelScript : Node
             wrong.Add($"needs -gameversion {GameVersions.Cmdline(version)} (T10.7)");
         if (_scene.PlayerMobj is null)
             wrong.Add("no player");
+        // T11.2: the scene plays player 1 alone (T11.8 brings the netgame's tics), without -respawn or -fast
+        if (route.PlayersInGame != 1 || route.Deathmatch != 0 || route.Respawn || route.Fast)
+            wrong.Add("is a multi-player, deathmatch, -respawn or -fast game: the level scene plays player 1 alone");
         if (wrong.Count > 0)
         {
             GD.PrintErr($"Level script: {what}: {string.Join("; ", wrong)}");

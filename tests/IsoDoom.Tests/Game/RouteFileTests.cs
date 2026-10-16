@@ -90,4 +90,77 @@ public class RouteFileTests
         RouteFile r = RouteFile.Parse(lines, "test.route");
         Assert.Equal(expected, r.ImpliedGameVersion);
     }
+
+    /// <summary>
+    /// T11.2: a multi-player route: the <c>players</c> and <c>deathmatch</c>
+    /// headers, one <c>ticcmd</c> per player a line separated by <c>|</c>,
+    /// events naming their player (<c>pN</c>), and <see cref="RouteFile.Lines"/>
+    /// writing them back.
+    /// </summary>
+    [Fact]
+    public void ParsesAMultiPlayerRoute()
+    {
+        string[] lines =
+        [
+            "iwad doom1", "players 3", "deathmatch 1", "monsters",
+            "25 0 1 0 | -25 0 -1 1 | 0 24 0 2 x2",
+            "damage 10 20 5 p2",
+            "alert",
+            "0 0 0 0 | 0 0 0 0 | 0 0 0 0",
+            "rocket p3",
+            "1 2 3 4 | 5 6 7 8 | 9 10 11 12",
+        ];
+        RouteFile r = RouteFile.Parse(lines, "test.route");
+        Assert.Equal(0b111, r.PlayersInGame);
+        Assert.True(r.Netgame);
+        Assert.Equal(1, r.Deathmatch);
+        Assert.Equal(4, r.NetCmds.Count);
+        Assert.Equal(4, r.Cmds.Count);
+        Assert.Equal(-25, r.NetCmds[1][1].forwardmove);
+        Assert.Equal(-256, r.NetCmds[0][1].angleturn);
+        Assert.Equal(24, r.NetCmds[1][2].sidemove);
+        Assert.Equal(0, r.NetCmds[0][3].forwardmove); // a player not in the game: an empty command
+        Assert.Equal(new sbyte[] { 25, 25, 0, 1 }, r.Cmds.Select(c => c.forwardmove));
+        Assert.Equal(9, r.NetCmds[3][2].forwardmove);
+        Assert.Equal(
+            [new RouteEvent(2, RouteEventKind.Damage, 10, 20, 5, 1), new RouteEvent(2, RouteEventKind.Alert, 0, 0, 0), new RouteEvent(3, RouteEventKind.Rocket, 0, 0, 0, 2)],
+            r.Events);
+        string written = RouteFile.Lines(r.NetCmds, 3, r.Events);
+        Assert.Equal(string.Join('\n', lines[4..]) + "\n", written);
+        RouteFile back = RouteFile.Parse(["players 3", .. written.Split('\n')], "back.route");
+        Assert.Equal(r.Events, back.Events);
+        for (int t = 0; t < r.NetCmds.Count; t++)
+            Assert.Equal(r.NetCmds[t], back.NetCmds[t]);
+    }
+
+    /// <summary>T11.2: a single-player route keeps its format, its commands at player 1's slot.</summary>
+    [Fact]
+    public void ASinglePlayerRouteIsPlayer1Alone()
+    {
+        RouteFile r = RouteFile.Parse(["iwad doom1", "25 0 0 0 x2"], "test.route");
+        Assert.Equal(1, r.PlayersInGame);
+        Assert.False(r.Netgame);
+        Assert.Equal(2, r.NetCmds.Count);
+        Assert.Equal(25, r.NetCmds[1][0].forwardmove);
+        Assert.Equal("25 0 0 0 x2\n", RouteFile.Lines(r.NetCmds, 1, r.Events));
+    }
+
+    [Theory]
+    [InlineData("players 5")]
+    [InlineData("players 0")]
+    [InlineData("players two")]
+    [InlineData("deathmatch 3")]
+    [InlineData("players 2\n25 0 0 0")]
+    [InlineData("players 2\n25 0 0 0 0 0 0 0")]
+    [InlineData("players 2\n25 0 0 0 | 0 0 0")]
+    [InlineData("players 2\n25 0 0 0 | 0 0 0 0 | 0 0 0 0")]
+    [InlineData("25 0 0 0 | 0 0 0 0")]
+    [InlineData("25 0 0 0\nplayers 2")]
+    [InlineData("players 2\nalert p3\n0 0 0 0 | 0 0 0 0")]
+    [InlineData("alert p0\n0 0 0 0")]
+    [InlineData("alert p2\n0 0 0 0")]
+    public void RejectsBadMultiPlayerLines(string text)
+    {
+        Assert.Throws<FormatException>(() => RouteFile.Parse(["iwad doom1", .. text.Split('\n')], "bad.route"));
+    }
 }

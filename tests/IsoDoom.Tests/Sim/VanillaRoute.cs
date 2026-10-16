@@ -38,7 +38,10 @@ namespace IsoDoom.Tests.Sim;
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
 /// angleturn is 8 bits wide), <c>xCOUNT</c> repeats the line. The game has no
 /// monsters (the demo's <c>nomonsters</c>) unless the header has a line
-/// <c>monsters</c> (T6.4), and player 1 alone. Between the ticcmds (T6.4),
+/// <c>monsters</c> (T6.4), and player 1 alone unless (T11.2) a <c>players N</c>
+/// header puts players 1 to N in the game (a netgame, each <c>ticcmd</c> line
+/// then one per player separated by <c>|</c>, and a <c>deathmatch</c> header
+/// allowed: <see cref="RouteFile"/>). Between the ticcmds (T6.4),
 /// <c>damage X Y AMOUNT</c> (player 1 hurts the live shootable thing spawned
 /// at map point X, Y by AMOUNT, as a shot would) and <c>alert</c> (player 1
 /// makes a noise, as a shot would) and (T6.5) <c>rocket</c> (player 1 fires
@@ -86,7 +89,10 @@ namespace IsoDoom.Tests.Sim;
 /// pixels both draw; the pixels are compared only where the test has
 /// the IWAD's graphics (DOOM1.WAD's, or Doom II's for its routes), <see cref="HudGraphics"/>), then (T5.9)
 /// <c>exit</c>: 0, or 1 (2) when the tic left the level by its exit (secret
-/// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>. For the synthetic
+/// exit), i.e. <c>gameaction</c> is <c>ga_completed</c>; (T11.2) in a game
+/// with another player than player 1, a column for every player in the game
+/// follows (<see cref="PlayerColumns"/>). The line's first columns are the
+/// console player's (player 1's in a route). For the synthetic
 /// IWAD and the test maps it is committed beside the route (generated content); for DOOM1.WAD
 /// it is WAD-derived and lives in
 /// <see cref="DumpDirEnvVar"/> (default <c>~/.cache/isodoom/vanilla-routes</c>).
@@ -149,6 +155,12 @@ public sealed class VanillaRoute
     /// <summary>The <c>exit</c> header (T5.9): 1 for <c>normal</c>, 2 for <c>secret</c>, 0 without one (the dump's <c>exit</c> column).</summary>
     public int Exit { get; }
     public IReadOnlyList<ticcmd_t> Cmds { get; }
+
+    /// <summary>T11.2: every player's <c>ticcmd</c> of each tic (<see cref="RouteFile.NetCmds"/>), for <see cref="World.G_Ticker(ticcmd_t[])"/>.</summary>
+    public IReadOnlyList<ticcmd_t[]> NetCmds => File.NetCmds;
+
+    /// <summary>T11.2: the players in the game, a mask (<see cref="RouteFile.PlayersInGame"/>).</summary>
+    public int PlayersInGame => File.PlayersInGame;
     /// <summary>The parsed file: the <c>monsters</c> header and the events (T6.4).</summary>
     public RouteFile File { get; }
     /// <summary>The <c>monsters</c> header (T6.4).</summary>
@@ -219,6 +231,14 @@ public sealed class VanillaRoute
         };
     }
 
+    /// <summary>
+    /// T11.2: <paramref name="route"/> played from <paramref name="demo"/>, its
+    /// commands read back from a demo lump (<see cref="RouteFile.FromDemo"/>),
+    /// against the route's own dump.
+    /// </summary>
+    public static VanillaRoute FromDemo(VanillaRoute route, RouteFile demo) =>
+        new(route.Path, route.Iwad, route.Map, route.Skill, route.Start, route.Exit, demo.Cmds, demo);
+
     /// <summary>Parses a route file with the game's <see cref="RouteFile"/> (T5.10: the level script plays routes too) and checks its header.</summary>
     public static VanillaRoute Parse(string path)
     {
@@ -285,8 +305,9 @@ public sealed class VanillaRoute
             "testmap" => new WadArchive([WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad")]),
             _ => WadArchive.Open(RequireWad()),
         };
-        var world = new World(new SpawnSettings(GameMode, Skill, nomonsters: !Monsters, gameversion: GameVersion, gamemission: GameMission), Tweaks.Vanilla)
+        var world = new World(File.Settings(GameMode, Skill, GameVersion, GameMission), Tweaks.Vanilla) // T11.2: the players, netgame and deathmatch too
         {
+            consoleplayer = File.ConsolePlayer,
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
             map31exists = wad.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check
         };
@@ -382,8 +403,69 @@ public sealed class VanillaRoute
         return fields + " " + (moved.Count == 0 ? "-" : string.Join(',', moved)) + " " + (changed.Count == 0 ? "-" : string.Join(',', changed))
             + " " + (fogs.Count == 0 ? "-" : string.Join(',', fogs)) + " " + (lights.Count == 0 ? "-" : string.Join(',', lights))
             + " " + status + " " + Inventory(p) + " " + ThingsHash(world) + " " + Weapon(p) + " " + Powers(p) + " " + Sounds(world)
-            + " " + hud + " " + exit.ToString(CultureInfo.InvariantCulture);
+            + " " + hud + " " + exit.ToString(CultureInfo.InvariantCulture) + PlayerColumns(world);
     }
+
+    /// <summary>
+    /// T11.2: with another player than player 1 in the game, a column for
+    /// every player in the game after the <c>exit</c> column, each joined by
+    /// colons (dump.c's <c>dump_player</c>): the player's number (1-4), its
+    /// <c>ticcmd</c> (<c>forwardmove sidemove angleturn buttons</c>), its
+    /// mobj's <c>x y z momx momy momz angle state tics health flags</c> (<c>-</c> each without one),
+    /// <c>viewz</c>, <c>playerstate</c>, <c>health</c>, <c>armorpoints</c>,
+    /// <c>armortype</c>, the cards (bit <c>i</c> for <c>card_t</c> <c>i</c>),
+    /// <c>killcount</c>, <c>itemcount</c>, <c>secretcount</c>, <c>ammo[4]</c>,
+    /// <c>maxammo[4]</c>, the weapons owned (bit <c>i</c> for <c>weapontype_t</c> <c>i</c>),
+    /// <c>backpack</c>, <c>frags[4]</c>, <c>readyweapon</c>, <c>pendingweapon</c>,
+    /// <c>extralight</c>, <c>refire</c>, <c>attackdown</c>, <c>usedown</c>,
+    /// each psprite's <c>STATE TICS SX SY</c> (state -1 for none), <c>powers[6]</c>,
+    /// <c>damagecount</c>, <c>bonuscount</c>, <c>fixedcolormap</c> and <c>cheats</c>;
+    /// each starts with a space. Empty for player 1 alone, so single-player dumps are as they were.
+    /// </summary>
+    public static string PlayerColumns(World world)
+    {
+        if (!world.playeringame[1] && !world.playeringame[2] && !world.playeringame[3])
+            return "";
+        var sb = new StringBuilder();
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (!world.playeringame[i])
+                continue;
+            player_t p = world.players[i];
+            ticcmd_t c = p.cmd;
+            var v = new List<string>();
+            void Add(params long[] values) => v.AddRange(values.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+            Add(i + 1, c.forwardmove, c.sidemove, c.angleturn, c.buttons);
+            if (p.mo is { } mo)
+                Add(mo.x, mo.y, mo.z, mo.momx, mo.momy, mo.momz, mo.angle, (long)mo.state, mo.tics, mo.health, (int)mo.flags);
+            else
+                v.AddRange(Enumerable.Repeat("-", 11));
+            int cards = 0, owned = 0;
+            for (int k = 0; k < p.cards.Length; k++)
+                cards |= p.cards[k] ? 1 << k : 0;
+            for (int k = 0; k < (int)weapontype_t.NUMWEAPONS; k++)
+                owned |= p.weaponowned[k] ? 1 << k : 0;
+            Add(p.viewz, (int)p.playerstate, p.health, p.armorpoints, p.armortype, cards, p.killcount, p.itemcount, p.secretcount);
+            Add([.. p.ammo.Select(a => (long)a)]);
+            Add([.. p.maxammo.Select(a => (long)a)]);
+            Add(owned, p.backpack ? 1 : 0);
+            Add([.. p.frags.Select(f => (long)f)]);
+            Add((int)p.readyweapon, (int)p.pendingweapon, p.extralight, p.refire, p.attackdown ? 1 : 0, p.usedown ? 1 : 0);
+            foreach (pspdef_t psp in p.psprites)
+                Add(psp.state == statenum_t.S_NULL ? -1 : (int)psp.state, psp.tics, psp.sx, psp.sy);
+            Add([.. p.powers.Select(x => (long)x)]);
+            Add(p.damagecount, p.bonuscount, p.fixedcolormap, p.cheats);
+            sb.Append(' ').Append(string.Join(':', v));
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>T11.2: the name of a dump line's column <paramref name="i"/>: <see cref="Columns"/>, then the players' (<c>player</c> and its number, <see cref="PlayerColumns"/>).</summary>
+    public static string ColumnName(int i, string[] line) =>
+        i < Columns.Length ? Columns[i] : "player" + (i < line.Length ? line[i].Split(':')[0] : "?");
+
+    /// <summary>The index of the dump's <c>exit</c> column (the last but the players' columns of a multi-player game, T11.2).</summary>
+    public static readonly int ExitColumn = Array.IndexOf(Columns, "exit");
 
     /// <summary>
     /// The dump's <c>weapon</c> column (T6.6): <c>READY:PENDING:EXTRALIGHT:REFIRE:ATTACKDOWN</c>
@@ -587,18 +669,18 @@ public sealed class VanillaRoute
         // T6.11: the status bar and message line, as vanilla's P_SpawnPlayer starts them (after M_ClearRandom in G_InitNew).
         var st = new StStuff(graphics is null ? new StStuff.Graphics() : StStuff.Graphics.Load(graphics), new DoomRandom());
         var hu = new HuStuff(graphics);
-        st.ST_Start(world.players[world.consoleplayer]);
+        st.ST_Start(world.players[world.consoleplayer], world.netgame, world.deathmatch); // T11.2: a netgame's face background
         hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
         for (int tic = 0; tic < Cmds.Count; tic++)
         {
             if (Reborn(world, wad))
             {
                 // T6.12: vanilla's P_SpawnPlayer starts them again for the reborn console player.
-                st.ST_Start(world.players[world.consoleplayer]);
+                st.ST_Start(world.players[world.consoleplayer], world.netgame, world.deathmatch);
                 hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
             }
             File.RunEvents(world, tic);
-            world.G_Ticker(Cmds[tic]);
+            world.G_Ticker(NetCmds[tic]); // T11.2: every player's
             st.ST_Ticker();
             string? message = null;
             foreach (sim_event_t ev in world.events)
@@ -630,7 +712,7 @@ public sealed class VanillaRoute
                 continue;
             string[] e = expected[tic].Split(' '), a = actual.Split(' ');
             int sounds = Array.IndexOf(Columns, "sounds"), hud = Array.IndexOf(Columns, "hud");
-            if (e.Length == Columns.Length && a.Length == Columns.Length)
+            if (e.Length == a.Length && e.Length >= Columns.Length)
             {
                 a[sounds] = MatchSounds(e[sounds], a[sounds]);
                 if (graphics is null && a[hud].EndsWith(":-", StringComparison.Ordinal))
@@ -644,17 +726,17 @@ public sealed class VanillaRoute
                 msg.Append(CultureInfo.InvariantCulture, $"{Name}: tic {tic + 1} differs from vanilla");
             else
                 msg.Append(CultureInfo.InvariantCulture, $"{Name}: tic {tic + 1}'s ticcmd differs from the dump's (stale dump? rerun tools/VanillaRef/routes.sh)");
-            for (int i = 0; i < Columns.Length; i++)
+            for (int i = 0; i < Math.Max(e.Length, a.Length); i++)
             {
-                if (i >= e.Length || e[i] != a[i])
-                    msg.Append(CultureInfo.InvariantCulture, $"\n  {Columns[i]}: vanilla {(i < e.Length ? e[i] : "-")}, sim {a[i]}");
+                if (i >= e.Length || i >= a.Length || e[i] != a[i])
+                    msg.Append(CultureInfo.InvariantCulture, $"\n  {ColumnName(i, i < a.Length ? a : e)}: vanilla {(i < e.Length ? e[i] : "-")}, sim {(i < a.Length ? a[i] : "-")}");
             }
             msg.Append(CultureInfo.InvariantCulture, $"\n  vanilla: {expected[tic]}\n  sim:     {actual}");
             msg.Append(CultureInfo.InvariantCulture, $"\n  sim overruns so far (not emulated): intercepts {world.interceptoverruns}, spechit {world.spechitoverruns}");
             Assert.Fail(msg.ToString());
         }
         // T5.9: the exit column is checked on every tic above; the header says the last tic leaves the level.
-        string last = expected.Length > 0 ? expected[^1].Split(' ')[^1] : "0";
+        string last = expected.Length > 0 ? expected[^1].Split(' ')[ExitColumn] : "0";
         Assert.True(last == Exit.ToString(CultureInfo.InvariantCulture),
             $"{Name}: the last tic's exit is {last} in vanilla, the route's header says {Exit} (0 none, 1 normal, 2 secret)");
     }

@@ -21,6 +21,12 @@ plays on The Ultimate Doom's IWAD (doom_wad(): $ISODOOM_DOOM_WAD, else
 wads/doom.wad or wads/DOOM.WAD; ExMy of E1-E4, as ultimate by default) and its dump goes to OUTDIR. A route with the monsters header (T6.4)
 plays without nomonsters, and its damage/alert (and, T6.5, rocket) lines go
 to the reference as $DUMP_EVENTS (dump.c), run before their tics.
+T11.2: a route with "players N" (2-4) plays as a v1.9 netdemo (players 1 to N
+in the game: G_DoPlayDemo makes it a netgame) with its "deathmatch 0|1|2"
+byte, each tic's line holding one ticcmd per player separated by "|"; an
+event's last "pN" names its player (dump.c's DUMP_EVENTS "TIC KIND ... pN").
+Its dump has a column per player in the game after the exit column (dump.c's
+dump_player).
 """
 import os, subprocess, sys, tempfile
 
@@ -66,6 +72,7 @@ def doom_wad():
 
 
 COMMERCIAL = ('doom2', 'tnt', 'plutonia')
+EXIT = 32  # the dump's exit column (VanillaRoute.Columns)
 
 
 def iwad(head, doom1):
@@ -86,14 +93,31 @@ def id_wad(head):
 
 def parse(path):
     """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
-    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False, 'gameversion': None}
-    cmds = []
+    head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False, 'gameversion': None,
+            'players': 1, 'deathmatch': 0}
+    cmds = []  # a (FORWARD, SIDE, TURN, BUTTONS) a tic; T11.2: with players N > 1, a tuple of N of them a tic
     events = []  # T6.4: "TIC damage X Y AMOUNT" / "TIC alert" (/ T6.5 "TIC rocket"), TIC the 0-based tic they start
     for n, line in enumerate(open(path), 1):
         line = line.split('#', 1)[0].split()
         if not line:
             continue
         where = f'{path}:{n}'
+        if line[0] == 'players':  # T11.2: players 1 to N in the game (a netgame from 2)
+            if len(line) != 2 or not line[1].isdigit() or not 1 <= int(line[1]) <= 4 or cmds or events:
+                sys.exit(f'{where}: expected players 1-4, before the ticcmds and events')
+            head['players'] = int(line[1])
+            continue
+        if line[0] == 'deathmatch':  # T11.2: 0 co-op, 1 deathmatch, 2 altdeath
+            if len(line) != 2 or line[1] not in ('0', '1', '2'):
+                sys.exit(f'{where}: expected deathmatch 0|1|2')
+            head['deathmatch'] = int(line[1])
+            continue
+        player = 0  # T11.2: an event's player, a last pN (default p1), dump.c's "TIC pN ..."
+        if line[0] in ('damage', 'alert', 'rocket') and len(line) > 1 and line[-1].startswith('p'):
+            player = int(line.pop()[1:]) - 1
+            if not 0 <= player < head['players']:
+                sys.exit(f'{where}: the event\'s player p1-p{head["players"]}')
+        ptag = f' p{player + 1}' if player else ''  # dump.c's DUMP_EVENTS: "TIC KIND ... [pN]"
         if line[0] == 'start':  # T5.6: X Y ANGLE, player 1's start instead of the map's
             if len(line) != 4:
                 sys.exit(f'{where}: expected start X Y ANGLE')
@@ -117,17 +141,17 @@ def parse(path):
         if line[0] == 'damage':  # T6.4: player 1 hurts a thing at the start of the next tic
             if len(line) != 4 or int(line[3]) < 1:
                 sys.exit(f'{where}: expected damage X Y AMOUNT')
-            events.append(f'{len(cmds)} damage {int(line[1])} {int(line[2])} {int(line[3])}')
+            events.append(f'{len(cmds)} damage {int(line[1])} {int(line[2])} {int(line[3])}{ptag}')
             continue
         if line[0] == 'alert':  # T6.4: player 1 makes a noise at the start of the next tic
             if len(line) != 1:
                 sys.exit(f'{where}: expected alert')
-            events.append(f'{len(cmds)} alert')
+            events.append(f'{len(cmds)} alert{ptag}')
             continue
         if line[0] == 'rocket':  # T6.5: player 1 fires a rocket at the start of the next tic
             if len(line) != 1:
                 sys.exit(f'{where}: expected rocket')
-            events.append(f'{len(cmds)} rocket')
+            events.append(f'{len(cmds)} rocket{ptag}')
             continue
         if line[0] in head:
             head[line[0]] = line[1] if line[0] != 'skill' else int(line[1])
@@ -135,12 +159,17 @@ def parse(path):
         count = 1
         if line[-1].startswith('x'):
             count = int(line.pop()[1:])
-        if len(line) != 4:
-            sys.exit(f'{where}: expected FORWARD SIDE TURN BUTTONS [xCOUNT]')
-        fwd, side, turn, buttons = map(int, line)
-        if not (-128 <= fwd <= 127 and -128 <= side <= 127 and -128 <= turn <= 127 and 0 <= buttons <= 255):
-            sys.exit(f'{where}: out of range')
-        cmds += [(fwd, side, turn, buttons)] * count
+        players = head['players']
+        if len(line) != 5 * players - 1 or any(line[5 * k - 1] != '|' for k in range(1, players)):
+            sys.exit(f'{where}: expected FORWARD SIDE TURN BUTTONS [xCOUNT]' if players == 1
+                     else f'{where}: expected {players} ticcmds FORWARD SIDE TURN BUTTONS separated by | [xCOUNT]')
+        tic = []
+        for k in range(players):
+            fwd, side, turn, buttons = map(int, line[5 * k:5 * k + 4])
+            if not (-128 <= fwd <= 127 and -128 <= side <= 127 and -128 <= turn <= 127 and 0 <= buttons <= 255):
+                sys.exit(f'{where}: out of range')
+            tic.append((fwd, side, turn, buttons))
+        cmds += [tic[0] if players == 1 else tuple(tic)] * count
     if head['iwad'] not in ('synthetic', 'doom1', 'doom', 'testmap') + COMMERCIAL or head['skill'] not in SKILLS:
         sys.exit(f'{path}: needs "iwad synthetic|doom1|doom|doom2|tnt|plutonia|testmap" and a skill of 1-5')
     if head['iwad'] == 'testmap' and not head['map']:
@@ -153,7 +182,9 @@ def parse(path):
 
 def demo(head, cmds):
     """A v1.9 demo lump: nomonsters unless the monsters header (T6.4), player 1 alone; angleturn is the turn byte << 8.
-    Doom II's (T10.1): MAPxx, episode 1."""
+    Doom II's (T10.1): MAPxx, episode 1. T11.2: players 1 to N in the game (a netdemo from 2: G_DoPlayDemo
+    makes it a netgame when playeringame[1] is set) and the deathmatch byte, each tic's N ticcmds in player
+    order; a tic of one ticcmd (a tail the other scripts append) is player 1's, the others idle."""
     if head['iwad'] in COMMERCIAL:
         m = (head['map'] or 'MAP01').upper()
         if len(m) != 5 or not m.startswith('MAP') or not m[3:].isdigit():
@@ -164,9 +195,14 @@ def demo(head, cmds):
         if len(m) != 4 or m[0] != 'E' or m[2] != 'M' or m[1] not in ('1234' if head['iwad'] == 'doom' else '123') or m[3] not in '123456789':
             sys.exit(f'{m}: only ExMy maps (E4 with iwad doom, M9)')
         episode, mapnum = int(m[1]), int(m[3])
-    data = bytearray([109, head['skill'] - 1, episode, mapnum, 0, 0, 0, 0 if head['monsters'] else 1, 0, 1, 0, 0, 0])
-    for fwd, side, turn, buttons in cmds:
-        data += bytes([fwd & 255, side & 255, turn & 255, buttons])
+    players = head.get('players', 1)
+    data = bytearray([109, head['skill'] - 1, episode, mapnum, head.get('deathmatch', 0), 0, 0, 0 if head['monsters'] else 1, 0]
+                     + [1 if i < players else 0 for i in range(4)])
+    for tic in cmds:
+        if isinstance(tic[0], int):
+            tic = [tic] + [(0, 0, 0, 0)] * (players - 1)
+        for fwd, side, turn, buttons in tic:
+            data += bytes([fwd & 255, side & 255, turn & 255, buttons])
     return bytes(data + b'\x80')
 
 
@@ -208,7 +244,7 @@ def main():
         tics = sum(1 for _ in open(out)) if os.path.exists(out) else 0
         if r.returncode != 0 or tics != len(cmds):
             sys.exit(f'{route}: vanilla exited with {r.returncode} after {tics} of {len(cmds)} tics\n{r.stderr.strip()}')
-        exits = [l.split()[-1] for l in open(out)]
+        exits = [l.split()[EXIT] for l in open(out)]  # T11.2: the players' columns of a multi-player game follow it
         want = {None: '0', 'normal': '1', 'secret': '2'}[head['exit']]
         if exits[-1] != want or any(e != '0' for e in exits[:-1]):
             sys.exit(f'{route}: vanilla left the level at tic {next((i + 1 for i, e in enumerate(exits) if e != "0"), "-")} (exit {exits[-1]} at the last), the header says exit {head["exit"]}')

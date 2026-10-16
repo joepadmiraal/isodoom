@@ -93,11 +93,68 @@ public class DemoSyncTests
         Assert.Throws<FormatException>(() => RouteFile.FromDemo(old, "version"));
         old[0] = 106; // T10.6: v1.666's (Doom II v1.666's demos), read as v1.9's
         Assert.Equal(2, RouteFile.FromDemo(old, "v1.666").Cmds.Count);
-        foreach (int i in new[] { 4, 5, 6, 8, 10 })
-        {
-            byte[] other = (byte[])lump.Clone();
-            other[i] = 1;
-            Assert.Throws<NotSupportedException>(() => RouteFile.FromDemo(other, $"byte {i}"));
-        }
+        // T11.2: the console player must be in the game; deathmatch 0-2
+        byte[] bad = (byte[])lump.Clone();
+        bad[8] = 1;
+        Assert.Throws<FormatException>(() => RouteFile.FromDemo(bad, "consoleplayer"));
+        bad = (byte[])lump.Clone();
+        bad[9] = 0;
+        Assert.Throws<FormatException>(() => RouteFile.FromDemo(bad, "no players"));
+        bad = (byte[])lump.Clone();
+        bad[4] = 3;
+        Assert.Throws<FormatException>(() => RouteFile.FromDemo(bad, "deathmatch"));
+    }
+
+    /// <summary>
+    /// T11.2: a multi-player demo (g_game.c's netdemo): the header's players,
+    /// deathmatch, respawn, fast and console player kept, each tic one
+    /// <c>ticcmd</c> per player in the game in player order, a tic cut short
+    /// by the marker dropped (vanilla's demo ends there).
+    /// </summary>
+    [Fact]
+    public void ReadsAMultiPlayerDemo()
+    {
+        byte[] lump = [109, 2, 1, 1, 1, 1, 1, 0, 2, 1, 0, 1, 1,
+            25, 0, 1, 0, /**/ 0, 24, 0, 1, /**/ 50, 0, 0, 2,
+            1, 0, 0, 0, /**/ 2, 0, 0, 0, /**/ 3, 0, 0, 0,
+            4, 0, 0, 0, RouteFile.DEMOMARKER];
+        var r = RouteFile.FromDemo(lump, "test");
+        Assert.Equal(0b1101, r.PlayersInGame);
+        Assert.False(r.Netgame); // G_DoPlayDemo: playeringame[1] makes the netgame
+        Assert.Equal(3, r.PlayerCount);
+        Assert.Equal((1, true, true, 2), (r.Deathmatch, r.Respawn, r.Fast, r.ConsolePlayer));
+        Assert.True(r.Monsters);
+        Assert.Equal(2, r.NetCmds.Count);
+        Assert.Equal(new sbyte[] { 25, 0, 0, 50 }, r.NetCmds[0].Select(c => c.forwardmove));
+        Assert.Equal(24, r.NetCmds[0][2].sidemove);
+        Assert.Equal(50, r.NetCmds[0][3].forwardmove);
+        Assert.Equal(new sbyte[] { 1, 0, 2, 3 }, r.NetCmds[1].Select(c => c.forwardmove));
+        Assert.Equal(new sbyte[] { 0, 2 }, r.Cmds.Select(c => c.forwardmove)); // the console player's (player 3)
+        SpawnSettings s = r.Settings(IsoDoom.Wad.GameMode.shareware, skill_t.sk_medium);
+        Assert.Equal((0b1101, false, 1, true, true, false), (s.playersingame, s.netgame, s.deathmatch, s.respawnparm, s.fastparm, s.nomonsters));
+        Assert.Equal(lump.AsSpan(..^5).ToArray().Append(RouteFile.DEMOMARKER), r.ToDemo(1, 1));
+    }
+
+    /// <summary>
+    /// T11.2: every multi-player route written as the netdemo the vanilla
+    /// reference plays (<see cref="RouteFile.ToDemo"/>, <c>routes.py</c>'s)
+    /// and read back by the vanilla-input adapter (<see cref="RouteFile.FromDemo"/>)
+    /// gives the route's commands, and plays in sync with the route's vanilla dump.
+    /// </summary>
+    [Theory]
+    [InlineData("synthetic-coop")]
+    [InlineData("testmap-coop")]
+    [InlineData("coop-e1m1-2p")]
+    [InlineData("coop-e1m1-4p")]
+    public void AMultiPlayerRouteAsANetdemoStaysInSyncWithVanilla(string name)
+    {
+        var route = VanillaRoute.Load(name);
+        Assert.True(route.File.Netgame);
+        var demo = RouteFile.FromDemo(route.File.ToDemo(1, 1), name);
+        Assert.Equal(route.PlayersInGame, demo.PlayersInGame);
+        Assert.Equal(route.NetCmds.Count, demo.NetCmds.Count);
+        for (int t = 0; t < demo.NetCmds.Count; t++)
+            Assert.Equal(route.NetCmds[t], demo.NetCmds[t]);
+        VanillaRoute.FromDemo(route, demo.WithEvents(route.File.Events)).Check(); // (the events are the reference's, not the demo's)
     }
 }

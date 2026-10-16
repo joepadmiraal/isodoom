@@ -96,7 +96,36 @@ public static class RouteTestMaps
         // zombieman at (700, 160), a shotgun guy at (700, 352), an imp at (900, 256) and a zombieman
         // at (900, 420).
         ["ssg"] = SuperShotgun,
+        // T11.2: T11.1's co-op map (NetSimTests.CoopMap): the four co-op starts in a room A behind a
+        // DR door, and in the room B beyond it, on each player's line, a health bonus and a monster
+        // facing away, and on player 4's a netgame-only shotgun.
+        ["coop"] = Coop,
     };
+
+    /// <summary>
+    /// T11.1's co-op map (<c>NetSimTests</c>), T11.2's <c>coop</c>. West to east (512 deep,
+    /// ceilings 128): a room B (512 wide), a closed door D (16; D | A is a DR door, special 1,
+    /// used from A, the line's front) and the start room A (256), with the four co-op starts at
+    /// x = 700 facing west, 128 units apart (y = 64, 192, 320, 448). In B, on each player's
+    /// line, a health bonus at x = 400 (MF_COUNTITEM) and a monster at x = 100 facing west,
+    /// away: zombiemen on players 1 and 3's lines, imps on 2 and 4's; on player 4's line a
+    /// shotgun at x = 300 only in a netgame (options bit 16).
+    /// </summary>
+    public static TestMap Coop()
+    {
+        int[] lineY = [64, 192, 320, 448];
+        var map = TestMap.Strip(0, 0, 512, new TestMap.Room(512, 0, 128), new TestMap.Room(16, 0, 0), new TestMap.Room(256, 0, 128));
+        map.Special(map.Boundaries[2], 1);
+        for (int i = 0; i < 4; i++)
+        {
+            map.Thing(400, lineY[i], 2014);
+            map.Thing(100, lineY[i], i % 2 == 0 ? 3004 : 3001, 180);
+        }
+        map.Thing(300, lineY[3], 2001, 0, 7 | IsoDoom.Sim.MapThingSpawning.MTF_NOTSINGLE);
+        for (int i = 0; i < 4; i++)
+            map.Thing(700, lineY[i], 1 + i, 180);
+        return map;
+    }
 
     /// <summary>The pickups along y = 128 in <see cref="Pickups"/>' room P, west to east (doomednums), from x = 240 every 48 units.</summary>
     public static readonly int[] PickupRow =
