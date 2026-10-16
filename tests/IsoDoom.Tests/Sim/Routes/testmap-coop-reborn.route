@@ -1,0 +1,17 @@
+# The co-op test map (T11.3, RouteTestMaps "coop"), two players, no
+# monsters: player 1 turns to player 2 (128 units north, both on their starts)
+# and shoots it dead with its pistol; player 2 presses use and reborns at its
+# own start, which faces west: G_CheckSpot's fog takes the DOS executable's
+# negative table index (Chocolate Doom's emulation: finetangent's entries),
+# far off the map. Written by tools/RouteGen (testmap-coop-reborn); its dump
+# is committed (CI).
+iwad testmap
+map coop
+players 2
+# each player's forwardmove sidemove turn buttons, | between them [xcount]; turn << 8 = angleturn
+0 0 0 0 | 0 0 0 0
+0 0 -64 1 | 0 0 0 0
+0 0 0 1 | 0 0 0 0 x157
+0 0 0 0 | 0 0 0 0 x21
+0 0 0 0 | 0 0 0 2
+0 0 0 0 | 0 0 0 0 x36

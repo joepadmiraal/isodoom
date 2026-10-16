@@ -285,25 +285,14 @@ public sealed class LockstepHarness
     /// T11.1's <see cref="NetSim.MakeWorld"/> with the Start's settings (the
     /// players in its mask in game through <see cref="SpawnSettings.playersingame"/>,
     /// which <c>DecodeStart</c> holds equal to it) and its <c>consoleplayer</c>,
-    /// every player in game in god mode so nobody dies (no netgame reborn
-    /// until T11.3).
+    /// no cheats: players die and reborn (T11.3, T11.5b).
     /// </summary>
     public static World MakeWorld(WadArchive wad, NetStart start)
     {
         NetGameSettings s = start.Settings;
         Assert.Equal(start.PlayerMask, s.Spawn.playersingame);
         string map = s.Spawn.gamemode == GameMode.commercial ? $"MAP{s.Map:00}" : $"E{s.Episode}M{s.Map}";
-        return NetSim.MakeWorld(wad, map, s.Spawn, s.Tweaks, start.ConsolePlayer, GodMode);
-    }
-
-    /// <summary>God mode for every player in game (the same on every machine).</summary>
-    private static void GodMode(World world)
-    {
-        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
-        {
-            if (world.playeringame[i])
-                world.players[i].cheats |= player_t.CF_GODMODE;
-        }
+        return NetSim.MakeWorld(wad, map, s.Spawn, s.Tweaks, start.ConsolePlayer);
     }
 
     /// <summary>

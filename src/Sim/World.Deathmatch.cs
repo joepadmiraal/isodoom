@@ -58,39 +58,7 @@ public sealed partial class World
         // spawn a teleport fog
         subsector_t ss = R_PointInSubsector(x, y);
 
-        // Chocolate Doom (from PrBoom+): the DOS executable's fine angle is
-        // signed, so 180° and up index finecosine/finesine below their
-        // start, into finetangent.
-        int an = (int)(Tables.ANG45 >> Tables.ANGLETOFINESHIFT) * (mthing.Angle / 45);
-        int xa, ya;
-        switch (an)
-        {
-            case 4096: // -4096:
-                xa = Tables.finetangent[2048]; // finecosine[-4096]
-                ya = Tables.finetangent[0]; // finesine[-4096]
-                break;
-            case 5120: // -3072:
-                xa = Tables.finetangent[3072]; // finecosine[-3072]
-                ya = Tables.finetangent[1024]; // finesine[-3072]
-                break;
-            case 6144: // -2048:
-                xa = Tables.finesine[0]; // finecosine[-2048]
-                ya = Tables.finetangent[2048]; // finesine[-2048]
-                break;
-            case 7168: // -1024:
-                xa = Tables.finesine[1024]; // finecosine[-1024]
-                ya = Tables.finetangent[3072]; // finesine[-1024]
-                break;
-            case 0:
-            case 1024:
-            case 2048:
-            case 3072:
-                xa = Tables.finecosine[an];
-                ya = Tables.finesine[an];
-                break;
-            default:
-                throw new WadFormatException($"G_CheckSpot: unexpected angle {an}");
-        }
+        (int xa, int ya) = G_CheckSpotFogOffset(mthing.Angle); // (T11.3: shared with the tests)
         mobj_t mo = P_SpawnMobj(unchecked(x + 20 * xa), unchecked(y + 20 * ya), ss.sector.floorheight, mobjtype_t.MT_TFOG);
 
         // don't start sound on first frame (consoleplayer's view: this machine's, a sound only)

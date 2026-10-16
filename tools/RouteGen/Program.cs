@@ -521,6 +521,37 @@ public static class Program
         log("took it again: " + Players(g));
     };
 
+    /// <summary>T11.3: each player's position, health, weapon, frags and state, for the log.</summary>
+    private static string CoopState(Steer g, int players) => string.Join("; ", Enumerable.Range(0, players).Select(i =>
+    {
+        IsoDoom.Sim.player_t p = g.World.players[i];
+        return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} {p.readyweapon} f{string.Join(",", p.frags)} {p.playerstate}";
+    }));
+
+    /// <summary>
+    /// T11.3: the dead player <paramref name="player"/> waits 20 tics and
+    /// presses use (the other players stand); it reborns at the start of the
+    /// next tic (<c>G_DoReborn</c>), which must be the start of player
+    /// <paramref name="expected"/> (0-based). The steered player is then
+    /// <paramref name="steer"/>.
+    /// </summary>
+    private static void CoopReborn(Steer g, int player, int steer, int expected, Action<string> log)
+    {
+        if (g.World.players[player].playerstate != IsoDoom.Sim.playerstate_t.PST_DEAD)
+            throw new InvalidOperationException($"player {player + 1} is not dead: {g.World.players[player].playerstate}");
+        IsoDoom.Sim.mobj_t body = g.World.players[player].mo!;
+        g.Player = player;
+        g.Wait(20);
+        g.Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_USE);
+        g.Wait(1);
+        IsoDoom.Sim.mobj_t mo = g.World.players[player].mo!;
+        IsoDoom.Map.MapThing start = g.World.playerstarts[expected]!.Value;
+        if (mo == body || mo.x != start.X << 16 || mo.y != start.Y << 16 || body.player != null)
+            throw new InvalidOperationException($"player {player + 1} reborn at ({mo.x >> 16},{mo.y >> 16}), not at player {expected + 1}'s start ({start.X},{start.Y})");
+        log($"player {player + 1} reborn at player {expected + 1}'s start: bodies {g.World.bodyqueslot}");
+        g.Player = steer;
+    }
+
     /// <summary>The steering scripts by route name.</summary>
     private static readonly SortedDictionary<string, Script> _scripts = new(StringComparer.Ordinal)
     {
@@ -1486,6 +1517,147 @@ exit normal
             g.WaitExit(2200);
             log($"left at tic {g.World.leveltime}: " + Players(g));
         }, Players: 2, Deathmatch: 1, Timer: 1),
+        ["coop-e1m1-reborn"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op, two players, skill 3 with monsters (T11.3):
+# player 2 opens door 4, walks into the zombiemen's room and stands there,
+# not shooting, until the monsters kill it; it presses use and reborns at its
+# own start (G_DoReborn's net game branch: its body stays, a teleport fog at
+# the start, no reload), then walks north. Player 1 stands at its start.
+# Written by tools/RouteGen (coop-e1m1-reborn).
+iwad doom1
+players 2
+monsters
+
+""", (g, log) =>
+        {
+            g.Player = 1;
+            g.GoTo(1500, -2456);
+            g.Door(4, 1544, -2456);
+            g.GoTo(1700, -2456);
+            log($"player 2 in the room: {CoopState(g, 2)}; {g.Monsters()}");
+            g.WaitUntil(() => g.World.players[1].health <= 0, 3000);
+            log($"player 2 dead: {CoopState(g, 2)}");
+            CoopReborn(g, 1, 0, 1, log);
+            g.Player = 1;
+            g.Walk(1008, -3300, 20);
+            g.Wait(35);
+            log($"done: {CoopState(g, 2)}");
+        }, Monsters: true, Players: 2),
+        ["coop-e1m1-blocked"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op, two players, no monsters (T11.3): player 2 walks
+# north, player 1 onto player 2's start, and shoots player 2 dead with its
+# pistol; player 2 presses use: its own start is blocked (G_CheckSpot), so it
+# reborns at player 1's, the first free one (as player 2). Then player 1 moves
+# off and shoots it again, and it reborns at its own start. Written by
+# tools/RouteGen (coop-e1m1-blocked).
+iwad doom1
+players 2
+
+""", (g, log) =>
+        {
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            g.Player = 1;
+            g.GoTo(1008, -3350);
+            g.Player = 0;
+            g.GoTo(1008, -3600, 2);
+            log($"player 1 on player 2's start: {CoopState(g, 2)}");
+            g.FireAt(g.World.players[1].mo!, 600);
+            log($"player 2 dead: {CoopState(g, 2)}");
+            CoopReborn(g, 1, 0, 0, log);
+            g.Player = 0;
+            g.GoTo(1200, -3300);
+            g.FireAt(g.World.players[1].mo!, 600);
+            log($"player 2 dead again: {CoopState(g, 2)}");
+            CoopReborn(g, 1, 0, 1, log);
+            g.Wait(35);
+            log($"done: {CoopState(g, 2)}");
+        }, Players: 2),
+        ["coop-e1m1-bodyque"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op, two players, no monsters (T11.3): player 1 stands
+# 300 units north of player 2's start and fires rocket events at it (rocket
+# lines, P_SpawnPlayerMissile); each kills player 2, which presses use 20
+# tics later and reborns at its start, its body left there: 35 bodies, so
+# the body queue (BODYQUESIZE 32) removes the three oldest. Written by
+# tools/RouteGen (coop-e1m1-bodyque).
+iwad doom1
+players 2
+
+""", (g, log) =>
+        {
+            g.Wait(1);
+            g.GoTo(1008, -3300);
+            for (int death = 0; death < 35; death++)
+            {
+                g.Player = 0;
+                g.Face(1008, -3600);
+                for (int shot = 0; g.World.players[1].health > 0; shot++)
+                {
+                    if (shot == 5)
+                        throw new InvalidOperationException($"death {death + 1}: five rockets did not kill player 2");
+                    g.Rocket();
+                    g.Wait(1);
+                    g.WaitUntil(() => !g.World.Mobjs().Any(m => m.type == IsoDoom.Sim.mobjtype_t.MT_ROCKET && (m.flags & IsoDoom.Sim.mobjflag_t.MF_MISSILE) != 0), 100);
+                    g.Wait(2);
+                }
+                CoopReborn(g, 1, 0, 1, log);
+                if (death % 8 == 7)
+                    log($"death {death + 1}: bodies {g.World.bodyqueslot}, mobjs {g.World.Mobjs().Count()}: {CoopState(g, 2)}");
+            }
+            g.Wait(35);
+            log($"done: bodies {g.World.bodyqueslot}, player corpses {g.World.Mobjs().Count(m => m.type == IsoDoom.Sim.mobjtype_t.MT_PLAYER && m.player == null)}: {CoopState(g, 2)}");
+        }, Players: 2),
+        ["synthetic-coop-reborn"] = new(Synthetic, "E1M1", """
+# The synthetic E1M1 in co-op, two players, no monsters (T11.3): player 2
+# walks east across the room, player 1 onto player 2's start and shoots
+# player 2 dead with its pistol; player 2 presses use: its own start is
+# blocked (G_CheckSpot), so it reborns at player 1's. Player 1 moves off and
+# shoots it again: it reborns at its own start (body, fog and sound each
+# time; the level does not reload). Written by tools/RouteGen
+# (synthetic-coop-reborn); its dump is committed (CI).
+iwad synthetic
+players 2
+""", (g, log) =>
+        {
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            g.Player = 1;
+            g.GoTo(96, 24);
+            g.Player = 0;
+            g.GoTo(-40, 40, 2);
+            log($"player 1 on player 2's start: {CoopState(g, 2)}");
+            g.FireAt(g.World.players[1].mo!, 600);
+            log($"player 2 dead: {CoopState(g, 2)}");
+            CoopReborn(g, 1, 0, 0, log);
+            g.Player = 0;
+            g.GoTo(90, -90);
+            g.FireAt(g.World.players[1].mo!, 600);
+            log($"player 2 dead again: {CoopState(g, 2)}");
+            CoopReborn(g, 1, 0, 1, log);
+            g.Wait(35);
+            log($"done: {CoopState(g, 2)}");
+        }, Players: 2),
+        ["testmap-coop-reborn"] = new(() => TestMapWad("coop"), "E1M1", """
+# The co-op test map (T11.3, RouteTestMaps "coop"), two players, no
+# monsters: player 1 turns to player 2 (128 units north, both on their starts)
+# and shoots it dead with its pistol; player 2 presses use and reborns at its
+# own start, which faces west: G_CheckSpot's fog takes the DOS executable's
+# negative table index (Chocolate Doom's emulation: finetangent's entries),
+# far off the map. Written by tools/RouteGen (testmap-coop-reborn); its dump
+# is committed (CI).
+iwad testmap
+map coop
+players 2
+
+""", (g, log) =>
+        {
+            g.Wait(1); // (G_PlayerReborn's usedown)
+            g.FireAt(g.World.players[1].mo!, 600);
+            log($"player 2 dead: {CoopState(g, 2)}");
+            CoopReborn(g, 1, 0, 1, log);
+            IsoDoom.Sim.mobj_t fog = g.World.Mobjs().Single(m => m.type == IsoDoom.Sim.mobjtype_t.MT_TFOG);
+            log($"the fog at ({fog.x}, {fog.y}, {fog.z})");
+            g.Wait(35);
+            log($"done: {CoopState(g, 2)}");
+        }, Players: 2),
         ["e1m1-rockets"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 on skill 4 with monsters (T6.5): e1m1-monsters' way
 # through door 4, but the monsters that attacked are shot with rocket events

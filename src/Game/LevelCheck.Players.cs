@@ -84,6 +84,7 @@ public partial class LevelCheck
             if (_scene.SetLocalPlayer(World.MAXPLAYERS) || (players.Length < World.MAXPLAYERS && _scene.SetLocalPlayer(Enumerable.Range(0, World.MAXPLAYERS).First(i => !world.playeringame[i]))))
                 Fail($"players: {map}: a player not in the game was made the local one");
             _scene.SetLocalPlayer(players[0]);
+            CheckCoopReborn(world, map, players); // T11.3
             GD.Print($"Level check: players (T11.10): {map} with players {string.Join(", ", players.Select(i => i + 1))} in co-op: each in its colour, "
                 + $"the shared fog the union of their walks ({_scene.Fog?.VisibleCount} sectors visible, walk {_scene.FogMilliseconds:F3} ms); each made the local one: "
                 + "its own sprite, the others drawn as actors whatever the fog, the status bar, face background, messages, palette flash, sound listener, automap arrow and fog viewpoints followed it, the checksum unchanged");

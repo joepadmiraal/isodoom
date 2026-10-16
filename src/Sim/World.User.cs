@@ -93,8 +93,8 @@ public sealed partial class World
     /// whose <see cref="P_SpawnPlayer"/> gives the player a fresh start,
     /// <see cref="G_PlayerReborn"/>). In a netgame the body stays and the
     /// player respawns: in deathmatch at a random deathmatch start
-    /// (<see cref="G_DeathMatchSpawnPlayer"/>, T11.4). A co-op netgame's
-    /// reborn at the starts is not ported yet (T11.3).
+    /// (<see cref="G_DeathMatchSpawnPlayer"/>, T11.4), in co-op at a start
+    /// (<see cref="G_DoCoopReborn"/>, T11.3).
     /// </summary>
     public void G_DoReborn(int playernum)
     {
@@ -116,7 +116,7 @@ public sealed partial class World
             G_DeathMatchSpawnPlayer(playernum);
             return;
         }
-        throw new NotSupportedException("A co-op netgame's reborn (G_CheckSpot at the starts) is not ported.");
+        G_DoCoopReborn(playernum); // T11.3
     }
 
     /// <summary>p_user.c <c>ANG5</c>: the death camera's turn per tic.</summary>

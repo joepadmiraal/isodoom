@@ -191,14 +191,20 @@ public class DeathTests
     }
 
     [Fact]
-    public void ANetGamesRebornIsNotPortedYet()
+    public void ANetGamesRebornDoesNotReloadTheLevel()
     {
+        // T11.3: the player respawns at its start at the next tic's start (CoopRebornTests has the rest)
         (World world, _) = Load(netgame: true);
         player_t p = P(world);
-        world.P_DamageMobj(p.mo!, null, null, 1000);
-        Tic(world, buttons: (byte)buttoncode_t.BT_USE); // PST_REBORN; T11.4: a netgame's reborn runs at the next tic's start, vanilla's
-        Assert.Equal(playerstate_t.PST_REBORN, p.playerstate);
-        Assert.Throws<NotSupportedException>(() => Tic(world)); // co-op's (T11.3); deathmatch's is DeathmatchTests'
+        mobj_t body = p.mo!;
+        world.P_DamageMobj(body, null, null, 1000);
+        Tic(world, buttons: (byte)buttoncode_t.BT_USE);
+        Assert.Equal((playerstate_t.PST_REBORN, gameaction_t.ga_nothing), (p.playerstate, world.gameaction));
+        Tic(world);
+        Assert.Equal((playerstate_t.PST_LIVE, gameaction_t.ga_nothing), (p.playerstate, world.gameaction));
+        Assert.NotSame(body, p.mo);
+        Assert.Null(body.player);
+        Assert.Same(body, world.bodyque[0]);
     }
 
     [Fact]

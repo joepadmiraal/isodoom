@@ -56,7 +56,7 @@ public class SoundRouteTests
         World world = route.NewWorld(out WadArchive wad);
         var sound = new SSound(new LumpDevice(wad)) { snd_SfxVolume = 127 };
         var events = new List<sim_event_t>();
-        int starts = 0, played = 0, sided = 0;
+        int starts = 0, played = 0, sided = 0, unheard = 0;
         for (int tic = 0; tic < route.Cmds.Count; tic++)
         {
             if (route.Reborn(world, wad))
@@ -91,6 +91,7 @@ public class SoundRouteTests
                 {
                     Assert.False(local, $"{what}: a sound with no origin or from the player went unheard");
                     Assert.True(dist > 1060 && world.gamemap != 8, $"{what}: unheard at {dist:0} units");
+                    unheard++;
                     continue;
                 }
                 if (st.result == sound_result_t.sr_nochannel)
@@ -131,7 +132,7 @@ public class SoundRouteTests
             Assert.All(sound.channels, c => Assert.True(c.origin is not mobj_t m || m.function != think_t.REMOVED, $"{name} tic {tic + 1}: a channel follows a removed mobj"));
         }
         if (route.Iwad == "doom1")
-            Assert.True(played >= starts / 2, $"{name}: {played} of {starts} sounds played");
+            Assert.True(played >= (starts - unheard) / 2, $"{name}: {played} of {starts - unheard} sounds in reach played"); // (T11.3: the others' sounds far from player 1)
         _ = sided;
     }
 }

@@ -1683,6 +1683,9 @@ public partial class LevelScene : Node3D, IGameHost
         DrawHud();
     }
 
+    // T11.3: the local player's mobj after the last tic (a net game's reborn replaces it: the camera snaps).
+    private mobj_t? _tickedPlayerMobj;
+
     // T7.1a: the game state a D_Display drew since the last frame was drawn (a tic ran), or null.
     private gamestate_t? _displayed;
 
@@ -1701,6 +1704,10 @@ public partial class LevelScene : Node3D, IGameHost
         // T5.6: a player mobj the tic did not let interpolate (a teleport) takes the camera with it.
         if (PlayerMobj is { interp: false })
             SnapPending = true;
+        // T11.3: so does a new one (a net game's reborn at a start, the level kept)
+        if (PlayerMobj != _tickedPlayerMobj)
+            SnapPending = true;
+        _tickedPlayerMobj = PlayerMobj;
         if (_planeMoves.Count > 0)
             MovePlanes();
         SeeFog(); // T6.13l: the sight walk after the tic, as vanilla's renderer draws after it
@@ -1723,11 +1730,15 @@ public partial class LevelScene : Node3D, IGameHost
         _hudMobj = mo;
         if (mo is null || World is not { } world)
             return;
+        HudStarts++;
         StatusBar?.ConsolePlayer = world.consoleplayer; // (T11.10: before ST_Start, which draws with it)
         StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
         MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap, Flow.gamevariant, Flow.gameversion); // T7.9: the map's title too
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }
+
+    /// <summary>How many times the status bar and message line were started for a new player mobj (<see cref="StartHud"/>; T11.3's check).</summary>
+    public int HudStarts { get; private set; }
 
     /// <summary>T6.11: draws the status bar (as vanilla's <c>ST_Drawer</c>, what changed), the fullscreen HUD and the message line after a tic.</summary>
     private void DrawHud()
@@ -2409,7 +2420,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// camera snaps to it (<see cref="SnapCameraIfPending"/>) instead of
     /// sliding across the map.
     /// </summary>
-    public bool SnapPending { get; private set; }
+    public bool SnapPending { get; internal set; }
 
     /// <summary>How many times the game camera snapped to a teleported player (T5.6; the level script's <c>print</c>).</summary>
     public int TeleportSnaps { get; private set; }

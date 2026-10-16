@@ -103,7 +103,8 @@ public class LockstepTests
     public void Synthetic_worlds_stay_checksum_equal(int players, int maxLatencyMs, int jitterMs, double loss)
     {
         // The synthetic E1M1 has four starts (T11.5a): every player is in
-        // game, walking, using and firing among its imps and barrel.
+        // game, walking, using and firing among its imps and barrel; no god
+        // mode (T11.5b): players die (shot by each other too) and reborn.
         WadArchive wad = Synthetic();
         var h = new LockstepHarness(_coop, Setups(players, maxLatencyMs, jitterMs, loss), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true),
             start => LockstepHarness.MakeWorld(wad, start), seed: 7 + players);
@@ -119,7 +120,9 @@ public class LockstepTests
         {
             Assert.True(first.playeringame[i]);
             Assert.NotNull(first.players[i].mo);
+            Assert.Equal(0, first.players[i].cheats);
         }
+        Assert.True(first.bodyqueslot > 0, $"nobody died and reborn ({first.bodyqueslot})"); // T11.5b: no god mode
     }
 
     [Theory]
@@ -127,7 +130,7 @@ public class LockstepTests
     [InlineData(4, 100, 30, 0.1)]
     public void Doom1_coop_worlds_stay_checksum_equal(int players, int maxLatencyMs, int jitterMs, double loss)
     {
-        // DOOM1 E1M1 has four starts: every player is in game, with monsters, walking, using and firing.
+        // DOOM1 E1M1 has four starts: every player is in game, with monsters, walking, using and firing, dying and reborn (T11.5b).
         WadArchive wad = new([WadFile.Open(TestWads.RequireDoom1())]);
         var h = new LockstepHarness(_coop, Setups(players, maxLatencyMs, jitterMs, loss), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true),
             start => LockstepHarness.MakeWorld(wad, start), seed: 11 + players);
@@ -139,7 +142,11 @@ public class LockstepTests
         World first = h.Players[0].World!;
         Assert.All(h.Players, p => Assert.Equal(first.Checksum(), p.World!.Checksum()));
         for (int i = 0; i < players; i++)
+        {
             Assert.NotNull(first.players[i].mo);
+            Assert.Equal(0, first.players[i].cheats);
+        }
+        Assert.True(first.bodyqueslot > 0, $"nobody died and reborn ({first.bodyqueslot})"); // T11.5b: no god mode
     }
 
     [Theory]

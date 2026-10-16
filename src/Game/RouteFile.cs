@@ -547,6 +547,7 @@ public readonly record struct RouteEvent(int Tic, RouteEventKind Kind, int X, in
     /// <summary>Runs the event; throws <see cref="InvalidOperationException"/> when no thing fits a damage event.</summary>
     public void Run(World world)
     {
+        world.G_DoNetReborns(); // T11.3: vanilla's G_Ticker reborns before P_Ticker's dump_pretic runs the events
         mobj_t mo = world.players[Player].mo ?? throw new InvalidOperationException($"RouteEvent: no player {Player + 1}");
         if (Kind == RouteEventKind.Alert)
         {

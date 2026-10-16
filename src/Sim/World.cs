@@ -272,6 +272,7 @@ public sealed partial class World
                 players[i].viewz = 1;
         }
 
+
         P_InitThinkers();
         leveltime = 0;
 
