@@ -9,7 +9,7 @@ using Xunit;
 namespace IsoDoom.Tests.Render;
 
 /// <summary>
-/// T6.13l: the fog of war's walk stays cheap; split from
+/// T6.13l: the fog of war's walk stays cheap (T11.10: four players' too); split from
 /// <see cref="FogOfWarTests"/> into the <see cref="TimingGroup"/> (T8.6a).
 /// </summary>
 [Collection(TimingGroup.Name)]
@@ -47,6 +47,21 @@ public class FogOfWarCostTests
             _output.WriteLine($"{map}: {ms:F3} ms a walk");
             // SPEC §9's frame budget is ~16 ms; the target is 0.2 ms, with a margin for a slow test machine.
             Assert.True(ms < 1.0, $"{map}: {ms:F3} ms a walk");
+
+            // T11.10: the shared co-op fog of four players, from the start and three other things far apart.
+            (int X, int Y)[] four = [(x, y), .. level.Things.Where(t => t.Type > 4).OrderBy(t => t.X).Where((t, i) => i % 50 == 0).Take(3)
+                .Select(t => (t.X << Fixed.FRACBITS, t.Y << Fixed.FRACBITS))];
+            double ms4 = double.MaxValue;
+            for (int batch = 0; batch < 10; batch++)
+            {
+                const int Runs = 10;
+                long t0 = Stopwatch.GetTimestamp();
+                for (int i = 0; i < Runs; i++)
+                    fog.SeeAll(four);
+                ms4 = System.Math.Min(ms4, Stopwatch.GetElapsedTime(t0).TotalMilliseconds / Runs);
+            }
+            _output.WriteLine($"{map}: {ms4:F3} ms for {four.Length} players");
+            Assert.True(ms4 < four.Length * 1.0, $"{map}: {ms4:F3} ms for {four.Length} players");
         }
     }
 }

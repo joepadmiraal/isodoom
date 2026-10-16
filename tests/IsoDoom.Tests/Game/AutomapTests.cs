@@ -403,6 +403,33 @@ public class AutomapTests
         Assert.NotSame(world, other);
     }
 
+    /// <summary>
+    /// T11.10: in a co-op game the automap follows the console player and
+    /// draws every player's arrow in its colour (am_map.c <c>AM_drawPlayers</c>'
+    /// <c>their_colors</c>: green, grey, brown, red), none white.
+    /// </summary>
+    [Fact]
+    public void ACoopGameShowsEveryPlayersArrowInItsColour()
+    {
+        WadArchive wad = NetSimTests.CoopWad();
+        var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, netgame: true, playersingame: NetSim.FirstPlayers(4)), Tweaks.Vanilla)
+        {
+            consoleplayer = 2,
+        };
+        world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+            world.PlaceMobj(world.players[i].mo!, (600 + 48 * i) << Fixed.FRACBITS, 256 << Fixed.FRACBITS, null); // (the starts span more than a frame)
+        var am = new AmMap(wad) { World = world };
+        am.AM_Start();
+        Assert.Same(world.players[2], am.FollowedPlayer);
+        am.AM_Drawer();
+        Assert.All(new[] { GREENS, GRAYS, BROWNS, REDS }, c => Assert.Contains((byte)c, am.fb.Pixels));
+        Assert.DoesNotContain((byte)WHITE, am.fb.Pixels);
+        world.consoleplayer = 0;
+        am.AM_Start();
+        Assert.Same(world.players[0], am.FollowedPlayer);
+    }
+
     [Fact]
     public void ItDrawsThePlayersArrowTheCrosshairAndClipsToTheFrame()
     {

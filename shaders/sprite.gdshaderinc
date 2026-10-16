@@ -10,7 +10,8 @@
 //   INSTANCE_CUSTOM     atlas slot (-1: draw nothing), flags (1 flip, 2 full
 //                       bright, 4 actor, 8 the player's own sprite, 16
 //                       MF_SHADOW: fuzz, T6.9; above them, from bit 5, the
-//                       sight dim's rows, T6.13t), sector (light), radius
+//                       sight dim's rows, T6.13t; from bit 10, the colour
+//                       translation's table, T11.10), sector (light), radius
 //                       (map units)
 //   VERTEX              sprite space: x 0 left / 1 right; y 0 bottom row,
 //                       1 the patch origin's height, 2 top row; z 1 for the
@@ -113,7 +114,14 @@
 // too) is pushed down by them, to SIGHT_DIM_MAX_ROW at most (never lighter):
 // a dimmed monster in a dark room stays faintly visible. The outline goes
 // through the same row. A fixed colormap still wins; the fuzz (FUZZ) is not
-// dimmed. The level shader's
+// dimmed.
+//
+// Colour translation (T11.10, r_draw.c R_DrawTranslatedColumn; the CPU
+// reference is IsoDoom.Render.PlayerTranslation): a player's mobj (and its
+// corpse) carries its MF_TRANSLATION table in its flags (bit 10 up, 1-3), and
+// its texels' green ramp 0x70-0x7F is drawn as grey (0x60-), brown (0x40-) or
+// red (0x20-) before the colormap, as R_InitTranslationTables' tables. The
+// outline is not translated; the fuzz (FUZZ) wins, as vanilla's MF_SHADOW. The level shader's
 // shared uniforms (palette, tables, light settings, sector data) are set on
 // this material by IsoDoom.Render.LevelMesh too.
 const float MAP_UNITS_PER_METRE = 32.0;
@@ -137,6 +145,9 @@ const float MAX_WALL_PULL = 4.0;
 // pushes a sprite to (IsoDoom.Render.SightDim.MaxRow).
 const int SIGHT_DIM_SHIFT = 5;
 const int SIGHT_DIM_MAX_ROW = 29;
+// The colour translation's place in the flags (T11.10,
+// IsoDoom.Render.ThingSprites.FlagTranslationShift).
+const int TRANSLATION_SHIFT = 10;
 
 uniform sampler2D sprite_atlas : filter_nearest, repeat_disable;
 uniform sampler2D sprite_info : filter_nearest, repeat_disable;
@@ -209,6 +220,8 @@ varying flat int v_flip;
 // The player's own sprite (flag 8; T6.9: its outline when fuzzed).
 varying flat int v_own;
 varying flat int v_colormap;
+// The colour translation's table (T11.10; 0: none).
+varying flat int v_translation;
 varying vec2 v_texcoord;
 // Whether the cutaway may cut this thing (T3.4b), and its foot (map units).
 varying flat int v_cuttable;
@@ -311,6 +324,7 @@ void vertex() {
 	v_pull = clamp(INSTANCE_CUSTOM.w, 0.0, max(wall_pull, 0.0));
 	v_cuttable = cut_mode != 0 && (cut_things == 2 || (cut_things == 1 && (flags & 4) == 0)) ? 1 : 0;
 	v_own = (flags & 8) != 0 ? 1 : 0;
+	v_translation = (flags >> TRANSLATION_SHIFT) & 3;
 	// T6.9: MF_SHADOW things are drawn by the FUZZ variant only, the rest by the others.
 	bool fuzzed = fuzz != 0 && (flags & 16) != 0;
 #ifdef FUZZ
@@ -545,6 +559,10 @@ void fragment() {
 	if (opaque_at(col, row)) {
 		int c = v_flip != 0 ? w - 1 - col : col;
 		index = int(texelFetch(sprite_atlas, v_rect.xy + ivec2(c, row), 0).r * 255.0 + 0.5);
+		if (v_translation != 0 && index >= 0x70 && index <= 0x7f) {
+			// T11.10: r_draw.c R_InitTranslationTables (grey, brown, red).
+			index = (v_translation == 1 ? 0x60 : v_translation == 2 ? 0x40 : 0x20) + (index & 0xf);
+		}
 	} else if (outline >= 0 && (opaque_at(col - 1, row) || opaque_at(col + 1, row) || opaque_at(col, row - 1) || opaque_at(col, row + 1))) {
 		index = outline;
 	} else {

@@ -89,13 +89,18 @@ public sealed class StStuff
         public IndexedImage? armsbg;
         /// <summary>The arms: <c>[i][0]</c> grey (<c>STGNUMi+2</c>), <c>[i][1]</c> yellow (the short number).</summary>
         public IndexedImage?[][] arms = new IndexedImage?[6][];
-        public IndexedImage? faceback;
+        /// <summary>
+        /// The face backgrounds, <c>STFB0</c>–<c>STFB3</c>: vanilla loads
+        /// <c>consoleplayer</c>'s alone; all four here, so the local player
+        /// can change (T11.10, <see cref="ConsolePlayer"/>).
+        /// </summary>
+        public IndexedImage?[] facebacks = new IndexedImage?[World.MAXPLAYERS];
         public IndexedImage? sbar;
         public IndexedImage?[] faces = new IndexedImage?[ST_NUMFACES];
         public IndexedImage? sttminus;
 
-        /// <summary>st_stuff.c <c>ST_loadUnloadGraphics</c>' lumps from <paramref name="wad"/> (the face background of player <paramref name="consoleplayer"/>).</summary>
-        public static Graphics Load(WadArchive wad, int consoleplayer = 0)
+        /// <summary>st_stuff.c <c>ST_loadUnloadGraphics</c>' lumps from <paramref name="wad"/> (every player's face background, T11.10).</summary>
+        public static Graphics Load(WadArchive wad)
         {
             IndexedImage? Get(string name)
             {
@@ -124,7 +129,8 @@ public sealed class StStuff
             g.armsbg = Get("STARMS");
             for (int i = 0; i < 6; i++)
                 g.arms[i] = [Get($"STGNUM{i + 2}"), g.shortnum[i + 2]];
-            g.faceback = Get($"STFB{consoleplayer}");
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+                g.facebacks[i] = Get($"STFB{i}");
             g.sbar = Get("STBAR");
             int facenum = 0;
             for (int i = 0; i < ST_NUMPAINFACES; i++)
@@ -426,7 +432,7 @@ public sealed class StStuff
         }
     }
 
-    /// <summary>The console player's number (the frags sum; set by the caller, default 0).</summary>
+    /// <summary>The console player's number (the frags sum and, T11.10, the face background; set by the caller, default 0).</summary>
     public int ConsolePlayer { get; set; }
 
     /// <summary>st_stuff.c <c>ST_Ticker</c>: once per tic, after the play simulation's.</summary>
@@ -701,7 +707,7 @@ public sealed class StStuff
             st_backing_screen.Clear();
             st_backing_screen.V_DrawPatch(ST_X, ST_Y, G.sbar);
             if (st_netgame)
-                st_backing_screen.V_DrawPatch(ST_FX, ST_Y, G.faceback);
+                st_backing_screen.V_DrawPatch(ST_FX, ST_Y, G.facebacks[ConsolePlayer]); // (T11.10: the local player's)
             Screen.V_CopyRect(st_backing_screen, ST_X, ST_Y, ST_WIDTH, ST_HEIGHT);
         }
     }

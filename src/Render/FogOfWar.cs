@@ -199,12 +199,34 @@ public sealed class FogOfWar
     /// </summary>
     public void See(int x, int y)
     {
+        _stamp++;
+        _changed = false;
+        Walk(x, y);
+        Finish();
+    }
+
+    /// <summary>
+    /// T11.10: the shared co-op fog: the walk from each of
+    /// <paramref name="points"/> (fixed_t x, y; every live player in the
+    /// game), one discovered and visible set for them all (a sector is
+    /// visible when any of them sees it). One point is <see cref="See"/>.
+    /// </summary>
+    public void SeeAll(ReadOnlySpan<(int X, int Y)> points)
+    {
+        _stamp++;
+        _changed = false;
+        foreach ((int x, int y) in points)
+            Walk(x, y);
+        Finish();
+    }
+
+    // One viewpoint's walk: the occlusion buffer afresh, the BSP from it, and its own sector.
+    private void Walk(int x, int y)
+    {
         _viewx = x;
         _viewy = y;
-        _stamp++;
         for (int c = 0; c <= Columns; c++)
             _next[c] = c;
-        _changed = false;
         if (Level.Nodes.Length == 0)
             Subsector(0);
         else
@@ -212,6 +234,11 @@ public sealed class FogOfWar
         // The player's own sector, whatever its segs.
         Subsector own = Level.R_PointInSubsector(x, y);
         _visibleStamp[own.Sector.Index] = _stamp;
+    }
+
+    // After the walks: the visible sectors' doors, then each sector's state.
+    private void Finish()
+    {
         DiscoverDoors();
 
         int visible = 0;

@@ -49,16 +49,45 @@ public partial class LevelScene
         SeeFog();
     }
 
-    // The sight walk from the console player, after each tic, and the monsters' sight of it (T6.13t);
-    // a dead player keeps its last set.
+    // The sight walk after each tic, and the monsters' sight of the console player (T6.13t): from the
+    // console player, or (T11.10) in co-op from every live player in the game into one shared set; with
+    // none alive the fog keeps its last set (and the sight dim needs the console player alive).
     private void SeeFog()
     {
-        if (Fog is not { } fog || World is not { } world || world.players[world.consoleplayer] is not { playerstate: playerstate_t.PST_LIVE, mo: { } mo })
+        if (Fog is not { } fog || World is not { } world)
+            return;
+        int n = FogViewpoints(world, _fogPoints);
+        if (n == 0)
             return;
         long start = Stopwatch.GetTimestamp();
-        fog.See(mo.x, mo.y);
+        if (n == 1)
+            fog.See(_fogPoints[0].X, _fogPoints[0].Y);
+        else
+            fog.SeeAll(_fogPoints.AsSpan(0, n));
         FogMilliseconds = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        SeeSight();
+        if (world.players[world.consoleplayer] is { playerstate: playerstate_t.PST_LIVE, mo: not null })
+            SeeSight();
+    }
+
+    private readonly (int X, int Y)[] _fogPoints = new (int, int)[World.MAXPLAYERS];
+
+    /// <summary>
+    /// T11.10: where the fog's walk looks from, into <paramref name="points"/>
+    /// (fixed_t; returns how many): in co-op every live player in the game
+    /// (the console player first), in deathmatch the console player alone.
+    /// </summary>
+    public static int FogViewpoints(World world, (int X, int Y)[] points)
+    {
+        int n = 0;
+        for (int k = 0; k < World.MAXPLAYERS; k++)
+        {
+            int i = (world.consoleplayer + k) % World.MAXPLAYERS;
+            if (k > 0 && world.settings.deathmatch != 0)
+                break;
+            if (world.playeringame[i] && world.players[i] is { playerstate: playerstate_t.PST_LIVE, mo: { } mo })
+                points[n++] = (mo.x, mo.y);
+        }
+        return n;
     }
 
     /// <summary>The fog's style and sectors' states in the level shader, as <see cref="FogActive"/> says (every frame).</summary>
@@ -76,15 +105,19 @@ public partial class LevelScene
     /// Whether the fog lets <paramref name="mo"/> be drawn: everything while
     /// it is not active; else as <see cref="FogLets"/> says.
     /// </summary>
-    public bool FogShows(mobj_t mo) => !FogActive || FogLets(Fog!, FogThings, mo);
+    public bool FogShows(mobj_t mo) => !FogActive || FogLets(Fog!, FogThings, mo, World?.settings.deathmatch ?? 0);
 
     /// <summary>
     /// Whether <paramref name="fog"/> lets <paramref name="mo"/> be drawn: a
     /// thing that acts or moves (<see cref="FogActs"/>) with <see cref="FogThings.Sight"/>
-    /// only while its sector is visible, any other once its sector is discovered.
+    /// only while its sector is visible, any other once its sector is discovered;
+    /// T11.10: in co-op (<paramref name="deathmatch"/> 0) a player's own mobj
+    /// (a teammate, dead or alive) always.
     /// </summary>
-    public static bool FogLets(FogOfWar fog, FogThings things, mobj_t mo)
+    public static bool FogLets(FogOfWar fog, FogThings things, mobj_t mo, int deathmatch = 0)
     {
+        if (deathmatch == 0 && mo.player is { } p && p.mo == mo)
+            return true;
         int sector = mo.subsector.sector.Index;
         return things == FogThings.Sight && FogActs(mo) ? fog.IsVisible(sector) : fog.IsDiscovered(sector);
     }

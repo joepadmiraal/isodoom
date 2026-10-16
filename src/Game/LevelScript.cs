@@ -100,6 +100,10 @@ namespace IsoDoom.Game;
 /// style and its visible and discovered sector counts; <c>seen SECTOR
 /// unseen|discovered|visible</c> waits for them and fails unless the sector
 /// is in that state (the player looks after each tic and after <c>place</c>).
+/// T11.10 (with <c>--level-players=N</c>): <c>players</c> waits for the
+/// queued tics and prints the players in the game and the local one;
+/// <c>local K</c> waits for them and makes player K (1–4) the local one
+/// (<see cref="LevelScene.SetLocalPlayer"/>; fails unless K is in the game).
 /// T6.13r: <c>beams</c> waits for the queued tics and a frame and prints the
 /// item beams' mode and each beamed item (type, kind, position, sector);
 /// whether a beam shows is the GPU's (only while its item is hidden).
@@ -565,6 +569,22 @@ public partial class LevelScript : Node
                         await Frames(1);
                         foreach (string line in _scene.BeamsText())
                             GD.Print($"Level script: {line}");
+                        break;
+                    case "players":
+                        // T11.10: waits for the queued tics; prints the players in the game and the local one
+                        await Drain();
+                        GD.Print($"Level script: {_scene.PlayersText()}");
+                        break;
+                    case "local":
+                        // T11.10: waits for the queued tics; player K becomes the local one
+                        await Drain();
+                        if (!_scene.SetLocalPlayer(Int(w[1]) - 1))
+                        {
+                            GD.PrintErr($"Level script: local: player {w[1]} is not in the game ({_scene.PlayersText()})");
+                            exit = 1;
+                        }
+                        else
+                            GD.Print($"Level script: local: {_scene.PlayersText()}");
                         break;
                     case "seen":
                         {

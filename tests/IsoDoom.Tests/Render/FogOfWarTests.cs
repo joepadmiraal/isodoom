@@ -89,6 +89,31 @@ public class FogOfWarTests
         Assert.Equal(4, fog.DiscoveredCount);
     }
 
+    /// <summary>T11.10: the shared co-op fog: one walk from each player, one set, the union of what each sees alone.</summary>
+    [Fact]
+    public void SeveralViewpointsSeeTheUnionOfTheirWalks()
+    {
+        Level level = Level.Load(Synthetic(), "E1M1");
+        var shared = new FogOfWar(level);
+        shared.SeeAll([(0, 0), (576 << Fixed.FRACBITS, 0)]); // the west room and room C
+        Assert.All([0, 1, 2], s => Assert.Equal(SectorSight.Visible, shared.State(s)));
+        Assert.Equal(SectorSight.Discovered, shared.State(3)); // room C's door, seen from room C
+        Assert.All([4, 5], s => Assert.Equal(SectorSight.Unseen, shared.State(s)));
+        Assert.Equal(3, shared.VisibleCount);
+        Assert.Equal(4, shared.DiscoveredCount);
+
+        // the same as each alone, joined
+        FogOfWar west = See(Level.Load(Synthetic(), "E1M1"), 0, 0), c = See(Level.Load(Synthetic(), "E1M1"), 576, 0);
+        for (int s = 0; s < level.Sectors.Length; s++)
+            Assert.Equal(west.IsVisible(s) || c.IsVisible(s), shared.IsVisible(s));
+
+        // one of them walks away: what only it saw is discovered, not visible
+        shared.SeeAll([(0, 0)]);
+        Assert.Equal(SectorSight.Discovered, shared.State(2));
+        Assert.Equal(2, shared.VisibleCount);
+        Assert.Equal(4, shared.DiscoveredCount);
+    }
+
     [Fact]
     public void TheDiscoveredSetComesBackFromTheMappedLines()
     {

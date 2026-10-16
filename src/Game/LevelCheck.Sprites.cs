@@ -841,6 +841,7 @@ public partial class LevelCheck
         m.SetPalette(0);
         // T6.9: the fuzz of MF_SHADOW things.
         compared += await CheckFuzz(m, things, atlas, lit, picked, basis);
+        compared += await CheckTranslations(m, things, atlas, lit, basis); // T11.10
 
         // T3.6: vanilla's look (no outline) side-on, and the full tilt from the game camera's pitch, where the
         // billboard faces the camera: the patch again at 1 unit per pixel (an upright one would be squashed).
@@ -920,6 +921,46 @@ public partial class LevelCheck
     }
 
     /// <summary>
+    /// T11.10: the players' colours. Thing <paramref name="i"/> shown as the
+    /// player's first frame (<c>PLAYA</c>; its own without it), with each translation table 0-3
+    /// (as another player's billboard, then table 2 as the player's own
+    /// sprite): its custom data carries the table and every pixel is the
+    /// texel through <see cref="PlayerTranslation"/>, then the sprite light
+    /// (<see cref="CompareSprite"/>).
+    /// </summary>
+    private async Task<int> CheckTranslations(LevelMesh m, ThingSprites things, SpriteAtlas atlas, int i, Basis basis)
+    {
+        string map = m.Level.Name;
+        ThingSprites.Entry original = things.Entries[i];
+        var player = original with { Sprite = PlayerSprite.SprPlay, Frame = 0, FullBright = false, Shadow = false, SightDim = 0, Own = false };
+        string name = "PLAYA";
+        if (things.FrameOf(player) is null)
+            (player, name) = (original with { Own = false }, SpriteName(original)); // (a WAD without the player's sprite: the thing's own frame)
+        int compared = 0, green = 0;
+        foreach ((int table, bool own) in new[] { (0, false), (1, false), (2, false), (3, false), (2, true) })
+        {
+            things.SetEntry(i, player with { Translation = table, Own = own });
+            int flags = (int)Math.Round(things.CustomData(i).G);
+            if ((flags >> ThingSprites.FlagTranslationShift & 3) != table)
+                Fail($"{map}: thing {i} with translation {table}: custom data flags {flags}");
+            IndexedImage patch = atlas.Images[things.ShownFrames[i].Slot];
+            green = 0;
+            for (int y = 0; y < patch.Height; y++)
+            {
+                for (int x = 0; x < patch.Width; x++)
+                {
+                    if (patch.IsOpaque(x, y) && PlayerTranslation.Changes(patch[x, y], 1))
+                        green++;
+                }
+            }
+            compared += await CompareSprite(m, things, atlas, i, basis, $"{map}: thing {i} as {name}, translation {table}{(own ? ", the player's own sprite" : "")}");
+        }
+        things.SetEntry(i, original);
+        GD.Print($"Level check: {map}: the players' colours (T11.10): {name} drawn with each translation, {green} texels of the green ramp translated");
+        return compared;
+    }
+
+    /// <summary>
     /// Thing <paramref name="i"/> alone, seen along <paramref name="basis"/>
     /// (horizontal) with its origin on a pixel corner: its rectangle against
     /// the patch and the sprite light, the rest of the frame the background.
@@ -973,7 +1014,7 @@ public partial class LevelCheck
                 string expected;
                 if (Opaque(c, r))
                 {
-                    byte texel = patch[shown.Flip ? patch.Width - 1 - c : c, r];
+                    byte texel = PlayerTranslation.Translate(patch[shown.Flip ? patch.Width - 1 - c : c, r], e.Translation); // (T11.10)
                     ok = colormap < 0 ? !NearBackground(got) : got == Shade(texel, colormap, e.Own);
                     expected = colormap < 0 ? "a texel" : $"{Shade(texel, colormap, e.Own)} (colormap {colormap})";
                 }

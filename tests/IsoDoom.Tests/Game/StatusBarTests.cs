@@ -270,6 +270,69 @@ public class StatusBarTests
         Assert.Equal(before, st.Screen.Pixels);
     }
 
+    /// <summary>
+    /// T11.10, with DOOM1.WAD: in a netgame the face background is the local
+    /// player's (<c>STFB0</c>–<c>STFB3</c> by <see cref="StStuff.ConsolePlayer"/>),
+    /// and none outside one.
+    /// </summary>
+    [Fact]
+    public void TheFaceBackgroundIsTheLocalPlayers()
+    {
+        var wad = WadArchive.Open(TestWads.RequireDoom1());
+        World world = NewWorld();
+        var graphics = StStuff.Graphics.Load(wad);
+        byte[] Draw(bool netgame, int consoleplayer)
+        {
+            var st = new StStuff(graphics, new DoomRandom()) { ConsolePlayer = consoleplayer };
+            st.ST_Start(world.players[0], netgame);
+            st.ST_Ticker();
+            st.ST_Drawer();
+            return (byte[])st.Screen.Pixels.Clone();
+        }
+        var bars = new byte[World.MAXPLAYERS][];
+        for (int k = 0; k < World.MAXPLAYERS; k++)
+        {
+            IndexedImage back = Assert.IsType<IndexedImage>(graphics.facebacks[k]);
+            bars[k] = Draw(true, k);
+            // its pixels around the face (the face's transparent ones)
+            int shown = 0;
+            for (int y = 0; y < back.Height; y++)
+            {
+                for (int x = 0; x < back.Width; x++)
+                {
+                    int sx = StStuff.ST_FX - back.LeftOffset + x, sy = y - back.TopOffset;
+                    if (back.IsOpaque(x, y) && bars[k][sy * StStuff.ST_WIDTH + sx] == back[x, y])
+                        shown++;
+                }
+            }
+            Assert.True(shown > 0, $"STFB{k} not drawn");
+            for (int j = 0; j < k; j++)
+                Assert.NotEqual(bars[j], bars[k]);
+        }
+        byte[] single = Draw(false, 1);
+        Assert.All(bars, bar => Assert.NotEqual(single, bar));
+    }
+
+    /// <summary>T11.10: the frags widget's sum in deathmatch: the others' frags of the bar's player, less its own (st_stuff.c's), by the local player.</summary>
+    [Fact]
+    public void TheFragsSumCountsTheLocalPlayersOwnAgainst()
+    {
+        World world = NewWorld();
+        player_t p = world.players[0];
+        (p.frags[0], p.frags[1], p.frags[2], p.frags[3]) = (1, 3, 5, 7);
+        var st = new StStuff(new StStuff.Graphics(), new DoomRandom()) { ConsolePlayer = 2 };
+        st.ST_Start(p, netgame: true, deathmatch: 1);
+        st.ST_Ticker();
+        Assert.True(st.st_fragson);
+        Assert.Equal(1 + 3 - 5 + 7, st.st_fragscount);
+        st.ConsolePlayer = 0;
+        st.ST_Ticker();
+        Assert.Equal(-1 + 3 + 5 + 7, st.st_fragscount);
+        st.ST_Start(p, netgame: true, deathmatch: 0);
+        st.ST_Ticker();
+        Assert.False(st.st_fragson); // co-op: the arms instead
+    }
+
     private static bool Covers(HudScreen screen, IndexedImage patch, int x, int y)
     {
         for (int py = 0; py < patch.Height; py++)

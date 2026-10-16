@@ -252,6 +252,9 @@ public sealed class AmMap
 
     private player_t? plr; // the player represented by an arrow
 
+    /// <summary>The player the automap follows (<c>plr</c>: the console player at <see cref="AM_Start"/>; T11.10's check), or null before it.</summary>
+    public player_t? FollowedPlayer => plr;
+
     /// <summary>numbers used for marking by the automap (<c>AMMNUM0</c>–<c>9</c>; null where the WAD lacks one: drawn as nothing).</summary>
     public IndexedImage?[] marknums { get; } = new IndexedImage?[10];
 

@@ -148,6 +148,10 @@ namespace IsoDoom.Game;
 /// a vanilla reference run with it; default on);
 /// <c>--level-things=on|off</c> (T3.8: off hides the billboards and the
 /// player, as vanilla's reference renders draw no sprites; default on);
+/// <c>--level-players=1-4</c> and <c>--level-local=1-4</c> (T11.10, a
+/// debug harness until T11.8's network: players 1–N in the game, a netgame,
+/// the others idle, and the local player, <see cref="LocalPlayer"/>; default
+/// 1 and 1);
 /// <c>--level-tweaks=topdown|vanilla</c> (T4.7: the sim's <see cref="Tweaks"/>
 /// and the commands built for it: the twin-stick game, or vanilla's relative
 /// movement and turning; default topdown);
@@ -201,7 +205,7 @@ namespace IsoDoom.Game;
 /// cap (dark, flat, off), V the things it cuts (decor, all, off), J the door
 /// lids (on, off), N the fog of war (hide, dim, off; T6.13l), = and -
 /// the HUD (T6.11: as vanilla's screen size keys, = bar, fullscreen HUD,
-/// none, - back), F1 shows the controls, F3 hides the overlay.
+/// none, - back), F1 shows the controls, F3 hides the overlay, F12 makes the next player in the game the local one (T11.10, with `--level-players`).
 /// </para>
 /// </summary>
 public partial class LevelScene : Node3D, IGameHost
@@ -646,7 +650,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "` (backquote) game camera/overview/free-fly   Home player 1 start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay\n"
+        "` (backquote) game camera/overview/free-fly   Home player start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay   F12 local player (--level-players)\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Automap: Tab (pad Y) opens and closes, =/- (D-pad up/down) zoom, 0 (D-pad right) whole map, F (D-pad left) follow, arrows (right stick) pan when not following, G (stick click) grid, M (X) mark, C (B) clear marks, iddt cheat\n"
@@ -729,6 +733,7 @@ public partial class LevelScene : Node3D, IGameHost
                 Skill = int.TryParse(skill, out int n) && n >= 1 && n <= 5
                     ? (skill_t)(n - 1)
                     : throw new ArgumentException($"--level-skill: \"{skill}\" (1-5)");
+            ParsePlayerArgs(); // T11.10
             if (WadLocator.GetUserArg("--level-monsters") is string monsters)
                 NoMonsters = monsters switch
                 {
@@ -1161,10 +1166,10 @@ public partial class LevelScene : Node3D, IGameHost
         return true;
     }
 
-    /// <summary>Puts the player mobj back at player 1's start, facing its angle.</summary>
+    /// <summary>Puts the local player's mobj back at its start (T11.10: the local player's), facing its angle.</summary>
     public void PlayerToStart()
     {
-        if (Mesh?.Level.PlayerStart(0) is MapThing start)
+        if (Mesh?.Level.PlayerStart(World?.consoleplayer ?? 0) is MapThing start) // (T11.10: the local player's)
             PlacePlayer(start.X, start.Y, start.Angle);
     }
 
@@ -1344,6 +1349,11 @@ public partial class LevelScene : Node3D, IGameHost
             case Key.F3:
                 Overlay.Visible = !Overlay.Visible;
                 _overlayDue = 0; // (its text at once)
+                break;
+            case Key.F12:
+                // T11.10: the next player in the game becomes the local one (a harness's debug key)
+                CycleLocalPlayer();
+                _overlayDue = 0;
                 break;
             default:
                 return;
@@ -1712,8 +1722,8 @@ public partial class LevelScene : Node3D, IGameHost
         _hudMobj = mo;
         if (mo is null || World is not { } world)
             return;
+        StatusBar?.ConsolePlayer = world.consoleplayer; // (T11.10: before ST_Start, which draws with it)
         StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
-        StatusBar?.ConsolePlayer = world.consoleplayer;
         MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap, Flow.gamevariant, Flow.gameversion); // T7.9: the map's title too
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }
@@ -2585,6 +2595,8 @@ public partial class LevelScene : Node3D, IGameHost
         }
         if (World is { } w && w.players[w.consoleplayer] is { mo: not null } pl)
             text.Append(StatusText(w, pl) + "\n");
+        if (World is { netgame: true })
+            text.Append(PlayersText()).Append('\n'); // T11.10
         if (StatusBar is { plyr: not null } st)
             text.Append(CultureInfo.InvariantCulture, $"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", {(Hud.Aspect43 ? "4:3" : "square")}, scale {Hud.Layout.ScaleX:0.##}×{Hud.Layout.ScaleY:0.##}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
                 + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
@@ -3010,8 +3022,11 @@ public partial class LevelScene : Node3D, IGameHost
             }
             else
             {
-                world = new World(new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission), Tweaks)
+                int players = PlayersMask(level); // T11.10: --level-players
+                world = new World(new SpawnSettings(GameMode, Skill, netgame: players != 1, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission,
+                    playersingame: players), Tweaks)
                 {
+                    consoleplayer = (players & (1 << LocalPlayer)) != 0 ? LocalPlayer : 0, // T11.10: --level-local
                     textures = Textures,
                     map31exists = Wad!.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check (T5.8)
                 };
@@ -3068,11 +3083,16 @@ public partial class LevelScene : Node3D, IGameHost
     /// stays on the floor), actor flag and radius as <see cref="ThingEntry(SpawnedThing)"/>
     /// (an exploding missile's: <see cref="PullRadius"/>), and its current
     /// <c>MF_SHADOW</c> (T6.9: the fuzz; a spectre's, or the player's while
-    /// it has the blur sphere).
+    /// it has the blur sphere), and its colour translation (T11.10: a
+    /// player's, and its corpse's, <c>MF_TRANSLATION</c> table).
     /// </summary>
     public static ThingSprites.Entry ThingEntry(mobj_t mo, (Vector3 Position, uint Angle) at) =>
         new(at.Position, at.Angle, mo.subsector.sector.Index, (int)mo.sprite, mo.frame & Info.FF_FRAMEMASK, (mo.frame & Info.FF_FULLBRIGHT) != 0,
-            ShadowRadius(mo.info), IsActor(mo.info), PullRadius(mo), (float)(mo.floorz / 65536.0), Shadow: (mo.flags & mobjflag_t.MF_SHADOW) != 0);
+            ShadowRadius(mo.info), IsActor(mo.info), PullRadius(mo), (float)(mo.floorz / 65536.0), Shadow: (mo.flags & mobjflag_t.MF_SHADOW) != 0,
+            Translation: TranslationOf(mo));
+
+    /// <summary>T11.10: <paramref name="mo"/>'s colour translation table (<c>(flags &amp; MF_TRANSLATION) &gt;&gt; MF_TRANSSHIFT</c>, 0–3).</summary>
+    public static int TranslationOf(mobj_t mo) => (int)((uint)(mo.flags & mobjflag_t.MF_TRANSLATION) >> Info.MF_TRANSSHIFT);
 
     /// <summary>
     /// The radius a mobj's billboard is pulled by towards the camera, up to
