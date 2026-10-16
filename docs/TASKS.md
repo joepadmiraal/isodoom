@@ -828,3 +828,23 @@ Legend: `[ ]` todo, `[x]` done.
   - [ ] (optional, from the review) A level-check or CI assertion that a level script's `route` under a mismatched `-gameversion` fails (checked by hand only).
 - [ ] **T10.7a Final Doom's maps played by people (from T10.7).** The checks cover every map's data and the first maps' play; nobody has looked at TNT's and Plutonia's later maps under the game camera. Their tricks differ from Doom II's: self-referencing sectors (deep water, invisible bridges: Plutonia MAP20, MAP24, MAP29) drawn as plain floors, lines the WAD maps from the start (Plutonia MAP04's teleport box: discovered under the fog at once), overlapping floors (TNT MAP31's sectors 294 and 301), sliver subsectors along overlapping lines. Play a few maps of each (e.g. TNT MAP02, MAP14, MAP31; Plutonia MAP05, MAP20, MAP24) and log what looks wrong (as T10.6b/T10.6c for Doom II); decide with the user whether self-referencing sectors want a look of their own (compare with vanilla's view of them, `tools/VanillaRef/compare.sh`).
   *Done when:* people have played them and the outcome is logged (follow-up tasks for what needs fixing).
+
+## M11 — Multiplayer
+
+*Exit criterion (SPEC §11):* online co-op and deathmatch for up to 4 players in lockstep over ENet, hosted and joined from the menus; multi-player games match vanilla's netdemos tic by tic.
+
+Each task's full text (cites, *Do:*, *Done when:*), the user's decisions, the inventory of 2026-10-16 and the order the tasks can run in (several at once) are in `docs/plans/multiplayer.md`: read the task's section there. Tick the task here.
+
+- [ ] **T11.1 N-player world and the local player.** The players in game come from the settings, `consoleplayer` becomes a per-machine index the sim's state never depends on, `GameFlow.G_Ticker` takes `ticcmd_t[]`, the checksum covers frags, cards, powers and counts, and a `NetSim` test harness runs K worlds in sync.
+- [ ] **T11.2 Multi-player routes and demos against vanilla** (after T11.1). Multi-player routes and demos in `RouteFile`, the vanilla reference playing them as netdemos with every player dumped; 2- and 4-player co-op routes on E1M1 in sync.
+- [ ] **T11.3 Co-op reborn** (after T11.2). `G_DoReborn`'s netgame branch, `G_CheckSpot`, the body queue; routes against vanilla.
+- [ ] **T11.4 Deathmatch and altdeath** (after T11.2). Deathmatch spawns, `P_RespawnSpecials`, `-timer`/`-avg`, `-deathmatch`/`-altdeath`; routes against vanilla.
+- [ ] **T11.5 The lockstep protocol** (no transport; can start at once). `src/Net`: messages, lobby, `NetServer`/`NetClient`, checksum exchange, an in-memory transport, tests under latency and loss.
+- [ ] **T11.6 ENet transport and command line** (after T11.5). Godot ENet behind `INetTransport`, `-host`/`-connect`/`-players`/`-netdelay`, a two-process loopback exchange.
+- [ ] **T11.7 Netgame intermission** (after T11.2; its deathmatch half after T11.4). wi_stuff.c's co-op and deathmatch stats against vanilla.
+- [ ] **T11.8 Lockstep game loop** (after T11.1 and T11.6). Tics from the network, game-wide pause, sim settings locked, two processes playing E1M1 into E1M2 in sync.
+- [ ] **T11.9 Multiplayer menus and lobby** (after T11.8). Host and join from the menus, the lobby page, the player readme.
+- [ ] **T11.10 Presentation for several players** (after T11.1). Colour translation, the local player as a parameter everywhere, the shared co-op fog, HUD and sounds.
+- [ ] **T11.11 Drop-outs, desyncs and lag** (after T11.8). Quits, timeouts, desync stop and dumps, the overlay's `net:` line.
+- [ ] **T11.12 Cross-platform and internet check** (after T11.9 and T11.11). The three exports playing together, measurements, the default delay logged.
+- [ ] **T11.13 Multiplayer acceptance** (last). People play co-op and deathmatch online; follow-ups filed; SPEC and CLAUDE.md updated.
