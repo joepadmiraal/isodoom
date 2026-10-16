@@ -26,7 +26,7 @@ public partial class PlayerSprite : Node3D
     /// <summary>info.c <c>MT_PLAYER</c>'s radius (map units): its blob shadow's (T3.6) and its wall pull (T3.5a).</summary>
     public static readonly float ShadowRadius = IsoDoom.Sim.Info.mobjinfo[(int)IsoDoom.Sim.mobjtype_t.MT_PLAYER].radius / 65536f;
 
-    private readonly ThingSprites _sprite = new() { Name = "Sprite" };
+    private readonly ThingSprites _sprite = new() { Name = StringNames.Get("Sprite") };
     private ThingSprites.Entry _entry = new(Vector3.Zero, 0, 0, SprPlay, 0, false, ShadowRadius, Actor: true, Radius: ShadowRadius, Own: true);
     private bool _bound;
 

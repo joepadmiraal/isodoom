@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
@@ -18,7 +19,7 @@ public partial class LevelScene : ICheatAutomap
     public AmMap? Automap { get; private set; }
 
     /// <summary>The automap's frame on screen (under the HUD).</summary>
-    public AutomapView AutomapScreen { get; } = new() { Name = "Automap" };
+    public AutomapView AutomapScreen { get; } = new() { Name = StringNames.Get("Automap") };
 
     /// <summary>T7.9's style (<c>--level-automap</c>, <c>hud/automap</c>): see-through but the lines (not vanilla), or vanilla's black.</summary>
     public bool AutomapOverlay { get; set; }
@@ -109,9 +110,9 @@ public partial class LevelScene : ICheatAutomap
         int ch = e is InputEventKey { Pressed: true, Echo: false } k ? LetterKeyOf(k) : 0;
         foreach ((string action, int code) in AutomapKeys(am))
         {
-            if (!InputMap.HasAction(action) || !InputMap.EventIsAction(e, action))
+            if (!InputMap.HasAction(StringNames.Get(action)) || !InputMap.EventIsAction(e, StringNames.Get(action)))
                 continue; // (not an exact match: a stick's other direction lets this one go)
-            bool pressed = e.IsActionPressed(action, allowEcho: true);
+            bool pressed = e.IsActionPressed(StringNames.Get(action), allowEcho: true);
             bool held = _automapHeld.Contains(action);
             if (pressed && !held && !e.IsEcho())
             {

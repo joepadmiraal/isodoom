@@ -17,7 +17,7 @@ public static class ScreenRects
     /// <summary>A texture rectangle stretched over its size, nearest filtered, ignoring the mouse.</summary>
     public static TextureRect New(string name) => new()
     {
-        Name = name,
+        Name = StringNames.Get(name),
         TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
         ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
         StretchMode = TextureRect.StretchModeEnum.Scale,

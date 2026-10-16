@@ -319,17 +319,17 @@ public partial class WadViewer : Control
         var margin = new MarginContainer();
         margin.SetAnchorsPreset(LayoutPreset.FullRect);
         foreach (string side in new[] { "left", "right", "top", "bottom" })
-            margin.AddThemeConstantOverride($"margin_{side}", 8);
+            margin.AddThemeConstantOverride(StringNames.Get($"margin_{side}"), 8);
         AddChild(margin);
 
         var split = new HBoxContainer();
-        split.AddThemeConstantOverride("separation", 8);
+        split.AddThemeConstantOverride(StringNames.Get("separation"), 8);
         margin.AddChild(split);
 
         // Left: a graphic browser tab (category, filter, list) and a lump list tab.
         _tabs = new TabContainer { CustomMinimumSize = new Vector2(GraphicsTabWidth, 0) };
         split.AddChild(_tabs);
-        var left = new VBoxContainer { Name = "Graphics" };
+        var left = new VBoxContainer { Name = StringNames.Get("Graphics") };
         _tabs.AddChild(left);
         _category = new OptionButton();
         foreach (string name in _categoryNames)
@@ -343,7 +343,7 @@ public partial class WadViewer : Control
         _list.ItemSelected += row => OnEntrySelected(_shown[(int)row], 0, 0);
         left.AddChild(_list);
 
-        var lumps = new VBoxContainer { Name = "Lumps" };
+        var lumps = new VBoxContainer { Name = StringNames.Get("Lumps") };
         _tabs.AddChild(lumps);
         var lumpFilters = new HBoxContainer();
         lumps.AddChild(lumpFilters);
@@ -389,7 +389,7 @@ public partial class WadViewer : Control
                 PlaySong(song); // T7.8e: and a song from its start
         };
         lumps.AddChild(_lumpTree);
-        _preview = new AudioStreamPlayer { Name = "SoundPreview" };
+        _preview = new AudioStreamPlayer { Name = StringNames.Get("SoundPreview") };
         AddChild(_preview);
         _tabs.TabChanged += OnTabChanged; // after the tabs exist: adding the first one emits it
 
@@ -398,7 +398,7 @@ public partial class WadViewer : Control
         split.AddChild(right);
 
         var controls = new HBoxContainer();
-        controls.AddThemeConstantOverride("separation", 12);
+        controls.AddThemeConstantOverride(StringNames.Get("separation"), 12);
         right.AddChild(controls);
         controls.AddChild(new Label { Text = "Light" });
         _light = new HSlider { MinValue = 0, MaxValue = 255, Step = 1, Value = 255, CustomMinimumSize = new Vector2(200, 0), SizeFlagsVertical = SizeFlags.ShrinkCenter };
@@ -444,7 +444,7 @@ public partial class WadViewer : Control
         AddChild(_picker);
 
         _spriteBar = new HBoxContainer { Visible = false };
-        _spriteBar.AddThemeConstantOverride("separation", 12);
+        _spriteBar.AddThemeConstantOverride(StringNames.Get("separation"), 12);
         right.AddChild(_spriteBar);
         _spriteBar.AddChild(new Label { Text = "Frame" });
         _frame = new OptionButton();
@@ -461,12 +461,12 @@ public partial class WadViewer : Control
         _scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill };
         right.AddChild(_scroll);
         var viewBox = new VBoxContainer();
-        viewBox.AddThemeConstantOverride("separation", 16);
+        viewBox.AddThemeConstantOverride(StringNames.Get("separation"), 16);
         _scroll.AddChild(viewBox);
         _main = new IndexedGraphicRect();
         viewBox.AddChild(_main);
         _strip = new GridContainer { Columns = 8, Visible = false };
-        _strip.AddThemeConstantOverride("h_separation", 12);
+        _strip.AddThemeConstantOverride(StringNames.Get("h_separation"), 12);
         viewBox.AddChild(_strip);
     }
 

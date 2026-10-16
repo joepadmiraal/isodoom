@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Game;
 
@@ -56,7 +57,7 @@ public sealed class GameInput
     }
 
     /// <summary>The actions missing from the <see cref="InputMap"/>.</summary>
-    public static string[] MissingActions() => Array.FindAll(Actions(), a => !InputMap.HasAction(a));
+    public static string[] MissingActions() => Array.FindAll(Actions(), a => !InputMap.HasAction(StringNames.Get(a)));
 
     /// <summary>
     /// How long after the aim stick was last deflected mouse motion is still
@@ -122,9 +123,9 @@ public sealed class GameInput
     /// </summary>
     public bool WeaponEvent(InputEvent e)
     {
-        if (e.IsActionPressed(WeaponNext))
+        if (e.IsActionPressed(StringNames.Get(WeaponNext)))
             _latches.StepWeapon(1);
-        else if (e.IsActionPressed(WeaponPrev))
+        else if (e.IsActionPressed(StringNames.Get(WeaponPrev)))
             _latches.StepWeapon(-1);
         else
             return false;

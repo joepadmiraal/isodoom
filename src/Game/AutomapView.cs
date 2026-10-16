@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Game;
 
@@ -15,7 +16,7 @@ namespace IsoDoom.Game;
 /// </summary>
 public partial class AutomapView : CanvasLayer
 {
-    private readonly ColorRect _backdrop = new() { Name = "Backdrop", Color = Colors.Black, MouseFilter = Control.MouseFilterEnum.Ignore };
+    private readonly ColorRect _backdrop = new() { Name = StringNames.Get("Backdrop"), Color = Colors.Black, MouseFilter = Control.MouseFilterEnum.Ignore };
     private readonly TextureRect _rect = ScreenRects.New("Frame");
     private Image? _image;
     private ImageTexture? _texture;

@@ -228,7 +228,7 @@ public partial class LevelScene : ISetupHost
     /// <inheritdoc/>
     public string BindingText(string action)
     {
-        if (!InputMap.HasAction(action))
+        if (!InputMap.HasAction(StringNames.Get(action)))
             return "-";
         var names = BindingsOf(action).OrderBy(b => b.IsPad).Select(BindingName).ToList();
         return names.Count == 0 ? "-" : string.Join(", ", names);
@@ -267,7 +267,7 @@ public partial class LevelScene : ISetupHost
     public static List<Binding> BindingsOf(string action)
     {
         var list = new List<Binding>();
-        if (!InputMap.HasAction(action))
+        if (!InputMap.HasAction(StringNames.Get(action)))
             return list;
         foreach (InputEvent e in GodotRefs.ActionEvents(action))
         {
@@ -334,14 +334,14 @@ public partial class LevelScene : ISetupHost
 
     private static void SetBindings(string action, IEnumerable<Binding> bindings)
     {
-        if (!InputMap.HasAction(action))
+        if (!InputMap.HasAction(StringNames.Get(action)))
             return;
         List<Binding> list = [.. bindings]; // before the erase: it may read the action's events
-        InputMap.ActionEraseEvents(action);
+        InputMap.ActionEraseEvents(StringNames.Get(action));
         foreach (Binding b in list)
         {
             using InputEvent e = EventOf(b); // T8.3d: held across the call (the map keeps its own reference), then disposed
-            InputMap.ActionAddEvent(action, e);
+            InputMap.ActionAddEvent(StringNames.Get(action), e);
         }
     }
 
@@ -421,7 +421,7 @@ public partial class LevelScene : ISetupHost
     {
         foreach (string action in Settings.GameActions)
         {
-            if (InputMap.HasAction(action) && InputMap.EventIsAction(e, action, true))
+            if (InputMap.HasAction(StringNames.Get(action)) && InputMap.EventIsAction(e, StringNames.Get(action), true))
                 return true;
         }
         return false;
@@ -490,12 +490,12 @@ public partial class LevelScene : ISetupHost
 
     private static void EnsureAudioBus(string name)
     {
-        if (AudioServer.GetBusIndex(name) >= 0)
+        if (AudioServer.GetBusIndex(StringNames.Get(name)) >= 0)
             return;
         AudioServer.AddBus();
         int i = AudioServer.BusCount - 1;
         AudioServer.SetBusName(i, name);
-        AudioServer.SetBusSend(i, "Master");
+        AudioServer.SetBusSend(i, StringNames.Get("Master"));
     }
 
     /// <summary>The volume (0–15, vanilla's) as a bus's: silent at 0, else its share of full linear amplitude.</summary>

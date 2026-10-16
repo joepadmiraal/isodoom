@@ -35,7 +35,7 @@ void fragment() {
 }
 ";
 
-    private readonly ColorRect _rect = new() { Name = "Melt", MouseFilter = Control.MouseFilterEnum.Ignore };
+    private readonly ColorRect _rect = new() { Name = StringNames.Get("Melt"), MouseFilter = Control.MouseFilterEnum.Ignore };
     private readonly Shader _shader = new() { Code = ShaderCode }; // T8.3d: held, not a temporary handed to the material (Render.GodotRefs)
     private readonly ShaderMaterial _material = new();
     private readonly float[] _offsets = new float[FWipe.COLUMNS];

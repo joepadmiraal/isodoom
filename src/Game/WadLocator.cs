@@ -87,10 +87,17 @@ public static class WadLocator
         path.Contains("://", StringComparison.Ordinal) || Path.IsPathRooted(path) ? path : Path.GetFullPath(path, LaunchDirectory);
 
     /// <summary>The IWAD path saved by the file picker, or null.</summary>
-    public static string? LoadConfiguredIwad()
+    public static string? LoadConfiguredIwad() => LoadConfiguredIwad(SettingsPath);
+
+    /// <summary>The IWAD path saved in the settings file <paramref name="settingsPath"/>, or null (T8.3g: the level check's file).</summary>
+    public static string? LoadConfiguredIwad(string settingsPath)
     {
         using var config = new ConfigFile(); // T8.3d: disposed, never finalized during a call on it
-        if (config.Load(SettingsPath) != Error.Ok)
+        if (config.Load(settingsPath) != Error.Ok)
+            return null;
+        // T8.3g: a missing key with no default is an engine error (ConfigFile::get_value), and a default
+        // would be a temporary Variant: ask first. The settings share the file, so the key is often absent.
+        if (!config.HasSectionKey(Section, IwadKey))
             return null;
         using Variant value = config.GetValue(Section, IwadKey); // T8.3d: disposed after its use (GodotRefs)
         string path = value.AsString();

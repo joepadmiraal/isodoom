@@ -94,9 +94,9 @@ public partial class LevelCheck
         s.MenuEvent(KeyEvent(Key.Down));
         Bind(Key.Enter, "use", KeyEvent(Key.F));
         Bind(Key.Enter, "use", PadEvent(JoyButton.Y));
-        bool useF = InputMap.EventIsAction(KeyEvent(Key.F), GameInput.Use, true), attackF = InputMap.EventIsAction(KeyEvent(Key.F), GameInput.Attack, true);
-        bool useE = InputMap.EventIsAction(KeyEvent(Key.E), GameInput.Use, true), useY = InputMap.EventIsAction(PadEvent(JoyButton.Y), GameInput.Use, true);
-        bool useA = InputMap.EventIsAction(PadEvent(JoyButton.A), GameInput.Use, true);
+        bool useF = InputMap.EventIsAction(KeyEvent(Key.F), StringNames.Get(GameInput.Use), true), attackF = InputMap.EventIsAction(KeyEvent(Key.F), StringNames.Get(GameInput.Attack), true);
+        bool useE = InputMap.EventIsAction(KeyEvent(Key.E), StringNames.Get(GameInput.Use), true), useY = InputMap.EventIsAction(PadEvent(JoyButton.Y), StringNames.Get(GameInput.Use), true);
+        bool useA = InputMap.EventIsAction(PadEvent(JoyButton.A), StringNames.Get(GameInput.Use), true);
         if (!useF || attackF || useE || !useY || useA)
             Fail($"settings (T7.3): Use rebound to F and the pad's Y: use F {useF}, attack F {attackF} (taken), use E {useE}, use Y {useY}, use A {useA} (replaced)");
         s.MenuEvent(KeyEvent(Key.Delete));
@@ -134,6 +134,7 @@ public partial class LevelCheck
                 Fail($"settings (T7.3): could not write {path}");
                 return;
             }
+            CheckNoIwadKey(path);
             s.ResetSettings();
             foreach (string key in LevelScene.SettingKeys())
             {
@@ -180,6 +181,54 @@ public partial class LevelCheck
             GD.Print($"Level check: settings (T7.3): {Settings.Defs.Length} settings and {Settings.BoundActions.Length} actions' bindings at their defaults; each changed applied at once; a page changed by the keys; Use, Attack and the menu key rebound through the menus; all kept through a file and a reset");
     }
 
+    /// <summary>
+    /// T8.3g: the IWAD's key read from a settings file without it (the check's
+    /// own, with only the settings' sections, as a player's who changed an
+    /// option but never picked an IWAD) is null, with no engine error
+    /// (T8.3d's read without a default printed one at every launch).
+    /// </summary>
+    private void CheckNoIwadKey(string path)
+    {
+        var errors = new ErrorCatcher();
+        OS.AddLogger(errors);
+        string? iwad;
+        try
+        {
+            iwad = WadLocator.LoadConfiguredIwad(path);
+        }
+        finally
+        {
+            OS.RemoveLogger(errors);
+        }
+        if (iwad is not null || errors.Errors.Count > 0)
+            Fail($"settings (T8.3g): the IWAD read from a settings file without it is \"{iwad}\", with {errors.Errors.Count} engine error(s): {string.Join("; ", errors.Errors)}");
+    }
+
+    /// <summary>T8.3g: the engine errors logged while it is added (<see cref="OS.AddLogger"/>; Godot calls it on the thread that logs).</summary>
+    private sealed partial class ErrorCatcher : Logger
+    {
+        private readonly System.Threading.Lock _lock = new();
+        private readonly List<string> _errors = [];
+
+        public List<string> Errors
+        {
+            get
+            {
+                lock (_lock)
+                    return [.. _errors];
+            }
+        }
+
+        public override void _LogError(string function, string file, int line, string code, string rationale, bool editorNotify, int errorType, Godot.Collections.Array<ScriptBacktrace> scriptBacktraces)
+        {
+            ((Godot.Collections.Array)scriptBacktraces).Dispose(); // T8.3d: the binding's copy, never finalized
+            if (errorType != (int)ErrorType.Error)
+                return;
+            lock (_lock)
+                _errors.Add(rationale.Length > 0 ? rationale : code);
+        }
+    }
+
     /// <summary>On the current menu item, <paramref name="start"/> starts the wait and <paramref name="input"/> binds to <paramref name="action"/>.</summary>
     private void Bind(Key start, string action, InputEvent input)
     {
@@ -207,7 +256,7 @@ public partial class LevelCheck
         Expect("video/frame_cap", Engine.MaxFps == int.Parse(changed["video/frame_cap"], CultureInfo.InvariantCulture), $"Engine.MaxFps {Engine.MaxFps}");
         foreach ((string key, string bus) in new[] { ("sound/sfx_volume", LevelScene.SfxBus), ("sound/music_volume", LevelScene.MusicBus) })
         {
-            int i = AudioServer.GetBusIndex(bus);
+            int i = AudioServer.GetBusIndex(StringNames.Get(bus));
             if (!changed.TryGetValue(key, out string? value))
                 continue;
             int volume = int.Parse(value, CultureInfo.InvariantCulture);

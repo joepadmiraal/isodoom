@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Audio;
 
@@ -163,7 +164,7 @@ public partial class MusicPlayer : Node, IMusicDevice
     /// </summary>
     public MusicPlayer(ReadOnlyMemory<byte>? genmidi, string bus, double bufferSeconds = DefaultBufferSeconds, bool opl3 = true)
     {
-        Name = "MusicPlayer";
+        Name = StringNames.Get("MusicPlayer");
         ProcessMode = ProcessModeEnum.Always;
         MixRate = (int)AudioServer.GetMixRate();
         BufferSeconds = Math.Max(bufferSeconds, DriverMinimumSeconds(MixRate));
@@ -171,7 +172,7 @@ public partial class MusicPlayer : Node, IMusicDevice
         if (genmidi is { } bank)
             _mixer = new OplMusicMixer(bank.Span, MixRate, opl3); // Doom 1.9's driver (T7.8d)
         _stream = new AudioStreamGenerator { MixRate = MixRate, BufferLength = (float)BufferSeconds };
-        _player = new AudioStreamPlayer { Name = "Music", Stream = _stream, Bus = bus };
+        _player = new AudioStreamPlayer { Name = StringNames.Get("Music"), Stream = _stream, Bus = StringNames.Get(bus) };
         AddChild(_player);
         Record.Refuse = (_, _) => _refuseNext;
     }

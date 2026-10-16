@@ -81,8 +81,8 @@ public partial class ItemBeams : MultiMeshInstance3D
     {
         CastShadow = ShadowCastingSetting.Off;
         _material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
-        _material.SetShaderParameter("beam_height", Height);
-        _material.SetShaderParameter("beam_half_width", HalfWidth);
+        _material.SetParam("beam_height", Height);
+        _material.SetParam("beam_half_width", HalfWidth);
         _material.SetParam("thing_actors", _actors.Texture);
         MaterialOverride = _material;
         using ArrayMesh quad = QuadMesh(); // T8.3d: held across the setter, then disposed (GodotRefs)
@@ -124,10 +124,10 @@ public partial class ItemBeams : MultiMeshInstance3D
         if (settings == _sprites)
             return;
         _sprites = settings;
-        _material.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
-        _material.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
-        _material.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
-        _material.SetShaderParameter("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
+        _material.SetParam("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
+        _material.SetParam("tilt_depth", (int)settings.TiltDepth);
+        _material.SetParam("wall_pull", Math.Max(settings.WallPull, 0f));
+        _material.SetParam("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
     }
 
     /// <summary>

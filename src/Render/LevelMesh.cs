@@ -765,15 +765,15 @@ public sealed class LevelMesh : IDisposable
             FuzzMaterial.Shader = fuzz;
         foreach (ShaderMaterial material in new[] { SpriteMaterial, FuzzMaterial })
         {
-            material.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
-            material.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
-            material.SetShaderParameter("outline", settings.Outline);
-            material.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
-            material.SetShaderParameter("own_light", Math.Clamp(settings.PlayerLight, 0, 255));
-            material.SetShaderParameter("fuzz", settings.Fuzz ? 1 : 0);
+            material.SetParam("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
+            material.SetParam("tilt_depth", (int)settings.TiltDepth);
+            material.SetParam("outline", settings.Outline);
+            material.SetParam("wall_pull", Math.Max(settings.WallPull, 0f));
+            material.SetParam("own_light", Math.Clamp(settings.PlayerLight, 0, 255));
+            material.SetParam("fuzz", settings.Fuzz ? 1 : 0);
         }
-        ShadowMaterial.SetShaderParameter("shadow_mode", (int)settings.Shadow);
-        ShadowMaterial.SetShaderParameter("shadow_opacity", settings.ShadowOpacity);
+        ShadowMaterial.SetParam("shadow_mode", (int)settings.Shadow);
+        ShadowMaterial.SetParam("shadow_opacity", settings.ShadowOpacity);
     }
 
     /// <summary>
@@ -817,7 +817,7 @@ public sealed class LevelMesh : IDisposable
         if (_playpal is not null && ScreenRow >= 0 && ScreenRow <= BlendRow)
         {
             (byte r, byte g, byte b) = DrawnColor(ScreenRow, 0);
-            ShadowMaterial.SetShaderParameter("shadow_colour", Color.Color8(r, g, b).SrgbToLinear());
+            ShadowMaterial.SetParam("shadow_colour", Color.Color8(r, g, b).SrgbToLinear());
         }
     }
 

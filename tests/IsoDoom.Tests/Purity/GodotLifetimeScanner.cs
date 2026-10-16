@@ -18,8 +18,10 @@ namespace IsoDoom.Tests.Purity;
 /// A temporary is a non-scalar <c>Godot.Variant</c> made by a conversion, a
 /// <c>GD.Load</c>/<c>ResourceLoader.Load</c> result, a new
 /// <c>RefCounted</c> or Godot collection (after its object initializer's
-/// setters), or a <c>RefCounted</c> made by a Godot factory
-/// (<c>Image.CreateFromData</c>, <c>ImageTexture.CreateFromImage</c>, …);
+/// setters), a <c>RefCounted</c> made by a Godot factory
+/// (<c>Image.CreateFromData</c>, <c>ImageTexture.CreateFromImage</c>, …), or
+/// (T8.3g) a new <c>StringName</c> or <c>NodePath</c>, the implicit
+/// conversion from a <c>string</c> included;
 /// it is reported when the next call it meets is a GodotSharp method. Also
 /// reported: a null Godot collection argument (the binding makes its own
 /// temporary for it) and <c>InputMap.ActionGetEvents</c> outside
@@ -60,6 +62,11 @@ public static class GodotLifetimeScanner
         module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody && !IsGenerated(m))
             .Sum(m => m.Body.Instructions.Count(i => VariantPayload(i) is string p && !IsScalar(p, i)));
 
+    /// <summary>T8.3g: how many <c>StringName</c>s and <c>NodePath</c>s <paramref name="module"/> makes at all (the cached ones included).</summary>
+    public static int CountNameTemporaries(ModuleDefinition module) =>
+        module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody && !IsGenerated(m))
+            .Sum(m => m.Body.Instructions.Count(i => NamePayload(i) is not null));
+
     private static void ScanMethod(MethodDefinition method, SortedSet<string> violations)
     {
         Mono.Collections.Generic.Collection<Instruction> code = method.Body.Instructions;
@@ -93,6 +100,8 @@ public static class GodotLifetimeScanner
             return IsScalar(payload, ins) ? null : $"a Variant of {payload}";
         if (ins.Operand is not MethodReference m)
             return null;
+        if (NamePayload(ins) is string name)
+            return name;
         TypeReference made = ins.OpCode == OpCodes.Newobj ? m.DeclaringType : ReturnType(m);
         if (ins.OpCode == OpCodes.Newobj)
         {
@@ -109,6 +118,22 @@ public static class GodotLifetimeScanner
         if (IsGodotSharp(m.DeclaringType) && !m.HasThis && m.Name.StartsWith("Create", StringComparison.Ordinal) && IsRefCounted(made))
             return $"a new {made.Name} ({m.DeclaringType.Name}.{m.Name})";
         return null;
+    }
+
+    /// <summary>
+    /// T8.3g: a new <c>StringName</c> or <c>NodePath</c> at <paramref name="ins"/> (a constructor, or the
+    /// implicit conversion from a <c>string</c>, which is one), described, or null. Their wrappers free
+    /// their native data in a finalizer, and the binding passes them bare, as it does Variants.
+    /// </summary>
+    private static string? NamePayload(Instruction ins)
+    {
+        if (ins.Operand is not MethodReference m || m.DeclaringType.FullName is not ("Godot.StringName" or "Godot.NodePath"))
+            return null;
+        if (ins.OpCode == OpCodes.Newobj)
+            return $"a new {m.DeclaringType.Name}";
+        return m.Name == "op_Implicit" && ReturnType(m).FullName == m.DeclaringType.FullName
+            ? $"a {m.DeclaringType.Name} from a {m.Parameters[0].ParameterType.Name}"
+            : null;
     }
 
     /// <summary>The payload type of a <c>Godot.Variant</c> conversion at <paramref name="ins"/>, or null.</summary>

@@ -95,13 +95,13 @@ public partial class FlashGlow : MeshInstance3D
             CurrentRadius = radius;
             float r = Math.Max(radius, 0.01f), k = r / Radius;
             Scale = new Vector3(k, 1, k);
-            _material.SetShaderParameter("crisp", ripple);
-            _material.SetShaderParameter("ring_width", ripple ? Math.Min(RippleWidth / r, 1f) : 1f);
+            _material.SetParam("crisp", ripple);
+            _material.SetParam("ring_width", ripple ? Math.Min(RippleWidth / r, 1f) : 1f);
         }
         if (c == GlowColor)
             return;
         GlowColor = c;
-        _material.SetShaderParameter("glow_colour", c);
+        _material.SetParam("glow_colour", c);
     }
 
     /// <summary>Puts the glow at <paramref name="feet"/> (map units: x, y, height).</summary>

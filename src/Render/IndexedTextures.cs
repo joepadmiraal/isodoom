@@ -73,11 +73,11 @@ public static class IndexedTextures
 
     /// <summary>Selects the PLAYPAL palette (0 normal, 1–8 red, 9–12 gold, 13 radiation suit).</summary>
     public static void SetPalette(ShaderMaterial material, int palette) =>
-        material.SetShaderParameter("palette_index", palette);
+        material.SetParam("palette_index", palette);
 
     /// <summary>Selects the COLORMAP row (0–31 light, 32 invulnerability).</summary>
     public static void SetColormap(ShaderMaterial material, int map) =>
-        material.SetShaderParameter("colormap_index", map);
+        material.SetParam("colormap_index", map);
 
     /// <summary>
     /// The colormap the viewer uses for a sector light level (0–255): a

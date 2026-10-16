@@ -69,8 +69,8 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         _chevron.SetParam("thing_actors", _actors.Texture);
         _beam = new ShaderMaterial { Shader = GodotRefs.LoadShader(ItemBeams.ShaderPath) };
         _beam.SetParam("thing_actors", _actors.Texture);
-        _beam.SetShaderParameter("beam_height", ItemBeams.Height);
-        _beam.SetShaderParameter("beam_half_width", ItemBeams.HalfWidth);
+        _beam.SetParam("beam_height", ItemBeams.Height);
+        _beam.SetParam("beam_half_width", ItemBeams.HalfWidth);
         MaterialOverride = _chevron;
         using ArrayMesh quad = QuadMesh(); // T8.3d: held across the setter, then disposed (GodotRefs)
         Multimesh = _multimesh = new MultiMesh
@@ -123,14 +123,14 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     /// </summary>
     public void ShowAlways(float height, float scale, Vector4 pinBox)
     {
-        _chevron.SetShaderParameter("marker_always", true);
-        _chevron.SetShaderParameter("always_height", height);
-        _chevron.SetShaderParameter("pin_box", pinBox);
-        _chevron.SetShaderParameter("marker_half_width", 11f * scale);
-        _chevron.SetShaderParameter("marker_height", 12f * scale);
-        _chevron.SetShaderParameter("marker_gap", 4f * scale);
-        _chevron.SetShaderParameter("marker_stroke", 2.5f * scale);
-        _chevron.SetShaderParameter("marker_rim", 1f * scale);
+        _chevron.SetParam("marker_always", true);
+        _chevron.SetParam("always_height", height);
+        _chevron.SetParam("pin_box", pinBox);
+        _chevron.SetParam("marker_half_width", 11f * scale);
+        _chevron.SetParam("marker_height", 12f * scale);
+        _chevron.SetParam("marker_gap", 4f * scale);
+        _chevron.SetParam("marker_stroke", 2.5f * scale);
+        _chevron.SetParam("marker_rim", 1f * scale);
     }
 
     /// <summary>Uses <paramref name="atlas"/>'s patches for the hidden test (the things' atlas, <see cref="ThingSprites.Bind"/>).</summary>
@@ -151,10 +151,10 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         _sprites = settings;
         foreach (ShaderMaterial material in new[] { _chevron, _beam })
         {
-            material.SetShaderParameter("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
-            material.SetShaderParameter("tilt_depth", (int)settings.TiltDepth);
-            material.SetShaderParameter("wall_pull", Math.Max(settings.WallPull, 0f));
-            material.SetShaderParameter("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
+            material.SetParam("tilt", Math.Clamp(settings.Tilt, 0f, 1f));
+            material.SetParam("tilt_depth", (int)settings.TiltDepth);
+            material.SetParam("wall_pull", Math.Max(settings.WallPull, 0f));
+            material.SetParam("upright_hiding", settings.Hidden == SpriteHidden.Upright ? 1 : 0);
         }
     }
 

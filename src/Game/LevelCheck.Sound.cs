@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Godot;
 using IsoDoom.Audio;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 
@@ -73,11 +74,11 @@ public partial class LevelCheck
         AudioStreamPlayer player = device.Player(cnum);
         if (ch.vol != vol || ch.sep is < 55 or > 67)
             Fail($"sound: {map}: 300 units west: volume {ch.vol} (expected {vol}), separation {ch.sep} (expected about 61: left)");
-        if (player.Stream != device.StreamFor(sfxenum_t.sfx_pistol).Stream || player.Bus != $"{device.SfxBus}{cnum}"
+        if (player.Stream != device.StreamFor(sfxenum_t.sfx_pistol).Stream || player.Bus != StringNames.Get($"{device.SfxBus}{cnum}")
             || Math.Abs(player.VolumeDb - device.VolumeDb(ch.vol)) > 1e-4 || Math.Abs(device.Panner(cnum).Pan - SfxPlayer.Pan(ch.sep)) > 1e-6
             || device.Panner(cnum).Pan >= 0)
             Fail($"sound: {map}: channel {cnum}'s player: bus {player.Bus}, {player.VolumeDb} dB, pan {device.Panner(cnum).Pan}");
-        if (AudioServer.GetBusIndex(player.Bus) is var bus && (bus < 0 || AudioServer.GetBusSend(bus) != device.SfxBus))
+        if (AudioServer.GetBusIndex(player.Bus) is var bus && (bus < 0 || AudioServer.GetBusSend(bus) != StringNames.Get(device.SfxBus)))
             Fail($"sound: {map}: channel {cnum}'s bus {player.Bus} does not send to {device.SfxBus}");
 
         // it follows its mobj: moved to the east, it is on the right

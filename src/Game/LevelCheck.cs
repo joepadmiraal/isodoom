@@ -304,7 +304,7 @@ public partial class LevelCheck : Godot.Node
     {
         if (_isoProbe is null)
         {
-            _isoProbe = new IsoCamera { Name = "IsoProbe", InputEnabled = false };
+            _isoProbe = new IsoCamera { Name = StringNames.Get("IsoProbe"), InputEnabled = false };
             AddChild(_isoProbe);
         }
         IsoCamera cam = _isoProbe;
@@ -546,10 +546,10 @@ public partial class LevelCheck : Godot.Node
         }
         if (CanCapture)
             CheckSideTexturesUpload(m, map);
-        if (m.Material.GetShaderParameter("atlas").As<Texture2D>() != m.AtlasTexture
-            || m.Material.GetShaderParameter("texture_info").As<Texture2D>() != m.TextureInfoTexture
-            || m.Material.GetShaderParameter("sector_data").As<Texture2D>() != m.SectorDataTexture
-            || m.Material.GetShaderParameter("side_textures").As<Texture2D>() != m.SideTexturesTexture)
+        if (m.Material.GetShaderParameter(StringNames.Get("atlas")).As<Texture2D>() != m.AtlasTexture
+            || m.Material.GetShaderParameter(StringNames.Get("texture_info")).As<Texture2D>() != m.TextureInfoTexture
+            || m.Material.GetShaderParameter(StringNames.Get("sector_data")).As<Texture2D>() != m.SectorDataTexture
+            || m.Material.GetShaderParameter(StringNames.Get("side_textures")).As<Texture2D>() != m.SideTexturesTexture)
             Fail($"{map}: the material doesn't bind the level's atlas and data textures");
         // The masked middles' material (T3.1) gets every parameter the level material has.
         // T8.3d: the uniform list, its entries and the Variants disposed after their use (GodotRefs).
@@ -561,7 +561,7 @@ public partial class LevelCheck : Godot.Node
             entry.Dispose();
             using Variant nameValue = parameter[nameKey];
             string name = nameValue.AsString();
-            using Variant a = m.Material.GetShaderParameter(name), b = m.MaskedMaterial.GetShaderParameter(name);
+            using Variant a = m.Material.GetShaderParameter(StringNames.Get(name)), b = m.MaskedMaterial.GetShaderParameter(StringNames.Get(name));
             if (a.VariantType != b.VariantType || a.ToString() != b.ToString()
                 || (a.VariantType == Variant.Type.Object && a.AsGodotObject() != b.AsGodotObject()))
                 Fail($"{map}: the masked material's {name} ({b}) differs from the level material's ({a})");
@@ -583,8 +583,8 @@ public partial class LevelCheck : Godot.Node
         else if (image.GetFormat() != Image.Format.R8 || image.GetWidth() != LightTables.TableWidth || image.GetHeight() != LightTables.TableHeight
             || !image.GetData().AsSpan().SequenceEqual(expected))
             Fail($"{map}: the light tables upload differs from LightTables");
-        if (m.Material.GetShaderParameter("light_tables").As<Texture2D>() != m.LightTablesTexture
-            || m.Material.GetShaderParameter("light_centerx").AsInt32() != m.Lights.CenterX)
+        if (m.Material.GetShaderParameter(StringNames.Get("light_tables")).As<Texture2D>() != m.LightTablesTexture
+            || m.Material.GetShaderParameter(StringNames.Get("light_centerx")).AsInt32() != m.Lights.CenterX)
             Fail($"{map}: the material doesn't bind the light tables");
         // Vanilla's tables, spot-checked (r_main.c; unit tests check more).
         if (m.Lights.zlight(8, 15) != 23 || m.Lights.scalelight(8, 10) != 23 || m.Lights.zlight(0, 1) != 20 || m.Lights.scalelight(10, 40) != 0)

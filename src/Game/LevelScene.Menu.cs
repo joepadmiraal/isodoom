@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
@@ -13,7 +14,7 @@ namespace IsoDoom.Game;
 public partial class LevelScene : IMenuHost
 {
     /// <summary>T7.2: the menus' screen (see-through but for the read-this pages), over the HUD and the other screens.</summary>
-    public ScreenView MenuScreens { get; } = new() { Name = "MenuScreens", Layer = 2 };
+    public ScreenView MenuScreens { get; } = new() { Name = StringNames.Get("MenuScreens"), Layer = 2 };
 
     // What the menu screen showed last (redrawn when it changes).
     private (int Changes, gamestate_t State, int Tic, bool Pause, Vector2 Size, (int, int, int) Palette)? _menuKey;
@@ -107,7 +108,7 @@ public partial class LevelScene : IMenuHost
     public static int MenuActionKey(InputEvent e, MMenu menu)
     {
         bool pad = e is InputEventJoypadButton or InputEventJoypadMotion;
-        bool Is(string action) => InputMap.HasAction(action) && e.IsActionPressed(action, allowEcho: true);
+        bool Is(string action) => InputMap.HasAction(StringNames.Get(action)) && e.IsActionPressed(StringNames.Get(action), allowEcho: true);
         if (Is(GameInput.MenuOpen))
             return menu.key_menu_activate;
         if (Is(GameInput.MenuSelect))
@@ -301,7 +302,7 @@ public partial class LevelScene : IMenuHost
 
     /// <summary>Whether a pad button is one of the menus' directions (<c>menu_up</c>… : polled, not an "any key" on the title).</summary>
     private static bool IsMenuDirection(InputEventJoypadButton pad) =>
-        new[] { GameInput.MenuUp, GameInput.MenuDown, GameInput.MenuLeft, GameInput.MenuRight }.Any(a => InputMap.HasAction(a) && InputMap.EventIsAction(pad, a, true));
+        new[] { GameInput.MenuUp, GameInput.MenuDown, GameInput.MenuLeft, GameInput.MenuRight }.Any(a => InputMap.HasAction(StringNames.Get(a)) && InputMap.EventIsAction(pad, StringNames.Get(a), true));
 
     /// <summary>A key as doomkeys.h's code (Chocolate Doom's default menu keys, for typing a save's description), a lower-case letter, a digit or a space; 0 for any other.</summary>
     public static int MenuKeyOf(InputEventKey key) => KeyOf(key) switch
@@ -397,7 +398,7 @@ public partial class LevelScene : IMenuHost
             devices.Add(0); // the level script's pad
         foreach ((string action, int key) in new[] { (GameInput.MenuUp, menu.key_menu_up), (GameInput.MenuDown, menu.key_menu_down), (GameInput.MenuLeft, menu.key_menu_left), (GameInput.MenuRight, menu.key_menu_right) })
         {
-            if (!InputMap.HasAction(action))
+            if (!InputMap.HasAction(StringNames.Get(action)))
                 continue;
             foreach (InputEvent e in Render.GodotRefs.ActionEvents(action))
             {
@@ -427,7 +428,7 @@ public partial class LevelScene : IMenuHost
         }
         if (_menuButtonsHeld)
         {
-            if (Input.IsActionPressed(GameInput.Attack) || Input.IsActionPressed(GameInput.Use))
+            if (Input.IsActionPressed(StringNames.Get(GameInput.Attack)) || Input.IsActionPressed(StringNames.Get(GameInput.Use)))
                 return input with { Attack = false, Use = false };
             _menuButtonsHeld = false;
         }

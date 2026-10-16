@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Game;
 
@@ -64,7 +65,7 @@ public partial class LevelScene
 
     /// <summary>Whether a mouse button or a pad's button or axis bound to <paramref name="action"/> holds it now.</summary>
     private static bool NonKeyHolds(string action) =>
-        InputMap.HasAction(action) && Render.GodotRefs.ActionEvents(action).Any(e => e switch
+        InputMap.HasAction(StringNames.Get(action)) && Render.GodotRefs.ActionEvents(action).Any(e => e switch
         {
             InputEventMouseButton mb => Input.IsMouseButtonPressed(mb.ButtonIndex),
             InputEventJoypadButton jb => Input.GetConnectedJoypads().Any(id => Input.IsJoyButtonPressed(id, jb.ButtonIndex)),

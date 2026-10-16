@@ -165,21 +165,21 @@ public partial class LevelCheck
         if (things.MissingFrames > 0)
             Fail($"{map}: {things.MissingFrames} thing(s) whose spawn frame the WAD lacks");
         if (things.MaterialOverride != m.SpriteMaterial
-            || m.SpriteMaterial.GetShaderParameter("sprite_atlas").As<Texture2D>() != atlas.AtlasTexture
-            || m.SpriteMaterial.GetShaderParameter("sprite_info").As<Texture2D>() != atlas.InfoTexture)
+            || m.SpriteMaterial.GetShaderParameter(StringNames.Get("sprite_atlas")).As<Texture2D>() != atlas.AtlasTexture
+            || m.SpriteMaterial.GetShaderParameter(StringNames.Get("sprite_info")).As<Texture2D>() != atlas.InfoTexture)
             Fail($"{map}: the billboards don't draw with the level's sprite material and the sprite atlas");
         foreach (string name in new[] { "sector_data", "playpal", "colormap", "palette_index", "colormap_override", "light_tables", "light_mode",
                      "light_origin", "light_reference", "light_near", "light_centerx", "extralight" })
         {
-            Variant a = m.Material.GetShaderParameter(name), b = m.SpriteMaterial.GetShaderParameter(name);
+            Variant a = m.Material.GetShaderParameter(StringNames.Get(name)), b = m.SpriteMaterial.GetShaderParameter(StringNames.Get(name));
             if (a.VariantType != b.VariantType || a.ToString() != b.ToString()
                 || (a.VariantType == Variant.Type.Object && a.AsGodotObject() != b.AsGodotObject()))
                 Fail($"{map}: the sprite material's {name} ({b}) differs from the level material's ({a})");
         }
 
         // T4.7a: the player's minimum light reaches the shader, and the player's billboard marks its entry as its own.
-        if (m.SpriteMaterial.GetShaderParameter("own_light").AsInt32() != m.Sprites.PlayerLight)
-            Fail($"{map}: the sprite material's own_light ({m.SpriteMaterial.GetShaderParameter("own_light")}) is not the player's minimum light {m.Sprites.PlayerLight}");
+        if (m.SpriteMaterial.GetShaderParameter(StringNames.Get("own_light")).AsInt32() != m.Sprites.PlayerLight)
+            Fail($"{map}: the sprite material's own_light ({m.SpriteMaterial.GetShaderParameter(StringNames.Get("own_light"))}) is not the player's minimum light {m.Sprites.PlayerLight}");
         if (_scene.PlayerMobj is { } player)
         {
             var playerSprite = new PlayerSprite();
@@ -351,7 +351,7 @@ public partial class LevelCheck
             var zero = Color.Color8(r, g, b);
             if (tintsVoid && !_scene.Environment.BackgroundColor.IsEqualApprox(zero))
                 Fail($"{map}: {what}: the void is {_scene.Environment.BackgroundColor.ToHtml(false)}, expected palette {palette}'s colour 0 {zero.ToHtml(false)}");
-            if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(zero.SrgbToLinear()))
+            if (m.ShadowMaterial.GetShaderParameter(StringNames.Get("shadow_colour")).AsColor() is var shadow && !shadow.IsEqualApprox(zero.SrgbToLinear()))
                 Fail($"{map}: {what}: the blob shadows are {shadow}, expected palette {palette}'s colour 0");
         }
         PaletteFlashStyle style = _scene.PaletteFlashes; // (T6.13w: player by default; the T6.8 checks are the screen's)
@@ -453,7 +453,7 @@ public partial class LevelCheck
                     if (tintsVoid && !_scene.Environment.BackgroundColor.IsEqualApprox(zero))
                         Fail($"{what}: the void is {_scene.Environment.BackgroundColor.ToHtml(false)}, expected {zero.ToHtml(false)}");
                     (byte sr, byte sg, byte sb) = m.DrawnColor(screenRow, 0);
-                    if (m.ShadowMaterial.GetShaderParameter("shadow_colour").AsColor() is var shadow && !shadow.IsEqualApprox(Color.Color8(sr, sg, sb).SrgbToLinear()))
+                    if (m.ShadowMaterial.GetShaderParameter(StringNames.Get("shadow_colour")).AsColor() is var shadow && !shadow.IsEqualApprox(Color.Color8(sr, sg, sb).SrgbToLinear()))
                         Fail($"{what}: the blob shadows are {shadow}, expected palette row {screenRow}'s colour 0");
                     // (T6.13w: a pickup's is the ripple, white, its size and alpha as far as the drawn fraction of its first tic)
                     PaletteFlash.Glow glow = s == PaletteFlashStyle.Player && !white ? PaletteFlash.GlowOf(Playpal, palette) : default;
@@ -904,8 +904,8 @@ public partial class LevelCheck
             things.SetEntry(i, original with { Own = own });
             int flags = (int)Math.Round(things.CustomData(i).G);
             if (((flags & ThingSprites.FlagOwn) != 0) != own
-                || m.SpriteMaterial.GetShaderParameter("own_light").AsInt32() != min)
-                Fail($"{map}: thing {i}, {what}: custom data flags {flags}, own_light {m.SpriteMaterial.GetShaderParameter("own_light")}");
+                || m.SpriteMaterial.GetShaderParameter(StringNames.Get("own_light")).AsInt32() != min)
+                Fail($"{map}: thing {i}, {what}: custom data flags {flags}, own_light {m.SpriteMaterial.GetShaderParameter(StringNames.Get("own_light"))}");
             compared += await CompareSprite(m, things, atlas, i, basis, $"{map}: thing {i}, {what}");
         }
         // The minimum must change the drawn light (else the comparison proves nothing).

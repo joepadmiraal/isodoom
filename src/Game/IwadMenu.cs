@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Wad;
 
 namespace IsoDoom.Game;
@@ -48,7 +49,7 @@ public partial class IwadMenu : Control
         _selected = selected;
         _message = message;
         _pwads = pwads;
-        Name = "IwadMenu";
+        Name = StringNames.Get("IwadMenu");
     }
 
     /// <summary>The menu's buttons (the IWADs', then the download when offered, browse and quit), for checks.</summary>
@@ -69,7 +70,7 @@ public partial class IwadMenu : Control
 
         float height = GetViewport().GetVisibleRect().Size.Y;
         int text = Math.Max(16, (int)(height / 26)); // about 31 px at 800 rows: readable on a 7" 1280×800 screen
-        box.AddThemeConstantOverride("separation", text / 2);
+        box.AddThemeConstantOverride(StringNames.Get("separation"), text / 2);
         // T8.3d: each label's settings held across its setter, then disposed (Render.GodotRefs).
         using var titleSettings = new LabelSettings { FontSize = text * 2, FontColor = new Color(0.8f, 0.1f, 0.1f) };
         using var textSettings = new LabelSettings { FontSize = text };
@@ -150,14 +151,14 @@ public partial class IwadMenu : Control
 
         static void Add(string action, InputEvent e)
         {
-            if (!InputMap.HasAction(action))
+            if (!InputMap.HasAction(StringNames.Get(action)))
                 return;
             foreach (InputEvent existing in Render.GodotRefs.ActionEvents(action))
             {
                 if (existing.IsMatch(e))
                     return;
             }
-            InputMap.ActionAddEvent(action, e);
+            InputMap.ActionAddEvent(StringNames.Get(action), e);
         }
     }
 
@@ -167,7 +168,7 @@ public partial class IwadMenu : Control
     private Button AddButton(VBoxContainer box, string text, int size, Action pressed)
     {
         var button = new Button { Text = text, FocusMode = FocusModeEnum.All, Alignment = HorizontalAlignment.Left };
-        button.AddThemeFontSizeOverride("font_size", size);
+        button.AddThemeFontSizeOverride(StringNames.Get("font_size"), size);
         button.Pressed += pressed;
         button.MouseEntered += () => button.GrabFocus(); // the pointer moves the focus, as the game menus' skull
         box.AddChild(button);

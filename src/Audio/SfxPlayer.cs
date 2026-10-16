@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 
@@ -35,7 +36,7 @@ public partial class SfxPlayer : Node, ISoundDevice
 
     public SfxPlayer(WadArchive wad, int channels, string sfxBus)
     {
-        Name = "SfxPlayer";
+        Name = StringNames.Get("SfxPlayer");
         _wad = wad;
         SfxBus = sfxBus;
         _players = new AudioStreamPlayer[channels];
@@ -44,7 +45,7 @@ public partial class SfxPlayer : Node, ISoundDevice
         {
             string bus = $"{sfxBus}{i}";
             _panners[i] = EnsureChannelBus(bus, sfxBus);
-            _players[i] = new AudioStreamPlayer { Name = $"Channel{i}", Bus = bus };
+            _players[i] = new AudioStreamPlayer { Name = StringNames.Get($"Channel{i}"), Bus = StringNames.Get(bus) };
             AddChild(_players[i]);
         }
     }
@@ -60,14 +61,14 @@ public partial class SfxPlayer : Node, ISoundDevice
     // A channel's bus (made once, kept for the process: AudioServer's buses outlive the scenes) with its panner.
     private static AudioEffectPanner EnsureChannelBus(string name, string send)
     {
-        int i = AudioServer.GetBusIndex(name);
+        int i = AudioServer.GetBusIndex(StringNames.Get(name));
         if (i < 0)
         {
             AudioServer.AddBus();
             i = AudioServer.BusCount - 1;
             AudioServer.SetBusName(i, name);
         }
-        AudioServer.SetBusSend(i, send);
+        AudioServer.SetBusSend(i, StringNames.Get(send));
         for (int e = 0; e < AudioServer.GetBusEffectCount(i); e++)
         {
             if (AudioServer.GetBusEffect(i, e) is AudioEffectPanner existing)

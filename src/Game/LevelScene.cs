@@ -233,7 +233,7 @@ public partial class LevelScene : Node3D, IGameHost
     public ItemBeamMode ItemBeams { get; set; } = ItemBeamMode.All;
 
     /// <summary>The item beams (T6.13r) as <see cref="UpdateItemBeams"/> last set them.</summary>
-    public ItemBeams Beams { get; } = new() { Name = "ItemBeams" };
+    public ItemBeams Beams { get; } = new() { Name = StringNames.Get("ItemBeams") };
 
     /// <summary>The item beams under any camera (the level check's, which has no game camera).</summary>
     public bool BeamsEverywhere { get; set; }
@@ -242,10 +242,10 @@ public partial class LevelScene : Node3D, IGameHost
     public MonsterMarkerMode MonsterMarking { get; set; } = MonsterMarkerMode.Beam;
 
     /// <summary>The monster markers (T6.13u) as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
-    public MonsterMarkers Markers { get; } = new() { Name = "MonsterMarkers" };
+    public MonsterMarkers Markers { get; } = new() { Name = StringNames.Get("MonsterMarkers") };
 
     /// <summary>T10.4: the Icon of Sin's brain markers (chevrons over what hides the brain), as <see cref="UpdateMonsterMarkers"/> last set them.</summary>
-    public MonsterMarkers BrainMarkers { get; } = new() { Name = "BrainMarkers", Mode = MonsterMarkerMode.Chevron };
+    public MonsterMarkers BrainMarkers { get; } = new() { Name = StringNames.Get("BrainMarkers"), Mode = MonsterMarkerMode.Chevron };
 
     private readonly List<MonsterMarkers.Marker> _brainScratch = [];
 
@@ -287,7 +287,7 @@ public partial class LevelScene : Node3D, IGameHost
     public bool FlashOnPlayerEverywhere { get; set; }
 
     /// <summary>T6.13v: the player style's glow at the player's feet (<see cref="UpdatePaletteEffects"/>).</summary>
-    public FlashGlow Glow { get; } = new() { Name = "FlashGlow", Visible = false };
+    public FlashGlow Glow { get; } = new() { Name = StringNames.Get("FlashGlow"), Visible = false };
 
     /// <summary>
     /// Which hitscans draw a tracer from the shooter to where the shot stopped
@@ -296,7 +296,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public TracerMode Tracers { get; set; } = TracerMode.Player;
 
-    private readonly ShotTracers _shotTracers = new() { Name = "ShotTracers" };
+    private readonly ShotTracers _shotTracers = new() { Name = StringNames.Get("ShotTracers") };
 
     /// <summary>
     /// When the aim marker shows around the player's feet (<see cref="AimMarker"/>,
@@ -305,7 +305,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     public AimMarkerMode AimMarkerShown { get; set; } = AimMarkerMode.Pad;
 
-    private readonly AimMarker _aimMarker = new() { Name = "AimMarker", Visible = false };
+    private readonly AimMarker _aimMarker = new() { Name = StringNames.Get("AimMarker"), Visible = false };
 
     /// <summary>
     /// The mouse pointer is a crosshair while it aims on a level (T7.12,
@@ -350,12 +350,12 @@ public partial class LevelScene : Node3D, IGameHost
     public gamestate_t GameState => _flow?.gamestate ?? gamestate_t.GS_LEVEL;
 
     /// <summary>T7.1: the full screens of the game states (the title loop's pages, the intermission, the finale) and the pause graphic.</summary>
-    public ScreenView Screens { get; } = new() { Name = "Screens" };
+    public ScreenView Screens { get; } = new() { Name = StringNames.Get("Screens") };
 
     private ScreenGraphics? _graphics;
 
     /// <summary>T7.1a: draws the melt (f_wipe.c) over the window while one is under way (<see cref="GameFlow.Wipe"/>).</summary>
-    public WipeView WipeLayer { get; } = new() { Name = "Wipe" };
+    public WipeView WipeLayer { get; } = new() { Name = StringNames.Get("Wipe") };
 
     /// <summary>
     /// T7.1a: whether a game state change melts the screen as vanilla's
@@ -487,7 +487,7 @@ public partial class LevelScene : Node3D, IGameHost
     public HuStuff? MessageLine { get; private set; }
 
     /// <summary>T6.11: shows <see cref="StatusBar"/> and <see cref="MessageLine"/> under the game camera (<c>--level-hud</c>); hidden under the other cameras and the level check.</summary>
-    public HudView Hud { get; } = new() { Name = "Hud" };
+    public HudView Hud { get; } = new() { Name = StringNames.Get("Hud") };
 
     // The player mobj the status bar was started for (ST_Start: each level, and a reborn player's new mobj).
     private mobj_t? _hudMobj;
@@ -865,7 +865,7 @@ public partial class LevelScene : Node3D, IGameHost
                 Hud.FixedScale = hudScale == "auto" ? 0
                     : int.TryParse(hudScale, out int n) && n >= 1 && n <= 16 ? n
                     : throw new ArgumentException($"--level-hud-scale: \"{hudScale}\" (1-16 or auto)");
-            FreeFly = new FreeFlyCamera { Name = "FreeFly" };
+            FreeFly = new FreeFlyCamera { Name = StringNames.Get("FreeFly") };
             AddChild(FreeFly);
             CreateGameCamera();
             InitSettings(); // T7.3: the saved settings, but those the arguments above give
@@ -942,7 +942,7 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>Creates the game camera, the player's billboard and the cursor marker.</summary>
     private void CreateGameCamera()
     {
-        Iso = new IsoCamera { Name = "Iso" };
+        Iso = new IsoCamera { Name = StringNames.Get("Iso") };
         AddChild(Iso);
         if (WadLocator.GetUserArg("--level-projection") is string projection)
             Iso.SetProjectionMode(projection switch
@@ -956,7 +956,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (WadLocator.GetUserArg("--level-zoom") is string zoom)
             Iso.SetViewUnits(ParseFloat(zoom, "--level-zoom"));
 
-        Player = new PlayerSprite { Name = "Player", Visible = _showThings };
+        Player = new PlayerSprite { Name = StringNames.Get("Player"), Visible = _showThings };
         AddChild(Player);
 
         // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
@@ -976,7 +976,7 @@ public partial class LevelScene : Node3D, IGameHost
             RingSegments = 4,
             Material = ringMaterial,
         };
-        _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        _cursorMarker = new MeshInstance3D { Mesh = ring, Name = StringNames.Get("CursorMarker"), Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_cursorMarker);
     }
 
@@ -2867,7 +2867,8 @@ public partial class LevelScene : Node3D, IGameHost
         {
             if (mesh.SectorMeshes[s] is not ArrayMesh chunkMesh)
                 continue;
-            var node = new MeshInstance3D { Mesh = chunkMesh, Name = $"Sector{s}", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+            using var name = new StringName($"Sector{s}"); // T8.3g: disposed after the setter, never finalized during it (GodotRefs)
+            var node = new MeshInstance3D { Mesh = chunkMesh, Name = name, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
             AddChild(node);
             _chunks.Add(node);
             Chunks[s] = node;
@@ -3032,7 +3033,7 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (SpriteAtlas is null)
             return;
-        Things = new ThingSprites { Name = "Things" };
+        Things = new ThingSprites { Name = StringNames.Get("Things") };
         Things.Bind(SpriteAtlas, mesh.SpriteMaterial, mesh.ShadowMaterial);
         Beams.Bind(SpriteAtlas);
         Markers.Bind(SpriteAtlas);

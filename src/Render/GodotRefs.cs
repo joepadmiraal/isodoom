@@ -16,8 +16,11 @@ namespace IsoDoom.Render;
 /// refcount bumped in freed memory, the heap corruption T8.3d chased
 /// (<c>malloc_consolidate(): unaligned fastbin chunk detected</c> at a level
 /// build). The rule (SPEC §12 T8.3d): a <see cref="Variant"/>, a
-/// <c>Godot.Collections</c> collection or a <see cref="RefCounted"/> wrapper
-/// made or returned for one call is disposed (or, for a wrapper we keep,
+/// <c>Godot.Collections</c> collection, a <see cref="RefCounted"/> wrapper
+/// or (T8.3g) a <see cref="StringName"/> or <see cref="NodePath"/> (a
+/// <c>string</c> converted to one included: go through
+/// <see cref="StringNames.Get"/>, or <c>using</c>) made or returned for one
+/// call is disposed (or, for a wrapper we keep,
 /// held) on the main thread after its last use, never left to the finalizer
 /// while Godot may use it; a read-back <see cref="Image"/> or a
 /// <see cref="SurfaceTool"/> in a local is kept alive to its scope's end

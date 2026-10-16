@@ -145,7 +145,7 @@ public partial class ThingSprites : MultiMeshInstance3D
         };
         Shadows = new MultiMeshInstance3D
         {
-            Name = "Shadows",
+            Name = StringNames.Get("Shadows"),
             CastShadow = ShadowCastingSetting.Off,
             Multimesh = _shadowMultimesh = new MultiMesh
             {

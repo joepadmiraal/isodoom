@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Godot;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
@@ -42,7 +43,7 @@ public partial class LevelCheck
         string Step(string what) => $"saves (T7.6): {what}: {menu.StateText()}, game {flow.StateText()}";
         foreach (string action in new[] { GameInput.QuickSave, GameInput.QuickLoad })
         {
-            if (!InputMap.HasAction(action))
+            if (!InputMap.HasAction(StringNames.Get(action)))
             {
                 Fail(Step($"no input action {action}"));
                 return;
