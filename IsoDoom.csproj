@@ -1,5 +1,5 @@
 <Project Sdk="Godot.NET.Sdk/4.7.2">
-  <!-- Godot (presentation) project. Wad, Map and Sim are plain .NET class
+  <!-- Godot (presentation) project. Wad, Map, Sim and Net are plain .NET class
        libraries with no Godot reference (SPEC §4, §12); this project
        references them and holds Assets, Render, Game and Audio. -->
   <!-- Language, nullable, warnings as errors and the analyzers come from
@@ -18,12 +18,13 @@
   <ItemGroup>
     <!-- The SDK globs every .cs file below the project root; the plain
          libraries, tests and tools are compiled by their own projects. -->
-    <Compile Remove="src/Wad/**;src/Map/**;src/Sim/**;tests/**;tools/**" />
-    <None Remove="src/Wad/**;src/Map/**;src/Sim/**;tests/**;tools/**" />
+    <Compile Remove="src/Wad/**;src/Map/**;src/Sim/**;src/Net/**;tests/**;tools/**" />
+    <None Remove="src/Wad/**;src/Map/**;src/Sim/**;src/Net/**;tests/**;tools/**" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="src/Wad/IsoDoom.Wad.csproj" />
     <ProjectReference Include="src/Map/IsoDoom.Map.csproj" />
     <ProjectReference Include="src/Sim/IsoDoom.Sim.csproj" />
+    <ProjectReference Include="src/Net/IsoDoom.Net.csproj" />
   </ItemGroup>
 </Project>

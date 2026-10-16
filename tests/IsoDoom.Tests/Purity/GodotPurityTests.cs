@@ -26,7 +26,7 @@ namespace IsoDoom.Tests.Purity;
 public class GodotPurityTests
 {
     /// <summary>The libraries checked; <see cref="AnchorType"/> names a type each defines.</summary>
-    public static TheoryData<string> Libraries => ["IsoDoom.Wad", "IsoDoom.Map", "IsoDoom.Sim"];
+    public static TheoryData<string> Libraries => ["IsoDoom.Wad", "IsoDoom.Map", "IsoDoom.Sim", "IsoDoom.Net"];
 
     /// <summary>Non-BCL assemblies the sim may reference. Adding one is a conscious decision (SPEC §12 Q2).</summary>
     private static readonly HashSet<string> _simAllowedReferences = new(StringComparer.Ordinal)
@@ -40,6 +40,7 @@ public class GodotPurityTests
         "IsoDoom.Wad" => typeof(WadFile),
         "IsoDoom.Map" => typeof(Level),
         "IsoDoom.Sim" => typeof(SimInfo),
+        "IsoDoom.Net" => typeof(IsoDoom.Net.NetProtocol),
         _ => throw new ArgumentOutOfRangeException(nameof(library)),
     };
 
@@ -82,7 +83,7 @@ public class GodotPurityTests
         }
 
         Assert.True(violations.Count == 0,
-            $"{library} references Godot (SPEC §4: Wad, Map and Sim are plain .NET). " +
+            $"{library} references Godot (SPEC §4: Wad, Map, Sim and Net are plain .NET). " +
             $"{violations.Count} violation(s):\n  " + string.Join("\n  ", violations.Take(200)));
     }
 
