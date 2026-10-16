@@ -52,6 +52,7 @@ public partial class LevelScene
         if (!IsCheckRun)
             SyncSettings(); // T8.3: a change since the last frame's sync is saved too
         RemoveTempSaves();
+        StopNet(); // T11.6: the host's disconnects go out
         if (_crosshairScale > 0)
             CrosshairPointer.Apply(0); // T7.12: free the pointer's texture before the renderer goes
         GetTree().AutoAcceptQuit = true; // T7.8e: CloseRequested's, while the scene is up

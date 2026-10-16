@@ -285,6 +285,13 @@ jobs:
             --level-tweaks=vanilla --level-monsters=off \
             --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
 
+      # T11.6: the netgame's loopback smoke test: two exported game processes
+      # connect over ENet on 127.0.0.1 (a free port), finish the lobby and
+      # exchange 1000 tics of command bundles, their hashes compared (about
+      # 35 s; tools/NetLoopback/loopback.sh).
+      - name: Netgame loopback (exported build, headless)
+        run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" 1000 -- export/linux/IsoDoom.x86_64
+
       - uses: actions/upload-artifact@v7
         with:
           name: IsoDoom-linux-x86_64

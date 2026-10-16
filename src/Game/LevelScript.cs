@@ -731,6 +731,8 @@ public partial class LevelScript : Node
                     case "underruns":
                         exit |= CheckUnderruns(w);
                         break;
+                    case "net": GD.Print($"Level script: net: {_scene.NetText()}"); break; // T11.6
+                    case "netexchange": exit |= await NetExchange(Int(w[1])); break; // T11.6
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -780,6 +782,44 @@ public partial class LevelScript : Node
         if (found)
             return 0;
         GD.PrintErr($"Level script: playing: no channel plays {w[1]}{(origin is null ? "" : $" from {origin}")}");
+        return 1;
+    }
+
+    /// <summary>
+    /// T11.6: <c>netexchange TICS</c> exchanges TICS tics (whole checksum
+    /// windows) of scripted commands with the other machines through the
+    /// netgame's session (<c>-host</c>/<c>-connect</c>), without running
+    /// them (<see cref="Game.NetExchange"/>), and prints the bundles' hash; it
+    /// fails on a refusal, a disconnection before the end, a desync or a
+    /// timeout. The host then waits until its server compared every window,
+    /// and ends the session (its disconnects end the others'); a join waits
+    /// for that disconnection (at most 10 s).
+    /// </summary>
+    private async Task<int> NetExchange(int tics)
+    {
+        NetExchange x = _scene.StartNetExchange(tics);
+        NetSession net = _scene.Net!;
+        ulong deadline = Time.GetTicksMsec() + (ulong)(x.Tics * 1000 / IsoDoom.Net.NetProtocol.TicRate) + 60_000;
+        while (!x.Done && net.Failure is null && Time.GetTicksMsec() < deadline)
+            await Frames(1);
+        if (net.Server is { } server)
+        {
+            while (server.WindowsCompared < x.Windows && server.Desync is null && Time.GetTicksMsec() < deadline)
+                await Frames(1);
+        }
+        string compared = net.Server is { } s ? $", windows compared {s.WindowsCompared}" : "";
+        GD.Print($"Level script: netexchange: {x.TicsTaken} of {x.Tics} tics, hash {x.Hash:x16}{compared}; {_scene.NetText()}");
+        bool ok = x.Done && (net.Server?.Desync ?? net.Client.Desync) is null && (net.Server is null || net.Server.WindowsCompared >= x.Windows);
+        if (net.Server is null)
+        {
+            ulong until = Time.GetTicksMsec() + 10_000;
+            while (net.Client.State != IsoDoom.Net.NetClientState.Disconnected && Time.GetTicksMsec() < until)
+                await Frames(1);
+        }
+        _scene.StopNet();
+        if (ok)
+            return 0;
+        GD.PrintErr($"Level script: netexchange: failed ({(net.Failure ?? (x.Done ? "desync or windows not compared" : "timeout"))})");
         return 1;
     }
 

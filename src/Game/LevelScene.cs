@@ -898,6 +898,8 @@ public partial class LevelScene : Node3D, IGameHost
             case null or "iso": UseCamera(CameraMode.Iso); break;
             case string other: Fail($"--level-camera: unknown camera \"{other}\" (iso, overview or fly)"); return;
         }
+        if (!StartNet()) // T11.6: -host/-connect
+            return;
         if (WadLocator.GetUserArg("--level-script") is string script)
             AddChild(new LevelScript(this, script));
         else if (WadLocator.GetUserArg("--level-screenshot") is string path)
@@ -1369,6 +1371,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     public override void _Process(double delta)
     {
+        PollNet(); // T11.6: the netgame's session, once a frame
         if (!IsCheckRun && _flow is { } flow)
         {
             if (Mesh is not null)
@@ -2750,6 +2753,7 @@ public partial class LevelScene : Node3D, IGameHost
         var clock = Stopwatch.StartNew();
         var wad = WadArchive.Open(found.Path, [.. found.Pwads]);
         _iwadPath = found.Path; // T7.6: the save directory's name
+        _pwadPaths = found.Pwads; // T11.6: the netgame's identity
         IwadInfo info = IwadIdentification.D_IdentifyVersion(wad);
         // T10.7: Chocolate Doom's InitGameVersion: the executable emulated (-gameversion), and the IWAD as it plays it
         (GameVersion, info) = GameVersions.D_SetGameVersion(info, WadLocator.GetUserArg("-gameversion"));

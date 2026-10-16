@@ -48,11 +48,13 @@ godot --headless -- --level-check -iwad /tmp/isodoom-synthetic.wad    # ends "Le
 godot --headless --fixed-fps 35 -- -iwad /tmp/isodoom-synthetic.wad --level E1M1 \
   --level-tweaks=vanilla --level-monsters=off \
   --level-script="route tests/IsoDoom.Tests/Sim/Routes/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route tests/IsoDoom.Tests/Sim/Routes/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
+# The netgame: a host and a client process over ENet on loopback (ends "loopback: OK").
+tools/NetLoopback/loopback.sh /tmp/isodoom-synthetic.wad 1000
 ```
 
 Each command exits non-zero on a failure.
 
-CI then exports the Linux build and smoke-tests it, and exports the Windows build and runs its smoke test, both checks and the route play headless on a Windows runner (through `IsoDoom.console.exe`), and the same for the macOS build on an Apple Silicon and an Intel macOS runner. It also runs both checks again on the exported build with a real renderer (Xvfb and lavapipe), which compares the drawn pixels. To run the same checks locally without exporting, use the editor:
+CI then exports the Linux build, smoke-tests it and runs the netgame loopback test on it, and exports the Windows build and runs its smoke test, both checks and the route play headless on a Windows runner (through `IsoDoom.console.exe`), and the same for the macOS build on an Apple Silicon and an Intel macOS runner. It also runs both checks again on the exported build with a real renderer (Xvfb and lavapipe), which compares the drawn pixels. To run the same checks locally without exporting, use the editor:
 
 ```bash
 WAYLAND_DISPLAY= VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json \
