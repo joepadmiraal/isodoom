@@ -734,6 +734,7 @@ public partial class LevelScene : Node3D, IGameHost
                     ? (skill_t)(n - 1)
                     : throw new ArgumentException($"--level-skill: \"{skill}\" (1-5)");
             ParsePlayerArgs(); // T11.10
+            GameModes = NetOptions.Modes(OS.GetCmdlineUserArgs()); // T11.4
             if (WadLocator.GetUserArg("--level-monsters") is string monsters)
                 NoMonsters = monsters switch
                 {
@@ -3022,9 +3023,9 @@ public partial class LevelScene : Node3D, IGameHost
             }
             else
             {
-                int players = PlayersMask(level); // T11.10: --level-players
-                world = new World(new SpawnSettings(GameMode, Skill, netgame: players != 1, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission,
-                    playersingame: players), Tweaks)
+                int players = PlayersMask(level, GameModes.Deathmatch != 0); // T11.10: --level-players
+                world = new World(GameModes.Apply(new SpawnSettings(GameMode, Skill, netgame: players != 1, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission,
+                    playersingame: players)), Tweaks) // T11.4: -deathmatch, -altdeath, -timer, -avg, -respawn, -fast, -nomonsters
                 {
                     consoleplayer = (players & (1 << LocalPlayer)) != 0 ? LocalPlayer : 0, // T11.10: --level-local
                     textures = Textures,

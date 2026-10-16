@@ -680,7 +680,14 @@ public sealed class VanillaRoute
                 hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
             }
             File.RunEvents(world, tic);
+            mobj_t? consoleMo = world.players[world.consoleplayer].mo;
             world.G_Ticker(NetCmds[tic]); // T11.2: every player's
+            if (world.players[world.consoleplayer].mo is { } mo && mo != consoleMo)
+            {
+                // T11.4: a netgame's reborn console player (P_SpawnPlayer's ST_Start and HU_Start, as the level scene's StartHud)
+                st.ST_Start(world.players[world.consoleplayer], world.netgame, world.deathmatch);
+                hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
+            }
             st.ST_Ticker();
             string? message = null;
             foreach (sim_event_t ev in world.events)

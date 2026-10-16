@@ -710,7 +710,16 @@ public static class SyntheticIwad
             // play is unchanged.
             -40, 40, 90, 2, 7,        // player 2 start
             -40, -40, 90, 3, 7,       // player 3 start
-            40, -40, 90, 4, 7));      // player 4 start
+            40, -40, 90, 4, 7,        // player 4 start
+
+            // T11.4: vanilla's four deathmatch starts (type 11), on the co-op starts' and the
+            // fourth corner's spots, facing the four ways (180: the DOS executable's fog quirk,
+            // G_CheckSpot), so the level check plays a deathmatch in CI. A deathmatch start
+            // spawns nothing outside deathmatch.
+            40, 40, 0, 11, 7,
+            -40, 40, 90, 11, 7,
+            -40, -40, 180, 11, 7,
+            40, -40, 270, 11, 7));
         var linedefs = new List<short>();
         for (int i = 0; i < _mapLinedefs.GetLength(0); i++)
         {

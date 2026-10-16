@@ -22,7 +22,9 @@ namespace IsoDoom.Game;
 /// then holds one <c>ticcmd</c> per player separated by <c>|</c>
 /// (<c>F S T B | F S T B [xCOUNT]</c>), and may have a <c>deathmatch 0|1|2</c>
 /// header; its events name their player with a last <c>pN</c> (default
-/// <c>p1</c>). The single-player format is unchanged.
+/// <c>p1</c>). The single-player format is unchanged. T11.4: a
+/// <c>timer MINUTES</c> header is vanilla's <c>-timer</c> (the level ends
+/// after that many minutes in deathmatch).
 /// </summary>
 public sealed class RouteFile
 {
@@ -75,6 +77,9 @@ public sealed class RouteFile
     /// <summary>T11.2: the <c>deathmatch</c> header or a demo's byte: 0 co-op (or single player), 1 deathmatch, 2 altdeath.</summary>
     public int Deathmatch { get; private init; }
 
+    /// <summary>T11.4: the <c>timer</c> header, <c>-timer</c>'s minutes (<see cref="SpawnSettings.timelimit"/>; 0 none; a demo has none).</summary>
+    public int Timer { get; private init; }
+
     /// <summary>T11.2: a demo's <c>respawnparm</c> byte (routes have none).</summary>
     public bool Respawn { get; private init; }
 
@@ -99,7 +104,7 @@ public sealed class RouteFile
     /// </summary>
     public SpawnSettings Settings(GameMode mode, skill_t skill, GameVersion? gameversion = null, GameMission gamemission = GameMission.none) =>
         new(mode, skill, netgame: Netgame, deathmatch: Deathmatch, nomonsters: !Monsters, respawnparm: Respawn, fastparm: Fast,
-            gameversion: gameversion, gamemission: gamemission, playersingame: PlayersInGame);
+            gameversion: gameversion, gamemission: gamemission, playersingame: PlayersInGame, timelimit: Timer);
 
     /// <summary>
     /// The <c>gameversion</c> header (T10.7): the executable vanilla plays the
@@ -154,7 +159,7 @@ public sealed class RouteFile
     public static RouteFile Parse(IEnumerable<string> lines, string path)
     {
         string? iwad = null, map = null;
-        int skill = 3, exit = 0, players = 1, deathmatch = 0;
+        int skill = 3, exit = 0, players = 1, deathmatch = 0, timer = 0;
         (int, int, int)? start = null;
         bool monsters = false;
         GameVersion? gameversion = null;
@@ -211,6 +216,10 @@ public sealed class RouteFile
                     if (f.Length != 2 || f[1] is not ("0" or "1" or "2"))
                         throw new FormatException($"{where}: expected deathmatch 0|1|2");
                     deathmatch = Int(f[1]);
+                    continue;
+                case "timer": // T11.4
+                    if (f.Length != 2 || !int.TryParse(f[1], NumberStyles.None, CultureInfo.InvariantCulture, out timer) || timer is < 1 or > ushort.MaxValue)
+                        throw new FormatException($"{where}: expected timer MINUTES (1-{ushort.MaxValue})");
                     continue;
                 case "damage" or "alert" or "rocket":
                     events.Add(ParseEvent(f, cmds.Count, players, where));
@@ -272,6 +281,7 @@ public sealed class RouteFile
             GameVersion = gameversion,
             PlayersInGame = (1 << players) - 1,
             Deathmatch = deathmatch,
+            Timer = timer,
             NetCmds = cmds,
             Cmds = first,
         };

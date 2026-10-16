@@ -1096,9 +1096,12 @@ public partial class LevelScript : Node
             wrong.Add($"needs -gameversion {GameVersions.Cmdline(version)} (T10.7)");
         if (_scene.PlayerMobj is null)
             wrong.Add("no player");
-        // T11.2: the scene plays player 1 alone (T11.8 brings the netgame's tics), without -respawn or -fast
-        if (route.PlayersInGame != 1 || route.Deathmatch != 0 || route.Respawn || route.Fast)
-            wrong.Add("is a multi-player, deathmatch, -respawn or -fast game: the level scene plays player 1 alone");
+        // T11.2: the scene plays player 1 alone (T11.8 brings the netgame's tics); T11.4: in the
+        // route's modes (-deathmatch, -altdeath, -timer, -respawn, -fast as the scene's arguments)
+        if (route.PlayersInGame != 1)
+            wrong.Add("is a multi-player game: the level scene plays player 1 alone");
+        if (_scene.World is { } w && (w.deathmatch, w.settings.timelimit, w.respawnparm, w.fastparm) != (route.Deathmatch, route.Timer, route.Respawn, route.Fast))
+            wrong.Add($"needs deathmatch {route.Deathmatch}, timer {route.Timer}, respawn {route.Respawn}, fast {route.Fast} (-deathmatch, -altdeath, -timer N, -respawn, -fast; T11.4)");
         if (wrong.Count > 0)
         {
             GD.PrintErr($"Level script: {what}: {string.Join("; ", wrong)}");

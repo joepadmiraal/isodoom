@@ -87,6 +87,7 @@ public sealed partial class World
         w.Write(settings.fastparm);
         w.Write((int)gameversion); // T10.7: the executable emulated (SaveGameFile.VERSION 4)
         w.Write(settings.playersingame); // T11.1: the players the game started with (SaveGameFile.VERSION 5)
+        w.Write(settings.timelimit); // T11.4: -timer's minutes (SaveGameFile.VERSION 6)
         w.Write(tweaks.AbsoluteAiming);
         w.Write(tweaks.AbsoluteMovement);
         w.Write(tweaks.AimAssistCone);
@@ -104,6 +105,7 @@ public sealed partial class World
             P_ArchiveWorld(d, refs);
             P_ArchiveSpecials(d, refs);
             P_ArchiveBrain(d, refs);
+            P_ArchiveBodyQue(d, refs); // T11.4
             P_ArchiveThinkers(d, refs); // last: the table grows while the thinkers are written
             d.Write(SaveEof);
         }
@@ -242,6 +244,17 @@ public sealed partial class World
             w.Write(refs.Of(m));
         w.Write(braintargeton);
         w.Write(braineasy);
+    }
+
+    /// <summary>
+    /// g_game.c's body queue (T11.4; vanilla's saves leave it out, and
+    /// refuse a netgame's): <c>bodyqueslot</c> and the bodies queued.
+    /// </summary>
+    private void P_ArchiveBodyQue(BinaryWriter w, SaveRefs refs)
+    {
+        w.Write(bodyqueslot);
+        foreach (mobj_t? m in bodyque)
+            w.Write(refs.Of(m));
     }
 
     /// <summary>p_saveg.c <c>P_ArchivePlayers</c>: every player, in the game or not.</summary>
@@ -510,9 +523,12 @@ public sealed partial class World
                 r.ReadBoolean(),
                 r.ReadBoolean(),
                 ReadGameVersion(r),
-                playersingame: r.ReadInt32());
+                playersingame: r.ReadInt32(),
+                timelimit: r.ReadInt32());
             if (settings.playersingame <= 0 || settings.playersingame >= 1 << MAXPLAYERS)
                 throw new SaveGameException($"bad players in game {settings.playersingame}");
+            if (settings.timelimit < 0)
+                throw new SaveGameException($"bad time limit {settings.timelimit}");
             var tweaks = new Tweaks
             {
                 AbsoluteAiming = r.ReadBoolean(),
@@ -584,6 +600,7 @@ public sealed partial class World
             P_UnArchiveWorld(r, load);
             P_UnArchiveSpecials(r, load);
             P_UnArchiveBrain(r, load);
+            P_UnArchiveBodyQue(r, load); // T11.4
             P_UnArchiveThinkers(r, load);
             if (r.ReadInt32() != SaveEof)
                 throw new SaveGameException("bad end of the save");
@@ -869,6 +886,15 @@ public sealed partial class World
                 throw new SaveGameException($"bad block {i}");
             blocklinks[i] = refs.Thinker<mobj_t>(r);
         }
+    }
+
+    private void P_UnArchiveBodyQue(BinaryReader r, LoadRefs refs)
+    {
+        bodyqueslot = r.ReadInt32();
+        if (bodyqueslot < 0)
+            throw new SaveGameException($"bad body queue slot {bodyqueslot}");
+        for (int i = 0; i < BODYQUESIZE; i++)
+            bodyque[i] = refs.Thinker<mobj_t>(r);
     }
 
     private void P_UnArchiveBrain(BinaryReader r, LoadRefs refs)

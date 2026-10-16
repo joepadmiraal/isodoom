@@ -96,7 +96,7 @@ public sealed partial class World
     /// p_tick.c <c>P_Ticker</c>: one tic of the level. The pause and menu
     /// checks are the game loop's (T4.7); the players' <c>ticcmd</c>s are
     /// in <see cref="player_t.cmd"/> (<see cref="G_Ticker(ticcmd_t[])"/>).
-    /// <c>P_RespawnSpecials</c> (deathmatch 2 only) is not ported.
+    /// T11.4: <see cref="P_RespawnSpecials"/> (altdeath only).
     /// </summary>
     public void P_Ticker()
     {
@@ -111,7 +111,7 @@ public sealed partial class World
 
         P_RunThinkers();
         P_UpdateSpecials();
-        // P_RespawnSpecials (); deathmatch 2 only
+        P_RespawnSpecials();
 
         // for par times
         leveltime++;

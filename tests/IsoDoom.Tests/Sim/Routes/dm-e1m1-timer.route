@@ -1,0 +1,11 @@
+# DOOM1.WAD E1M1 in deathmatch with -timer 1, two players, no monsters
+# (T11.4): the players stand at their deathmatch starts until the level
+# timer (P_SpawnSpecials' levelTimeCount, 60 * 35 tics) ends the level, the
+# route's last tic. Written by tools/RouteGen (dm-e1m1-timer).
+iwad doom1
+players 2
+deathmatch 1
+timer 1
+exit normal
+# each player's forwardmove sidemove turn buttons, | between them [xcount]; turn << 8 = angleturn
+0 0 0 0 | 0 0 0 0 x2100

@@ -1,0 +1,70 @@
+# The deathmatch test map (T11.4) in altdeath (deathmatch 2), player 1 alone
+# (vanilla's -altdeath without a netgame): it spawns at a random deathmatch
+# start, takes the chaingun (which does not stay), switches back to the
+# pistol, and 30 seconds later P_RespawnSpecials brings the chaingun back
+# with an item fog; it takes it again. Written by tools/RouteGen
+# (testmap-altdeath); its dump is committed (CI).
+iwad testmap
+map dm
+deathmatch 2
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 40 0
+25 0 0 0 x46
+25 -1 0 0
+25 0 0 0 x8
+7 0 0 0
+-2 0 0 0
+-3 0 0 0
+-1 0 0 0
+-2 0 0 0 x2
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x3
+-1 0 0 0
+0 0 0 0
+1 0 0 0
+2 0 0 0
+0 0 0 0 x8
+25 2 -104 0
+25 0 0 0 x11
+7 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x15
+0 0 0 12
+0 0 0 0 x998
+25 6 -127 0
+25 -6 -1 0
+25 0 0 0 x10
+5 0 0 0
+-2 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x3
+0 0 0 0
+-1 0 0 0 x3
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0
+0 0 -1 0
+0 0 0 0
+2 0 0 0
+1 0 0 0
+0 0 0 0 x42

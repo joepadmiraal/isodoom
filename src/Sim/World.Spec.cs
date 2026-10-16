@@ -240,7 +240,7 @@ public sealed partial class World
     /// <summary>p_spec.c <c>linespeciallist</c>: the lines <see cref="P_UpdateSpecials"/> animates (special 48).</summary>
     public readonly line_t?[] linespeciallist = new line_t?[MAXLINEANIMS];
 
-    /// <summary>p_spec.c <c>levelTimer</c>: deathmatch's <c>-timer</c> (never set: deathmatch is not ported).</summary>
+    /// <summary>p_spec.c <c>levelTimer</c>: deathmatch's <c>-timer</c>/<c>-avg</c> (<see cref="SpawnSettings.timelimit"/>; T11.4).</summary>
     public bool levelTimer;
 
     /// <summary>p_spec.c <c>levelTimeCount</c>: the tics left with <see cref="levelTimer"/>.</summary>
@@ -933,8 +933,16 @@ public sealed partial class World
     /// </summary>
     public void P_SpawnSpecials()
     {
-        // See if -TIMER was specified (deathmatch only, not ported).
-        levelTimer = false;
+        // See if -TIMER was specified.
+        if (settings.timelimit > 0 && deathmatch != 0)
+        {
+            levelTimer = true;
+            levelTimeCount = settings.timelimit * 60 * SimInfo.TICRATE;
+        }
+        else
+        {
+            levelTimer = false;
+        }
 
         //	Init special SECTORs.
         for (int i = 0; i < sectors.Length; i++)

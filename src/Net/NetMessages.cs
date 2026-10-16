@@ -45,7 +45,7 @@
 // 255 for the IWAD's default), gamemission (u8), players in game (u8 mask,
 // SpawnSettings.playersingame; T11.5a: in the lobby the host's, at the
 // Start the players'), episode, map (u8), timer in
-// minutes (u16), the tweaks (u8 flags: 1 AbsoluteAiming, 2 AbsoluteMovement,
+// minutes (u16, SpawnSettings.timelimit), the tweaks (u8 flags: 1 AbsoluteAiming, 2 AbsoluteMovement,
 // 4 UseFallback, 8 InstantStop; u32 AimAssistCone). Every player runs these.
 //
 // TICS. The server starts the game at its clock's zero = the start tic, and
@@ -227,10 +227,11 @@ public sealed record NetIdentity(string Build, string IwadMd5, IReadOnlyList<str
 /// <summary>
 /// The game every player runs: the spawn settings (mode, skill, netgame,
 /// deathmatch, monsters, version), the tweaks (every player must run the
-/// same, <c>Tweaks.cs</c>), the first map (vanilla's <c>startepisode</c>,
-/// <c>startmap</c>) and <c>-timer</c>'s minutes (0 none).
+/// same, <c>Tweaks.cs</c>) and the first map (vanilla's <c>startepisode</c>,
+/// <c>startmap</c>). T11.4: <c>-timer</c>'s minutes are the spawn settings'
+/// <see cref="SpawnSettings.timelimit"/>.
 /// </summary>
-public sealed record NetGameSettings(SpawnSettings Spawn, Tweaks Tweaks, int Episode, int Map, int TimerMinutes = 0);
+public sealed record NetGameSettings(SpawnSettings Spawn, Tweaks Tweaks, int Episode, int Map);
 
 /// <summary>The Start message as a client keeps it.</summary>
 /// <param name="ConsolePlayer">The receiver's player (its slot).</param>
@@ -573,7 +574,7 @@ public sealed class NetWriter
         U8(checked((byte)s.playersingame));
         U8(checked((byte)settings.Episode));
         U8(checked((byte)settings.Map));
-        U16(checked((ushort)settings.TimerMinutes));
+        U16(checked((ushort)s.timelimit));
         Tweaks t = settings.Tweaks;
         U8((byte)((t.AbsoluteAiming ? 1 : 0) | (t.AbsoluteMovement ? 2 : 0) | (t.UseFallback ? 4 : 0) | (t.InstantStop ? 8 : 0)));
         U32(t.AimAssistCone);
@@ -678,7 +679,7 @@ public sealed class NetReader
             throw new NetProtocolException($"Settings: players in game {playersingame}.");
         var spawn = new SpawnSettings(gamemode, skill, (flags & 1) != 0, deathmatch, (flags & 2) != 0,
             (flags & 4) != 0, (flags & 8) != 0, version == byte.MaxValue ? null : Enum<GameVersion>(version), mission,
-            playersingame);
+            playersingame, timer);
         var tweaks = new Tweaks
         {
             AbsoluteAiming = (tweakFlags & 1) != 0,
@@ -687,7 +688,7 @@ public sealed class NetReader
             InstantStop = (tweakFlags & 8) != 0,
             AimAssistCone = cone,
         };
-        return new NetGameSettings(spawn, tweaks, episode, map, timer);
+        return new NetGameSettings(spawn, tweaks, episode, map);
     }
 
     private T Enum<T>(int value)

@@ -100,7 +100,26 @@ public static class RouteTestMaps
         // DR door, and in the room B beyond it, on each player's line, a health bonus and a monster
         // facing away, and on player 4's a netgame-only shotgun.
         ["coop"] = Coop,
+        // T11.4: deathmatch. One room (1024 wide, 512 deep, ceiling 128): five deathmatch starts,
+        // (128, 128) facing east, (896, 128) north, (896, 384) west (the DOS executable's fog
+        // quirk: G_CheckSpot), (128, 384) south and (512, 256) north-east; the co-op starts 1-4
+        // along y = 480 (spawned outside deathmatch only); a shotgun at (512, 128) and a chaingun
+        // at (512, 384); a stimpack at (320, 256) and a clip at (704, 256); the blue keycard at
+        // (512, 32) (MF_NOTDMATCH: not in deathmatch) and a netgame-only rocket launcher at
+        // (64, 256) (options bit 16).
+        ["dm"] = Deathmatch,
     };
+
+    /// <summary>T11.4's <c>dm</c> test map (see <see cref="Maps"/>).</summary>
+    public static TestMap Deathmatch()
+    {
+        var map = TestMap.Strip(0, 0, 512, new TestMap.Room(1024, 0, 128));
+        map.Thing(128, 128, 11, 0).Thing(896, 128, 11, 90).Thing(896, 384, 11, 180).Thing(128, 384, 11, 270).Thing(512, 256, 11, 45);
+        for (int i = 0; i < 4; i++)
+            map.Thing(320 + (128 * i), 480, 1 + i, 270);
+        map.Thing(512, 128, 2001).Thing(512, 384, 2002).Thing(320, 256, 2011).Thing(704, 256, 2007).Thing(512, 32, 5);
+        return map.Thing(64, 256, 2003, 0, 7 | IsoDoom.Sim.MapThingSpawning.MTF_NOTSINGLE);
+    }
 
     /// <summary>
     /// T11.1's co-op map (<c>NetSimTests</c>), T11.2's <c>coop</c>. West to east (512 deep,

@@ -49,7 +49,7 @@ public class NetMessagesTests
         }
         Assert.NotEqual(new Tweaks(), tweaks);
 
-        var settings = new NetGameSettings(spawn, tweaks, Episode: 3, Map: 9, TimerMinutes: 600);
+        var settings = new NetGameSettings(spawn, tweaks, Episode: 3, Map: 9);
         var start = new NetStart(2, 0b1101, 12345, 7, settings);
         NetStart back = NetMessages.DecodeStart(Reader(NetMessages.EncodeStart(start), NetMessageType.Start));
         Assert.Equal(start, back);

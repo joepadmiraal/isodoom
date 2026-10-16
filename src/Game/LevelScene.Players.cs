@@ -28,6 +28,15 @@ public partial class LevelScene
     /// </summary>
     public int LocalPlayer { get; set; }
 
+    /// <summary>
+    /// T11.4: a new game's modes from the command line (<c>-deathmatch</c>,
+    /// <c>-altdeath</c>, <c>-timer N</c>, <c>-avg</c>, <c>-respawn</c>,
+    /// <c>-fast</c>, <c>-nomonsters</c>, vanilla's), for a game alone as for a
+    /// netgame's host (<see cref="NetOptions.Modes"/>): with one player a
+    /// deathmatch game runs, as vanilla's <c>-deathmatch</c> alone does.
+    /// </summary>
+    public NetOptions GameModes { get; set; } = new();
+
     private void ParsePlayerArgs()
     {
         if (WadLocator.GetUserArg("--level-players") is string players)
@@ -44,14 +53,16 @@ public partial class LevelScene
     /// The players in a new game on <paramref name="level"/> (bit i: player
     /// i + 1): the first <see cref="PlayersInGame"/> whose co-op start the map
     /// has, player 1 always (T11.1a refuses a map without them in a real
-    /// netgame; this debug harness leaves them out).
+    /// netgame; this debug harness leaves them out); in
+    /// <paramref name="deathmatch"/> all of them (T11.4: they spawn at the
+    /// deathmatch starts).
     /// </summary>
-    public int PlayersMask(Level level)
+    public int PlayersMask(Level level, bool deathmatch = false)
     {
         int mask = 1;
         for (int i = 1; i < Math.Min(PlayersInGame, World.MAXPLAYERS); i++)
         {
-            if (level.PlayerStart(i) is not null)
+            if (deathmatch || level.PlayerStart(i) is not null)
                 mask |= 1 << i;
         }
         return mask;

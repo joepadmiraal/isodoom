@@ -253,14 +253,12 @@ public sealed partial class World
     /// p_setup.c <c>P_SetupLevel</c>'s sim part, on an already loaded
     /// <paramref name="level"/> (<see cref="Level.Load"/>, which this world
     /// then owns and changes): clears the counts and the thinker list,
-    /// links the sectors and blocks, spawns the things (<c>P_LoadThings</c>)
-    /// clears the item respawn queue and runs <see cref="P_SpawnSpecials"/>.
+    /// links the sectors and blocks, spawns the things (<c>P_LoadThings</c>;
+    /// T11.4: in deathmatch, the players at random deathmatch starts,
+    /// <see cref="G_DeathMatchSpawnPlayer"/>), clears the item respawn queue and runs <see cref="P_SpawnSpecials"/>.
     /// </summary>
     public void P_SetupLevel(Level level)
     {
-        if (settings.deathmatch != 0)
-            throw new NotSupportedException("Deathmatch spawning (G_DeathMatchSpawnPlayer) is not ported.");
-
         totalkills = totalitems = totalsecret = 0;
         for (int i = 0; i < MAXPLAYERS; i++)
             players[i].killcount = players[i].secretcount = players[i].itemcount = 0;
@@ -279,7 +277,22 @@ public sealed partial class World
 
         P_SetupLevelMap(level);
 
+        bodyqueslot = 0; // T11.4
+        Array.Clear(bodyque); // not vanilla's: the last level's bodies, unread, are not kept for a save (SPEC §12 T11.4)
         P_LoadThings();
+
+        // if deathmatch, randomly spawn the active players (T11.4)
+        if (deathmatch != 0)
+        {
+            for (int i = 0; i < MAXPLAYERS; i++)
+            {
+                if (playeringame[i])
+                {
+                    players[i].mo = null;
+                    G_DeathMatchSpawnPlayer(i);
+                }
+            }
+        }
 
         // clear special respawning que
         iquehead = iquetail = 0;

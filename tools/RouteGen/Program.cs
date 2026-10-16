@@ -93,7 +93,7 @@ public static class Program
         new([WadFile.FromBytes(RouteTestMaps.Get(name).Build(), name + ".wad")]);
 
     private sealed record Script(Func<WadArchive> Wad, string Map, string Header, Action<Steer, Action<string>> Run, (int X, int Y, int Angle)? Start = null,
-        IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false, int Players = 1);
+        IsoDoom.Sim.skill_t Skill = IsoDoom.Sim.skill_t.sk_medium, bool Monsters = false, int Players = 1, int Deathmatch = 0, int Timer = 0);
 
     /// <summary>
     /// T10.3: a duel with the monster spawned at (<paramref name="x"/>,
@@ -378,6 +378,147 @@ public static class Program
         }
         E1M1Exit(g, log);
         log($"exit: {State()}");
+    };
+
+    /// <summary>T11.4: every player in the game's position, health, frags, weapon and cards, for the log.</summary>
+    private static string Players(Steer g) => string.Join("; ", Enumerable.Range(0, g.Players).Select(i =>
+    {
+        IsoDoom.Sim.player_t p = g.World.players[i];
+        return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} {p.playerstate} frags {string.Join(",", p.frags)} {p.readyweapon} owned {string.Join("", p.weaponowned.Select(o => o ? 1 : 0))}"
+            + $" cards {string.Join("", p.cards.Select(c => c ? 1 : 0))} ammo {string.Join(",", p.ammo)}";
+    }));
+
+    /// <summary>
+    /// T11.4: player <paramref name="hunter"/> walks towards player <paramref name="prey"/> (who stands)
+    /// until about <paramref name="range"/> units from it, planning through it, then fires at it until it dies.
+    /// </summary>
+    private static void Hunt(Steer g, int hunter, int prey, double range = 128)
+    {
+        g.Player = hunter;
+        g.PlanThroughPlayers = true;
+        IsoDoom.Sim.mobj_t t = g.World.players[prey].mo!;
+        double tx = t.x / 65536.0, ty = t.y / 65536.0;
+        double D(double x, double y) => System.Math.Sqrt((x - tx) * (x - tx) + (y - ty) * (y - ty));
+        if (D(g.X, g.Y) > range)
+        {
+            List<(double X, double Y)> path = g.PlanDoors(tx, ty);
+            int k = path.Count - 1;
+            while (k > 0 && D(path[k].X, path[k].Y) < range)
+                k--;
+            g.GoToDoors(path[k].X, path[k].Y, 16);
+        }
+        g.PlanThroughPlayers = false;
+        g.FireAt(t, 600);
+        if (t.health > 0)
+            throw new InvalidOperationException($"player {prey + 1} survived player {hunter + 1}'s shots: {Players(g)}");
+    }
+
+    /// <summary>T11.4: the steered player steps 64-96 units off (x, y) (an item it took), east, west, north or south, where it fits.</summary>
+    private static void StepOff(Steer g, double x, double y)
+    {
+        foreach ((double dx, double dy) in new[] { (96.0, 0.0), (-96.0, 0.0), (0.0, 96.0), (0.0, -96.0), (64.0, 0.0), (-64.0, 0.0), (0.0, 64.0), (0.0, -64.0) })
+        {
+            if (!g.Fits(x + dx, y + dy))
+                continue;
+            try
+            {
+                g.GoTo(x + dx, y + dy, 16);
+                return;
+            }
+            catch (NoPathException)
+            {
+            }
+        }
+        throw new InvalidOperationException($"nowhere to step off ({x}, {y})");
+    }
+
+    /// <summary>T11.4: the steered player's planned path length to <paramref name="m"/> (grid steps), or int.MaxValue when there is none.</summary>
+    private static int PathLength(Steer g, IsoDoom.Sim.mobj_t m)
+    {
+        try
+        {
+            return g.PlanDoors(m.x / 65536.0, m.y / 65536.0).Count;
+        }
+        catch (NoPathException)
+        {
+            return int.MaxValue;
+        }
+    }
+
+    /// <summary>T11.4: dead player <paramref name="player"/> waits <paramref name="wait"/> tics, presses use and is reborn (a netgame's: at once, the next tic).</summary>
+    private static void Reborn(Steer g, int player, int wait = 20)
+    {
+        g.Player = player;
+        IsoDoom.Sim.mobj_t body = g.World.players[player].mo!;
+        g.Wait(wait);
+        g.Tic(0, 0, 0, IsoDoom.Sim.buttoncode_t.BT_USE);
+        g.Wait(1);
+        if (g.World.players[player].mo == body || g.World.players[player].health != 100)
+            throw new InvalidOperationException($"player {player + 1} was not reborn: {Players(g)}");
+    }
+
+    /// <summary>
+    /// T11.4: deathmatch with two players: player 1 takes the weapon nearest to it of
+    /// <paramref name="weapons"/> (it stays: deathmatch 1), player 2 takes the same; player 1 hunts
+    /// player 2 with it, player 2 is reborn at a deathmatch start, hunts player 1 with its pistol, and
+    /// player 1 is reborn.
+    /// </summary>
+    private static Action<Steer, Action<string>> Deathmatch2P(params IsoDoom.Sim.mobjtype_t[] weapons) => (g, log) =>
+    {
+        g.Wait(1); // (G_PlayerReborn's usedown)
+        log("spawned: " + Players(g));
+        IsoDoom.Sim.mobj_t weapon = g.World.Mobjs().Where(m => weapons.Contains(m.type))
+            .OrderBy(m => PathLength(g, m)).First();
+        double wx = weapon.x / 65536.0, wy = weapon.y / 65536.0;
+        for (int i = 0; i < 2; i++)
+        {
+            g.Player = i;
+            g.GoToDoors(wx, wy, 4);
+            g.Wait(2);
+            log($"player {i + 1} took the {weapon.type} ({(weapon.function == IsoDoom.Sim.think_t.REMOVED ? "gone" : "stays")}): {Players(g)}");
+            StepOff(g, wx, wy); // (off it, so the other can take it)
+        }
+        Hunt(g, 0, 1);
+        log("player 1 fragged player 2: " + Players(g));
+        Reborn(g, 1);
+        log("player 2 reborn: " + Players(g));
+        g.Wait(10);
+        Hunt(g, 1, 0);
+        log("player 2 fragged player 1: " + Players(g));
+        Reborn(g, 0);
+        log("player 1 reborn: " + Players(g));
+        g.Player = 0;
+        g.Wait(35);
+        log("done " + Players(g));
+    };
+
+    /// <summary>
+    /// T11.4: altdeath (deathmatch 2): player 1 takes the nearest of <paramref name="items"/> (it does
+    /// not stay) and, once P_RespawnSpecials brought it back 30 s later (an item fog first), takes it again.
+    /// </summary>
+    private static Action<Steer, Action<string>> AltdeathRespawn(params IsoDoom.Sim.mobjtype_t[] items) => (g, log) =>
+    {
+        g.Wait(1);
+        g.Player = 0;
+        log("spawned: " + Players(g));
+        IsoDoom.Sim.mobj_t item = g.World.Mobjs().Where(m => items.Contains(m.type))
+            .OrderBy(m => PathLength(g, m)).First();
+        IsoDoom.Sim.mobjtype_t type = item.type;
+        double ix = item.x / 65536.0, iy = item.y / 65536.0;
+        g.GoToDoors(ix, iy, 4);
+        g.Wait(2);
+        if (item.function != IsoDoom.Sim.think_t.REMOVED)
+            throw new InvalidOperationException($"the {type} stayed: {Players(g)}");
+        log($"took the {type}, queued at {g.World.iquetail}..{g.World.iquehead}: {Players(g)}");
+        StepOff(g, ix, iy);
+        if (type is IsoDoom.Sim.mobjtype_t.MT_CHAINGUN or IsoDoom.Sim.mobjtype_t.MT_SHOTGUN)
+            g.Change(IsoDoom.Sim.weapontype_t.wp_pistol); // (so taking it again switches to it again)
+        g.WaitUntil(() => g.World.Mobjs().Any(m => m.type == type && m.x == item.x && m.y == item.y), 1200);
+        log($"respawned at tic {g.World.leveltime}: {Players(g)}");
+        g.Wait(20);
+        g.GoToDoors(ix, iy, 4);
+        g.Wait(35);
+        log("took it again: " + Players(g));
     };
 
     /// <summary>The steering scripts by route name.</summary>
@@ -1277,6 +1418,74 @@ players 4
 monsters
 
 """, CoopE1M1(4), Monsters: true, Players: 4),
+        ["testmap-dm"] = new(() => TestMapWad("dm"), "E1M1", """
+# The deathmatch test map (T11.4, RouteTestMaps "dm"), two players in
+# deathmatch: both spawn at random deathmatch starts (G_DeathMatchSpawnPlayer)
+# with every card; player 1 takes the nearest weapon, which stays
+# (deathmatch 1), then player 2 takes it too; player 1 hunts player 2 with it
+# (BT_ATTACK) and frags it, player 2 presses use and is reborn at a
+# deathmatch start (G_CheckSpot's fog, the body queue), hunts player 1 with
+# its pistol and frags it, and player 1 is reborn. Written by tools/RouteGen
+# (testmap-dm); its dump is committed (CI).
+iwad testmap
+map dm
+players 2
+deathmatch 1
+
+""", Deathmatch2P(IsoDoom.Sim.mobjtype_t.MT_SHOTGUN, IsoDoom.Sim.mobjtype_t.MT_CHAINGUN), Players: 2, Deathmatch: 1),
+        ["testmap-altdeath"] = new(() => TestMapWad("dm"), "E1M1", """
+# The deathmatch test map (T11.4) in altdeath (deathmatch 2), player 1 alone
+# (vanilla's -altdeath without a netgame): it spawns at a random deathmatch
+# start, takes the chaingun (which does not stay), switches back to the
+# pistol, and 30 seconds later P_RespawnSpecials brings the chaingun back
+# with an item fog; it takes it again. Written by tools/RouteGen
+# (testmap-altdeath); its dump is committed (CI).
+iwad testmap
+map dm
+deathmatch 2
+
+""", AltdeathRespawn(IsoDoom.Sim.mobjtype_t.MT_CHAINGUN), Deathmatch: 2),
+        ["dm-e1m1-2p"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in deathmatch, two players, no monsters (T11.4): random
+# deathmatch starts and every card; player 1 takes the nearest weapon, which
+# stays (deathmatch 1), player 2 takes it too; player 1 hunts player 2 and
+# frags it, player 2 is reborn at a deathmatch start, hunts player 1 with its
+# pistol and frags it, and player 1 is reborn. Written by tools/RouteGen
+# (dm-e1m1-2p).
+iwad doom1
+players 2
+deathmatch 1
+
+""", Deathmatch2P(IsoDoom.Sim.mobjtype_t.MT_SHOTGUN, IsoDoom.Sim.mobjtype_t.MT_CHAINGUN, IsoDoom.Sim.mobjtype_t.MT_MISC25,
+            IsoDoom.Sim.mobjtype_t.MT_MISC26, IsoDoom.Sim.mobjtype_t.MT_MISC27, IsoDoom.Sim.mobjtype_t.MT_MISC28), Players: 2, Deathmatch: 1),
+        ["dm2-e1m1-respawn"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in altdeath (deathmatch 2), two players, no monsters
+# (T11.4): player 1 takes the nearest weapon or box of ammo, which does not
+# stay, and 30 seconds later P_RespawnSpecials brings it back with an item
+# fog; player 1 takes it again. Written by tools/RouteGen (dm2-e1m1-respawn).
+iwad doom1
+players 2
+deathmatch 2
+
+""", AltdeathRespawn(IsoDoom.Sim.mobjtype_t.MT_SHOTGUN, IsoDoom.Sim.mobjtype_t.MT_CHAINGUN, IsoDoom.Sim.mobjtype_t.MT_CLIP,
+            IsoDoom.Sim.mobjtype_t.MT_MISC17, IsoDoom.Sim.mobjtype_t.MT_MISC22, IsoDoom.Sim.mobjtype_t.MT_MISC23), Players: 2, Deathmatch: 2),
+        ["dm-e1m1-timer"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in deathmatch with -timer 1, two players, no monsters
+# (T11.4): the players stand at their deathmatch starts until the level
+# timer (P_SpawnSpecials' levelTimeCount, 60 * 35 tics) ends the level, the
+# route's last tic. Written by tools/RouteGen (dm-e1m1-timer).
+iwad doom1
+players 2
+deathmatch 1
+timer 1
+exit normal
+
+""", (g, log) =>
+        {
+            log("spawned: " + Players(g));
+            g.WaitExit(2200);
+            log($"left at tic {g.World.leveltime}: " + Players(g));
+        }, Players: 2, Deathmatch: 1, Timer: 1),
         ["e1m1-rockets"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 on skill 4 with monsters (T6.5): e1m1-monsters' way
 # through door 4, but the monsters that attacked are shot with rocket events
@@ -2724,13 +2933,13 @@ exit normal
             int[] v = [.. tryStart.Split(',').Select(t => int.Parse(t, CultureInfo.InvariantCulture))];
             script = script with { Start = (v[0], v[1], v[2]) };
         }
-        var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters, script.Players);
+        var g = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters, script.Players, script.Deathmatch, script.Timer);
         void Log(string s) => Console.Error.WriteLine($"[{g.World.leveltime}] ({g.X:F0},{g.Y:F0},{g.Z:F0}) {s}");
         script.Run(g, Log);
         Log($"done, {g.Cmds.Count} tics");
 
         // The planning must not have changed the play: replay the ticcmds in a fresh world.
-        var replay = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters, script.Players);
+        var replay = new Steer(script.Wad(), script.Map, script.Start, script.Skill, script.Monsters, script.Players, script.Deathmatch, script.Timer);
         replay.Events.AddRange(g.Events);
         foreach (IsoDoom.Sim.ticcmd_t[] c in g.NetCmds)
             replay.Tic(c); // (with the events; T11.2: every player's commands)

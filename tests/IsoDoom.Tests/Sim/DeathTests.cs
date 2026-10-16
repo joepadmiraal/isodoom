@@ -196,7 +196,9 @@ public class DeathTests
         (World world, _) = Load(netgame: true);
         player_t p = P(world);
         world.P_DamageMobj(p.mo!, null, null, 1000);
-        Assert.Throws<NotSupportedException>(() => Tic(world, buttons: (byte)buttoncode_t.BT_USE));
+        Tic(world, buttons: (byte)buttoncode_t.BT_USE); // PST_REBORN; T11.4: a netgame's reborn runs at the next tic's start, vanilla's
+        Assert.Equal(playerstate_t.PST_REBORN, p.playerstate);
+        Assert.Throws<NotSupportedException>(() => Tic(world)); // co-op's (T11.3); deathmatch's is DeathmatchTests'
     }
 
     [Fact]

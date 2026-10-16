@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
 
@@ -30,8 +31,8 @@ public enum NetRole
 /// and ready; <c>-netdelay N</c> the input delay in tics (1–35; default
 /// measured from the round trips at the start, <see cref="DelayFromRtt"/>).</item>
 /// <item>The host's game modes (T11.4's, carried in the Start): <c>-deathmatch</c>,
-/// <c>-altdeath</c>, <c>-timer MINUTES</c>, <c>-respawn</c>, <c>-fast</c>,
-/// <c>-nomonsters</c>.</item>
+/// <c>-altdeath</c>, <c>-timer MINUTES</c>, <c>-avg</c> (20 minutes), <c>-respawn</c>, <c>-fast</c>,
+/// <c>-nomonsters</c>; T11.4: <see cref="Modes"/> reads them for a game alone too.</item>
 /// </list>
 /// Plain C#: parsed from the user arguments (<c>OS.GetCmdlineUserArgs</c>) and tested without the engine.
 /// </summary>
@@ -64,7 +65,7 @@ public sealed record NetOptions
     /// <summary>0 cooperative, 1 deathmatch (<c>-deathmatch</c>), 2 altdeath (<c>-altdeath</c>).</summary>
     public int Deathmatch { get; init; }
 
-    /// <summary><c>-timer</c>'s minutes, 0 none.</summary>
+    /// <summary><c>-timer</c>'s minutes (<c>-avg</c>: 20), 0 none.</summary>
     public int TimerMinutes { get; init; }
 
     /// <summary><c>-respawn</c>.</summary>
@@ -83,10 +84,51 @@ public sealed record NetOptions
     /// </summary>
     public static NetOptions? Parse(IReadOnlyList<string> args)
     {
+        NetOptions o = ParseAll(args, out bool host, out int? port, out string? connect);
+        if (host && connect is not null)
+            throw new ArgumentException("-host/-server and -connect: host a game or join one, not both");
+        if (!host && connect is null)
+            return null;
+        if (connect is not null && port == 0)
+            throw new ArgumentException("-connect: port 0 (a join needs the host's port)");
+        return o with
+        {
+            Role = host ? NetRole.Host : NetRole.Join,
+            ConnectAddress = connect,
+            Port = port ?? DefaultPort,
+        };
+    }
+
+    /// <summary>
+    /// T11.4: the game modes in <paramref name="args"/> (<c>-deathmatch</c>,
+    /// <c>-altdeath</c>, <c>-timer</c>, <c>-avg</c>, <c>-respawn</c>,
+    /// <c>-fast</c>, <c>-nomonsters</c>), for a game of this machine alone
+    /// (<c>--level E1M1 -deathmatch</c>) as for a host's; <see cref="Role"/>
+    /// is <see cref="NetRole.None"/>. A bad value is an <see cref="ArgumentException"/>.
+    /// </summary>
+    public static NetOptions Modes(IReadOnlyList<string> args) => ParseAll(args, out _, out _, out _);
+
+    /// <summary>
+    /// <paramref name="spawn"/> with these options' modes: their deathmatch
+    /// and timer (<see cref="SpawnSettings.timelimit"/>) where they name one,
+    /// <c>-nomonsters</c>, <c>-respawn</c> and <c>-fast</c> added.
+    /// </summary>
+    public SpawnSettings Apply(SpawnSettings spawn) => spawn with
+    {
+        deathmatch = Deathmatch != 0 ? Deathmatch : spawn.deathmatch,
+        nomonsters = spawn.nomonsters || NoMonsters,
+        respawnparm = spawn.respawnparm || Respawn,
+        fastparm = spawn.fastparm || Fast,
+        timelimit = TimerMinutes != 0 ? TimerMinutes : spawn.timelimit,
+    };
+
+    private static NetOptions ParseAll(IReadOnlyList<string> args, out bool host, out int? port, out string? connect)
+    {
         ArgumentNullException.ThrowIfNull(args);
-        bool host = false;
-        int? port = null;
-        string? connect = null;
+        host = false;
+        port = null;
+        connect = null;
+        bool avg = false;
         var o = new NetOptions();
         for (int i = 0; i < args.Count; i++)
         {
@@ -127,6 +169,9 @@ public sealed record NetOptions
                 case "-timer":
                     o = o with { TimerMinutes = Int(Value(args, ref i, a), a, 0, ushort.MaxValue) };
                     break;
+                case "-avg": // T11.4: 20 minutes, whatever -timer says (Chocolate Doom's d_main.c order)
+                    avg = true;
+                    break;
                 case "-respawn":
                     o = o with { Respawn = true };
                     break;
@@ -140,18 +185,7 @@ public sealed record NetOptions
                     break;
             }
         }
-        if (host && connect is not null)
-            throw new ArgumentException("-host/-server and -connect: host a game or join one, not both");
-        if (!host && connect is null)
-            return null;
-        if (connect is not null && port == 0)
-            throw new ArgumentException("-connect: port 0 (a join needs the host's port)");
-        return o with
-        {
-            Role = host ? NetRole.Host : NetRole.Join,
-            ConnectAddress = connect,
-            Port = port ?? DefaultPort,
-        };
+        return avg ? o with { TimerMinutes = 20 } : o;
     }
 
     /// <summary>

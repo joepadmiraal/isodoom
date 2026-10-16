@@ -26,7 +26,7 @@ in the game: G_DoPlayDemo makes it a netgame) with its "deathmatch 0|1|2"
 byte, each tic's line holding one ticcmd per player separated by "|"; an
 event's last "pN" names its player (dump.c's DUMP_EVENTS "TIC KIND ... pN").
 Its dump has a column per player in the game after the exit column (dump.c's
-dump_player).
+dump_player). T11.4: a "timer MINUTES" header is the reference's -timer.
 """
 import os, subprocess, sys, tempfile
 
@@ -94,7 +94,7 @@ def id_wad(head):
 def parse(path):
     """The route's header (iwad, map, skill, start) and its ticcmds (forwardmove, sidemove, turn, buttons)."""
     head = {'iwad': None, 'map': None, 'skill': 3, 'start': None, 'exit': None, 'monsters': False, 'gameversion': None,
-            'players': 1, 'deathmatch': 0}
+            'players': 1, 'deathmatch': 0, 'timer': 0}
     cmds = []  # a (FORWARD, SIDE, TURN, BUTTONS) a tic; T11.2: with players N > 1, a tuple of N of them a tic
     events = []  # T6.4: "TIC damage X Y AMOUNT" / "TIC alert" (/ T6.5 "TIC rocket"), TIC the 0-based tic they start
     for n, line in enumerate(open(path), 1):
@@ -111,6 +111,11 @@ def parse(path):
             if len(line) != 2 or line[1] not in ('0', '1', '2'):
                 sys.exit(f'{where}: expected deathmatch 0|1|2')
             head['deathmatch'] = int(line[1])
+            continue
+        if line[0] == 'timer':  # T11.4: vanilla's -timer MINUTES (the level ends after them in deathmatch)
+            if len(line) != 2 or not line[1].isdigit() or not 1 <= int(line[1]) <= 65535:
+                sys.exit(f'{where}: expected timer MINUTES')
+            head['timer'] = int(line[1])
             continue
         player = 0  # T11.2: an event's player, a last pN (default p1), dump.c's "TIC pN ..."
         if line[0] in ('damage', 'alert', 'rocket') and len(line) > 1 and line[-1].startswith('p'):
@@ -220,6 +225,8 @@ def main():
             args = [ref, '-iwad', iwad(head, doom1), '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui']
             if head['gameversion']:  # T10.7
                 args += ['-gameversion', head['gameversion']]
+            if head['timer']:  # T11.4
+                args += ['-timer', str(head['timer'])]
             if head['iwad'] == 'synthetic':
                 args[3:3] = ['-file', synthetic]
             elif head['iwad'] == 'testmap':

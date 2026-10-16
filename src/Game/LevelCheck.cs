@@ -135,6 +135,7 @@ public partial class LevelCheck : Godot.Node
             CheckCheatPage(); // T7.9b: the cheats page with the pad only
             CheckAutomap(); // T7.9: the automap through the input glue
             CheckPlayers(); // T11.10: several players in the game, each made the local one
+            CheckDeathmatch(); // T11.4: a deathmatch's starts, frags and reborns
             await CheckMusicPlayback(); // T7.8e: a song played for a few seconds on the OPL player's thread
             // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
             await _scene.AudioSettled();

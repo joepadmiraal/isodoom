@@ -140,18 +140,24 @@ public class DemoSyncTests
     /// reference plays (<see cref="RouteFile.ToDemo"/>, <c>routes.py</c>'s)
     /// and read back by the vanilla-input adapter (<see cref="RouteFile.FromDemo"/>)
     /// gives the route's commands, and plays in sync with the route's vanilla dump.
+    /// T11.4: the deathmatch routes too, the deathmatch byte read back (a demo has
+    /// no <c>-timer</c>, as vanilla's: <c>dm-e1m1-timer</c> is not among them).
     /// </summary>
     [Theory]
     [InlineData("synthetic-coop")]
     [InlineData("testmap-coop")]
     [InlineData("coop-e1m1-2p")]
     [InlineData("coop-e1m1-4p")]
+    [InlineData("testmap-dm")]
+    [InlineData("dm-e1m1-2p")]
+    [InlineData("dm2-e1m1-respawn")]
     public void AMultiPlayerRouteAsANetdemoStaysInSyncWithVanilla(string name)
     {
         var route = VanillaRoute.Load(name);
         Assert.True(route.File.Netgame);
         var demo = RouteFile.FromDemo(route.File.ToDemo(1, 1), name);
         Assert.Equal(route.PlayersInGame, demo.PlayersInGame);
+        Assert.Equal(route.File.Deathmatch, demo.Deathmatch);
         Assert.Equal(route.NetCmds.Count, demo.NetCmds.Count);
         for (int t = 0; t < demo.NetCmds.Count; t++)
             Assert.Equal(route.NetCmds[t], demo.NetCmds[t]);

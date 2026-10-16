@@ -20,7 +20,7 @@ public class SyntheticMapTests
     {
         Level map = Load();
         Assert.Equal("E1M1", map.Name);
-        Assert.Equal(15, map.Things.Length);
+        Assert.Equal(19, map.Things.Length); // T11.4: four deathmatch starts, last
         Assert.Equal(20, map.Lines.Length);
         Assert.Equal(24, map.Sides.Length);
         Assert.Equal(18, map.Vertexes.Length);
@@ -36,6 +36,9 @@ public class SyntheticMapTests
         Assert.Equal(new MapThing(-40, -40, 90, 3, 7), map.PlayerStart(2));
         Assert.Equal(new MapThing(40, -40, 90, 4, 7), map.PlayerStart(3));
         Assert.Throws<ArgumentOutOfRangeException>(() => map.PlayerStart(4));
+        // T11.4: vanilla's four deathmatch starts, on the co-op starts' and the fourth corner's spots
+        Assert.Equal([(40, 40, 0), (-40, 40, 90), (-40, -40, 180), (40, -40, 270)],
+            map.Things.Where(t => t.Type == 11).Select(t => ((int)t.X, (int)t.Y, (int)t.Angle)));
     }
 
     [Fact]

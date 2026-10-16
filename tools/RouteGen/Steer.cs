@@ -45,6 +45,9 @@ public sealed class Steer
     /// </summary>
     public bool TightCorners { get; set; }
 
+    /// <summary>T11.4: the planner goes through the other players' mobjs (a hunt plans to its prey; the steering stops short of it).</summary>
+    public bool PlanThroughPlayers { get; set; }
+
     /// <summary>Prints the steering every 10 tics.</summary>
     public bool Verbose { get; set; }
 
@@ -57,11 +60,11 @@ public sealed class Steer
     /// <summary>T6.4: called after every tic (e.g. a <see cref="Gunner"/> adding the next tic's events).</summary>
     public Action? OnTic { get; set; }
 
-    public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1)
+    public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1, int deathmatch = 0, int timer = 0)
     {
         Players = players;
-        World = new World(new SpawnSettings(ModeOf(wad, map), skill, netgame: players > 1, nomonsters: !monsters, gamemission: MissionOf(wad, map),
-            playersingame: (1 << players) - 1), Tweaks.Vanilla)
+        World = new World(new SpawnSettings(ModeOf(wad, map), skill, netgame: players > 1, deathmatch: deathmatch, nomonsters: !monsters, gamemission: MissionOf(wad, map),
+            playersingame: (1 << players) - 1, timelimit: timer), Tweaks.Vanilla) // T11.4: deathmatch and -timer
         {
             textures = wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(wad) : null,
         };
@@ -102,8 +105,9 @@ public sealed class Steer
         map.StartsWith("MAP", StringComparison.OrdinalIgnoreCase) ? GameMode.commercial : GameMode.shareware;
 
     /// <summary>T5.6: a route's <c>start X Y ANGLE</c> (<see cref="RouteStart.Place"/>), before the first tic.</summary>
-    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1)
-        : this(wad, map, skill, monsters, players)
+    public Steer(WadArchive wad, string map, (int X, int Y, int Angle)? start, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1,
+        int deathmatch = 0, int timer = 0)
+        : this(wad, map, skill, monsters, players, deathmatch, timer)
     {
         if (start is { } s)
             RouteStart.Place(World, s.X, s.Y, s.Angle);
@@ -415,7 +419,9 @@ public sealed class Steer
         foreach ((int k, int v) in AssumeCeil)
             World.sectors[k].ceilingheight = v * FU;
         // T6.4: plan through the monsters (they move; the steering pushes past them)
-        var monsters = World.Mobjs().Where(m => (m.flags & (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)) == (mobjflag_t.MF_COUNTKILL | mobjflag_t.MF_SOLID)).ToList();
+        // (T11.4: with PlanThroughPlayers, through the other players too: the prey of a hunt)
+        var monsters = World.Mobjs().Where(m => (m.flags & mobjflag_t.MF_SOLID) != 0
+            && ((m.flags & mobjflag_t.MF_COUNTKILL) != 0 || (PlanThroughPlayers && m.player is not null && m != Mo))).ToList();
         foreach (mobj_t m in monsters)
             m.flags &= ~mobjflag_t.MF_SOLID;
         try
@@ -639,6 +645,25 @@ public sealed class Steer
     /// 31, 117 and 118) and the locked ones whose key the player holds (T5.9) on the way: plans as if they were open, stops in front
     /// of the first closed one on the path, opens it, and plans again.
     /// </summary>
+    /// <summary>T11.4: <see cref="Plan"/> as <see cref="GoToDoors"/> plans: the doors it can open assumed open.</summary>
+    public List<(double X, double Y)> PlanDoors(double x, double y)
+    {
+        AssumeCeil.Clear();
+        foreach (line_t l in World.lines)
+        {
+            if (CanOpen(l.special) && l.backsector is { } d && !ShutDoors.Contains(d.Index))
+                AssumeCeil[d.Index] = (World.P_FindLowestCeilingSurrounding(d) >> 16) - 4;
+        }
+        try
+        {
+            return Plan(x, y);
+        }
+        finally
+        {
+            AssumeCeil.Clear();
+        }
+    }
+
     public void GoToDoors(double x, double y, double tol = 8, int speed = 25)
     {
         for (int round = 0; round < 20; round++)

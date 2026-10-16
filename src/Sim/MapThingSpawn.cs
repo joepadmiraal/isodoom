@@ -30,10 +30,13 @@ public enum skill_t
 /// the game's start as a mask (bit <c>i</c>: player <c>i + 1</c>; the default,
 /// 1, is player 1 alone), which <see cref="World"/>'s constructor sets
 /// <see cref="World.playeringame"/> from (SPEC §12 T11.1).
+/// T11.4: <see cref="timelimit"/> is Chocolate Doom's g_game.c <c>timelimit</c>,
+/// <c>-timer</c>'s minutes (<c>-avg</c>: 20; 0 none), which
+/// <c>P_SpawnSpecials</c> makes the level timer of in deathmatch.
 /// </summary>
 public readonly record struct SpawnSettings(GameMode gamemode, skill_t gameskill, bool netgame = false, int deathmatch = 0, bool nomonsters = false,
     bool respawnparm = false, bool fastparm = false, GameVersion? gameversion = null, GameMission gamemission = GameMission.none,
-    int playersingame = 1);
+    int playersingame = 1, int timelimit = 0);
 
 /// <summary>What <see cref="MapThingSpawning.Select"/> decided for one map thing.</summary>
 public enum MapThingSpawnKind

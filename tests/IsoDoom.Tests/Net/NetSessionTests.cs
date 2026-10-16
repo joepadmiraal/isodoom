@@ -25,6 +25,22 @@ public class NetSessionTests
     }
 
     [Fact]
+    public void A_game_alone_takes_the_modes_too()
+    {
+        // T11.4: --level E1M1 -deathmatch, without -host
+        NetOptions o = NetOptions.Modes(["--level", "E1M1", "-deathmatch", "-timer", "5", "-fast"]);
+        Assert.Equal((NetRole.None, 1, 5, true, false), (o.Role, o.Deathmatch, o.TimerMinutes, o.Fast, o.Respawn));
+        SpawnSettings s = o.Apply(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, nomonsters: true));
+        Assert.Equal((1, 5, true, true, false), (s.deathmatch, s.timelimit, s.fastparm, s.nomonsters, s.netgame));
+
+        // -avg is 20 minutes whatever -timer says (Chocolate Doom's order); -altdeath wins over -deathmatch
+        o = NetOptions.Modes(["-avg", "-timer", "3", "-altdeath", "-deathmatch"]);
+        Assert.Equal((2, 20), (o.Deathmatch, o.TimerMinutes));
+        Assert.Equal(new SpawnSettings(GameMode.shareware, skill_t.sk_medium),
+            NetOptions.Modes(["--level", "E1M1"]).Apply(new SpawnSettings(GameMode.shareware, skill_t.sk_medium)));
+    }
+
+    [Fact]
     public void The_host_arguments()
     {
         NetOptions o = Parse("-host", "-players", "3", "--level", "E1M1");
@@ -114,7 +130,7 @@ public class NetSessionTests
         Assert.True(s.Spawn.netgame);
         Assert.Equal((2, true, false, false), (s.Spawn.deathmatch, s.Spawn.fastparm, s.Spawn.respawnparm, s.Spawn.nomonsters));
         Assert.Equal((skill_t.sk_hard, GameVersion.exe_final), (s.Spawn.gameskill, s.Spawn.gameversion));
-        Assert.Equal((1, 7, 20), (s.Episode, s.Map, s.TimerMinutes));
+        Assert.Equal((1, 7, 20), (s.Episode, s.Map, s.Spawn.timelimit));
         Assert.Equal(Tweaks.Vanilla, s.Tweaks);
     }
 

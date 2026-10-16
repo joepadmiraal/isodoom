@@ -232,16 +232,9 @@ public sealed class NetSession : IDisposable
     public static NetGameSettings GameSettings(NetOptions options, SpawnSettings spawn, Tweaks tweaks, string? map)
     {
         ArgumentNullException.ThrowIfNull(options);
-        spawn = spawn with
-        {
-            netgame = true,
-            deathmatch = options.Deathmatch,
-            nomonsters = spawn.nomonsters || options.NoMonsters,
-            respawnparm = spawn.respawnparm || options.Respawn,
-            fastparm = spawn.fastparm || options.Fast,
-        };
+        spawn = options.Apply(spawn with { netgame = true, deathmatch = options.Deathmatch, timelimit = options.TimerMinutes });
         (int episode, int number) = MapNumbers(map);
-        return new NetGameSettings(spawn, tweaks, episode, number, options.TimerMinutes);
+        return new NetGameSettings(spawn, tweaks, episode, number);
     }
 
     /// <summary><c>ExMy</c> as (x, y), <c>MAPxx</c> as (1, xx), anything else (1, 1).</summary>

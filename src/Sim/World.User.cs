@@ -30,6 +30,11 @@ public sealed partial class World
     /// </summary>
     public void G_Ticker(ticcmd_t[] netcmds)
     {
+        // do player reborns if needed (T11.4: a netgame's here, where vanilla's are,
+        // as they spawn the player at once; a single player's end the tic: G_CheckReborns)
+        if (netgame)
+            G_CheckReborns();
+
         for (int i = 0; i < MAXPLAYERS; i++)
         {
             if (playeringame[i])
@@ -40,7 +45,8 @@ public sealed partial class World
         }
         P_Ticker();
         HU_TakeMessages(); // HU_Ticker's message part (T6.10)
-        G_CheckReborns();
+        if (!netgame)
+            G_CheckReborns();
         gametic++;
     }
 
@@ -67,7 +73,9 @@ public sealed partial class World
     /// game actions; here it ends the tic, so the game loop sees the
     /// <see cref="gameaction_t.ga_loadlevel"/> it sets between the tics,
     /// where it runs the game actions (nothing runs in between: the same
-    /// order; SPEC §12 T6.12).
+    /// order; SPEC §12 T6.12). T11.4: a netgame's reborns spawn the player
+    /// (<see cref="G_DoReborn"/>), so they run where vanilla's do, at the
+    /// start of the next <see cref="G_Ticker(ticcmd_t[])"/> (SPEC §12 T11.4).
     /// </summary>
     private void G_CheckReborns()
     {
@@ -83,9 +91,10 @@ public sealed partial class World
     /// from scratch (<see cref="gameaction_t.ga_loadlevel"/>: the game loop
     /// loads the same map afresh and calls <see cref="G_DoLoadLevel"/>,
     /// whose <see cref="P_SpawnPlayer"/> gives the player a fresh start,
-    /// <see cref="G_PlayerReborn"/>). A net game's reborn at a start spot
-    /// (<c>G_CheckSpot</c>, the body queue, <c>G_DeathMatchSpawnPlayer</c>)
-    /// is not ported (co-op, a later goal: SPEC §1).
+    /// <see cref="G_PlayerReborn"/>). In a netgame the body stays and the
+    /// player respawns: in deathmatch at a random deathmatch start
+    /// (<see cref="G_DeathMatchSpawnPlayer"/>, T11.4). A co-op netgame's
+    /// reborn at the starts is not ported yet (T11.3).
     /// </summary>
     public void G_DoReborn(int playernum)
     {
@@ -95,7 +104,19 @@ public sealed partial class World
             gameaction = gameaction_t.ga_loadlevel;
             return;
         }
-        throw new NotSupportedException("A net game's reborn (G_CheckSpot, the body queue) is not ported.");
+
+        // respawn at the start
+
+        // first dissasociate the corpse
+        players[playernum].mo!.player = null;
+
+        // spawn at random spot if in death match
+        if (deathmatch != 0)
+        {
+            G_DeathMatchSpawnPlayer(playernum);
+            return;
+        }
+        throw new NotSupportedException("A co-op netgame's reborn (G_CheckSpot at the starts) is not ported.");
     }
 
     /// <summary>p_user.c <c>ANG5</c>: the death camera's turn per tic.</summary>

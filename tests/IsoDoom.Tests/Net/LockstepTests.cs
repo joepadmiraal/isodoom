@@ -247,8 +247,8 @@ public class LockstepTests
     {
         var settings = new NetGameSettings(
             new SpawnSettings(GameMode.commercial, skill_t.sk_hard, netgame: true, deathmatch: 2, nomonsters: true, respawnparm: true, fastparm: true,
-                gameversion: GameVersion.exe_final, gamemission: GameMission.pack_tnt),
-            Tweaks.TopDown with { AimAssistCone = 3 * Tables.ANG1 }, Episode: 1, Map: 7, TimerMinutes: 20);
+                gameversion: GameVersion.exe_final, gamemission: GameMission.pack_tnt, timelimit: 20),
+            Tweaks.TopDown with { AimAssistCone = 3 * Tables.ANG1 }, Episode: 1, Map: 7);
         var h = new LockstepHarness(_coop, Setups(3, 20, 5, 0), (slot, tic) => default, seed: 6);
         h.RunUntil(() => h.Players.TrueForAll(p => p.Client.State == NetClientState.Lobby), 5_000_000, "the lobby");
         Assert.All(h.Players, p => Assert.Equal(_coop, p.Client.Settings));

@@ -1,0 +1,104 @@
+# The deathmatch test map (T11.4, RouteTestMaps "dm"), two players in
+# deathmatch: both spawn at random deathmatch starts (G_DeathMatchSpawnPlayer)
+# with every card; player 1 takes the nearest weapon, which stays
+# (deathmatch 1), then player 2 takes it too; player 1 hunts player 2 with it
+# (BT_ATTACK) and frags it, player 2 presses use and is reborn at a
+# deathmatch start (G_CheckSpot's fog, the body queue), hunts player 1 with
+# its pistol and frags it, and player 1 is reborn. Written by tools/RouteGen
+# (testmap-dm); its dump is committed (CI).
+iwad testmap
+map dm
+players 2
+deathmatch 1
+# each player's forwardmove sidemove turn buttons, | between them [xcount]; turn << 8 = angleturn
+0 0 0 0 | 0 0 0 0
+25 0 -96 0 | 0 0 0 0
+25 0 0 0 | 0 0 0 0 x15
+1 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x4
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x2
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x2
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x4
+1 0 0 0 | 0 0 0 0
+2 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x10
+25 -5 64 0 | 0 0 0 0
+25 0 0 0 | 0 0 0 0 x11
+3 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x6
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x15
+0 0 0 0 | 25 0 0 0 x47
+0 0 0 0 | -2 0 0 0 x3
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | -2 0 0 0 x2
+0 0 0 0 | -1 0 0 0 x5
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0 x2
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | 0 0 -1 0
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | 0 0 0 0 x4
+0 0 0 0 | 1 0 0 0
+0 0 0 0 | 2 1 0 0
+0 0 0 0 | 0 0 0 0 x10
+0 0 0 0 | 25 1 -127 0
+0 0 0 0 | 25 0 0 0 x11
+0 0 0 0 | 9 0 0 0
+0 0 0 0 | -2 0 0 0
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | -2 0 0 0
+0 0 0 0 | -1 0 0 0 x4
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0 x2
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | 0 0 0 0
+0 0 0 0 | -1 0 0 0
+0 0 0 0 | 0 0 0 0 x15
+25 4 -127 0 | 0 0 0 0
+25 -3 -1 0 | 0 0 0 0
+25 0 0 0 | 0 0 0 0 x5
+6 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x2
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x2
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0
+-1 0 1 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x14
+0 0 -1 1 | 0 0 0 0
+0 0 0 1 | 0 0 0 0 x40
+0 0 0 0 | 0 0 0 0 x21
+0 0 0 0 | 0 0 0 2
+0 0 0 0 | 0 0 0 0 x11
+0 0 0 0 | 0 0 -84 1
+0 0 0 0 | 0 0 0 1 x161
+0 0 0 0 | 0 0 0 0 x21
+0 0 0 2 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x36
