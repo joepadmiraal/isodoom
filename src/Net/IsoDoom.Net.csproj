@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The lockstep protocol (M11, T11.5; docs/plans/multiplayer.md): messages,
+       lobby, NetServer/NetClient and the transport interface. Plain .NET, no
+       Godot reference (the ENet transport is the Godot project's, T11.6). Not
+       under the sim's determinism scan, but it hands the sim nothing but
+       ticcmd_t[]: it references the sim for ticcmd_t and the settings types. -->
+  <PropertyGroup>
+    <RootNamespace>IsoDoom.Net</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Sim/IsoDoom.Sim.csproj" />
+  </ItemGroup>
+</Project>

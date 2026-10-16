@@ -1,6 +1,6 @@
 <Project>
   <!-- Shared settings for the plain .NET class libraries under src/
-       (Wad, Map, Sim). These must never reference Godot. The settings every
+       (Wad, Map, Sim, Net). These must never reference Godot. The settings every
        project shares (framework, language, nullable, warnings as errors,
        analyzers) come from the repository root's Directory.Build.props. -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />

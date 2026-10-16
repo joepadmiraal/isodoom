@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Tests for the plain .NET libraries (Wad, Map, Sim). No Godot reference.
+  <!-- Tests for the plain .NET libraries (Wad, Map, Sim, Net). No Godot reference.
        Run with `dotnet test` from the repo root. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -61,6 +61,7 @@
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
     <ProjectReference Include="../../src/Map/IsoDoom.Map.csproj" />
     <ProjectReference Include="../../src/Sim/IsoDoom.Sim.csproj" />
+    <ProjectReference Include="../../src/Net/IsoDoom.Net.csproj" />
     <ProjectReference Include="../../tools/SyntheticIwad/IsoDoom.SyntheticIwad.csproj" />
   </ItemGroup>
 </Project>
