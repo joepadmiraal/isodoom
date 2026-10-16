@@ -271,6 +271,115 @@ public static class Program
         log($"done: {State()}; {gun}");
     };
 
+    /// <summary>
+    /// e1m1-exit's way (T5.5) for the player steered: from the start through
+    /// door 4, the nukage room, doors 68 and 76, line 308, the lift and doors
+    /// 76 and 81 to the exit switch (line 330), pressed on the last tic.
+    /// T11.7: also a co-op player's (<see cref="CoopE1M1Exit"/>).
+    /// </summary>
+    private static void E1M1Exit(Steer g, Action<string> log)
+    {
+        // Door 4 (lines 151/152, x 1536..1552, y -2560..-2432), from the west.
+        g.GoTo(1500, -2496);
+        log("at door 4");
+        g.Door(4, 1544, -2496);
+        // Into the nukage room; across line 195 (2752,-3048)->(3048,-2880): the lift (sector 70) lowers.
+        g.GoTo(1600, -2496);
+        log("through door 4");
+        g.GoTo(2900, -2900, 12);
+        log("near line 195 " + g.Heights(70));
+        g.GoTo(2900, -3100, 12);
+        log("across line 195 " + g.Heights(70));
+        // Door 68 (lines 247/248, x 2912..2944, y -3904..-3776): from the east side (front 56 of line 247).
+        g.GoTo(2980, -3840, 6);
+        log("at door 68 " + g.Heights(70, 68));
+        g.Door(68, 2944, -3840);
+        g.GoTo(2890, -3840);
+        log("through door 68");
+        g.GoTo(3008, -3990);
+        log("at door 76 " + g.Heights(76));
+        g.Door(76, 3008, -4024);
+        g.GoTo(3008, -4100);
+        log("through door 76");
+        g.GoTo(3008, -4250);
+        log("across line 308 " + g.Heights(59));
+        // Back north to the lift: door 76 from the south, door 68 from the west.
+        g.GoTo(3008, -4060, 6);
+        log("at door 76 again " + g.Heights(76));
+        g.Door(76, 3008, -4024);
+        g.GoTo(3008, -3960);
+        g.GoTo(2980, -2870, 12);
+        log("north of line 195 again " + g.Heights(70, 59));
+        g.WaitIdle(70);
+        log("lift idle " + g.Heights(70, 59));
+        g.Assume[70] = -48;
+        g.GoTo(3552, -3872, 12, 50);
+        g.Assume.Clear();
+        log("on the lift " + g.Heights(70));
+        g.WaitIdle(70);
+        log("lift up " + g.Heights(70));
+        g.GoTo(3650, -3700, 12);
+        log("on the ledge");
+        g.GoTo(3150, -3300, 12);
+        log("in the nukage");
+        g.GoTo(3008, -3990, 6);
+        log("at door 76 (3) " + g.Heights(76));
+        g.Door(76, 3008, -4024);
+        g.GoTo(3008, -4100);
+        g.GoTo(3008, -4600, 6);
+        log("at door 81 " + g.Heights(59, 81));
+        g.Door(81, 3008, -4640);
+        g.GoTo(3008, -4700);
+        g.GoTo(2960, -4768);
+        log("at the exit switch");
+        g.Face(2900, -4768);
+        log("before press");
+        g.Tic(0, 0, 0, 2); // the last tic: vanilla's G_ExitLevel ends the level (and the dump) here
+        log("textures " + g.World.sides[g.World.lines[330].sidenum[0]].midtexture + " " + string.Join(",", g.World.Unported));
+    }
+
+    /// <summary>
+    /// T11.7: co-op on DOOM1.WAD's E1M1 to its exit, with
+    /// <paramref name="players"/> players, for the net game intermission:
+    /// every monster dies asleep on the first tic to damage events, player 1
+    /// credited with two of every <paramref name="players"/> + 1 and the
+    /// others one each in turn (the kills differ); with <paramref name="frag"/>
+    /// player 2 shoots player 3 dead with its pistol first (a frag: the
+    /// intermission's frags column); then player 1 takes e1m1-exit's way
+    /// (<see cref="E1M1Exit"/>) while the others stand.
+    /// </summary>
+    private static Action<Steer, Action<string>> CoopE1M1Exit(int players, bool frag) => (g, log) =>
+    {
+        string State() => string.Join("; ", Enumerable.Range(0, players).Select(i =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[i];
+            return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} k{p.killcount} i{p.itemcount} s{p.secretcount} f{string.Join(",", p.frags)}";
+        }));
+        var monsters = g.World.Mobjs().Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0).ToList();
+        for (int k = 0; k < monsters.Count; k++)
+        {
+            IsoDoom.Sim.mobj_t m = monsters[k];
+            if (g.Spawned(m.spawnpoint.X, m.spawnpoint.Y) != m)
+                throw new InvalidOperationException($"two monsters spawned at {m.spawnpoint.X},{m.spawnpoint.Y}");
+            g.Player = Math.Max(0, (k % (players + 1)) - 1);
+            g.Damage(m.spawnpoint.X, m.spawnpoint.Y, m.health);
+        }
+        g.Player = 0;
+        g.Wait(1);
+        log($"monsters dead: {State()}");
+        if (frag)
+        {
+            g.Player = 1;
+            g.FireAt(g.World.players[2].mo!, 600);
+            if (g.World.players[2].health > 0 || g.World.players[1].frags[2] != 1)
+                throw new InvalidOperationException($"player 3 not fragged: {State()}");
+            log($"player 3 fragged: {State()}");
+            g.Player = 0;
+        }
+        E1M1Exit(g, log);
+        log($"exit: {State()}");
+    };
+
     /// <summary>The steering scripts by route name.</summary>
     private static readonly SortedDictionary<string, Script> _scripts = new(StringComparer.Ordinal)
     {
@@ -288,66 +397,7 @@ public static class Program
 iwad doom1
 exit normal
 
-""", (g, log) =>
-        {
-            // Door 4 (lines 151/152, x 1536..1552, y -2560..-2432), from the west.
-            g.GoTo(1500, -2496);
-            log("at door 4");
-            g.Door(4, 1544, -2496);
-            // Into the nukage room; across line 195 (2752,-3048)->(3048,-2880): the lift (sector 70) lowers.
-            g.GoTo(1600, -2496);
-            log("through door 4");
-            g.GoTo(2900, -2900, 12);
-            log("near line 195 " + g.Heights(70));
-            g.GoTo(2900, -3100, 12);
-            log("across line 195 " + g.Heights(70));
-            // Door 68 (lines 247/248, x 2912..2944, y -3904..-3776): from the east side (front 56 of line 247).
-            g.GoTo(2980, -3840, 6);
-            log("at door 68 " + g.Heights(70, 68));
-            g.Door(68, 2944, -3840);
-            g.GoTo(2890, -3840);
-            log("through door 68");
-            g.GoTo(3008, -3990);
-            log("at door 76 " + g.Heights(76));
-            g.Door(76, 3008, -4024);
-            g.GoTo(3008, -4100);
-            log("through door 76");
-            g.GoTo(3008, -4250);
-            log("across line 308 " + g.Heights(59));
-            // Back north to the lift: door 76 from the south, door 68 from the west.
-            g.GoTo(3008, -4060, 6);
-            log("at door 76 again " + g.Heights(76));
-            g.Door(76, 3008, -4024);
-            g.GoTo(3008, -3960);
-            g.GoTo(2980, -2870, 12);
-            log("north of line 195 again " + g.Heights(70, 59));
-            g.WaitIdle(70);
-            log("lift idle " + g.Heights(70, 59));
-            g.Assume[70] = -48;
-            g.GoTo(3552, -3872, 12, 50);
-            g.Assume.Clear();
-            log("on the lift " + g.Heights(70));
-            g.WaitIdle(70);
-            log("lift up " + g.Heights(70));
-            g.GoTo(3650, -3700, 12);
-            log("on the ledge");
-            g.GoTo(3150, -3300, 12);
-            log("in the nukage");
-            g.GoTo(3008, -3990, 6);
-            log("at door 76 (3) " + g.Heights(76));
-            g.Door(76, 3008, -4024);
-            g.GoTo(3008, -4100);
-            g.GoTo(3008, -4600, 6);
-            log("at door 81 " + g.Heights(59, 81));
-            g.Door(81, 3008, -4640);
-            g.GoTo(3008, -4700);
-            g.GoTo(2960, -4768);
-            log("at the exit switch");
-            g.Face(2900, -4768);
-            log("before press");
-            g.Tic(0, 0, 0, 2); // the last tic: vanilla's G_ExitLevel ends the level (and the dump) here
-            log("textures " + g.World.sides[g.World.lines[330].sidenum[0]].midtexture + " " + string.Join(",", g.World.Unported));
-        }),
+""", E1M1Exit),
         ["e1m2-exit"] = new(Doom1, "E1M2", """
 # DOOM1.WAD E1M2 (T5.9): from the start to the exit switch. East for the
 # red keycard (1136, 352), back west through the red door (sector 99) and
@@ -1189,6 +1239,33 @@ monsters
             g.Wait(35);
             log("done " + State());
         }, Monsters: true, Players: 4),
+        ["coop-e1m1-exit-2p"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op to its exit (T11.7: the net game intermission),
+# two players, skill 3 with monsters: every monster dies asleep on the
+# first tic to damage events, player 1 credited with two of every three,
+# player 2 with the third; then player 1 takes e1m1-exit's way to the exit
+# switch (the last tic) while player 2 stands. Written by tools/RouteGen
+# (coop-e1m1-exit-2p).
+iwad doom1
+players 2
+monsters
+exit normal
+
+""", CoopE1M1Exit(2, frag: false), Monsters: true, Players: 2),
+        ["coop-e1m1-exit-4p"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op to its exit (T11.7: the net game intermission
+# with its frags column), four players, skill 3 with monsters: every monster
+# dies asleep on the first tic to damage events, player 1 credited with two
+# of every five, players 2-4 with one each; player 2 shoots player 3 dead
+# with its pistol (a frag, BT_ATTACK; player 3 stays dead); then player 1
+# takes e1m1-exit's way to the exit switch (the last tic) while the others
+# stand. Written by tools/RouteGen (coop-e1m1-exit-4p).
+iwad doom1
+players 4
+monsters
+exit normal
+
+""", CoopE1M1Exit(4, frag: true), Monsters: true, Players: 4),
         ["coop-e1m1-4p"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 in co-op, four players, skill 3 with monsters (T11.2):
 # coop-e1m1-2p's way for all four, each through door 4 (reopening it when it

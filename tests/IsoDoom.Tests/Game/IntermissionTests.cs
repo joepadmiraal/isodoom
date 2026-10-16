@@ -24,7 +24,8 @@ namespace IsoDoom.Tests.Game;
 /// <c>tools/VanillaRef/intermissions.sh</c> (the stats and par it starts
 /// with; every tic's state, counters, animations, <c>M_Random</c> index,
 /// sounds and the hash of every pixel drawn); skips without DOOM1.WAD or the
-/// dumps. Without a WAD: the par tables, the counting's timing, its sounds
+/// dumps (T11.7: a multi-player route plays every player's commands, and
+/// its net game stats are compared too). Without a WAD: the par tables, the counting's timing, its sounds
 /// and the skipping on the synthetic IWAD.
 /// </summary>
 public class IntermissionTests
@@ -146,11 +147,14 @@ public class IntermissionTests
         {
             Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
             route.File.RunEvents(world, tic);
-            flow.G_Ticker(route.Cmds[tic]);
+            if (route.File.Netgame)
+                flow.G_Ticker(route.NetCmds[tic]); // T11.7: every player's
+            else
+                flow.G_Ticker(route.Cmds[tic]);
         }
         Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
         WiStuff wi = flow.Wi;
-        Assert.Equal(expected[1], WminfoLine(wi.wbs!));
+        Assert.Equal(expected[1], WminfoLine(wi.wbs!, world.netgame));
 
         var g = new ScreenGraphics(wad, null);
         var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
@@ -159,7 +163,7 @@ public class IntermissionTests
             Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
             flow.G_Ticker(new ticcmd_t { buttons = presses.Contains(t) ? buttoncode_t.BT_USE : (byte)0 });
             wi.WI_Drawer(g, screen);
-            string actual = Line(wi, screen, mrandom);
+            string actual = Line(wi, world, screen, mrandom);
             if (actual != expected[t + 1])
                 Assert.Fail($"{name}.{suffix}: intermission tic {t} differs from vanilla\n  vanilla: {expected[t + 1]}\n  game:    {actual}");
         }
@@ -188,19 +192,44 @@ public class IntermissionTests
     internal static bool TextScreenAfter(VanillaRoute route) =>
         route.GameMode == GameMode.commercial && route.Exit != 0 && (route.Exit == 2 ? route.Map is "MAP15" or "MAP31" : route.Map is "MAP06" or "MAP11" or "MAP20" or "MAP30");
 
-    /// <summary>dump.c's <c>wminfo</c> line: the stats and par the intermission starts with.</summary>
-    private static string WminfoLine(wbstartstruct_t w)
+    /// <summary>
+    /// dump.c's <c>wminfo</c> line: the stats and par the intermission starts
+    /// with (T11.7: in a net game every player in the game's stats and frags after them).
+    /// </summary>
+    private static string WminfoLine(wbstartstruct_t w, bool netgame)
     {
         wbplayerstruct_t p = w.plyr[w.pnum];
-        return $"wminfo {w.epsd} {(w.didsecret ? 1 : 0)} {w.last} {w.next} {w.maxkills} {w.maxitems} {w.maxsecret} {w.partime} {p.skills} {p.sitems} {p.ssecret} {p.stime}";
+        var s = new StringBuilder($"wminfo {w.epsd} {(w.didsecret ? 1 : 0)} {w.last} {w.next} {w.maxkills} {w.maxitems} {w.maxsecret} {w.partime} {p.skills} {p.sitems} {p.ssecret} {p.stime}");
+        for (int i = 0; netgame && i < World.MAXPLAYERS; i++)
+        {
+            wbplayerstruct_t q = w.plyr[i];
+            if (q.@in)
+                s.Append(CultureInfo.InvariantCulture, $" p{i + 1}={q.skills}.{q.sitems}.{q.ssecret}.{q.stime}:{string.Join('.', q.frags)}");
+        }
+        return s.ToString();
     }
 
-    /// <summary>A line of dump.c's intermission dump: BCNT STATE HASH RNDINDEX SOUNDS.</summary>
-    private static string Line(WiStuff wi, HudScreen screen, DoomRandom mrandom)
+    /// <summary>
+    /// A line of dump.c's intermission dump: BCNT STATE HASH RNDINDEX SOUNDS
+    /// (T11.7: STATE with a deathmatch's frag table or a net game's counters
+    /// after it, ref.patch's <c>WI_dumpState</c>).
+    /// </summary>
+    internal static string Line(WiStuff wi, World world, HudScreen screen, DoomRandom mrandom)
     {
         var s = new StringBuilder();
-        s.Append(CultureInfo.InvariantCulture, $"{wi.bcnt} {(int)wi.state}:{wi.sp_state}:{wi.cnt_kills}:{wi.cnt_items}:{wi.cnt_secret}:{wi.cnt_time}:{wi.cnt_par}:{wi.cnt_pause}:{wi.cnt}:{wi.acceleratestage}:{(wi.snl_pointeron ? 1 : 0)}:");
+        s.Append(CultureInfo.InvariantCulture, $"{wi.bcnt} {(int)wi.state}:{wi.sp_state}:{wi.cnt_kills[0]}:{wi.cnt_items[0]}:{wi.cnt_secret[0]}:{wi.cnt_time}:{wi.cnt_par}:{wi.cnt_pause}:{wi.cnt}:{wi.acceleratestage}:{(wi.snl_pointeron ? 1 : 0)}:");
         s.Append(wi.anims.Length == 0 ? "-" : string.Join('.', wi.anims.Select(a => a.ctr)));
+        int[] ingame = [.. Enumerable.Range(0, World.MAXPLAYERS).Where(i => world.playeringame[i])];
+        if (world.deathmatch != 0)
+        {
+            s.Append(CultureInfo.InvariantCulture, $":dm:{wi.dm_state}:");
+            s.AppendJoin('/', ingame.Select(i => string.Join('.', ingame.Select(j => wi.dm_frags[i, j])) + "=" + wi.dm_totals[i].ToString(CultureInfo.InvariantCulture)));
+        }
+        else if (world.netgame)
+        {
+            s.Append(CultureInfo.InvariantCulture, $":ng:{wi.ng_state}:{wi.dofrags}:");
+            s.AppendJoin('/', ingame.Select(i => $"{wi.cnt_kills[i]}.{wi.cnt_items[i]}.{wi.cnt_secret[i]}.{wi.cnt_frags[i]}"));
+        }
         s.Append(CultureInfo.InvariantCulture, $" {screen.Hash():x8} {mrandom.rndindex} ");
         s.Append(wi.sounds.Count == 0 ? "-" : string.Join(',', wi.sounds.Select(x => x.ToString()["sfx_".Length..] + "@-")));
         return s.ToString();
@@ -265,7 +294,7 @@ public class IntermissionTests
             + "100:pistol 104:pistol 108:pistol 109:barexp 145:barexp "
             + "184:pistol 188:pistol 192:pistol 196:pistol 200:pistol 204:pistol 208:pistol 212:pistol 214:barexp",
             string.Join(' ', log));
-        Assert.Equal((50, 25, 0, 100, 30), (wi.cnt_kills, wi.cnt_items, wi.cnt_secret, wi.cnt_time, wi.cnt_par));
+        Assert.Equal((50, 25, 0, 100, 30), (wi.cnt_kills[0], wi.cnt_items[0], wi.cnt_secret[0], wi.cnt_time, wi.cnt_par));
         Assert.Equal(WiStuff.stateenum_t.StatCount, wi.state);
         flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
         Assert.Equal((WiStuff.stateenum_t.ShowNextLoc, sfxenum_t.sfx_sgcock), (wi.state, wi.sounds.Single()));
@@ -284,7 +313,7 @@ public class IntermissionTests
         flow.G_Ticker(new ticcmd_t());
         flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_USE });
         WiStuff wi = flow.Wi;
-        Assert.Equal((10, 66, 0, 0, 4000 / SimInfo.TICRATE, 30), (wi.sp_state, wi.cnt_kills, wi.cnt_items, wi.cnt_secret, wi.cnt_time, wi.cnt_par));
+        Assert.Equal((10, 66, 0, 0, 4000 / SimInfo.TICRATE, 30), (wi.sp_state, wi.cnt_kills[0], wi.cnt_items[0], wi.cnt_secret[0], wi.cnt_time, wi.cnt_par));
         Assert.Equal(sfxenum_t.sfx_barexp, wi.sounds.Single());
         Assert.Equal(WiStuff.stateenum_t.StatCount, wi.state);
     }

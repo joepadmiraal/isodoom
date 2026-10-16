@@ -14,7 +14,10 @@ by itself) or OUTDIR/NAME.wiN for the Nth schedule given after the route
 (ROUTE@20,40,60). WAD-derived: never commit them. With --images, the
 screens of intermission tics TICS ("N,M,..." or "all") go to DIR/wiN.ppm
 (dump.c's $DUMP_WI_DIR/$DUMP_WI_TICS). IntermissionTests compares the
-game's intermission with the dumps tic by tic.
+game's intermission with the dumps tic by tic. T11.7: a multi-player route
+(players N) plays as a netdemo; its intermission's commands are player 1's,
+the others idle (routes.demo), and the dump carries every player's stats and
+the net game's or deathmatch's counters (dump.c, ref.patch's WI_dumpState).
 """
 import os, subprocess, sys, tempfile
 

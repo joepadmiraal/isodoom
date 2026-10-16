@@ -375,12 +375,15 @@ diff --git a/doomgeneric/wi_stuff.c b/doomgeneric/wi_stuff.c
 index ddb9a66..b08ac62 100644
 --- a/doomgeneric/wi_stuff.c
 +++ b/doomgeneric/wi_stuff.c
-@@ -1827,3 +1827,15 @@ void WI_Start(wbstartstruct_t* wbstartstruct)
+@@ -1827,3 +1827,39 @@ void WI_Start(wbstartstruct_t* wbstartstruct)
      else
  	WI_initStats();
  }
 +
 +// IsoDoom reference (T7.4): bcnt and the intermission's state for the dump (dump.c dump_witic)
++// T11.7: a deathmatch's (":dm:DM_STATE:" and each player's row of dm_frags, "." between them, "=" its
++// dm_totals, "/" between rows) and a net game's (":ng:NG_STATE:DOFRAGS:" and each player's
++// "KILLS.ITEMS.SECRET.FRAGS" counted, "/" between them) follow, the players in the game's only
 +void WI_dumpState(char *buf, int size)
 +{
 +    int n = snprintf(buf, size, "%d %d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:", bcnt, state, sp_state, cnt_kills[0], cnt_items[0], cnt_secret[0],
@@ -389,5 +392,26 @@ index ddb9a66..b08ac62 100644
 +        for (int i = 0; i < NUMANIMS[wbs->epsd] && n < size - 8; i++)
 +            n += snprintf(buf + n, size - n, "%s%d", i ? "." : "", anims[wbs->epsd][i].ctr);
 +    else
-+        snprintf(buf + n, size - n, "-");
++        n += snprintf(buf + n, size - n, "-");
++    if (deathmatch)
++    {
++        n += snprintf(buf + n, size - n, ":dm:%d:", dm_state);
++        for (int i = 0, row = 0; i < MAXPLAYERS && n < size - 64; i++)
++        {
++            if (!playeringame[i])
++                continue;
++            n += snprintf(buf + n, size - n, "%s", row++ ? "/" : "");
++            for (int j = 0, col = 0; j < MAXPLAYERS; j++)
++                if (playeringame[j])
++                    n += snprintf(buf + n, size - n, "%s%d", col++ ? "." : "", dm_frags[i][j]);
++            n += snprintf(buf + n, size - n, "=%d", dm_totals[i]);
++        }
++    }
++    else if (netgame)
++    {
++        n += snprintf(buf + n, size - n, ":ng:%d:%d:", ng_state, dofrags);
++        for (int i = 0, row = 0; i < MAXPLAYERS && n < size - 64; i++)
++            if (playeringame[i])
++                n += snprintf(buf + n, size - n, "%s%d.%d.%d.%d", row++ ? "/" : "", cnt_kills[i], cnt_items[i], cnt_secret[i], cnt_frags[i]);
++    }
 +}

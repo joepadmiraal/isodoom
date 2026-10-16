@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
@@ -6,9 +7,9 @@ using IsoDoom.Wad.Graphics;
 namespace IsoDoom.Game;
 
 /// <summary>
-/// wi_stuff.c's intermission (T7.4, SPEC §7.6), ported for a single player
-/// (vanilla's net game and deathmatch stats are not: there is no net game;
-/// SPEC §12 T7.4): the stats counted up (<see cref="sp_state"/>,
+/// wi_stuff.c's intermission (T7.4, SPEC §7.6; T11.7: the net game's and
+/// deathmatch's stats too, <see cref="WI_updateNetgameStats"/>,
+/// <see cref="WI_updateDeathmatchStats"/>): the stats counted up (<see cref="sp_state"/>,
 /// <see cref="cnt_pause"/>, kills, items and secrets in %, the time and the
 /// par), the world map's animations (<see cref="WI_updateAnimatedBack"/>),
 /// the splats on the levels done and the flashing "you are here" pointer
@@ -108,9 +109,22 @@ public sealed class WiStuff
     // GLOBAL LOCATIONS
     private const int WI_TITLEY = 2;
 
+    private const int WI_SPACINGY = 33;
+
     // SINGPLE-PLAYER STUFF
     private const int SP_STATSX = 50, SP_STATSY = 50;
     private const int SP_TIMEX = 16, SP_TIMEY = HudScreen.SCREENHEIGHT - 32;
+
+    // NET GAME STUFF (NG_STATSX: NetgameStatsX)
+    private const int NG_STATSY = 50;
+    private const int NG_SPACINGX = 64;
+
+    // DEATHMATCH STUFF
+    private const int DM_MATRIXX = 42, DM_MATRIXY = 68;
+    private const int DM_SPACINGX = 40;
+    private const int DM_TOTALSX = 269;
+    private const int DM_KILLERSX = 10, DM_KILLERSY = 100;
+    private const int DM_VICTIMSX = 5, DM_VICTIMSY = 50;
 
     /// <summary>wi_stuff.c <c>SHOWNEXTLOCDELAY</c>: seconds the next location shows.</summary>
     public const int SHOWNEXTLOCDELAY = 4;
@@ -145,8 +159,38 @@ public sealed class WiStuff
     /// <summary>wi_stuff.c <c>sp_state</c>: the single player stats' stage (odd: a pause; 2 kills, 4 items, 6 secrets, 8 time and par counting; 10 done).</summary>
     public int sp_state;
 
-    /// <summary>wi_stuff.c <c>cnt_kills</c>, <c>cnt_items</c>, <c>cnt_secret</c> (the console player's, in %; −1 before counting), <c>cnt_time</c>, <c>cnt_par</c> (seconds), <c>cnt_pause</c> (tics).</summary>
-    public int cnt_kills, cnt_items, cnt_secret, cnt_time, cnt_par, cnt_pause;
+    /// <summary>
+    /// wi_stuff.c <c>cnt_kills</c>, <c>cnt_items</c>, <c>cnt_secret</c>, by
+    /// player, in % (a single player's in [0], −1 before counting; T11.7: a
+    /// net game's of each player in the game, from 0).
+    /// </summary>
+    public readonly int[] cnt_kills = new int[World.MAXPLAYERS], cnt_items = new int[World.MAXPLAYERS], cnt_secret = new int[World.MAXPLAYERS];
+
+    /// <summary>wi_stuff.c <c>cnt_time</c>, <c>cnt_par</c> (seconds), <c>cnt_pause</c> (tics).</summary>
+    public int cnt_time, cnt_par, cnt_pause;
+
+    /// <summary>wi_stuff.c <c>ng_state</c> (T11.7): the net game stats' stage (odd: a pause; 2 kills, 4 items, 6 secrets, 8 frags; 10 done).</summary>
+    public int ng_state;
+
+    /// <summary>wi_stuff.c <c>cnt_frags</c> (T11.7): each player's frags counted so far in a net game.</summary>
+    public readonly int[] cnt_frags = new int[World.MAXPLAYERS];
+
+    /// <summary>
+    /// wi_stuff.c <c>dofrags</c> (T11.7): whether the net game stats show the
+    /// frags (some player's <see cref="WI_fragSum"/> is not 0). As vanilla's
+    /// static it is never reset: once a net game intermission showed frags,
+    /// every later one does.
+    /// </summary>
+    public int dofrags;
+
+    /// <summary>wi_stuff.c <c>dm_state</c> (T11.7): the deathmatch stats' stage (odd: a pause; 2 the frags counting; 4 done).</summary>
+    public int dm_state;
+
+    /// <summary>wi_stuff.c <c>dm_frags</c> (T11.7): the deathmatch frag table counted so far, killer by victim.</summary>
+    public readonly int[,] dm_frags = new int[World.MAXPLAYERS, World.MAXPLAYERS];
+
+    /// <summary>wi_stuff.c <c>dm_totals</c> (T11.7): each player's frag total counted so far.</summary>
+    public readonly int[] dm_totals = new int[World.MAXPLAYERS];
 
     /// <summary>wi_stuff.c <c>snl_pointeron</c>: the "you are here" pointer shows (kept from one intermission to the next, as vanilla's static).</summary>
     public bool snl_pointeron;
@@ -159,14 +203,33 @@ public sealed class WiStuff
 
     private World? world;
 
-    /// <summary>wi_stuff.c <c>WI_Start</c>: the intermission of <paramref name="wbstartstruct"/> starts with the stats (single player).</summary>
+    /// <summary>
+    /// wi_stuff.c <c>WI_Start</c>: the intermission of
+    /// <paramref name="wbstartstruct"/> starts with the stats: deathmatch's,
+    /// a net game's or a single player's (T11.7: <paramref name="world"/>'s
+    /// <see cref="World.deathmatch"/> and <see cref="World.netgame"/>).
+    /// </summary>
     public void WI_Start(wbstartstruct_t wbstartstruct, World world)
     {
         this.world = world;
         WI_initVariables(wbstartstruct);
         WI_loadData();
-        WI_initStats();
+
+        if (deathmatch != 0)
+            WI_initDeathmatchStats();
+        else if (netgame)
+            WI_initNetgameStats();
+        else
+            WI_initStats();
     }
+
+    /// <summary>g_game.c <c>deathmatch</c> (T11.7): the intermission's world's.</summary>
+    private int deathmatch => world?.deathmatch ?? 0;
+
+    /// <summary>g_game.c <c>netgame</c> (T11.7): the intermission's world's.</summary>
+    private bool netgame => world?.netgame ?? false;
+
+    private bool playeringame(int i) => world!.playeringame[i];
 
     /// <summary>wi_stuff.c <c>WI_initVariables</c> (no stat is 0 of 0: the totals are at least 1).</summary>
     private void WI_initVariables(wbstartstruct_t wbstartstruct)
@@ -278,13 +341,361 @@ public sealed class WiStuff
         }
     }
 
+    /// <summary>The players in the game, in order.</summary>
+    private IEnumerable<int> PlayersInGame()
+    {
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (playeringame(i))
+                yield return i;
+        }
+    }
+
+    /// <summary>
+    /// wi_stuff.c <c>WI_fragSum</c> (T11.7): player <paramref name="playernum"/>'s
+    /// frags of the other players in the game, less its own (suicides: "JDC
+    /// hack - negative frags").
+    /// </summary>
+    public int WI_fragSum(int playernum)
+    {
+        int frags = 0;
+
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (playeringame(i) && i != playernum)
+                frags += plrs[playernum].frags[i];
+        }
+
+        // JDC hack - negative frags.
+        frags -= plrs[playernum].frags[playernum];
+        // UNUSED if (frags < 0)
+        //     frags = 0;
+
+        return frags;
+    }
+
+    /// <summary>wi_stuff.c <c>WI_initDeathmatchStats</c> (T11.7).</summary>
+    private void WI_initDeathmatchStats()
+    {
+        state = stateenum_t.StatCount;
+        acceleratestage = 0;
+        dm_state = 1;
+
+        cnt_pause = SimInfo.TICRATE;
+
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (playeringame(i))
+            {
+                for (int j = 0; j < World.MAXPLAYERS; j++)
+                {
+                    if (playeringame(j))
+                        dm_frags[i, j] = 0;
+                }
+
+                dm_totals[i] = 0;
+            }
+        }
+
+        WI_initAnimatedBack();
+    }
+
+    /// <summary>
+    /// wi_stuff.c <c>WI_updateDeathmatchStats</c> (T11.7): after a second's
+    /// pause every frag of the table counts a frag a tic towards its value
+    /// (at most ±99), a pistol shot every 4 tics, an explosion when all are
+    /// done; fire or use show them at once, then go on (<c>sfx_slop</c>).
+    /// </summary>
+    private void WI_updateDeathmatchStats()
+    {
+        WI_updateAnimatedBack();
+
+        if (acceleratestage != 0 && dm_state != 4)
+        {
+            acceleratestage = 0;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (playeringame(i))
+                {
+                    for (int j = 0; j < World.MAXPLAYERS; j++)
+                    {
+                        if (playeringame(j))
+                            dm_frags[i, j] = plrs[i].frags[j];
+                    }
+
+                    dm_totals[i] = WI_fragSum(i);
+                }
+            }
+
+            S_StartSound(sfxenum_t.sfx_barexp);
+            dm_state = 4;
+        }
+
+        if (dm_state == 2)
+        {
+            if ((bcnt & 3) == 0)
+                S_StartSound(sfxenum_t.sfx_pistol);
+
+            bool stillticking = false;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (playeringame(i))
+                {
+                    for (int j = 0; j < World.MAXPLAYERS; j++)
+                    {
+                        if (playeringame(j) && dm_frags[i, j] != plrs[i].frags[j])
+                        {
+                            if (plrs[i].frags[j] < 0)
+                                dm_frags[i, j]--;
+                            else
+                                dm_frags[i, j]++;
+
+                            if (dm_frags[i, j] > 99)
+                                dm_frags[i, j] = 99;
+
+                            if (dm_frags[i, j] < -99)
+                                dm_frags[i, j] = -99;
+
+                            stillticking = true;
+                        }
+                    }
+                    dm_totals[i] = WI_fragSum(i);
+
+                    if (dm_totals[i] > 99)
+                        dm_totals[i] = 99;
+
+                    if (dm_totals[i] < -99)
+                        dm_totals[i] = -99;
+                }
+            }
+            if (!stillticking)
+            {
+                S_StartSound(sfxenum_t.sfx_barexp);
+                dm_state++;
+            }
+        }
+        else if (dm_state == 4)
+        {
+            if (acceleratestage != 0)
+            {
+                S_StartSound(sfxenum_t.sfx_slop);
+
+                if (flow.gamemode == GameMode.commercial)
+                    WI_initNoState();
+                else
+                    WI_initShowNextLoc();
+            }
+        }
+        else if ((dm_state & 1) != 0)
+        {
+            if (--cnt_pause == 0)
+            {
+                dm_state++;
+                cnt_pause = SimInfo.TICRATE;
+            }
+        }
+    }
+
+    /// <summary>
+    /// wi_stuff.c <c>WI_initNetgameStats</c> (T11.7): the counts of the
+    /// players in the game from 0, and <see cref="dofrags"/> (added to, never
+    /// cleared: vanilla's).
+    /// </summary>
+    private void WI_initNetgameStats()
+    {
+        state = stateenum_t.StatCount;
+        acceleratestage = 0;
+        ng_state = 1;
+
+        cnt_pause = SimInfo.TICRATE;
+
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (!playeringame(i))
+                continue;
+
+            cnt_kills[i] = cnt_items[i] = cnt_secret[i] = cnt_frags[i] = 0;
+
+            dofrags += WI_fragSum(i);
+        }
+
+        dofrags = dofrags != 0 ? 1 : 0;
+
+        WI_initAnimatedBack();
+    }
+
+    /// <summary>
+    /// wi_stuff.c <c>WI_updateNetgameStats</c> (T11.7): every player's kills,
+    /// items and secrets count up together 2% a tic, then (with
+    /// <see cref="dofrags"/>) the frags one a tic, a second's pause between
+    /// them, a pistol shot every 4 tics and an explosion as each ends (the
+    /// frags a death cry, <c>sfx_pldeth</c>); fire or use show them all at
+    /// once, then go on.
+    /// </summary>
+    private void WI_updateNetgameStats()
+    {
+        WI_updateAnimatedBack();
+
+        if (acceleratestage != 0 && ng_state != 10)
+        {
+            acceleratestage = 0;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (!playeringame(i))
+                    continue;
+
+                cnt_kills[i] = plrs[i].skills * 100 / wbs!.maxkills;
+                cnt_items[i] = plrs[i].sitems * 100 / wbs.maxitems;
+                cnt_secret[i] = plrs[i].ssecret * 100 / wbs.maxsecret;
+
+                if (dofrags != 0)
+                    cnt_frags[i] = WI_fragSum(i);
+            }
+            S_StartSound(sfxenum_t.sfx_barexp);
+            ng_state = 10;
+        }
+
+        if (ng_state == 2)
+        {
+            if ((bcnt & 3) == 0)
+                S_StartSound(sfxenum_t.sfx_pistol);
+
+            bool stillticking = false;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (!playeringame(i))
+                    continue;
+
+                cnt_kills[i] += 2;
+
+                if (cnt_kills[i] >= plrs[i].skills * 100 / wbs!.maxkills)
+                    cnt_kills[i] = plrs[i].skills * 100 / wbs.maxkills;
+                else
+                    stillticking = true;
+            }
+
+            if (!stillticking)
+            {
+                S_StartSound(sfxenum_t.sfx_barexp);
+                ng_state++;
+            }
+        }
+        else if (ng_state == 4)
+        {
+            if ((bcnt & 3) == 0)
+                S_StartSound(sfxenum_t.sfx_pistol);
+
+            bool stillticking = false;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (!playeringame(i))
+                    continue;
+
+                cnt_items[i] += 2;
+                if (cnt_items[i] >= plrs[i].sitems * 100 / wbs!.maxitems)
+                    cnt_items[i] = plrs[i].sitems * 100 / wbs.maxitems;
+                else
+                    stillticking = true;
+            }
+            if (!stillticking)
+            {
+                S_StartSound(sfxenum_t.sfx_barexp);
+                ng_state++;
+            }
+        }
+        else if (ng_state == 6)
+        {
+            if ((bcnt & 3) == 0)
+                S_StartSound(sfxenum_t.sfx_pistol);
+
+            bool stillticking = false;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (!playeringame(i))
+                    continue;
+
+                cnt_secret[i] += 2;
+
+                if (cnt_secret[i] >= plrs[i].ssecret * 100 / wbs!.maxsecret)
+                    cnt_secret[i] = plrs[i].ssecret * 100 / wbs.maxsecret;
+                else
+                    stillticking = true;
+            }
+
+            if (!stillticking)
+            {
+                S_StartSound(sfxenum_t.sfx_barexp);
+                ng_state += 1 + 2 * (dofrags == 0 ? 1 : 0);
+            }
+        }
+        else if (ng_state == 8)
+        {
+            if ((bcnt & 3) == 0)
+                S_StartSound(sfxenum_t.sfx_pistol);
+
+            bool stillticking = false;
+
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (!playeringame(i))
+                    continue;
+
+                cnt_frags[i] += 1;
+
+                int fsum = WI_fragSum(i);
+                if (cnt_frags[i] >= fsum)
+                    cnt_frags[i] = fsum;
+                else
+                    stillticking = true;
+            }
+
+            if (!stillticking)
+            {
+                S_StartSound(sfxenum_t.sfx_pldeth);
+                ng_state++;
+            }
+        }
+        else if (ng_state == 10)
+        {
+            if (acceleratestage != 0)
+            {
+                S_StartSound(sfxenum_t.sfx_sgcock);
+                if (flow.gamemode == GameMode.commercial)
+                    WI_initNoState();
+                else
+                    WI_initShowNextLoc();
+            }
+        }
+        else if ((ng_state & 1) != 0)
+        {
+            if (--cnt_pause == 0)
+            {
+                ng_state++;
+                cnt_pause = SimInfo.TICRATE;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the stats are all shown, waiting for a press to go on (T11.7:
+    /// the stage of the game's kind of stats, <see cref="sp_state"/> or
+    /// <see cref="ng_state"/> 10, <see cref="dm_state"/> 4).
+    /// </summary>
+    public bool StatsShown => deathmatch != 0 ? dm_state == 4 : netgame ? ng_state == 10 : sp_state == 10;
+
     /// <summary>wi_stuff.c <c>WI_initStats</c>.</summary>
     private void WI_initStats()
     {
         state = stateenum_t.StatCount;
         acceleratestage = 0;
         sp_state = 1;
-        cnt_kills = cnt_items = cnt_secret = -1;
+        cnt_kills[0] = cnt_items[0] = cnt_secret[0] = -1;
         cnt_time = cnt_par = -1;
         cnt_pause = SimInfo.TICRATE;
 
@@ -305,9 +716,9 @@ public sealed class WiStuff
         if (acceleratestage != 0 && sp_state != 10)
         {
             acceleratestage = 0;
-            cnt_kills = p.skills * 100 / wbs!.maxkills;
-            cnt_items = p.sitems * 100 / wbs.maxitems;
-            cnt_secret = p.ssecret * 100 / wbs.maxsecret;
+            cnt_kills[0] = p.skills * 100 / wbs!.maxkills;
+            cnt_items[0] = p.sitems * 100 / wbs.maxitems;
+            cnt_secret[0] = p.ssecret * 100 / wbs.maxsecret;
             cnt_time = p.stime / SimInfo.TICRATE;
             cnt_par = wbs.partime / SimInfo.TICRATE;
             S_StartSound(sfxenum_t.sfx_barexp);
@@ -316,42 +727,42 @@ public sealed class WiStuff
 
         if (sp_state == 2)
         {
-            cnt_kills += 2;
+            cnt_kills[0] += 2;
 
             if ((bcnt & 3) == 0)
                 S_StartSound(sfxenum_t.sfx_pistol);
 
-            if (cnt_kills >= p.skills * 100 / wbs!.maxkills)
+            if (cnt_kills[0] >= p.skills * 100 / wbs!.maxkills)
             {
-                cnt_kills = p.skills * 100 / wbs.maxkills;
+                cnt_kills[0] = p.skills * 100 / wbs.maxkills;
                 S_StartSound(sfxenum_t.sfx_barexp);
                 sp_state++;
             }
         }
         else if (sp_state == 4)
         {
-            cnt_items += 2;
+            cnt_items[0] += 2;
 
             if ((bcnt & 3) == 0)
                 S_StartSound(sfxenum_t.sfx_pistol);
 
-            if (cnt_items >= p.sitems * 100 / wbs!.maxitems)
+            if (cnt_items[0] >= p.sitems * 100 / wbs!.maxitems)
             {
-                cnt_items = p.sitems * 100 / wbs.maxitems;
+                cnt_items[0] = p.sitems * 100 / wbs.maxitems;
                 S_StartSound(sfxenum_t.sfx_barexp);
                 sp_state++;
             }
         }
         else if (sp_state == 6)
         {
-            cnt_secret += 2;
+            cnt_secret[0] += 2;
 
             if ((bcnt & 3) == 0)
                 S_StartSound(sfxenum_t.sfx_pistol);
 
-            if (cnt_secret >= p.ssecret * 100 / wbs!.maxsecret)
+            if (cnt_secret[0] >= p.ssecret * 100 / wbs!.maxsecret)
             {
-                cnt_secret = p.ssecret * 100 / wbs.maxsecret;
+                cnt_secret[0] = p.ssecret * 100 / wbs.maxsecret;
                 S_StartSound(sfxenum_t.sfx_barexp);
                 sp_state++;
             }
@@ -497,7 +908,12 @@ public sealed class WiStuff
         switch (state)
         {
             case stateenum_t.StatCount:
-                WI_updateStats(); // deathmatch and net game stats: not ported (no net game)
+                if (deathmatch != 0)
+                    WI_updateDeathmatchStats();
+                else if (netgame)
+                    WI_updateNetgameStats();
+                else
+                    WI_updateStats();
                 break;
             case stateenum_t.ShowNextLoc:
                 WI_updateShowNextLoc();
@@ -523,7 +939,12 @@ public sealed class WiStuff
         switch (state)
         {
             case stateenum_t.StatCount:
-                WI_drawStats(g, screen);
+                if (deathmatch != 0)
+                    WI_drawDeathmatchStats(g, screen);
+                else if (netgame)
+                    WI_drawNetgameStats(g, screen);
+                else
+                    WI_drawStats(g, screen);
                 break;
             case stateenum_t.ShowNextLoc:
                 WI_drawShowNextLoc(g, screen);
@@ -786,13 +1207,13 @@ public sealed class WiStuff
         WI_drawLF(g, screen);
 
         g.DrawLabel(screen, SP_STATSX, SP_STATSY, "WIOSTK", "KILLS");
-        WI_drawPercent(g, screen, HudScreen.SCREENWIDTH - SP_STATSX, SP_STATSY, cnt_kills);
+        WI_drawPercent(g, screen, HudScreen.SCREENWIDTH - SP_STATSX, SP_STATSY, cnt_kills[0]);
 
         g.DrawLabel(screen, SP_STATSX, SP_STATSY + lh, "WIOSTI", "ITEMS");
-        WI_drawPercent(g, screen, HudScreen.SCREENWIDTH - SP_STATSX, SP_STATSY + lh, cnt_items);
+        WI_drawPercent(g, screen, HudScreen.SCREENWIDTH - SP_STATSX, SP_STATSY + lh, cnt_items[0]);
 
         g.DrawLabel(screen, SP_STATSX, SP_STATSY + 2 * lh, "WISCRT2", "SECRET");
-        WI_drawPercent(g, screen, HudScreen.SCREENWIDTH - SP_STATSX, SP_STATSY + 2 * lh, cnt_secret);
+        WI_drawPercent(g, screen, HudScreen.SCREENWIDTH - SP_STATSX, SP_STATSY + 2 * lh, cnt_secret[0]);
 
         g.DrawLabel(screen, SP_TIMEX, SP_TIMEY, "WITIME", "TIME");
         WI_drawTime(g, screen, HudScreen.SCREENWIDTH / 2 - SP_TIMEX, SP_TIMEY, cnt_time);
@@ -804,10 +1225,163 @@ public sealed class WiStuff
         }
     }
 
+    /// <summary>A patch's width, or <paramref name="text"/>'s in the message font without it.</summary>
+    private static int LabelWidth(ScreenGraphics g, string patch, string text) => g.Patch(patch)?.Width ?? g.TextWidth(text);
+
+    /// <summary>
+    /// wi_stuff.c <c>p[i]</c> (T11.7): player <paramref name="i"/>'s coloured
+    /// background, <c>STPB0</c>–<c>STPB3</c> (patches of their own: no
+    /// translation), or its number in the message font without it.
+    /// </summary>
+    private static (string Patch, string Text) PlayerBack(int i) => ($"STPB{i}", $"{i + 1}");
+
+    /// <summary>wi_stuff.c <c>items</c>: <c>WIOSTI</c>, or a net game's <c>WIOBJ</c> where the WAD has it (Chocolate Doom: the French IWAD's).</summary>
+    private string ItemsPatch(ScreenGraphics g) => netgame && deathmatch == 0 && g.Patch("WIOBJ") is not null ? "WIOBJ" : "WIOSTI";
+
+    /// <summary>
+    /// wi_stuff.c <c>WI_drawDeathmatchStats</c> (T11.7): the frag table,
+    /// killers down and victims across, each player's <c>STPB*</c> on both
+    /// sides, the console player's (<see cref="me"/>) marked with the
+    /// status bar's faces (<c>STFDEAD0</c> across, <c>STFST01</c> down), and
+    /// the totals.
+    /// </summary>
+    private void WI_drawDeathmatchStats(ScreenGraphics g, HudScreen screen)
+    {
+        WI_slamBackground(g, screen);
+
+        // draw animated background
+        WI_drawAnimatedBack(g, screen);
+        WI_drawLF(g, screen);
+
+        // draw stat titles (top line)
+        g.DrawLabel(screen, DM_TOTALSX - LabelWidth(g, "WIMSTT", "TOTAL") / 2, DM_MATRIXY - WI_SPACINGY + 10, "WIMSTT", "TOTAL");
+
+        g.DrawLabel(screen, DM_KILLERSX, DM_KILLERSY, "WIKILRS", "KILLERS");
+        g.DrawLabel(screen, DM_VICTIMSX, DM_VICTIMSY, "WIVCTMS", "VICTIMS");
+
+        // draw P?
+        int x = DM_MATRIXX + DM_SPACINGX;
+        int y = DM_MATRIXY;
+
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (playeringame(i))
+            {
+                (string patch, string text) = PlayerBack(i);
+                int half = LabelWidth(g, patch, text) / 2;
+                g.DrawLabel(screen, x - half, DM_MATRIXY - WI_SPACINGY, patch, text);
+
+                g.DrawLabel(screen, DM_MATRIXX - half, y, patch, text);
+
+                if (i == me)
+                {
+                    screen.V_DrawPatch(x - half, DM_MATRIXY - WI_SPACINGY, g.Patch("STFDEAD0"));
+
+                    screen.V_DrawPatch(DM_MATRIXX - half, y, g.Patch("STFST01"));
+                }
+            }
+            // (vanilla's WIBP* of the players not in the game: commented out)
+            x += DM_SPACINGX;
+            y += WI_SPACINGY;
+        }
+
+        // draw stats
+        y = DM_MATRIXY + 10;
+        int w = NumWidth(g);
+
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            x = DM_MATRIXX + DM_SPACINGX;
+
+            if (playeringame(i))
+            {
+                for (int j = 0; j < World.MAXPLAYERS; j++)
+                {
+                    if (playeringame(j))
+                        WI_drawNum(g, screen, x + w, y, dm_frags[i, j], 2);
+
+                    x += DM_SPACINGX;
+                }
+                WI_drawNum(g, screen, DM_TOTALSX + w, y, dm_totals[i], 2);
+            }
+            y += WI_SPACINGY;
+        }
+    }
+
+    /// <summary>
+    /// wi_stuff.c <c>NG_STATSX</c>: the net game stats' left edge, by the
+    /// console player's face (<c>STFST01</c>) and further right without the
+    /// frags' column.
+    /// </summary>
+    private int NG_STATSX(ScreenGraphics g) => 32 + (g.Patch("STFST01")?.Width ?? 24) / 2 + 32 * (dofrags == 0 ? 1 : 0);
+
+    /// <summary>
+    /// wi_stuff.c <c>WI_drawNetgameStats</c> (T11.7): a row a player in the
+    /// game, its <c>STPB*</c> (the console player's, <see cref="me"/>, with
+    /// the face <c>STFST01</c> over it), its kills, items and secrets in %
+    /// and, with <see cref="dofrags"/>, its frags.
+    /// </summary>
+    private void WI_drawNetgameStats(ScreenGraphics g, HudScreen screen)
+    {
+        int pwidth = LabelWidth(g, "WIPCNT", "%");
+        int statsx = NG_STATSX(g);
+
+        WI_slamBackground(g, screen);
+
+        // draw animated background
+        WI_drawAnimatedBack(g, screen);
+
+        WI_drawLF(g, screen);
+
+        // draw stat titles (top line)
+        string items = ItemsPatch(g);
+        g.DrawLabel(screen, statsx + NG_SPACINGX - LabelWidth(g, "WIOSTK", "KILLS"), NG_STATSY, "WIOSTK", "KILLS");
+
+        g.DrawLabel(screen, statsx + 2 * NG_SPACINGX - LabelWidth(g, items, "ITEMS"), NG_STATSY, items, "ITEMS");
+
+        g.DrawLabel(screen, statsx + 3 * NG_SPACINGX - LabelWidth(g, "WIOSTS", "SCRT"), NG_STATSY, "WIOSTS", "SCRT");
+
+        if (dofrags != 0)
+            g.DrawLabel(screen, statsx + 4 * NG_SPACINGX - LabelWidth(g, "WIFRGS", "FRGS"), NG_STATSY, "WIFRGS", "FRGS");
+
+        // draw stats
+        int y = NG_STATSY + (g.Patch("WIOSTK")?.Height ?? g.FontHeight);
+
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (!playeringame(i))
+                continue;
+
+            int x = statsx;
+            (string patch, string text) = PlayerBack(i);
+            int pw = LabelWidth(g, patch, text);
+            g.DrawLabel(screen, x - pw, y, patch, text);
+
+            if (i == me)
+                screen.V_DrawPatch(x - pw, y, g.Patch("STFST01"));
+
+            x += NG_SPACINGX;
+            WI_drawPercent(g, screen, x - pwidth, y + 10, cnt_kills[i]);
+            x += NG_SPACINGX;
+            WI_drawPercent(g, screen, x - pwidth, y + 10, cnt_items[i]);
+            x += NG_SPACINGX;
+            WI_drawPercent(g, screen, x - pwidth, y + 10, cnt_secret[i]);
+            x += NG_SPACINGX;
+
+            if (dofrags != 0)
+                WI_drawNum(g, screen, x, y + 10, cnt_frags[i], -1);
+
+            y += WI_SPACINGY;
+        }
+    }
+
     /// <summary>The intermission's state as the overlay and the level script show it.</summary>
     public string StateText() => state switch
     {
-        stateenum_t.StatCount => $"stats, sp_state {sp_state}: kills {cnt_kills}% items {cnt_items}% secret {cnt_secret}% time {cnt_time} s par {cnt_par} s",
+        stateenum_t.StatCount when deathmatch != 0 => $"deathmatch stats, dm_state {dm_state}: totals {string.Join(' ', PlayersInGame().Select(i => dm_totals[i]))}",
+        stateenum_t.StatCount when netgame => $"net game stats, ng_state {ng_state}: "
+            + string.Join("; ", PlayersInGame().Select(i => $"p{i + 1} kills {cnt_kills[i]}% items {cnt_items[i]}% secret {cnt_secret[i]}%" + (dofrags != 0 ? $" frags {cnt_frags[i]}" : ""))),
+        stateenum_t.StatCount => $"stats, sp_state {sp_state}: kills {cnt_kills[0]}% items {cnt_items[0]}% secret {cnt_secret[0]}% time {cnt_time} s par {cnt_par} s",
         stateenum_t.ShowNextLoc => $"next location, {cnt} tics",
         _ => $"ending, {cnt} tics",
     };

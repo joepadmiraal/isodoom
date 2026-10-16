@@ -534,11 +534,14 @@ void dump_posttic(void)
 // appends a line per tic to the file $DUMP_WI (its first line, at the
 // intermission's first tic: "presses $DUMP_WI_PRESSES" (the route tool's
 // schedule, echoed), then "wminfo EPSD DIDSECRET LAST NEXT MAXKILLS MAXITEMS
-// MAXSECRET PARTIME SKILLS SITEMS SSECRET STIME" as WI_Start left them): BCNT
+// MAXSECRET PARTIME SKILLS SITEMS SSECRET STIME" as WI_Start left them, the
+// console player's; T11.7: in a net game every player in the game's follow,
+// " pN=SKILLS.SITEMS.SSECRET.STIME:FRAGS1.FRAGS2.FRAGS3.FRAGS4"): BCNT
 // STATE HASH RNDINDEX SOUNDS, STATE wi_stuff.c's
 // state:sp_state:cnt_kills:cnt_items:cnt_secret:cnt_time:cnt_par:cnt_pause:cnt:acceleratestage:snl_pointeron:ANIMS
 // (ANIMS the animations' ctr joined by dots, - for none; ref.patch's
-// WI_dumpState, which writes BCNT too), HASH the 32-bit FNV-1a of WI_Drawer's 320x200 screen drawn
+// WI_dumpState, which writes BCNT too; T11.7: a net game's and a deathmatch's
+// counters follow, see WI_dumpState), HASH the 32-bit FNV-1a of WI_Drawer's 320x200 screen drawn
 // now (twice, over two clear colours: 256 where nothing is drawn; word-wise,
 // 8 hex digits), RNDINDEX M_Random's index, SOUNDS the tic's S_StartSound calls
 // as for the route dump. With $DUMP_WI_DIR and $DUMP_WI_TICS ("N,M,..." or
@@ -565,9 +568,16 @@ void dump_witic(void)
         }
         char *presses = getenv("DUMP_WI_PRESSES");
         wbplayerstruct_t *p = &wminfo.plyr[consoleplayer];
-        fprintf(wifile, "presses %s\nwminfo %d %d %d %d %d %d %d %d %d %d %d %d\n", presses && *presses ? presses : "-",
+        fprintf(wifile, "presses %s\nwminfo %d %d %d %d %d %d %d %d %d %d %d %d", presses && *presses ? presses : "-",
                 wminfo.epsd, wminfo.didsecret, wminfo.last, wminfo.next, wminfo.maxkills, wminfo.maxitems, wminfo.maxsecret,
                 wminfo.partime, p->skills, p->sitems, p->ssecret, p->stime);
+        if (netgame) // T11.7: every player in the game's stats, " pN=SKILLS.SITEMS.SSECRET.STIME:F1.F2.F3.F4"
+            for (int i = 0; i < MAXPLAYERS; i++)
+                if (wminfo.plyr[i].in)
+                    fprintf(wifile, " p%d=%d.%d.%d.%d:%d.%d.%d.%d", i + 1, wminfo.plyr[i].skills, wminfo.plyr[i].sitems,
+                            wminfo.plyr[i].ssecret, wminfo.plyr[i].stime, wminfo.plyr[i].frags[0], wminfo.plyr[i].frags[1],
+                            wminfo.plyr[i].frags[2], wminfo.plyr[i].frags[3]);
+        fputc('\n', wifile);
     }
     static byte wi[2][SCREENWIDTH * SCREENHEIGHT];
     for (int k = 0; k < 2; k++)

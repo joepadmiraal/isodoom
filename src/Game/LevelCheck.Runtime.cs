@@ -178,7 +178,7 @@ public partial class LevelCheck
                 _scene.Tic(new ticcmd_t { buttons = intermission % 2 == 1 ? buttoncode_t.BT_USE : (byte)0 });
                 // T7.4: a press shows the stats whole, the next press the next location (Doom II: the end), the next the end
                 string stage = _scene.GameState != gamestate_t.GS_INTERMISSION ? "" : flow.Wi.state == WiStuff.stateenum_t.StatCount
-                    ? flow.Wi.sp_state == 10 ? "stats" : "counting" : flow.Wi.state.ToString();
+                    ? flow.Wi.StatsShown ? "stats" : "counting" : flow.Wi.state.ToString();
                 if (stage != "" && (stages.Count == 0 || stages[^1] != stage))
                     stages.Add(stage);
             }
