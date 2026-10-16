@@ -1553,7 +1553,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>
     /// Runs one game tic of <paramref name="cmd"/> (the game loop's, and the
-    /// level check's): <see cref="GameFlow.G_Ticker"/>, whose level tic is
+    /// level check's): <see cref="GameFlow.G_Ticker(in ticcmd_t)"/>, whose level tic is
     /// <see cref="G_LevelTicker"/>, in every game state (T7.1).
     /// </summary>
     public void Tic(in ticcmd_t cmd)
@@ -1632,14 +1632,14 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>
     /// <see cref="IGameHost.G_LevelTicker"/>: the level's tic (g_game.c
     /// <c>G_Ticker</c>'s <see cref="gamestate_t.GS_LEVEL"/> part): the
-    /// world's (<see cref="World.G_Ticker(in ticcmd_t)"/>, <c>P_Ticker</c>; not
+    /// world's (<see cref="World.G_Ticker(ticcmd_t[])"/>, <c>P_Ticker</c>; not
     /// while <paramref name="paused"/>), then the status bar's and the
     /// message line's, which vanilla runs paused too.
     /// </summary>
-    public void G_LevelTicker(in ticcmd_t cmd, bool paused)
+    public void G_LevelTicker(ticcmd_t[] netcmds, bool paused)
     {
         if (!paused)
-            WorldTic(cmd);
+            WorldTic(netcmds);
         // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents); the HUD is drawn by D_Display (T7.1a)
         StartHud();
         StatusBar?.ST_Ticker();
@@ -1672,18 +1672,18 @@ public partial class LevelScene : Node3D, IGameHost
     // T7.1a: the game state a D_Display drew since the last frame was drawn (a tic ran), or null.
     private gamestate_t? _displayed;
 
-    private void WorldTic(in ticcmd_t cmd)
+    private void WorldTic(ticcmd_t[] netcmds)
     {
         if (TicTimes is { } times)
         {
             long bytes = GC.GetAllocatedBytesForCurrentThread();
             long start = Stopwatch.GetTimestamp();
-            World!.G_Ticker(cmd);
+            World!.G_Ticker(netcmds);
             times.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
             TicAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - bytes;
         }
         else
-            World!.G_Ticker(cmd);
+            World!.G_Ticker(netcmds);
         // T5.6: a player mobj the tic did not let interpolate (a teleport) takes the camera with it.
         if (PlayerMobj is { interp: false })
             SnapPending = true;

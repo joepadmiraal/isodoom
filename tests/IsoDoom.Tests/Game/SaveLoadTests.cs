@@ -177,7 +177,7 @@ public sealed class SaveLoadTests : IDisposable
         Assert.Null(flow.SaveDescription(0));
         Assert.Null(host.World!.players[0].message);
         Keys(menu, Esc, 's', Enter, Enter, 'x', Enter); // the menus' save, nowhere to go
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Null(host.World!.players[0].message);
     }
 
@@ -376,7 +376,7 @@ public sealed class SaveLoadTests : IDisposable
         Assert.Equal((0, "E1M2 1:05", true), (flow.savegameslot, flow.savedescription, flow.sendsave));
 
         // the keyboard's Enter on an empty slot still starts it empty
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Keys(menu, Esc, 's', Enter, Down, Enter);
         Assert.Equal("", menu.savegamestrings[1]);
     }

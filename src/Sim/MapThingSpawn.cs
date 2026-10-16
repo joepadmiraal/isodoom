@@ -26,9 +26,14 @@ public enum skill_t
 /// <c>gamemission</c>, which that default needs (Final Doom's executable for
 /// TNT and Plutonia; <see cref="GameMission.none"/>: the game mode's alone).
 /// The mission is not saved: a save keeps the version it resolved to.
+/// T11.1: <see cref="playersingame"/> is g_game.c's <c>playeringame[]</c> at
+/// the game's start as a mask (bit <c>i</c>: player <c>i + 1</c>; the default,
+/// 1, is player 1 alone), which <see cref="World"/>'s constructor sets
+/// <see cref="World.playeringame"/> from (SPEC §12 T11.1).
 /// </summary>
 public readonly record struct SpawnSettings(GameMode gamemode, skill_t gameskill, bool netgame = false, int deathmatch = 0, bool nomonsters = false,
-    bool respawnparm = false, bool fastparm = false, GameVersion? gameversion = null, GameMission gamemission = GameMission.none);
+    bool respawnparm = false, bool fastparm = false, GameVersion? gameversion = null, GameMission gamemission = GameMission.none,
+    int playersingame = 1);
 
 /// <summary>What <see cref="MapThingSpawning.Select"/> decided for one map thing.</summary>
 public enum MapThingSpawnKind

@@ -75,7 +75,7 @@ public class MusicTests
             return true;
         }
 
-        public void G_LevelTicker(in ticcmd_t cmd, bool paused) => World!.G_Ticker(cmd);
+        public void G_LevelTicker(ticcmd_t[] netcmds, bool paused) => World!.G_Ticker(netcmds);
 
         public void LevelCompleted()
         {

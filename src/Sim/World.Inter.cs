@@ -179,7 +179,7 @@ public sealed partial class World
                 P_GiveAmmo(player, ammo, 2);
             player.pendingweapon = weapon;
 
-            if (player == players[consoleplayer])
+            if (player == players[consoleplayer]) // an event only, per machine (T11.1)
                 S_StartSound((mobj_t?)null, sfxenum_t.sfx_wpnup);
             return false;
         }
@@ -623,7 +623,7 @@ public sealed partial class World
             player.itemcount++;
         P_RemoveMobj(special);
         player.bonuscount += BONUSADD;
-        if (player == players[consoleplayer])
+        if (player == players[consoleplayer]) // an event only, per machine (T11.1)
             S_StartSound((mobj_t?)null, sound);
     }
 

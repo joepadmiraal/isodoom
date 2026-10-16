@@ -84,9 +84,9 @@ public class WipeTests
             return true;
         }
 
-        public void G_LevelTicker(in ticcmd_t cmd, bool paused)
+        public void G_LevelTicker(ticcmd_t[] netcmds, bool paused)
         {
-            World!.G_Ticker(cmd);
+            World!.G_Ticker(netcmds);
             _st.ST_Ticker(); // the status bar's M_Random, once a tic
         }
 
@@ -344,10 +344,10 @@ public class WipeTests
         // without the wipes: no M_Random drawn for them, none under way
         (GameFlow off, GameFlowTests.Host offHost) = GameFlowTests.New();
         off.G_InitNewMap(skill_t.sk_medium, "E1M1");
-        off.G_Ticker(default);
+        off.G_Ticker(new ticcmd_t());
         offHost.World!.G_ExitLevel();
-        off.G_Ticker(default);
-        off.G_Ticker(default);
+        off.G_Ticker(new ticcmd_t());
+        off.G_Ticker(new ticcmd_t());
         Assert.Equal((gamestate_t.GS_INTERMISSION, 0, false), (off.gamestate, off.Wipe.count, off.Wipe.go));
     }
 }

@@ -43,10 +43,10 @@ public interface IGameHost
 
     /// <summary>
     /// g_game.c <c>G_Ticker</c>'s <see cref="gamestate_t.GS_LEVEL"/> part:
-    /// <c>P_Ticker</c> (the world's tic with <paramref name="cmd"/>; nothing
+    /// <c>P_Ticker</c> (the world's tic with <paramref name="netcmds"/>, indexed by player; nothing
     /// while <paramref name="paused"/>), then <c>ST_Ticker</c> and <c>HU_Ticker</c>.
     /// </summary>
-    void G_LevelTicker(in ticcmd_t cmd, bool paused);
+    void G_LevelTicker(ticcmd_t[] netcmds, bool paused);
 
     /// <summary>The level was completed (<c>G_DoCompleted</c>, before the intermission or the finale).</summary>
     void LevelCompleted();
@@ -170,7 +170,7 @@ public sealed class GameFlow
     /// <summary>g_game.c <c>usergame</c>: a game the user started (not the title loop; T7.6's saves need one).</summary>
     public bool usergame;
 
-    /// <summary>d_main.c <c>gametic</c> as the game counts it: every <see cref="G_Ticker"/> (title, intermission and level).</summary>
+    /// <summary>d_main.c <c>gametic</c> as the game counts it: every <see cref="G_Ticker(ticcmd_t[])"/> (title, intermission and level).</summary>
     public int gametic;
 
     /// <summary>g_game.c <c>gameskill</c>: the skill of the game started last.</summary>
@@ -258,22 +258,32 @@ public sealed class GameFlow
             || host.World is { } w && w.players[w.consoleplayer].mo is not null);
 
     /// <summary>
-    /// g_game.c <c>G_Ticker</c> for the console player's <paramref name="ticcmd"/>,
-    /// after d_main.c's title loop step (<see cref="D_DoAdvanceDemo"/>, which
-    /// vanilla's tic loop runs before it): the game actions due, the special
-    /// buttons (<c>BTS_PAUSE</c> toggles <see cref="paused"/>; <c>BTS_SAVEGAME</c>
-    /// saves, T7.6: <see cref="G_SaveGame"/> puts it in this tic's buttons), then the tic of the <see cref="gamestate"/> and d_main.c's
-    /// <see cref="D_Display"/> (T7.1a: after every tic, as vanilla's at 35
-    /// frames a second or more). The game actions the tic set run at its end
-    /// (not vanilla's place, which is the next tic's start, after
-    /// <c>D_Display</c>: nothing runs in between, so the same order; a
-    /// scripted run sees the next level or the intermission without
-    /// another tic; SPEC §12 T5.8, T6.12, T7.1).
+    /// g_game.c <c>G_Ticker</c> for a game of one player: the console
+    /// player's <paramref name="ticcmd"/> with this machine's special buttons
+    /// (<see cref="G_SpecialButtons"/>), any other player in the game an
+    /// empty one (<see cref="G_Ticker(ticcmd_t[])"/>).
     /// </summary>
     public void G_Ticker(in ticcmd_t ticcmd)
     {
-        // g_game.c G_BuildTiccmd's special buttons: a save asked for (T7.6) goes with this tic, in place of the buttons
         ticcmd_t cmd = ticcmd;
+        G_SpecialButtons(ref cmd);
+        Array.Clear(_onecmd);
+        _onecmd[ConsolePlayer] = cmd;
+        G_Ticker(_onecmd);
+    }
+
+    // G_Ticker(in ticcmd_t)'s commands (no allocation a tic)
+    private readonly ticcmd_t[] _onecmd = new ticcmd_t[World.MAXPLAYERS];
+
+    /// <summary>
+    /// g_game.c <c>G_BuildTiccmd</c>'s special buttons, this machine's: a
+    /// save asked for (T7.6, <see cref="G_SaveGame"/>) goes in
+    /// <paramref name="cmd"/> in place of its buttons; else a cheat typed
+    /// (T7.9a) goes in it when it is free of other special buttons. The
+    /// local command's last step before it is sent (T11.1).
+    /// </summary>
+    public void G_SpecialButtons(ref ticcmd_t cmd)
+    {
         if (sendsave)
         {
             sendsave = false;
@@ -285,9 +295,45 @@ public sealed class GameFlow
             (cheat_t cheat, byte param) = _cheats.Dequeue();
             World.ST_CheatTiccmd(ref cmd, cheat, param);
         }
+    }
 
+    /// <summary>
+    /// d_net.c <c>consoleplayer</c>: the level's world's
+    /// (<see cref="World.consoleplayer"/>), else 0.
+    /// </summary>
+    public int ConsolePlayer => host.World?.consoleplayer ?? 0;
+
+    /// <summary>
+    /// g_game.c <c>playeringame[i]</c>: the level's world's; without one
+    /// (the title loop) the console player alone, as vanilla's.
+    /// </summary>
+    private bool PlayerInGame(int i) => host.World is { } w ? w.playeringame[i] : i == ConsolePlayer;
+
+    /// <summary>
+    /// g_game.c <c>G_Ticker</c> for every player's command
+    /// (<paramref name="netcmds"/>, indexed by player; T11.1: those of the
+    /// players in the game are read), after d_main.c's title loop step
+    /// (<see cref="D_DoAdvanceDemo"/>, which vanilla's tic loop runs before
+    /// it): the game actions due, the special buttons of each player in the
+    /// game, as vanilla's (<c>BTS_PAUSE</c> toggles <see cref="paused"/>;
+    /// <c>BTS_SAVEGAME</c> saves, T7.6; T7.9a: a cheat, its sender's), then
+    /// the tic of the <see cref="gamestate"/> and d_main.c's
+    /// <see cref="D_Display"/> (T7.1a: after every tic, as vanilla's at 35
+    /// frames a second or more). The game actions the tic set run at its end
+    /// (not vanilla's place, which is the next tic's start, after
+    /// <c>D_Display</c>: nothing runs in between, so the same order; a
+    /// scripted run sees the next level or the intermission without
+    /// another tic; SPEC §12 T5.8, T6.12, T7.1).
+    /// </summary>
+    public void G_Ticker(ticcmd_t[] netcmds)
+    {
         // T7.9a: st_stuff.c ST_Responder's cheats, which vanilla's responder runs between the tics, before this one
-        ST_DoCheat(cmd);
+        // (T11.1: each player's own, on the sender)
+        for (int i = 0; i < World.MAXPLAYERS; i++)
+        {
+            if (PlayerInGame(i))
+                ST_DoCheat(i, netcmds[i]);
+        }
 
         if (advancedemo)
             D_DoAdvanceDemo();
@@ -299,12 +345,20 @@ public sealed class GameFlow
         // vanilla copies each player's ticcmd in every state (the level's copy is World.G_Ticker's)
         World? world = host.World;
         if (world is not null && gamestate != gamestate_t.GS_LEVEL)
-            world.players[world.consoleplayer].cmd = cmd;
+        {
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (world.playeringame[i])
+                    world.players[i].cmd = netcmds[i];
+            }
+        }
 
         // check for special buttons
-        if ((cmd.buttons & buttoncode_t.BT_SPECIAL) != 0)
+        for (int i = 0; i < World.MAXPLAYERS; i++)
         {
-            switch (cmd.buttons & buttoncode_t.BT_SPECIALMASK)
+            if (!PlayerInGame(i) || (netcmds[i].buttons & buttoncode_t.BT_SPECIAL) == 0)
+                continue;
+            switch (netcmds[i].buttons & buttoncode_t.BT_SPECIALMASK)
             {
                 case buttoncode_t.BTS_PAUSE:
                     paused = !paused;
@@ -316,7 +370,7 @@ public sealed class GameFlow
                 case buttoncode_t.BTS_SAVEGAME:
                     if (savedescription.Length == 0)
                         savedescription = "NET GAME";
-                    savegameslot = (cmd.buttons & buttoncode_t.BTS_SAVEMASK) >> buttoncode_t.BTS_SAVESHIFT;
+                    savegameslot = (netcmds[i].buttons & buttoncode_t.BTS_SAVEMASK) >> buttoncode_t.BTS_SAVESHIFT;
                     gameaction = gameaction_t.ga_savegame;
                     break;
             }
@@ -327,7 +381,7 @@ public sealed class GameFlow
         {
             case gamestate_t.GS_LEVEL:
                 if (world is not null)
-                    host.G_LevelTicker(cmd, paused || MenuHolds(world));
+                    host.G_LevelTicker(netcmds, paused || MenuHolds(world));
                 break;
             case gamestate_t.GS_INTERMISSION:
                 Wi.WI_Ticker();
@@ -412,7 +466,7 @@ public sealed class GameFlow
     /// glue only passes those they didn't), through the cheat sequences
     /// (<see cref="MCheat.Check"/>, with vanilla's refusals: the cheats on
     /// the player and <c>idmus</c> not on nightmare, none in a net game but
-    /// those); a cheat matched goes in the next tic's <c>ticcmd</c> (<see cref="G_Ticker"/>,
+    /// those); a cheat matched goes in the next tic's <c>ticcmd</c> (<see cref="G_Ticker(ticcmd_t[])"/>,
     /// SPEC §12 T7.9a). Returns the cheats matched (the level script prints them).
     /// </summary>
     public System.Collections.Generic.IReadOnlyList<(cheat_t Cheat, byte Param)> ST_Responder(int key)
@@ -482,29 +536,31 @@ public sealed class GameFlow
     /// <summary>
     /// T7.9a: the cheat <paramref name="cmd"/> carries, before its tic (as
     /// vanilla's <c>ST_Responder</c> acts before the tic after the key): on a
-    /// level with a player mobj, the console player's (<see cref="World.ST_Cheat"/>),
-    /// <c>idmus</c> (<see cref="ST_CheatMus"/>) and <c>idclev</c>
-    /// (<see cref="ST_CheatClev"/>); its message is the player's, which the
-    /// tic's <see cref="World.HU_TakeMessages"/> takes (unless a pickup's
-    /// replaces it, as vanilla's); paused, it is taken at once, as vanilla's
-    /// <c>HU_Ticker</c> runs paused.
+    /// level with the sender's mobj, the sender's (T11.1: player
+    /// <paramref name="playernum"/>, whose command carries it, as vanilla's
+    /// <c>G_Ticker</c> reads each player's special buttons;
+    /// <see cref="World.ST_Cheat"/>), <c>idmus</c> (<see cref="ST_CheatMus"/>) and
+    /// <c>idclev</c> (<see cref="ST_CheatClev"/>); its message is the
+    /// sender's, which the tic's <see cref="World.HU_TakeMessages"/> takes
+    /// (unless a pickup's replaces it, as vanilla's); paused, it is taken at
+    /// once, as vanilla's <c>HU_Ticker</c> runs paused.
     /// </summary>
-    private void ST_DoCheat(in ticcmd_t cmd)
+    private void ST_DoCheat(int playernum, in ticcmd_t cmd)
     {
         cheat_t cheat = World.ST_TiccmdCheat(cmd);
         if (cheat == cheat_t.cht_none || gamestate != gamestate_t.GS_LEVEL || host.World is not { } world
-            || world.players[world.consoleplayer].mo is null)
+            || world.players[playernum].mo is null)
             return;
         switch (cheat)
         {
             case cheat_t.cht_mus:
-                ST_CheatMus(world, cmd.chatchar);
+                ST_CheatMus(world, playernum, cmd.chatchar);
                 break;
             case cheat_t.cht_clev:
-                ST_CheatClev(world, cmd.chatchar);
+                ST_CheatClev(world, playernum, cmd.chatchar);
                 break;
             default:
-                world.ST_Cheat(world.consoleplayer, cheat);
+                world.ST_Cheat(playernum, cheat);
                 break;
         }
         Log?.Invoke($"Cheat: {cheat}{(cheat is cheat_t.cht_mus or cheat_t.cht_clev ? $" {cmd.chatchar}" : "")} at tic {world.leveltime}");
@@ -521,11 +577,11 @@ public sealed class GameFlow
     /// not two digits is refused as the others (SPEC §12 T7.9a). Only where
     /// the cheats on the player work (not on nightmare).
     /// </summary>
-    private void ST_CheatMus(World world, byte param)
+    private void ST_CheatMus(World world, int playernum, byte param)
     {
         if (!world.ST_CheatsAllowed)
             return;
-        player_t plyr = world.players[world.consoleplayer];
+        player_t plyr = world.players[playernum];
         plyr.message = World.STSTR_MUS;
         if (ST_MusSong(param) is not { } musnum)
             plyr.message = World.STSTR_NOMUS;
@@ -566,13 +622,13 @@ public sealed class GameFlow
     /// parameter not two digits (SPEC §12 T7.9a). On nightmare too. The game
     /// actions that follow at once start the game, so this tic runs on the new level, as vanilla's.
     /// </summary>
-    private void ST_CheatClev(World world, byte param)
+    private void ST_CheatClev(World world, int playernum, byte param)
     {
         if (world.netgame || ST_ClevMap(param) is not (int epsd, int map))
             return;
 
         // So be it.
-        world.players[world.consoleplayer].message = World.STSTR_CLEV;
+        world.players[playernum].message = World.STSTR_CLEV;
         G_DeferedInitNew(gameskill, epsd, map);
     }
 

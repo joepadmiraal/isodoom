@@ -18,8 +18,12 @@ public sealed partial class World
     /// weapons, the ammo, refire, attackdown, extralight and each psprite's
     /// state, tics and position; since T10.4, once the Icon of Sin woke, its
     /// brain targets as mobj indices, the next one and <c>A_BrainSpit</c>'s
-    /// <c>easy</c>). Only sim state
-    /// goes in: <c>M_Random</c>'s index does not. A mobj index is the mobj's
+    /// <c>easy</c>; since T11.1, for the netgames' desync detection, the item
+    /// respawn queue's head and tail and, for each player in the game, the
+    /// armor type, the powers, the cards, the backpack, the frags, the
+    /// weapons owned, the maximum ammo, the cheats and the kill, item and
+    /// secret counts). Only sim state goes in, the same on every machine of
+    /// a game: <c>M_Random</c>'s index and <see cref="consoleplayer"/> do not. A mobj index is the mobj's
     /// place in thinker order, -1 for none (or a removed mobj).
     /// </summary>
     public ulong Checksum()
@@ -72,6 +76,10 @@ public sealed partial class World
         }
         _checksumIndex.Clear();
 
+        // T11.1: the item respawn queue (deathmatch 2's)
+        Add(ref h, iquehead);
+        Add(ref h, iquetail);
+
         for (int i = 0; i < MAXPLAYERS; i++)
         {
             if (!playeringame[i])
@@ -98,6 +106,24 @@ public sealed partial class World
                 Add(ref h, psp.sx);
                 Add(ref h, psp.sy);
             }
+
+            // T11.1: the rest of the inventory, the frags, the cheats and the counts
+            Add(ref h, p.armortype);
+            foreach (int power in p.powers)
+                Add(ref h, power);
+            foreach (bool card in p.cards)
+                Add(ref h, card ? 1 : 0);
+            Add(ref h, p.backpack ? 1 : 0);
+            foreach (int frag in p.frags)
+                Add(ref h, frag);
+            foreach (bool owned in p.weaponowned)
+                Add(ref h, owned ? 1 : 0);
+            foreach (int max in p.maxammo)
+                Add(ref h, max);
+            Add(ref h, p.cheats);
+            Add(ref h, p.killcount);
+            Add(ref h, p.itemcount);
+            Add(ref h, p.secretcount);
         }
         return h;
     }

@@ -114,7 +114,7 @@ public class FinalDoomTests
         for (int step = 0; step < 2; step++)
         {
             for (int t = flow.pagetic; t >= -1; t--)
-                flow.G_Ticker(default);
+                flow.G_Ticker(new ticcmd_t());
         }
         Assert.Equal((4, page), (flow.demosequence, flow.pagename));
         flow.Finale.F_StartFinale(1, 8);
@@ -139,7 +139,7 @@ public class FinalDoomTests
         {
             shown.Add($"{flow.pagename}:{flow.demosequence}");
             for (int t = flow.pagetic; t >= -1; t--)
-                flow.G_Ticker(default);
+                flow.G_Ticker(new ticcmd_t());
         }
         Assert.Equal("TITLEPIC:0 CREDIT:2 TITLEPIC:4 TITLEPIC:0 CREDIT:2 TITLEPIC:4", string.Join(' ', shown));
     }

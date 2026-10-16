@@ -201,15 +201,15 @@ public class FinaleTests
             world.G_SecretExitLevel();
         else
             world.G_ExitLevel();
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         if (mode == GameMode.commercial)
         {
             // Doom II: the intermission first (fire: all the stats; fire: its end)
             flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });
             for (int t = 0; t < 10 && flow.gamestate == gamestate_t.GS_INTERMISSION; t++)
-                flow.G_Ticker(default);
+                flow.G_Ticker(new ticcmd_t());
         }
         return (flow, host);
     }
@@ -289,24 +289,24 @@ public class FinaleTests
         // "Once you beat the big badasses and\n": after tic 10 + 3 × 6, six characters: "Once y" ("Once" 4 glyphs, a space, "y")
         Assert.Equal(1, fi.finalecount);
         for (int t = 1; t < 10 + 3 * 6; t++)
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
         Assert.Equal(28, fi.finalecount);
         fi.F_Drawer(g, screen);
         Assert.Equal((byte)'O', screen.Pixels[10 * 320 + 10]);
         Assert.Equal((byte)'E', screen.Pixels[10 * 320 + 10 + 3 * 6]);
         Assert.Equal((byte)'Y', screen.Pixels[10 * 320 + 10 + 4 * 6 + 4]); // after the space's 4
         Assert.NotEqual((byte)'O', screen.Pixels[10 * 320 + 10 + 5 * 6 + 4]); // the next character not yet
-        flow.G_Ticker(default);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
+        flow.G_Ticker(new ticcmd_t());
         fi.F_Drawer(g, screen);
         Assert.NotEqual((byte)'O', screen.Pixels[10 * 320 + 10 + 5 * 6 + 4]);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         fi.F_Drawer(g, screen);
         Assert.Equal((byte)'O', screen.Pixels[10 * 320 + 10 + 5 * 6 + 4]); // "Once yo"
 
         // the second line at 10, 21 once the first (35 characters with its break) is out
         while (fi.finalecount < 10 + 3 * 36)
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
         fi.F_Drawer(g, screen);
         Assert.Equal((byte)'C', screen.Pixels[21 * 320 + 10]);
 
@@ -314,7 +314,7 @@ public class FinaleTests
         while (fi.finalecount < 440 * 3 + 250)
             flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_USE }); // presses skip nothing before Doom II
         Assert.Equal(FFinale.F_STAGE_TEXT, fi.finalestage);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal((FFinale.F_STAGE_ARTSCREEN, 0), (fi.finalestage, fi.finalecount));
     }
 
@@ -329,7 +329,7 @@ public class FinaleTests
         (GameFlow flow, _) = AtFinale(mode, GameMission.doom, episode, 8);
         FFinale fi = flow.Finale;
         while (fi.finalestage == FFinale.F_STAGE_TEXT)
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
         Assert.Equal(page, fi.ArtScreen());
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate);
     }
@@ -355,7 +355,7 @@ public class FinaleTests
         (GameFlow flow, _) = AtFinale(GameMode.commercial, GameMission.doom2, 1, 30);
         Assert.Equal((gamestate_t.GS_FINALE, "RROCK17"), (flow.gamestate, flow.Finale.finaleflat));
         while (flow.Finale.finalecount <= 50)
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
         flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_USE });
         return (flow, flow.Finale);
     }
@@ -380,7 +380,7 @@ public class FinaleTests
         var log = new List<string>();
         for (int t = 0; t < 200; t++)
         {
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             if (fi.sounds.Count > 0)
                 log.Add($"{fi.caststate}:{string.Join('+', fi.sounds)}");
             if (t == 40)
@@ -396,16 +396,16 @@ public class FinaleTests
     public void AKeyKillsTheMemberAndTheNextWalksIn()
     {
         (GameFlow flow, FFinale fi) = AtCast();
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.True(fi.F_Responder(true));
         Assert.Equal((true, statenum_t.S_POSS_DIE1, 0, false), (fi.castdeath, fi.caststate, fi.castframes, fi.castattacking));
         Assert.False(fi.F_Responder(false)); // a key's release: not the cast's
         Assert.True(fi.F_Responder(true)); // dying: eaten, nothing more
         Assert.Equal(statenum_t.S_POSS_DIE1, fi.caststate);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal([sfxenum_t.sfx_podth1], fi.sounds); // the death sound, between the tics, with the next tic's
         for (int t = 0; t < 200 && fi.castnum == 0; t++)
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
         Assert.Equal((1, false, statenum_t.S_SPOS_RUN1), (fi.castnum, fi.castdeath, fi.caststate));
         Assert.Equal([sfxenum_t.sfx_posit2], fi.sounds); // the shotgun guy's see sound
     }
@@ -418,7 +418,7 @@ public class FinaleTests
         bool heroShot = false;
         for (int t = 0; t < 20000 && seen.Count < 18; t++)
         {
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             heroShot |= fi.castnum == 16 && fi.caststate == statenum_t.S_PLAY_ATK1;
             if (seen.Count == 0 || seen[^1] != fi.castnum)
                 seen.Add(fi.castnum);
@@ -428,9 +428,9 @@ public class FinaleTests
         Assert.Equal([.. Enumerable.Range(0, 17), 0], seen);
         Assert.True(heroShot); // the hero's attack (S_PLAY_ATK1, its "gross hack": no sound, as vanilla's), back to walking
         for (int t = 0; t < 30; t++)
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
         fi.F_Responder(true);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.True(fi.castdeath);
         // any button (a mouse click, a pad's: the responder lets them through) starts the cast over
         flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_ATTACK });

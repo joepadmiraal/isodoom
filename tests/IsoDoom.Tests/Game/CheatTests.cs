@@ -119,7 +119,7 @@ public class CheatTests
         var host = new GameFlowTests.Host(mode);
         var flow = new GameFlow(host, mode, new DoomRandom(), GameVariant.vanilla, mission);
         flow.G_InitNewMap(skill, "E1M1");
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         return (flow, host, host.World!);
     }
 
@@ -133,7 +133,7 @@ public class CheatTests
         flow.World?.DrainEvents(events);
         while (cmd.buttons == 0 && flow.CheatsPending > 0)
         {
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             flow.World?.DrainEvents(events);
         }
         return [.. events.Where(e => e.type == simevent_t.se_message).Select(e => e.message!)];

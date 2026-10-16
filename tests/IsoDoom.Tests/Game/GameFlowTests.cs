@@ -33,6 +33,12 @@ public class GameFlowTests
 
         public World? World { get; private set; }
 
+        /// <summary>The WAD (the synthetic IWAD by default).</summary>
+        public WadArchive Wad { get; init; } = _wad;
+
+        /// <summary>T11.1: the players of a new game (<see cref="SpawnSettings.playersingame"/>).</summary>
+        public int Players { get; init; } = 1;
+
         /// <summary>The lumps the WAD has besides the synthetic IWAD's (the title loop's pages).</summary>
         public HashSet<string> Extra { get; } = [];
 
@@ -40,40 +46,40 @@ public class GameFlowTests
         public int Completed, LevelTics, PausedTics;
         public string? Ended;
 
-        public bool HasLump(string name) => Extra.Contains(name) || _wad.W_CheckNumForName(name) >= 0;
+        public bool HasLump(string name) => Extra.Contains(name) || Wad.W_CheckNumForName(name) >= 0;
 
         public bool G_InitNew(skill_t skill, string map)
         {
             Loads.Add("new " + map);
-            if (_wad.W_CheckNumForName(map) < 0)
+            if (Wad.W_CheckNumForName(map) < 0)
                 return false;
-            World = new World(new SpawnSettings(_mode, skill, gameversion: _gameversion), Tweaks.Vanilla);
-            World.P_InitPicAnims(null, PicAnims.FlatNames(_wad)); // P_Init's, as the game scene's (T7.6: a save loads into the same)
-            World.G_DoLoadLevel(Level.Load(_wad, map));
+            World = new World(new SpawnSettings(_mode, skill, gameversion: _gameversion, playersingame: Players), Tweaks.Vanilla);
+            World.P_InitPicAnims(null, PicAnims.FlatNames(Wad)); // P_Init's, as the game scene's (T7.6: a save loads into the same)
+            World.G_DoLoadLevel(Level.Load(Wad, map));
             return true;
         }
 
         public bool G_DoWorldDone(string map)
         {
             Loads.Add("next " + map);
-            World!.G_DoWorldDone(Level.Load(_wad, map));
+            World!.G_DoWorldDone(Level.Load(Wad, map));
             return true;
         }
 
         public bool G_DoLoadLevel()
         {
             Loads.Add("reborn " + World!.level.Name);
-            World.G_DoLoadLevel(Level.Load(_wad, World.level.Name));
+            World.G_DoLoadLevel(Level.Load(Wad, World.level.Name));
             return true;
         }
 
-        public void G_LevelTicker(in ticcmd_t cmd, bool paused)
+        public void G_LevelTicker(ticcmd_t[] netcmds, bool paused)
         {
             if (paused)
                 PausedTics++;
             else
             {
-                World!.G_Ticker(cmd);
+                World!.G_Ticker(netcmds);
                 LevelTics++;
             }
         }
@@ -81,15 +87,15 @@ public class GameFlowTests
         // T7.6: as the game scene, a trial load first, then the load
         public void G_CheckLoadGame(SaveGameFile save)
         {
-            if (_wad.W_CheckNumForName(save.Map) < 0)
+            if (Wad.W_CheckNumForName(save.Map) < 0)
                 throw new SaveGameException(SaveGameFile.OTHERGAME);
-            save.LoadWorld(Level.Load(_wad, save.Map), null, PicAnims.FlatNames(_wad));
+            save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
         }
 
         public bool G_LoadGame(SaveGameFile save)
         {
             Loads.Add("load " + save.Map);
-            World = save.LoadWorld(Level.Load(_wad, save.Map), null, PicAnims.FlatNames(_wad));
+            World = save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
             return true;
         }
 
@@ -337,6 +343,51 @@ public class GameFlowTests
         flow.G_Ticker(_use); // any button: the next level
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
         Assert.Contains(secret ? "MAP31" : "MAP07", host.Ended);
+    }
+
+    // ---- T11.1: several players ----
+
+    [Fact]
+    public void EveryPlayersCommandIsRead()
+    {
+        var host = new Host(GameMode.shareware) { Wad = IsoDoom.Tests.Sim.NetSimTests.CoopWad(), Players = 0b11 };
+        var flow = new GameFlow(host, GameMode.shareware, new DoomRandom());
+        flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
+        World world = host.World!;
+        player_t p1 = world.players[0], p2 = world.players[1];
+
+        // player 2's cheat is player 2's
+        var cmds = new ticcmd_t[World.MAXPLAYERS];
+        World.ST_CheatTiccmd(ref cmds[1], cheat_t.cht_god, 0);
+        flow.G_Ticker(cmds);
+        Assert.Equal((0, player_t.CF_GODMODE), (p1.cheats, p2.cheats));
+
+        // player 2 walks, player 1 stands
+        (int x1, int x2) = (p1.mo!.x, p2.mo!.x);
+        cmds = new ticcmd_t[World.MAXPLAYERS];
+        cmds[1].forwardmove = 25;
+        for (int i = 0; i < 5; i++)
+            flow.G_Ticker(cmds);
+        Assert.Equal(x1, p1.mo.x);
+        Assert.True(p2.mo.x < x2);
+
+        // player 2's pause pauses
+        cmds[1] = _pause;
+        flow.G_Ticker(cmds);
+        Assert.True(flow.paused);
+        flow.G_Ticker(cmds);
+        Assert.False(flow.paused);
+
+        // the intermission sees every player's command: player 2's use skips
+        world.G_ExitLevel();
+        cmds = new ticcmd_t[World.MAXPLAYERS];
+        for (int i = 0; i < 300; i++)
+            flow.G_Ticker(cmds);
+        Assert.Equal((gamestate_t.GS_INTERMISSION, WiStuff.stateenum_t.StatCount, 10), (flow.gamestate, flow.Wi.state, flow.Wi.sp_state));
+        cmds[1] = _use;
+        flow.G_Ticker(cmds);
+        Assert.Equal(WiStuff.stateenum_t.ShowNextLoc, flow.Wi.state);
+        Assert.Equal(buttoncode_t.BT_USE, p2.cmd.buttons);
     }
 
     // ---- the pause, a reborn ----

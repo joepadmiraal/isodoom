@@ -44,16 +44,20 @@ public sealed partial class World
         gametic++;
     }
 
-    /// <summary><see cref="G_Ticker(ticcmd_t[])"/> for a game of one player (<see cref="consoleplayer"/>).</summary>
+    /// <summary>
+    /// <see cref="G_Ticker(ticcmd_t[])"/> for a game of one player:
+    /// <paramref name="cmd"/> is <see cref="consoleplayer"/>'s, any other
+    /// player in the game gets an empty one.
+    /// </summary>
     public void G_Ticker(in ticcmd_t cmd)
     {
-        players[consoleplayer].cmd = cmd;
-        G_CheckTurbo(consoleplayer);
-        P_Ticker();
-        HU_TakeMessages(); // HU_Ticker's message part (T6.10)
-        G_CheckReborns();
-        gametic++;
+        Array.Clear(_onecmd);
+        _onecmd[consoleplayer] = cmd;
+        G_Ticker(_onecmd);
     }
+
+    // G_Ticker(in ticcmd_t)'s commands (no allocation a tic)
+    private readonly ticcmd_t[] _onecmd = new ticcmd_t[MAXPLAYERS];
 
     /// <summary>
     /// g_game.c <c>G_Ticker</c>'s "do player reborns if needed" (T6.12):
@@ -177,7 +181,8 @@ public sealed partial class World
     /// player in turn (<see cref="gametic"/> &gt;&gt; 5 modulo
     /// <see cref="MAXPLAYERS"/>), a marked player gets the console player
     /// the message "<c>Green: is turbo!</c>". A message only: nothing else
-    /// reads it.
+    /// reads it (T11.1: it goes to <see cref="consoleplayer"/>, which differs
+    /// per machine, but <see cref="HU_TakeMessages"/> clears it in the same tic).
     /// </summary>
     private void G_CheckTurbo(int i)
     {

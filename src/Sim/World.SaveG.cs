@@ -86,6 +86,7 @@ public sealed partial class World
         w.Write(settings.respawnparm);
         w.Write(settings.fastparm);
         w.Write((int)gameversion); // T10.7: the executable emulated (SaveGameFile.VERSION 4)
+        w.Write(settings.playersingame); // T11.1: the players the game started with (SaveGameFile.VERSION 5)
         w.Write(tweaks.AbsoluteAiming);
         w.Write(tweaks.AbsoluteMovement);
         w.Write(tweaks.AimAssistCone);
@@ -508,7 +509,10 @@ public sealed partial class World
                 r.ReadBoolean(),
                 r.ReadBoolean(),
                 r.ReadBoolean(),
-                ReadGameVersion(r));
+                ReadGameVersion(r),
+                playersingame: r.ReadInt32());
+            if (settings.playersingame <= 0 || settings.playersingame >= 1 << MAXPLAYERS)
+                throw new SaveGameException($"bad players in game {settings.playersingame}");
             var tweaks = new Tweaks
             {
                 AbsoluteAiming = r.ReadBoolean(),

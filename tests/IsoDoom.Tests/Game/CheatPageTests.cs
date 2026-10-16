@@ -28,7 +28,7 @@ public class CheatPageTests
         var host = new GameFlowTests.Host(mode);
         var flow = new GameFlow(host, mode, new DoomRandom(), GameVariant.vanilla);
         flow.G_InitNewMap(skill, map);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         return (flow, host, host.World!);
     }
 
@@ -52,7 +52,7 @@ public class CheatPageTests
         var events = new List<sim_event_t>();
         do
         {
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             flow.World?.DrainEvents(events);
         }
         while (flow.CheatsPending > 0);

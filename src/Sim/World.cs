@@ -41,17 +41,22 @@ public sealed partial class World
     /// g_game.c <c>G_InitNew</c>'s game state part: a new game with
     /// <paramref name="settings"/> (skill, mode, netgame, deathmatch,
     /// nomonsters) and <paramref name="tweaks"/>. <c>M_ClearRandom</c>, every
-    /// player to <see cref="playerstate_t.PST_REBORN"/>. Player
-    /// <see cref="consoleplayer"/> is in the game; set <see cref="playeringame"/>
-    /// for more before the first level.
+    /// player to <see cref="playerstate_t.PST_REBORN"/>. The players in the
+    /// game are <see cref="SpawnSettings.playersingame"/>'s (T11.1; player 1
+    /// alone by default); <see cref="playeringame"/> can still be changed
+    /// before the first level.
     /// </summary>
     public World(SpawnSettings settings, Tweaks tweaks)
     {
+        if (settings.playersingame <= 0 || settings.playersingame >= 1 << MAXPLAYERS)
+            throw new ArgumentOutOfRangeException(nameof(settings), settings.playersingame, $"players in game: a mask of 1 to {MAXPLAYERS} players");
         this.settings = settings;
         this.tweaks = tweaks;
         for (int i = 0; i < MAXPLAYERS; i++)
+        {
             players[i] = new player_t();
-        playeringame[consoleplayer] = true;
+            playeringame[i] = (settings.playersingame & (1 << i)) != 0; // T11.1
+        }
 
         // g_game.c G_InitNew
         respawnmonsters = settings.gameskill == skill_t.sk_nightmare || settings.respawnparm;
@@ -150,8 +155,21 @@ public sealed partial class World
     public readonly player_t[] players = new player_t[MAXPLAYERS];
     public readonly bool[] playeringame = new bool[MAXPLAYERS];
 
-    /// <summary>The local player (always 0 for now).</summary>
-    public int consoleplayer => 0;
+    /// <summary>
+    /// d_net.c <c>consoleplayer</c>: the player this machine shows and plays
+    /// (T11.1; 0 by default). A per-machine view index: worlds of the same
+    /// game on several machines differ in it, so the sim never lets it
+    /// change state they share; it is neither saved nor in the
+    /// <see cref="Checksum"/>. It only picks who gets a pickup's sound
+    /// (an event), the turbo message (cleared after the tic), and the
+    /// intermission's view (<see cref="wbstartstruct_t.pnum"/>,
+    /// <see cref="wbstartstruct_t.didsecret"/>), as vanilla's (SPEC §12 T11.1).
+    /// </summary>
+    public int consoleplayer
+    {
+        get;
+        set => field = value is >= 0 and < MAXPLAYERS ? value : throw new ArgumentOutOfRangeException(nameof(value), value, "consoleplayer");
+    }
 
     // ---- the level (p_setup.c) ----
 
@@ -248,7 +266,13 @@ public sealed partial class World
             players[i].killcount = players[i].secretcount = players[i].itemcount = 0;
 
         // Initial height of PointOfView will be set by player think.
-        players[consoleplayer].viewz = 1;
+        // (T11.1: every player in the game's, not just consoleplayer's, so worlds that differ in
+        // consoleplayer stay equal; P_CalcHeight sets it in the first tic: SPEC §12 T11.1)
+        for (int i = 0; i < MAXPLAYERS; i++)
+        {
+            if (playeringame[i])
+                players[i].viewz = 1;
+        }
 
         P_InitThinkers();
         leveltime = 0;

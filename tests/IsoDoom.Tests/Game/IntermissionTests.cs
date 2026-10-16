@@ -55,9 +55,9 @@ public class IntermissionTests
             return true;
         }
 
-        public void G_LevelTicker(in ticcmd_t cmd, bool paused)
+        public void G_LevelTicker(ticcmd_t[] netcmds, bool paused)
         {
-            World!.G_Ticker(cmd);
+            World!.G_Ticker(netcmds);
             St.ST_Ticker(); // the status bar's M_Random, once a tic
         }
 
@@ -248,14 +248,14 @@ public class IntermissionTests
         p.itemcount = 1; // 25%
         world.leveltime = 100 * SimInfo.TICRATE; // 100 s
         world.G_ExitLevel();
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         WiStuff wi = flow.Wi;
         Assert.Equal((30 * SimInfo.TICRATE, 100 * SimInfo.TICRATE, 1), (wi.wbs!.partime, wi.plrs[0].stime, wi.wbs.maxsecret));
         var log = new List<string>();
         for (int t = 2; wi.sp_state != 10; t++)
         {
             Assert.True(t < 1000);
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             if (wi.sounds.Count > 0)
                 log.Add($"{wi.bcnt}:{string.Join('+', wi.sounds.Select(s => s.ToString()[4..]))}");
         }
@@ -281,7 +281,7 @@ public class IntermissionTests
         world.players[0].killcount = 2;
         world.leveltime = 4000;
         world.G_ExitLevel();
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         flow.G_Ticker(new ticcmd_t { buttons = buttoncode_t.BT_USE });
         WiStuff wi = flow.Wi;
         Assert.Equal((10, 66, 0, 0, 4000 / SimInfo.TICRATE, 30), (wi.sp_state, wi.cnt_kills, wi.cnt_items, wi.cnt_secret, wi.cnt_time, wi.cnt_par));

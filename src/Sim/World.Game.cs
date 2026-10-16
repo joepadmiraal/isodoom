@@ -175,6 +175,8 @@ public sealed partial class World
             }
         }
 
+        // (T11.1: per machine, as vanilla's: consoleplayer's didsecret and pnum only pick what the
+        // intermission shows; nothing in the sim reads wminfo)
         wminfo.didsecret = players[consoleplayer].didsecret;
         wminfo.epsd = gameepisode - 1;
         wminfo.last = gamemap - 1;
@@ -258,6 +260,7 @@ public sealed partial class World
     {
         gameaction = gameaction_t.ga_worlddone;
 
+        // (T11.1: per machine, as vanilla's: only the intermission's wminfo.didsecret reads it)
         if (secretexit)
             players[consoleplayer].didsecret = true;
     }

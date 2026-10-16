@@ -175,8 +175,8 @@ public sealed partial class World
 
             case cheat_t.cht_mypos:
                 {
-                    // 'mypos' for player position (the console player's, as vanilla's)
-                    mobj_t? mo = players[consoleplayer].mo;
+                    // 'mypos' for player position (vanilla's console player's: the sender's, T11.1)
+                    mobj_t? mo = plyr.mo;
                     if (mo is null)
                         return false;
                     plyr.message = string.Create(CultureInfo.InvariantCulture,

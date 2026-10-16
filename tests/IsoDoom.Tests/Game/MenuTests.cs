@@ -122,7 +122,7 @@ public class MenuTests
         Keys(menu, Enter);
         Assert.Equal("closed", menu.StateName);
         Assert.Equal(gameaction_t.ga_newgame, flow.gameaction);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal("new " + map, host.Loads[^1]);
         Assert.Equal(expected, flow.gameskill);
         // the synthetic IWAD has E1M1 only of these: the others go back to the title loop
@@ -146,7 +146,7 @@ public class MenuTests
         Keys(menu, Up, Enter);
         Assert.Equal("skill", menu.StateName);
         Keys(menu, Enter);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal("new E1M1", host.Loads[^1]);
         Assert.Equal(gamestate_t.GS_LEVEL, flow.gamestate);
         Assert.Contains("M_Episode: 4th episode requires UltimateDOOM", logs);
@@ -191,7 +191,7 @@ public class MenuTests
         Assert.Same(menu.ReadDef1, menu.currentMenu);
         Assert.True(menu.M_Responder('x')); // any key
         Assert.Equal("closed", menu.StateName); // vanilla closes the menus after any message
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Empty(host.Loads);
         Assert.Equal(gamestate_t.GS_DEMOSCREEN, flow.gamestate);
     }
@@ -212,7 +212,7 @@ public class MenuTests
         Keys(menu, Esc, Enter, Enter);
         Assert.Equal(("skill", 4), (menu.StateName, (int)menu.itemOn)); // remembered
         Keys(menu, Enter, 'y');
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal("new E1M1", host.Loads[^1]);
         Assert.Equal(skill_t.sk_nightmare, flow.gameskill);
     }
@@ -235,7 +235,7 @@ public class MenuTests
         Keys(menu, MMenu.KEY_PAD_CANCEL); // no
         Assert.Equal(gameaction_t.ga_nothing, flow.gameaction);
         Keys(menu, Esc, MMenu.KEY_PAD_ACCEPT, MMenu.KEY_PAD_ACCEPT, MMenu.KEY_PAD_ACCEPT, MMenu.KEY_PAD_ACCEPT); // yes
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal(("new E1M1", skill_t.sk_nightmare), (host.Loads[^1], flow.gameskill));
     }
 
@@ -265,7 +265,7 @@ public class MenuTests
         menu.M_MouseButton(true, 120, 64 + 4);
         menu.M_MouseButton(true, 60, 63 + 4);
         menu.M_MouseButton(true, 60, 63 + 2 * 16 + 4);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal(("new E1M1", skill_t.sk_medium), (host.Loads[^1], flow.gameskill));
     }
 
@@ -442,7 +442,7 @@ public class MenuTests
         int last = menu.whichSkull;
         for (int tic = 1; tic <= 30; tic++)
         {
-            flow.G_Ticker(default);
+            flow.G_Ticker(new ticcmd_t());
             if (menu.whichSkull != last)
                 flips.Add(tic);
             last = menu.whichSkull;
@@ -457,16 +457,16 @@ public class MenuTests
         flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
         World world = host.World!;
         Keys(menu, Esc);
-        flow.G_Ticker(default); // a new game's player is reborn (viewz 0): held at once, as vanilla's
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t()); // a new game's player is reborn (viewz 0): held at once, as vanilla's
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal(0, world.leveltime);
         world.players[world.consoleplayer].viewz = 1; // a level's start (P_SetupLevel) without a reborn: its first tic runs
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal(1, world.leveltime);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal(1, world.leveltime);
         Keys(menu, Esc);
-        flow.G_Ticker(default);
+        flow.G_Ticker(new ticcmd_t());
         Assert.Equal(2, world.leveltime);
     }
 
