@@ -88,6 +88,14 @@ public static class RouteTestMaps
         // imps at (704, 192) and (704, 320) and a zombieman at (832, 256), facing west (they
         // see the player at once).
         ["death"] = Death,
+        // T10.2a: the super shotgun on DOOM1.WAD (shareware: no SGN2 or SHT2 sprites, which the
+        // reference never draws, -nodraw's nodrawers). One room (1024 wide, 512 deep, ceiling 128).
+        // The player at (64, 256) facing east; along y = 256 a shotgun (160) and a super shotgun
+        // (320, doomednum 82: P_SpawnMapThing spawns it outside commercial, only Doom II's monsters
+        // stop P_LoadThings). Monsters at the east end facing east (away from the player): a
+        // zombieman at (700, 160), a shotgun guy at (700, 352), an imp at (900, 256) and a zombieman
+        // at (900, 420).
+        ["ssg"] = SuperShotgun,
     };
 
     /// <summary>The pickups along y = 128 in <see cref="Pickups"/>' room P, west to east (doomednums), from x = 240 every 48 units.</summary>
@@ -112,6 +120,14 @@ public static class RouteTestMaps
         return map.Thing(160, 256, 2001).Thing(224, 256, 2019).Thing(288, 256, 5)
             .Thing(704, 192, 3001, 180).Thing(704, 320, 3001, 180).Thing(832, 256, 3004, 180)
             .Player(96, 256, 180);
+    }
+
+    private static TestMap SuperShotgun()
+    {
+        var map = TestMap.Strip(0, 0, 512, new TestMap.Room(1024, 0, 128));
+        return map.Thing(160, 256, 2001).Thing(320, 256, 82)
+            .Thing(700, 160, 3004, 0).Thing(700, 352, 9, 0).Thing(900, 256, 3001, 0).Thing(900, 420, 3004, 0)
+            .Player(64, 256, 0);
     }
 
     private static TestMap Weapons()

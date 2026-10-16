@@ -1,0 +1,72 @@
+# The super shotgun test map (T10.2a, RouteTestMaps) with monsters, on
+# DOOM1.WAD (shareware), so CI checks A_FireShotgun2 against vanilla without
+# Doom II's IWAD: the shotgun is walked over (the pickup switches to it: 8
+# shells) and fired once at the nearest monster (7 left, the noise wakes the
+# room); the super shotgun is walked over (the pickup switches to it: 15),
+# fired with fire held (A_CloseShotgun2's A_ReFire fires again), tapped, and
+# at the monsters until they die, then into the east wall until one shell is
+# left and A_CheckReload's P_CheckAmmo switches to the shotgun (shareware's
+# P_CheckAmmo never picks the super shotgun), which fires the last shell
+# before P_CheckAmmo switches to the pistol. Written by tools/RouteGen
+# (testmap-ssg).
+iwad testmap
+map ssg
+monsters
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0 x15
+25 0 0 0 x12
+3 0 0 0
+-1 0 0 0
+-2 0 0 0
+-1 0 0 0 x6
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x4
+1 0 0 0
+2 0 0 0
+0 0 0 0 x11
+0 0 7 1
+0 0 0 0 x44
+25 0 -7 0
+25 0 0 0 x18
+22 0 0 0
+-2 0 0 0 x3
+-1 0 0 0 x2
+-2 0 0 0
+-1 0 0 0 x3
+0 0 0 0
+-1 0 0 0 x2
+0 0 0 0
+-1 0 0 0
+0 0 0 0
+-1 0 0 0
+0 0 0 0 x2
+-1 0 0 0
+0 0 0 0 x2
+0 0 -1 0
+11 0 1 0
+0 0 0 0
+2 0 0 0
+1 0 0 0
+0 0 0 0 x10
+0 0 2 1
+0 0 0 1
+0 0 -1 1
+0 0 0 1 x52
+0 0 0 0 x59
+0 0 0 1
+0 0 0 0 x62
+0 0 0 1 x4
+0 0 0 0 x59
+0 0 -1 1
+0 0 0 1 x134
+0 0 0 0 x15
+0 0 2 1
+0 0 0 1 x52
+0 0 0 0 x15

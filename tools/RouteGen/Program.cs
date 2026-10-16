@@ -1465,6 +1465,83 @@ monsters
             g.Wait(40);
             log("emptied " + State());
         }, Monsters: true),
+        ["testmap-ssg"] = new(() => TestMapWad("ssg"), "E1M1", """
+# The super shotgun test map (T10.2a, RouteTestMaps) with monsters, on
+# DOOM1.WAD (shareware), so CI checks A_FireShotgun2 against vanilla without
+# Doom II's IWAD: the shotgun is walked over (the pickup switches to it: 8
+# shells) and fired once at the nearest monster (7 left, the noise wakes the
+# room); the super shotgun is walked over (the pickup switches to it: 15),
+# fired with fire held (A_CloseShotgun2's A_ReFire fires again), tapped, and
+# at the monsters until they die, then into the east wall until one shell is
+# left and A_CheckReload's P_CheckAmmo switches to the shotgun (shareware's
+# P_CheckAmmo never picks the super shotgun), which fires the last shell
+# before P_CheckAmmo switches to the pistol. Written by tools/RouteGen
+# (testmap-ssg).
+iwad testmap
+map ssg
+monsters
+
+""", (g, log) =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[0];
+            string State() => $"health {p.health} weapon {p.readyweapon} pending {p.pendingweapon} psp {p.psprites[0].state} ammo {string.Join(",", p.ammo)}; " + g.Monsters();
+            void Ready(IsoDoom.Sim.weapontype_t wp) => g.WaitUntil(() => p.readyweapon == wp && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange
+                && p.psprites[0].state == IsoDoom.Sim.Info.weaponinfo[(int)wp].readystate, 200);
+            double Dist(IsoDoom.Sim.mobj_t m) => System.Math.Sqrt(System.Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + System.Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
+            IsoDoom.Sim.mobj_t? Nearest() => g.World.Mobjs()
+                .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.World.P_CheckSight(g.Mo, m))
+                .OrderBy(Dist).FirstOrDefault();
+            const IsoDoom.Sim.weapontype_t Ssg = IsoDoom.Sim.weapontype_t.wp_supershotgun;
+            int Shells() => p.ammo[(int)IsoDoom.Sim.ammotype_t.am_shell];
+
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            log("pistol up " + State());
+            g.GoTo(160, 256, 4);
+            Ready(IsoDoom.Sim.weapontype_t.wp_shotgun);
+            log("shotgun up " + State());
+            if (Nearest() is { } first)
+                g.Fire(first.x / 65536.0, first.y / 65536.0);
+            g.Tic(0, 0, 0, 0);
+            Ready(IsoDoom.Sim.weapontype_t.wp_shotgun);
+            log("shotgun fired " + State());
+            g.GoTo(320, 256, 4);
+            Ready(Ssg);
+            log("super shotgun up " + State());
+            // held: two shots (A_CloseShotgun2's A_ReFire)
+            if (Nearest() is { } held)
+            {
+                int before = Shells();
+                for (int i = 0; i < 120 && Shells() > before - 4; i++)
+                    g.Fire(held.x / 65536.0, held.y / 65536.0);
+                g.Tic(0, 0, 0, 0);
+            }
+            Ready(Ssg);
+            log("held " + State());
+            if (Nearest() is { } tapped)
+                g.Fire(tapped.x / 65536.0, tapped.y / 65536.0);
+            g.Tic(0, 0, 0, 0);
+            Ready(Ssg);
+            log("tapped " + State());
+            for (int i = 0; i < 6 && Shells() >= 2 && Nearest() is { } m; i++)
+            {
+                g.FireAt(m, 200);
+                if (p.readyweapon == Ssg)
+                    Ready(Ssg);
+                log("shot " + State());
+            }
+            for (int i = 0; i < 400 && p.readyweapon == Ssg; i++)
+                g.Fire(1100, 256);
+            g.Tic(0, 0, 0, 0);
+            Ready(IsoDoom.Sim.weapontype_t.wp_shotgun);
+            log("reload switched " + State());
+            for (int i = 0; i < 200 && p.readyweapon == IsoDoom.Sim.weapontype_t.wp_shotgun; i++)
+                g.Fire(1100, 300);
+            g.Tic(0, 0, 0, 0);
+            Ready(IsoDoom.Sim.weapontype_t.wp_pistol);
+            log("out of shells " + State());
+            if (p.health <= 0 || p.readyweapon != IsoDoom.Sim.weapontype_t.wp_pistol)
+                throw new InvalidOperationException("the super shotgun route went wrong");
+        }, Monsters: true),
         ["testmap-pickups"] = new(() => TestMapWad("pickups"), "E1M1", """
 # The pickups test map (T6.8, RouteTestMaps) on skill 1 (ammo doubled,
 # damage halved): stand in the damage room N for three hits (the red
