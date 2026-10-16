@@ -346,7 +346,8 @@ public partial class WadViewerCheck : Node
         // Drawn pixels against the CPU conversion.
         await NextFrame();
         await NextFrame();
-        using Image frame = _viewer.GetViewport().GetTexture().GetImage(); // T8.3d: disposed (so held) after its last call
+        Image frame = _viewer.GetViewport().GetTexture().GetImage();
+        using var keepFrame = GodotRefs.Keep(frame); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         Rect2 rect = _viewer.MainView.ImageRect.GetGlobalRect();
         int ox = (int)rect.Position.X, oy = (int)rect.Position.Y;
         if (ox < 0 || oy < 0 || ox + img.Width > frame.GetWidth() || oy + img.Height > frame.GetHeight()
@@ -413,7 +414,8 @@ public partial class WadViewerCheck : Node
             await NextFrame();
             await NextFrame();
             string path = Path.Combine(dir, file);
-            using Image shot = _viewer.GetViewport().GetTexture().GetImage(); // T8.3d: held across the save
+            Image shot = _viewer.GetViewport().GetTexture().GetImage();
+            using var keepShot = GodotRefs.Keep(shot); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
             Error err = shot.SavePng(path);
             if (err != Error.Ok)
                 Fail($"screenshot {path}: {err}");
@@ -454,7 +456,8 @@ public partial class WadViewerCheck : Node
             await NextFrame();
             await NextFrame();
             string path = Path.Combine(dir, file);
-            using Image shot = _viewer.GetViewport().GetTexture().GetImage(); // T8.3d: held across the save
+            Image shot = _viewer.GetViewport().GetTexture().GetImage();
+            using var keepShot = GodotRefs.Keep(shot); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
             Error err = shot.SavePng(path);
             if (err != Error.Ok)
                 Fail($"screenshot {path}: {err}");

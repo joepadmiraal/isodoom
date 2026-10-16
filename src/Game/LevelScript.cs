@@ -1257,7 +1257,8 @@ public partial class LevelScript : Node
         for (int i = 0; i < 3; i++)
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         path = WadLocator.ResolveUserPath(path);
-        using Image shot = GetViewport().GetTexture().GetImage(); // T8.3d: held across the save (Render.GodotRefs)
+        Image shot = GetViewport().GetTexture().GetImage();
+        using var keepShot = GodotRefs.Keep(shot); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         Error err = shot.SavePng(path);
         GD.Print(err == Error.Ok ? $"Level script: saved {path}" : $"Level script: could not save {path}: {err}");
         return err == Error.Ok ? 0 : 1;

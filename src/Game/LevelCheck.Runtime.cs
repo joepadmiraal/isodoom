@@ -223,7 +223,8 @@ public partial class LevelCheck
     /// <summary>The <c>side_textures</c> upload read back from the GPU against the CPU copy.</summary>
     private void CheckSideTexturesUpload(LevelMesh m, string map)
     {
-        using Image? gpu = m.SideTexturesTexture.GetImage(); // T8.3d: disposed (so held) after its last call
+        Image? gpu = m.SideTexturesTexture.GetImage();
+        using var keepGpu = GodotRefs.Keep(gpu); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         if (gpu is null || gpu.GetFormat() != Image.Format.Rgf)
         {
             Fail($"{map}: side_textures can't be read back as RGF");
@@ -512,7 +513,8 @@ public partial class LevelCheck
             _translatedSlots += translated;
             if (CanCapture)
             {
-                using Image? info = m.TextureInfoTexture.GetImage(); // T8.3d: disposed (so held) after its last call
+                Image? info = m.TextureInfoTexture.GetImage();
+                using var keepInfo = GodotRefs.Keep(info); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
                 for (int i = 0; info is not null && i < m.Atlas.Rects.Count; i++)
                 {
                     if (info.GetPixel(i % LevelMesh.DataWidth, i / LevelMesh.DataWidth) != m.TextureInfo(i))

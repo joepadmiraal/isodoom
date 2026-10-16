@@ -113,7 +113,8 @@ public partial class FlashGlow : MeshInstance3D
 
     private static ArrayMesh Build()
     {
-        using var st = new SurfaceTool(); // T8.3d: disposed (so held) after Commit (GodotRefs)
+        var st = new SurfaceTool();
+        using var keepSt = GodotRefs.Keep(st); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         st.Begin(Mesh.PrimitiveType.Triangles);
         float s = Radius / LevelMesh.MapUnitsPerMetre;
         Color centre = Colors.White, rim = Colors.White with { A = 0 };

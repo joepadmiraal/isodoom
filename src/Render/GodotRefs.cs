@@ -18,8 +18,10 @@ namespace IsoDoom.Render;
 /// build). The rule (SPEC §12 T8.3d): a <see cref="Variant"/>, a
 /// <c>Godot.Collections</c> collection or a <see cref="RefCounted"/> wrapper
 /// made or returned for one call is disposed (or, for a wrapper we keep,
-/// held) on the main thread after its last use, never left to the finalizer.
-/// Main thread only.
+/// held) on the main thread after its last use, never left to the finalizer
+/// while Godot may use it; a read-back <see cref="Image"/> or a
+/// <see cref="SurfaceTool"/> in a local is kept alive to its scope's end
+/// instead (<see cref="Keep"/>). Main thread only.
 /// </summary>
 public static class GodotRefs
 {
@@ -61,6 +63,27 @@ public static class GodotRefs
         Godot.Collections.Array<InputEvent> events = InputMap.ActionGetEvents(StringNames.Get(action));
         using var array = (Godot.Collections.Array)events; // the typed array's own, disposable
         return [.. events];
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="value"/>'s wrapper alive to the end of a
+    /// <c>using</c> scope without disposing it: in an optimized build a local
+    /// is dead after its last read, so a <see cref="RefCounted"/> only a local
+    /// owns (a read-back <see cref="Image"/>, a <see cref="SurfaceTool"/>)
+    /// could be finalized, and freed, during its last native call. For these
+    /// locals the rule's <c>using</c> of the wrapper itself was measured worse
+    /// (SPEC §12 T8.3d): disposing them, mostly the dummy renderer's read-back
+    /// images, which Godot also holds and returns as the same object each
+    /// call, came with a corrupt strong GC handle under
+    /// <c>ISODOOM_GC_STRESS</c>, 7 Doom II checks in 450, against 0 in 450
+    /// kept alive.
+    /// </summary>
+    public static Kept Keep(GodotObject? value) => new(value);
+
+    /// <summary><see cref="Keep"/>'s scope: its end reads the value, so the wrapper lives until then.</summary>
+    public readonly struct Kept(GodotObject? value) : IDisposable
+    {
+        public void Dispose() => GC.KeepAlive(value);
     }
 
     /// <summary>

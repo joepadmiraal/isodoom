@@ -69,7 +69,8 @@ public partial class AimMarker : MeshInstance3D
 
     private static ArrayMesh Build()
     {
-        using var st = new SurfaceTool(); // T8.3d: disposed (so held) after Commit (GodotRefs)
+        var st = new SurfaceTool();
+        using var keepSt = GodotRefs.Keep(st); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         st.Begin(Mesh.PrimitiveType.Triangles);
         float s = 1 / LevelMesh.MapUnitsPerMetre;
         Color ring = MarkerColor with { A = 0.45f }, chevron = MarkerColor with { A = 0.9f };

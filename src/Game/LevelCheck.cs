@@ -355,7 +355,8 @@ public partial class LevelCheck : Godot.Node
     /// <summary>Every sector's data texel (and, with a renderer, the GPU copy) against the level.</summary>
     private void CheckSectorData(LevelMesh m, string map)
     {
-        using Image? gpu = CanCapture ? m.SectorDataTexture.GetImage() : null; // T8.3d: disposed (so held) after its last call
+        Image? gpu = CanCapture ? m.SectorDataTexture.GetImage() : null;
+        using var keepGpu = GodotRefs.Keep(gpu); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         if (CanCapture && (gpu is null || gpu.GetFormat() != Image.Format.Rgbaf))
             Fail($"{map}: the sector data texture can't be read back as RGBAF");
         foreach (Sector s in m.Level.Sectors)
@@ -369,7 +370,8 @@ public partial class LevelCheck : Godot.Node
 
         // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere); T6.13d: the door flag;
         // and whether its ceiling moves (a door at least: the upper walls over it are kept).
-        using Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null; // T8.3d: disposed (so held) after its last call
+        Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null;
+        using var keepLidGpu = GodotRefs.Keep(lidGpu); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         bool[] doors = DoorLids.FindDoors(m.Level);
         foreach (Sector s in m.Level.Sectors)
         {
@@ -522,14 +524,15 @@ public partial class LevelCheck : Godot.Node
 
         // The uploads: the atlas as RG8, texture_info as RGBAF (read back from the GPU when there is one).
         byte[] rg8 = IndexedTextures.ToRg8(m.Atlas.Image);
-        // T8.3d: a new Image only this local owns, disposed (so held) after its last call (Render.GodotRefs).
-        using Image? atlasImage = CanCapture ? m.AtlasTexture.GetImage() : IndexedTextures.CreateImage(m.Atlas.Image);
+        Image? atlasImage = CanCapture ? m.AtlasTexture.GetImage() : IndexedTextures.CreateImage(m.Atlas.Image);
+        using var keepAtlasImage = GodotRefs.Keep(atlasImage); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         if (atlasImage is null || atlasImage.GetFormat() != Image.Format.Rg8 || atlasImage.GetWidth() != m.Atlas.Image.Width
             || atlasImage.GetHeight() != m.Atlas.Image.Height || !atlasImage.GetData().AsSpan().SequenceEqual(rg8))
             Fail($"{map}: the atlas upload differs from the atlas");
         if (CanCapture)
         {
-            using Image? info = m.TextureInfoTexture.GetImage(); // T8.3d: disposed (so held) after its last call
+            Image? info = m.TextureInfoTexture.GetImage();
+            using var keepInfo = GodotRefs.Keep(info); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
             for (int i = 0; info is not null && i < m.Atlas.Rects.Count; i++)
             {
                 if (info.GetPixel(i % LevelMesh.DataWidth, i / LevelMesh.DataWidth) != m.TextureInfo(i))
@@ -570,7 +573,8 @@ public partial class LevelCheck : Godot.Node
     private void CheckLightTables(LevelMesh m, string map)
     {
         byte[] expected = m.Lights.ToBytes();
-        using Image? image = m.LightTablesTexture.GetImage(); // null under the dummy renderer; T8.3d: disposed (so held) after its last call
+        Image? image = m.LightTablesTexture.GetImage(); // null under the dummy renderer
+        using var keepImage = GodotRefs.Keep(image); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         if (image is null)
         {
             if (CanCapture)
@@ -1411,7 +1415,8 @@ public partial class LevelCheck : Godot.Node
     {
         await NextFrame();
         await NextFrame();
-        using Image frame = GetViewport().GetTexture().GetImage(); // T8.3d: disposed (so held) after its last call
+        Image frame = GetViewport().GetTexture().GetImage();
+        using var keepFrame = GodotRefs.Keep(frame); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
         Vector2I size = ViewSize();
         if (frame.GetWidth() != size.X || frame.GetHeight() != size.Y)
         {

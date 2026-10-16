@@ -28,3 +28,4 @@ TestResults/
 
 # local deploy/test scripts
 deploy/
+stress-runs/
