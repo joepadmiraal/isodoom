@@ -1,7 +1,8 @@
 // Dev container for IsoDoom (Godot 4 + C#/.NET 10) on a Linux host.
 // The Godot editor and game run inside the container and draw on the host's
-// display: Wayland and X11 sockets, the GPU (/dev/dri) and the PulseAudio
-// socket are passed through.
+// Wayland display: its socket, the GPU (/dev/dri) and the PulseAudio socket
+// are passed through. The host's X11 display is not (any X client can read
+// the others' input and screen): X11 is only Xvfb's, inside the container.
 {
   "name": "IsoDoom (Godot 4 + .NET 10)",
   "build": {
@@ -17,6 +18,8 @@
     "ghcr.io/devcontainers/features/node:1": {},
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
+  // Prepares the mount sources on the host (see initialize.sh).
+  "initializeCommand": "sh \"${localWorkspaceFolder}/.devcontainer/initialize.sh\"",
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
 
@@ -24,18 +27,21 @@
     // GPU for Vulkan/GL rendering (Mesa: Intel/AMD).
     "--device=/dev/dri",
     // Host GIDs of the `video` and `render` groups, so the container user can
-    // open /dev/dri/*. Check yours with `getent group video render`.
-    "--group-add=44",
-    "--group-add=990"
+    // open /dev/dri/*. Check yours with `getent group video render` and, where
+    // they differ from 44 and 990, set ISODOOM_VIDEO_GID / ISODOOM_RENDER_GID
+    // in the host's environment (e.g. ~/.profile).
+    "--group-add=${localEnv:ISODOOM_VIDEO_GID:44}",
+    "--group-add=${localEnv:ISODOOM_RENDER_GID:990}"
   ],
 
   "mounts": [
-    // Wayland
-    "source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=/tmp/runtime-vscode/${localEnv:WAYLAND_DISPLAY},type=bind",
-    // X11 / XWayland fallback (may need `xhost +si:localuser:$USER` on the host)
-    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind",
-    // Audio (PipeWire's PulseAudio socket)
-    "source=${localEnv:XDG_RUNTIME_DIR}/pulse/native,target=/tmp/runtime-vscode/pulse/native,type=bind",
+    // Wayland: a hard link to the host's socket, prepared by initialize.sh
+    // (an empty file without one: then the editor and game only run headless
+    // or under xvfb-run)
+    "source=${localEnv:XDG_RUNTIME_DIR}/isodoom-devcontainer/wayland,target=/tmp/runtime-vscode/wayland-0,type=bind",
+    // Audio: PipeWire's PulseAudio socket dir (pulse/native), created by
+    // initialize.sh if no sound server runs yet
+    "source=${localEnv:XDG_RUNTIME_DIR}/pulse,target=/tmp/runtime-vscode/pulse,type=bind",
     // Keep NuGet packages across container rebuilds
     "source=isodoom-nuget,target=/home/vscode/.nuget/packages,type=volume",
     // Keep Claude Code login, settings and history across container rebuilds
@@ -44,8 +50,8 @@
 
   "containerEnv": {
     "XDG_RUNTIME_DIR": "/tmp/runtime-vscode",
-    "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
-    "DISPLAY": "${localEnv:DISPLAY}",
+    "WAYLAND_DISPLAY": "wayland-0",
+    "DISPLAY": "",
     "PULSE_SERVER": "unix:/tmp/runtime-vscode/pulse/native",
     "GODOT": "/usr/local/bin/godot",
     "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
@@ -53,8 +59,10 @@
   },
 
   // ~/.nuget itself is created by Docker as root (parent of the volume mount);
-  // NuGet must be able to write ~/.nuget/NuGet/NuGet.Config there.
-  "postCreateCommand": "sudo chown vscode:vscode /home/vscode/.nuget /home/vscode/.nuget/packages /home/vscode/.claude && godot --version && dotnet --info | head -n 5",
+  // NuGet must be able to write ~/.nuget/NuGet/NuGet.Config there. The host's
+  // GIDs added in runArgs that the image has no group for (the render group's)
+  // get a name, `host-gid-N`, or bash's `groups` warns at every shell.
+  "postCreateCommand": "sudo chown vscode:vscode /home/vscode/.nuget /home/vscode/.nuget/packages /home/vscode/.claude && for g in $(id -G); do getent group $g >/dev/null || sudo groupadd -g $g host-gid-$g; done && godot --version && dotnet --info | head -n 5",
 
   "customizations": {
     "vscode": {
