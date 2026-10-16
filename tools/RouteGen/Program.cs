@@ -492,6 +492,74 @@ public static class Program
         log("done " + Players(g));
     };
 
+    /// <summary>T11.7a: the synthetic west room's corner each player keeps to, off the deathmatch starts (so a reborn always finds one free).</summary>
+    private static readonly (double X, double Y)[] _syntheticCorners = [(-96, 96), (96, -96), (-96, -96), (96, 0)]; // (none in line with the barrel, (64, 64), from another)
+
+    /// <summary>T11.7a: player <paramref name="player"/> walks to its corner of the synthetic west room.</summary>
+    private static void Home(Steer g, int player)
+    {
+        g.Player = player;
+        g.GoTo(_syntheticCorners[player].X, _syntheticCorners[player].Y, 8);
+        g.Settle();
+    }
+
+    /// <summary>T11.7a: reborns every dead player of the game in turn (each <see cref="Reborn"/>), each then walking to its corner.</summary>
+    private static void RebornAll(Steer g, Action<string> log)
+    {
+        for (int i = 0; i < g.Players; i++)
+        {
+            if (g.World.players[i].health <= 0)
+            {
+                Reborn(g, i);
+                log($"player {i + 1} reborn: " + Players(g));
+                Home(g, i);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T11.7a: the synthetic E1M1 in deathmatch to its exit (the deathmatch intermission): every
+    /// player walks to its corner of the west room (<see cref="_syntheticCorners"/>, off the
+    /// deathmatch starts); each (hunter, prey) of <paramref name="frags"/> in turn, the prey reborn
+    /// and both back in their corners; then player <paramref name="suicide"/> walks into the barrel
+    /// (64, 64) shooting it (each shot thrusts it away) and the barrel's blast, its <c>target</c> the
+    /// shooter, kills it (<c>frags[i][i]</c>, a suicide); every dead player is reborn, and player 1
+    /// uses the S1 exit (L0, the west room's north wall): the last tic.
+    /// </summary>
+    private static Action<Steer, Action<string>> SyntheticDeathmatchExit(int suicide, params (int Hunter, int Prey)[] frags) => (g, log) =>
+    {
+        g.Wait(1); // (G_PlayerReborn's usedown)
+        log("spawned: " + Players(g));
+        for (int i = 0; i < g.Players; i++)
+            Home(g, i);
+        foreach ((int hunter, int prey) in frags)
+        {
+            Hunt(g, hunter, prey);
+            log($"player {hunter + 1} fragged player {prey + 1}: " + Players(g));
+            RebornAll(g, log);
+            Home(g, hunter);
+            g.Wait(10);
+        }
+        IsoDoom.Sim.mobj_t barrel = g.World.Mobjs().Single(m => m.type == IsoDoom.Sim.mobjtype_t.MT_BARREL);
+        g.Player = suicide;
+        g.GoTo(30, 64, 4);
+        g.Settle();
+        for (int i = 0; i < 200 && barrel.health > 0; i++) // (walking into it: each shot thrusts it away)
+            g.Tic(25, 0, g.TurnTo(barrel.x / 65536.0, barrel.y / 65536.0), IsoDoom.Sim.buttoncode_t.BT_ATTACK);
+        for (int i = 0; i < 40 && g.World.players[suicide].health > 0; i++)
+            g.Wait(1); // (the blast: S_BEXP3's A_Explode)
+        g.Wait(1);
+        if (g.World.players[suicide].health > 0 || g.World.players[suicide].frags[suicide] == 0)
+            throw new InvalidOperationException($"player {suicide + 1} survived the barrel: {Players(g)}");
+        log($"player {suicide + 1} killed itself with the barrel: " + Players(g));
+        RebornAll(g, log);
+        g.Player = 0;
+        g.Wait(10);
+        g.GoTo(0, 96, 4);
+        g.Exit(0, 128);
+        log("exit: " + Players(g));
+    };
+
     /// <summary>
     /// T11.4: altdeath (deathmatch 2): player 1 takes the nearest of <paramref name="items"/> (it does
     /// not stay) and, once P_RespawnSpecials brought it back 30 s later (an item fog first), takes it again.
@@ -1464,6 +1532,36 @@ players 2
 deathmatch 1
 
 """, Deathmatch2P(IsoDoom.Sim.mobjtype_t.MT_SHOTGUN, IsoDoom.Sim.mobjtype_t.MT_CHAINGUN), Players: 2, Deathmatch: 1),
+        ["synthetic-dm-exit-2p"] = new(Synthetic, "E1M1", """
+# The synthetic E1M1 in deathmatch to its exit (T11.7a: the deathmatch
+# intermission), two players, no monsters: both spawn at the west room's
+# deathmatch starts; player 1 frags player 2 with its pistol, player 2 is
+# reborn and frags player 1, who is reborn; player 1 shoots the barrel beside
+# it (64, 64) and its blast kills it (a suicide: frags[0][0]), it is reborn,
+# and uses the S1 exit (L0), the last tic. Frags: player 1 1 - 1 = 0,
+# player 2 1. Written by tools/RouteGen (synthetic-dm-exit-2p); its dumps
+# (.vanilla, .wi, .wiskip) are committed (CI).
+iwad synthetic
+players 2
+deathmatch 1
+exit normal
+
+""", SyntheticDeathmatchExit(0, (0, 1), (1, 0)), Players: 2, Deathmatch: 1),
+        ["synthetic-dm-exit-4p"] = new(Synthetic, "E1M1", """
+# The synthetic E1M1 in altdeath (deathmatch 2) to its exit (T11.7a: the
+# deathmatch intermission), four players, no monsters: all spawn at the
+# west room's deathmatch starts; player 1 frags player 2, player 2 (reborn)
+# frags player 1, player 3 frags player 4 and player 1 frags player 3, each
+# prey reborn; player 4 shoots the barrel beside it (64, 64) and its blast
+# kills it (a suicide: its total -1), the dead are reborn, and player 1 uses
+# the S1 exit (L0), the last tic. Written by tools/RouteGen
+# (synthetic-dm-exit-4p); its dumps (.vanilla, .wi, .wiskip) are committed (CI).
+iwad synthetic
+players 4
+deathmatch 2
+exit normal
+
+""", SyntheticDeathmatchExit(3, (0, 1), (1, 0), (2, 3), (0, 2)), Players: 4, Deathmatch: 2),
         ["testmap-altdeath"] = new(() => TestMapWad("dm"), "E1M1", """
 # The deathmatch test map (T11.4) in altdeath (deathmatch 2), player 1 alone
 # (vanilla's -altdeath without a netgame): it spawns at a random deathmatch

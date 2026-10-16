@@ -151,6 +151,8 @@ public class DemoSyncTests
     [InlineData("testmap-dm")]
     [InlineData("dm-e1m1-2p")]
     [InlineData("dm2-e1m1-respawn")]
+    [InlineData("synthetic-dm-exit-2p")] // T11.7a
+    [InlineData("synthetic-dm-exit-4p")]
     public void AMultiPlayerRouteAsANetdemoStaysInSyncWithVanilla(string name)
     {
         var route = VanillaRoute.Load(name);

@@ -1164,8 +1164,11 @@ public static class SyntheticIwad
             flat.AddRange(l);
 
         w.Markers("E1M2");
+        // T11.7a: four deathmatch starts (type 11) along the corridor, last (they spawn nothing outside
+        // deathmatch), so a deathmatch exit from E1M1 goes on into E1M2 (vanilla's I_Error below 4)
         w.Lump("THINGS", Shorts(64, -64, 90, 1, 7, TeleportDestX, TeleportDestY, 0, 14, 7, // player 1 start in the corridor; the teleport destination (T5.6)
-            BlueCardX, KeysY, 0, 5, 7, YellowSkullX, KeysY, 0, 39, 7));                          // a blue keycard and a yellow skull key (T5.8)
+            BlueCardX, KeysY, 0, 5, 7, YellowSkullX, KeysY, 0, 39, 7,                            // a blue keycard and a yellow skull key (T5.8)
+            192, -64, 0, 11, 7, 320, -64, 90, 11, 7, 448, -64, 180, 11, 7, 576, -64, 270, 11, 7)); // the deathmatch starts
         w.Lump("LINEDEFS", Shorts([.. flat]));
         w.Lump("SIDEDEFS", Concat([.. sides]));
         w.Lump("VERTEXES", Shorts([.. vertexes]));

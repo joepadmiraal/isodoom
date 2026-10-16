@@ -2,6 +2,7 @@
 """Vanilla intermission reference (T7.4; dev tool). Usage:
 
     intermissions.py REF DOOM1.WAD OUTDIR ROUTE[@PRESSES]... [--images DIR TICS]
+        [--synthetic SYNTHETIC.wad] [--testmaps DIR]
 
 Plays each DOOM1.WAD, (T10.1) Doom II, (T10.7) Final Doom or (M9) The Ultimate Doom exit route (a .route file with an exit header,
 tests/IsoDoom.Tests/Sim/Routes) in the vanilla reference (REF, dump.c built
@@ -18,6 +19,12 @@ game's intermission with the dumps tic by tic. T11.7: a multi-player route
 (players N) plays as a netdemo; its intermission's commands are player 1's,
 the others idle (routes.demo), and the dump carries every player's stats and
 the net game's or deathmatch's counters (dump.c, ref.patch's WI_dumpState).
+T11.7a: a route's timer header is the reference's -timer (a deathmatch timer
+route's exit), its gameversion header -gameversion, and a synthetic or test
+map route (with --synthetic, the synthetic IWAD; --testmaps, the test map
+PWADs' directory: routes.sh's) plays with it as -file over DOOM1.WAD, as
+routes.py plays them; its dumps are not WAD-derived and go beside the route
+(commit them), as its .vanilla does.
 """
 import os, subprocess, sys, tempfile
 
@@ -32,6 +39,12 @@ SKIP = '20,40,60'  # skips the counting, then the next location
 def main():
     args = sys.argv[1:]
     images = None
+    wads = {}
+    for opt in ('--synthetic', '--testmaps'):
+        if opt in args:
+            i = args.index(opt)
+            wads[opt] = os.path.abspath(args[i + 1])
+            del args[i:i + 2]
     if '--images' in args:
         i = args.index('--images')
         images = (os.path.abspath(args[i + 1]), args[i + 2])
@@ -43,8 +56,23 @@ def main():
     for spec in args[3:]:
         route, _, presses = spec.partition('@')
         head, cmds = routes.parse(route)
-        if not routes.id_wad(head) or head['exit'] is None:
-            sys.exit(f'{route}: only the id IWADs\' routes with an exit header')
+        if head['exit'] is None:
+            sys.exit(f'{route}: only routes with an exit header')
+        extra = []  # T11.7a: the reference's arguments routes.py gives the route too
+        if head['iwad'] == 'synthetic':
+            if '--synthetic' not in wads:
+                sys.exit(f'{route}: a synthetic route needs --synthetic SYNTHETIC.wad')
+            extra += ['-file', wads['--synthetic']]
+        elif head['iwad'] == 'testmap':
+            pwad = os.path.join(wads.get('--testmaps', ''), head['map'] + '.wad')
+            if not os.path.exists(pwad):
+                sys.exit(f'{route}: no test map {pwad} (--testmaps DIR, RouteTestMaps.Maps)')
+            extra += ['-file', pwad]
+        if head['gameversion']:
+            extra += ['-gameversion', head['gameversion']]
+        if head['timer']:
+            extra += ['-timer', str(head['timer'])]
+        routedir = outdir if routes.id_wad(head) else os.path.dirname(os.path.abspath(route))
         schedules = [p for p in presses.split('@') if p] if presses else [DEFAULT, SKIP]
         name = os.path.splitext(os.path.basename(route))[0]
         for n, schedule in enumerate(schedules):
@@ -53,7 +81,7 @@ def main():
                 sys.exit(f'{spec}: intermission tics start at 1')
             inter = [(0, 0, 0, 2 if t in tics else 0) for t in range(1, max(tics) + 4 * 35 + 20)]
             suffix = '' if not presses and n == 0 else str(n) if presses else 'skip'
-            out = os.path.join(outdir, f'{name}.wi{suffix}')
+            out = os.path.join(routedir, f'{name}.wi{suffix}')
             tmp = tempfile.mkdtemp()
             try:
                 open(os.path.join(tmp, 'route.lmp'), 'wb').write(routes.demo(head, cmds + inter))
@@ -67,7 +95,7 @@ def main():
                 if images:
                     os.makedirs(images[0], exist_ok=True)
                     env['DUMP_WI_DIR'], env['DUMP_WI_TICS'] = images
-                r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1), '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
+                r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1)] + extra + ['-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
                                    cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             finally:  # (no shutil: the dev container's Python is minimal)
                 for root, dirs, files in os.walk(tmp, topdown=False):
