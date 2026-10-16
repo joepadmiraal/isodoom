@@ -251,6 +251,8 @@ public partial class LevelScript : Node
                 break;
             }
         }
+        // T11.6: an exchange without a game: the netgame's Start begins none (T11.8)
+        _scene.NetExchangeOnly = Array.Exists(_commands, c => c.StartsWith("netexchange", StringComparison.Ordinal));
         _ = RunAsync();
     }
 
@@ -264,6 +266,8 @@ public partial class LevelScript : Node
             GD.Print($"Level script: {command}");
             try
             {
+                if (_scene.Net is not null && NetRefused(w[0]))
+                    throw new ArgumentException("not in a netgame: it would change this machine's world alone (a desync; T11.8)");
                 switch (w[0])
                 {
                     case "down": Key(w[1], true); break;
@@ -372,7 +376,7 @@ public partial class LevelScript : Node
                     case "tics":
                         {
                             long until = _scene.TicsRun + Int(w[1]);
-                            while (_scene.TicsRun < until && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.TicsCanRun)
+                            while (_scene.TicsRun < until && !_scene.WorldHolds && _scene.TicsCanRun)
                                 await Frames(1);
                             break;
                         }
@@ -629,7 +633,7 @@ public partial class LevelScript : Node
                         {
                             // T7.1: waits for the queued tics (and a title loop step due); fails unless the game state is NAME
                             await Drain();
-                            while (_scene.Flow.advancedemo && !(_scene.ScriptedTics && _scene.QueuedTics == 0))
+                            while (_scene.Flow.advancedemo && !_scene.WorldHolds)
                                 await Frames(1);
                             string state = GameFlow.StateName(_scene.GameState);
                             GD.Print($"Level script: gamestate {state}: {_scene.Flow.StateText()}{(_scene.LevelEnded is { } ended ? $" ({ended})" : "")}");
@@ -753,6 +757,11 @@ public partial class LevelScript : Node
                         break;
                     case "net": GD.Print($"Level script: net: {_scene.NetText()}"); break; // T11.6
                     case "netexchange": exit |= await NetExchange(Int(w[1])); break; // T11.6
+                    case "netwait": exit |= await NetWait(Int(w[1]), w.Length > 2 ? Int(w[2]) : 60); break; // T11.8
+                    case "nettic": exit |= NetTic(Int(w[1])); break; // T11.8
+                    case "netcheck": exit |= await NetCheck(w.Length > 1 ? Int(w[1]) : 30); break; // T11.8
+                    case "until": exit |= await Until(w[1], w[2], w.Length > 3 ? Int(w[3]) : 120); break; // T11.8
+                    case "kill": Kill(w.Length > 1 ? Int(w[1]) - 1 : null); break; // T11.8
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -820,7 +829,7 @@ public partial class LevelScript : Node
         NetExchange x = _scene.StartNetExchange(tics);
         NetSession net = _scene.Net!;
         ulong deadline = Time.GetTicksMsec() + (ulong)(x.Tics * 1000 / IsoDoom.Net.NetProtocol.TicRate) + 60_000;
-        while (!x.Done && net.Failure is null && Time.GetTicksMsec() < deadline)
+        while (!x.Done && net.Failure is null && net.StartRefusal is null && Time.GetTicksMsec() < deadline)
             await Frames(1);
         if (net.Server is { } server)
         {
@@ -839,7 +848,7 @@ public partial class LevelScript : Node
         _scene.StopNet();
         if (ok)
             return 0;
-        GD.PrintErr($"Level script: netexchange: failed ({(net.Failure ?? (x.Done ? "desync or windows not compared" : "timeout"))})");
+        GD.PrintErr($"Level script: netexchange: failed ({(net.Failure ?? net.StartRefusal ?? (x.Done ? "desync or windows not compared" : "timeout"))})");
         return 1;
     }
 
@@ -1009,7 +1018,7 @@ public partial class LevelScript : Node
         ulong frames = Engine.GetProcessFrames();
         _scene.TicAllocatedBytes = 0;
         _scene.TicTimes = times;
-        while (times.Count < n && !(_scene.ScriptedTics && _scene.QueuedTics == 0) && _scene.PlayerMobj is not null)
+        while (times.Count < n && !_scene.WorldHolds && _scene.PlayerMobj is not null)
             await Frames(1);
         _scene.TicTimes = null;
         gcs = GC.CollectionCount(0) - gcs;
@@ -1083,11 +1092,14 @@ public partial class LevelScript : Node
         string map = (route.Map ?? "E1M1").ToUpperInvariant();
         string? shown = _scene.Mesh?.Level.Name;
         var wrong = new List<string>();
-        if (_scene.Tweaks != IsoDoom.Sim.Tweaks.Vanilla)
+        // T11.8: the world's settings (a netgame's are the host's)
+        IsoDoom.Sim.World? game = _scene.World;
+        bool net = _scene.NetGame is not null;
+        if ((game?.tweaks ?? _scene.Tweaks) != IsoDoom.Sim.Tweaks.Vanilla)
             wrong.Add("needs --level-tweaks=vanilla (a route is a vanilla demo)");
-        if (_scene.NoMonsters == route.Monsters)
+        if ((game?.settings.nomonsters ?? _scene.NoMonsters) == route.Monsters)
             wrong.Add(route.Monsters ? "needs --level-monsters=on (the route has monsters)" : "needs --level-monsters=off (the route is -nomonsters)");
-        if ((int)_scene.Skill + 1 != route.Skill)
+        if ((int)(game?.gameskill ?? _scene.Skill) + 1 != route.Skill)
             wrong.Add($"needs --level-skill={route.Skill}");
         if (!string.Equals(shown, map, StringComparison.OrdinalIgnoreCase))
             wrong.Add($"is for {map}, the scene shows {shown ?? "no map"}");
@@ -1096,10 +1108,17 @@ public partial class LevelScript : Node
             wrong.Add($"needs -gameversion {GameVersions.Cmdline(version)} (T10.7)");
         if (_scene.PlayerMobj is null)
             wrong.Add("no player");
-        // T11.2: the scene plays player 1 alone (T11.8 brings the netgame's tics); T11.4: in the
-        // route's modes (-deathmatch, -altdeath, -timer, -respawn, -fast as the scene's arguments)
-        if (route.PlayersInGame != 1)
-            wrong.Add("is a multi-player game: the level scene plays player 1 alone");
+        // T11.8: a multi-player route with its players in the game (--level-players=N, or a netgame's Start);
+        // T11.4: in the route's modes (-deathmatch, -altdeath, -timer, -respawn, -fast as the scene's arguments)
+        int inGame = 0;
+        for (int i = 0; game is not null && i < IsoDoom.Sim.World.MAXPLAYERS; i++)
+            inGame |= game.playeringame[i] ? 1 << i : 0;
+        if (game is not null && inGame != route.PlayersInGame)
+            wrong.Add($"needs players {route.PlayersInGame:x} in the game (--level-players={route.PlayerCount}, or -players {route.PlayerCount} in a netgame), the game has {inGame:x}");
+        if (net && route.Start is not null)
+            wrong.Add("has a start: a netgame's players are the sim's alone");
+        if (net && !_netTic)
+            wrong.Add("needs nettic T first in a netgame (every machine plays it from the same tic)");
         if (_scene.World is { } w && (w.deathmatch, w.settings.timelimit, w.respawnparm, w.fastparm) != (route.Deathmatch, route.Timer, route.Respawn, route.Fast))
             wrong.Add($"needs deathmatch {route.Deathmatch}, timer {route.Timer}, respawn {route.Respawn}, fast {route.Fast} (-deathmatch, -altdeath, -timer N, -respawn, -fast; T11.4)");
         if (wrong.Count > 0)
@@ -1118,8 +1137,13 @@ public partial class LevelScript : Node
         for (int tic = 0; tic < count; tic++)
         {
             int t = tic;
-            _scene.QueueTic(route.Cmds[tic], System.Linq.Enumerable.Any(route.Events, e => e.Tic == t) ? world => route.RunEvents(world, t) : null);
+            Action<IsoDoom.Sim.World>? events = System.Linq.Enumerable.Any(route.Events, e => e.Tic == t) ? world => route.RunEvents(world, t) : null;
+            if (net || route.PlayersInGame != 1)
+                _scene.QueuePlayersTic(route.NetCmds[tic], events); // T11.8: every player's (a netgame sends its own)
+            else
+                _scene.QueueTic(route.Cmds[tic], events);
         }
+        _netTic = false; // (the next route needs its own nettic)
         GD.Print($"Level script: {what}: {count} tics queued on {map}{(count < route.Cmds.Count ? $" (of {route.Cmds.Count})" : route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
         return true;
     }
@@ -1292,7 +1316,7 @@ public partial class LevelScript : Node
         int frames = 0;
         while (!_scene.WipeHeld)
         {
-            bool waiting = flow.Wipe.go || _scene.TicsCanRun && !(_scene.ScriptedTics && _scene.QueuedTics == 0);
+            bool waiting = flow.Wipe.go || _scene.TicsCanRun && !_scene.WorldHolds;
             if (!waiting || number is int n && flow.Wipe.count > n || ++frames > 35 * 120)
             {
                 GD.PrintErr($"Level script: wipe {at}{(number is int k ? $" {k}" : "")}: no melt got there ({flow.StateText()}, wipes so far: {flow.Wipe.count}, the last {flow.Wipe.steps} steps)");

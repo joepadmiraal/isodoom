@@ -29,6 +29,9 @@ public interface ISetupHost
 
     /// <summary>Every setting and binding back to its default.</summary>
     void ResetSettings();
+
+    /// <summary>T11.8: whether setting <paramref name="key"/> is locked (sim state a netgame's host set): the menu refuses to change it.</summary>
+    bool SettingLocked(string key) => false;
 }
 
 // T7.3: the options' text pages, reached from vanilla's options menu (its
@@ -164,6 +167,11 @@ public sealed partial class MMenu
     {
         if (SetupHost is not { } host)
             return;
+        if (host.SettingLocked(def.Key))
+        {
+            S_StartSound(sfxenum_t.sfx_oof); // T11.8: the netgame's (the host's) setting
+            return;
+        }
         host.SetSetting(def.Key, def.Step(host.GetSetting(def.Key), step));
     }
 

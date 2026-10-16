@@ -110,6 +110,9 @@ public sealed partial class MMenu
     public const string QSAVESPOT = "you haven't picked a quicksave slot yet!\n\n" + PRESSKEY;
     public const string QLOADNET = "you can't quickload during a netgame!\n\n" + PRESSKEY;
 
+    /// <summary>T11.8: no saves in a netgame (the user's decision, SPEC §12 "M11 multiplayer"; vanilla's netgames save on every machine).</summary>
+    public const string SAVENET = "you can't save during a netgame!\n\n" + PRESSKEY;
+
     /// <summary>dstrings.h <c>NUM_QUITMESSAGES</c> (Chocolate Doom: eight for each game).</summary>
     public const int NUM_QUITMESSAGES = 8;
 
@@ -512,7 +515,7 @@ public sealed partial class MMenu
     /// <summary>m_menu.c <c>M_LoadGame</c>.</summary>
     private void M_LoadGame(int choice)
     {
-        if (flow.World?.netgame == true)
+        if (flow.InNetGame)
         {
             M_StartMessage(LOADNET, null, false);
             return;
@@ -602,6 +605,11 @@ public sealed partial class MMenu
             S_StartSound(sfxenum_t.sfx_oof);
             return;
         }
+        if (flow.InNetGame)
+        {
+            M_StartMessage(SAVENET, null, false); // T11.8
+            return;
+        }
 
         if (flow.gamestate != gamestate_t.GS_LEVEL)
             return;
@@ -630,7 +638,7 @@ public sealed partial class MMenu
     /// <summary>m_menu.c <c>M_QuickLoad</c>: asks to load the quicksave's slot, or says there is none yet.</summary>
     public void M_QuickLoad()
     {
-        if (flow.World?.netgame == true)
+        if (flow.InNetGame)
         {
             M_StartMessage(QLOADNET, null, false);
             return;
@@ -651,6 +659,11 @@ public sealed partial class MMenu
         if (!flow.usergame)
         {
             M_StartMessage(SAVEDEAD, null, false);
+            return;
+        }
+        if (flow.InNetGame)
+        {
+            M_StartMessage(SAVENET, null, false); // T11.8
             return;
         }
         if (flow.gamestate != gamestate_t.GS_LEVEL)
@@ -738,7 +751,7 @@ public sealed partial class MMenu
     /// <summary>m_menu.c <c>M_NewGame</c>: the episodes, or Doom II's skills.</summary>
     private void M_NewGame(int choice)
     {
-        if (flow.World?.netgame == true)
+        if (flow.InNetGame)
         {
             M_StartMessage(NEWGAME, null, false);
             return;
@@ -839,7 +852,7 @@ public sealed partial class MMenu
             S_StartSound(sfxenum_t.sfx_oof);
             return;
         }
-        if (flow.World?.netgame == true)
+        if (flow.InNetGame)
         {
             M_StartMessage(NETEND, null, false);
             return;
@@ -851,7 +864,7 @@ public sealed partial class MMenu
     {
         if (key != key_menu_confirm)
             return;
-        if (flow.World?.netgame != true)
+        if (!flow.InNetGame)
         {
             S_StartSound((flow.gamemode == GameMode.commercial ? quitsounds2 : quitsounds)[(flow.gametic >> 2) & 7]);
             // I_WaitVBL(105): the host waits for the sound before quitting (T7.7)

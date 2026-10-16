@@ -588,7 +588,7 @@ public partial class LevelScene : Node3D, IGameHost
     public const int MaxTicsPerFrame = 8;
 
     private double _ticTime;
-    private readonly Queue<(ticcmd_t? Cmd, Action<World>? Before)> _scriptTics = new();
+    private readonly Queue<(ticcmd_t? Cmd, Action<World>? Before, ticcmd_t[]? All)> _scriptTics = new();
 
     // Debug plane moves (T5.1, the level script's plane): run after each tic, as a mover thinker would.
     private readonly List<(sector_t Sector, bool Ceiling, int Target, int Speed)> _planeMoves = [];
@@ -614,7 +614,10 @@ public partial class LevelScene : Node3D, IGameHost
     public bool ScriptedTics { get; set; }
 
     /// <summary>The scripted tics not run yet.</summary>
-    public int QueuedTics => _scriptTics.Count;
+    public int QueuedTics => _scriptTics.Count + NetTicsInFlight; // (T11.8: in a netgame, until the last scripted command sent ran)
+
+    /// <summary>T11.8: whether a scripted run's world holds still (an empty queue), never in a netgame, whose tics come from the network.</summary>
+    public bool WorldHolds => ScriptedTics && QueuedTics == 0 && !NetPlaying;
 
     /// <summary>The maps of the WAD (<c>ExMy</c>/<c>MAPxx</c> headers followed by <c>THINGS</c>), in lump order, each once.</summary>
     public IReadOnlyList<string> MapNames { get; private set; } = [];
@@ -876,7 +879,7 @@ public partial class LevelScene : Node3D, IGameHost
             CreateGameCamera();
             InitSettings(); // T7.3: the saved settings, but those the arguments above give
             InitSound(); // T7.7
-            if (WadLocator.HasUserArg("--level"))
+            if (WadLocator.HasUserArg("--level") && !NetRequested())
             {
                 // A map from the command line (vanilla's -warp): a new game on it, no title loop.
                 string? map = WadLocator.GetUserArg("--level");
@@ -888,7 +891,7 @@ public partial class LevelScene : Node3D, IGameHost
                     MoveFloors(Mesh!.Level, moves);
             }
             else
-                _flow.D_StartTitle(null); // T7.1: d_main.c D_DoomMain without a map: the title loop
+                _flow.D_StartTitle(null); // T7.1: d_main.c D_DoomMain without a map: the title loop (T11.8: a netgame's until its Start)
         }
         catch (Exception e) when (e is WadFormatException or ModifiedGameException or IOException or UnauthorizedAccessException
             or KeyNotFoundException or ArgumentException)
@@ -1256,7 +1259,7 @@ public partial class LevelScene : Node3D, IGameHost
                 UseCamera(next);
                 break;
             case Key.Home:
-                if (FreeFlyActive || Player is null)
+                if (FreeFlyActive || Player is null || Net is not null) // (T11.8: a netgame's player is the sim's alone)
                 {
                     JumpToStart();
                     UseFreeFly(true);
@@ -1265,10 +1268,12 @@ public partial class LevelScene : Node3D, IGameHost
                     PlayerToStart();
                 break;
             case Key.Pagedown:
-                SwitchMap(1);
+                if (!NetRefuses("PgDn"))
+                    SwitchMap(1);
                 break;
             case Key.Pageup:
-                SwitchMap(-1);
+                if (!NetRefuses("PgUp"))
+                    SwitchMap(-1);
                 break;
             case Key.L:
                 _lightMode = (LightDiminishing)(((int)_lightMode + 1) % 3);
@@ -1352,8 +1357,9 @@ public partial class LevelScene : Node3D, IGameHost
                 _overlayDue = 0; // (its text at once)
                 break;
             case Key.F12:
-                // T11.10: the next player in the game becomes the local one (a harness's debug key)
-                CycleLocalPlayer();
+                // T11.10: the next player in the game becomes the local one (a harness's debug key; T11.8: not in a netgame)
+                if (!NetRefuses("F12"))
+                    CycleLocalPlayer();
                 _overlayDue = 0;
                 break;
             default:
@@ -1485,6 +1491,11 @@ public partial class LevelScene : Node3D, IGameHost
     /// </summary>
     private void RunTics(double delta)
     {
+        if (NetPlaying)
+        {
+            RunNetTics(delta); // T11.8: a netgame's tics come from the network
+            return;
+        }
         if (_flow is not { } flow || Paused || FocusPaused || Quitting || !flow.CanTic && !flow.Wipe.go)
             return;
         _ticTime += delta;
@@ -1549,10 +1560,13 @@ public partial class LevelScene : Node3D, IGameHost
             Tic(BuildTiccmd(World?.tweaks ?? Tweaks));
             return;
         }
-        (ticcmd_t? cmd, Action<World>? before) = _scriptTics.Dequeue();
+        (ticcmd_t? cmd, Action<World>? before, ticcmd_t[]? all) = _scriptTics.Dequeue();
         if (World is { } w)
             before?.Invoke(w); // T6.4: a route's events, before the tic
-        Tic(cmd ?? BuildTiccmd(World?.tweaks ?? Tweaks));
+        if (all is not null)
+            TicPlayers(all); // T11.8: a multi-player route's tic, every player's command (--level-players)
+        else
+            Tic(cmd ?? BuildTiccmd(World?.tweaks ?? Tweaks));
     }
 
     private Action<World>? _beforeNext;
@@ -1575,6 +1589,25 @@ public partial class LevelScene : Node3D, IGameHost
         int wipes = Flow.Wipe.count;
         Flow.G_Ticker(cmd);
         LastTiccmd = cmd;
+        TicDone(wipes);
+    }
+
+    /// <summary>
+    /// T11.8: runs one game tic of every player's command (<paramref name="netcmds"/>,
+    /// indexed by player: a netgame's bundle, a multi-player route's tic):
+    /// <see cref="GameFlow.G_Ticker(ticcmd_t[])"/>.
+    /// </summary>
+    public void TicPlayers(ticcmd_t[] netcmds)
+    {
+        ArgumentNullException.ThrowIfNull(netcmds);
+        int wipes = Flow.Wipe.count;
+        Flow.G_Ticker(netcmds);
+        LastTiccmd = netcmds[Flow.ConsolePlayer];
+        TicDone(wipes);
+    }
+
+    private void TicDone(int wipes)
+    {
         TicsRun++;
         if (Flow.Wipe.count != wipes)
         {
@@ -1822,7 +1855,7 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (what == NotificationWMCloseRequest && !GetTree().AutoAcceptQuit)
             CloseRequested(); // T7.8e: the music faded out first
-        else if (what == NotificationApplicationFocusOut && !IsCheckRun && !WadLocator.HasUserArg("--level-script"))
+        else if (what == NotificationApplicationFocusOut && !IsCheckRun && !WadLocator.HasUserArg("--level-script") && Net is null) // (T11.8: none in a netgame)
             FocusPaused = true;
         else if (what == NotificationApplicationFocusIn)
             FocusPaused = false;
@@ -2098,10 +2131,10 @@ public partial class LevelScene : Node3D, IGameHost
     {
         World world = World!;
         string map = world.level.Name;
-        (ticcmd_t? Cmd, Action<World>? Before)[] queued = [.. _scriptTics];
+        (ticcmd_t? Cmd, Action<World>? Before, ticcmd_t[]? All)[] queued = [.. _scriptTics];
         if (!TryLoad(map, world))
             return false;
-        foreach ((ticcmd_t? Cmd, Action<World>? Before) tic in queued)
+        foreach ((ticcmd_t? Cmd, Action<World>? Before, ticcmd_t[]? All) tic in queued)
             _scriptTics.Enqueue(tic);
         Reborns++;
         if (queued.Length > 0 && RouteStartPoint is { } s && !PlaceRouteStart(s.X, s.Y, s.Angle))
@@ -2198,7 +2231,18 @@ public partial class LevelScene : Node3D, IGameHost
             _beforeNext = null;
             before = before is null ? pending : pending + before;
         }
-        _scriptTics.Enqueue((cmd, before));
+        _scriptTics.Enqueue((cmd, before, null));
+    }
+
+    /// <summary>
+    /// T11.8: queues one scripted tic of a multi-player route: every player's
+    /// command (<paramref name="all"/>, indexed by player), <paramref name="before"/>
+    /// its events. In a netgame this machine sends its own player's.
+    /// </summary>
+    public void QueuePlayersTic(ticcmd_t[] all, Action<World>? before)
+    {
+        ArgumentNullException.ThrowIfNull(all);
+        _scriptTics.Enqueue((all[NetGame?.ConsolePlayer ?? 0], before, all));
     }
 
     /// <summary>Drops the scripted tics not run yet.</summary>
@@ -3035,13 +3079,15 @@ public partial class LevelScene : Node3D, IGameHost
             else
             {
                 int players = PlayersMask(level, GameModes.Deathmatch != 0); // T11.10: --level-players
-                world = new World(GameModes.Apply(new SpawnSettings(GameMode, Skill, netgame: players != 1, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission,
-                    playersingame: players)), Tweaks) // T11.4: -deathmatch, -altdeath, -timer, -avg, -respawn, -fast, -nomonsters
-                {
-                    consoleplayer = (players & (1 << LocalPlayer)) != 0 ? LocalPlayer : 0, // T11.10: --level-local
-                    textures = Textures,
-                    map31exists = Wad!.W_CheckNumForName("MAP31") >= 0, // G_SecretExitLevel's check (T5.8)
-                };
+                world = NetGame is { } net // T11.8: a netgame's world, the Start's settings and tweaks, its slot the local player
+                    ? new World(net.Settings.Spawn, net.Settings.Tweaks) { consoleplayer = net.ConsolePlayer }
+                    : new World(GameModes.Apply(new SpawnSettings(GameMode, Skill, netgame: players != 1, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission,
+                        playersingame: players)), Tweaks) // T11.4: -deathmatch, -altdeath, -timer, -avg, -respawn, -fast, -nomonsters
+                    {
+                        consoleplayer = (players & (1 << LocalPlayer)) != 0 ? LocalPlayer : 0, // T11.10: --level-local
+                    };
+                world.textures = Textures;
+                world.map31exists = Wad!.W_CheckNumForName("MAP31") >= 0; // G_SecretExitLevel's check (T5.8)
                 world.P_InitPicAnims(Textures, FlatNames(Wad!)); // P_Init's (T5.7)
                 world.G_DoLoadLevel(level);
             }

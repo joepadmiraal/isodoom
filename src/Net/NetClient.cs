@@ -139,6 +139,13 @@ public sealed class NetClient
     /// <summary>The tic the game clock has reached: tics up to it are due.</summary>
     public int ClockTic => Start is null ? 0 : Start.StartTic + (int)Math.Floor(_clockUs * (double)NetProtocol.TicRate / NetProtocol.MicrosecondsPerSecond);
 
+    /// <summary>
+    /// T11.8: the game clock in tics with its fraction (<see cref="ClockTic"/>
+    /// is its floor): how far the presentation is past the last tic run (it
+    /// draws between the last two tics, clamped at the last).
+    /// </summary>
+    public double ClockTics => Start is null ? 0 : Start.StartTic + _clockUs * (double)NetProtocol.TicRate / NetProtocol.MicrosecondsPerSecond;
+
     /// <summary>The last tic whose bundle came.</summary>
     public int BundleTic { get; private set; }
 

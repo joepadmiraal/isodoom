@@ -606,6 +606,11 @@ public partial class LevelScene : ISetupHost
         Add("gameplay/aim_assist", () => AimAssistText(Tweaks.AimAssistCone), s =>
         {
             uint cone = ParseAimAssistCone(s);
+            if (SettingLocked("gameplay/aim_assist"))
+            {
+                GD.Print("Level: gameplay/aim_assist: locked in a netgame (the host's game settings)"); // T11.8
+                return;
+            }
             Tweaks = Tweaks with { AimAssistCone = cone };
             if (World is { } world)
                 world.tweaks = world.tweaks with { AimAssistCone = cone }; // at once, between the tics

@@ -1165,10 +1165,13 @@ public static class SyntheticIwad
 
         w.Markers("E1M2");
         // T11.7a: four deathmatch starts (type 11) along the corridor, last (they spawn nothing outside
-        // deathmatch), so a deathmatch exit from E1M1 goes on into E1M2 (vanilla's I_Error below 4)
+        // deathmatch), so a deathmatch exit from E1M1 goes on into E1M2 (vanilla's I_Error below 4).
+        // T11.8: co-op starts for players 2-4 along the corridor, last too (a player not in the game
+        // spawns nothing from its start), so a co-op netgame may go on from E1M1 into E1M2 (T11.1a's check).
         w.Lump("THINGS", Shorts(64, -64, 90, 1, 7, TeleportDestX, TeleportDestY, 0, 14, 7, // player 1 start in the corridor; the teleport destination (T5.6)
             BlueCardX, KeysY, 0, 5, 7, YellowSkullX, KeysY, 0, 39, 7,                            // a blue keycard and a yellow skull key (T5.8)
-            192, -64, 0, 11, 7, 320, -64, 90, 11, 7, 448, -64, 180, 11, 7, 576, -64, 270, 11, 7)); // the deathmatch starts
+            192, -64, 0, 11, 7, 320, -64, 90, 11, 7, 448, -64, 180, 11, 7, 576, -64, 270, 11, 7,   // the deathmatch starts
+            192, -64, 90, 2, 7, 320, -64, 90, 3, 7, 448, -64, 90, 4, 7));                         // the co-op starts of players 2-4
         w.Lump("LINEDEFS", Shorts([.. flat]));
         w.Lump("SIDEDEFS", Concat([.. sides]));
         w.Lump("VERTEXES", Shorts([.. vertexes]));

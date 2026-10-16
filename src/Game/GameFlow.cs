@@ -167,6 +167,16 @@ public sealed class GameFlow
     /// <summary>g_game.c <c>paused</c>: <c>P_Ticker</c> does nothing (toggled by a <c>ticcmd</c>'s <c>BTS_PAUSE</c>).</summary>
     public bool paused;
 
+    /// <summary>
+    /// T11.8: this machine is in a netgame's session (<c>-host</c>/<c>-connect</c>),
+    /// from the lobby on, before the game's world exists: the menus refuse
+    /// what a netgame refuses (<see cref="InNetGame"/>).
+    /// </summary>
+    public bool netsession;
+
+    /// <summary>d_net.c <c>netgame</c> for the menus: a netgame's session (<see cref="netsession"/>) or a netgame's world.</summary>
+    public bool InNetGame => netsession || host.World?.netgame == true;
+
     /// <summary>g_game.c <c>usergame</c>: a game the user started (not the title loop; T7.6's saves need one).</summary>
     public bool usergame;
 

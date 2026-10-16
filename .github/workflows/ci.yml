@@ -292,6 +292,14 @@ jobs:
       - name: Netgame loopback (exported build, headless)
         run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" 1000 -- export/linux/IsoDoom.x86_64
 
+      # T11.8: the lockstep game loop: the same two processes play
+      # synthetic-dm-exit-2p (a deathmatch: frags, a suicide, reborns) in
+      # lockstep, each sending its own player's commands, through the
+      # intermission into E1M2, every checksum window compared with no desync
+      # (about 40 s).
+      - name: Netgame loopback play (exported build, headless)
+        run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- export/linux/IsoDoom.x86_64
+
       - uses: actions/upload-artifact@v7
         with:
           name: IsoDoom-linux-x86_64

@@ -106,6 +106,18 @@ public sealed class NetSession : IDisposable
     /// <summary>A line for each event.</summary>
     public Action<string>? Log { get; set; }
 
+    /// <summary>
+    /// T11.8 (T11.1a): the host's check of the game before it starts, given
+    /// the players' mask (bit i: slot i): why the game cannot start with
+    /// them (a map lacking their starts), or null. Null: no check.
+    /// </summary>
+    public Func<byte, string?>? CheckStart { get; set; }
+
+    /// <summary>T11.8 (T11.1a): why the host does not start the game with the players in the lobby (<see cref="CheckStart"/>), or null.</summary>
+    public string? StartRefusal { get; private set; }
+
+    private byte _checkedMask;
+
     /// <summary>Why the session ended (refused, disconnected), or null while it goes on.</summary>
     public string? Failure { get; private set; }
 
@@ -139,6 +151,19 @@ public sealed class NetSession : IDisposable
         {
             _allReadyUs = -1;
             return;
+        }
+        if (CheckStart is { } check)
+        {
+            // T11.1a (T11.8): the game's maps must have a start for every player in it; checked again when the players change
+            if (server.OccupiedMask != _checkedMask)
+            {
+                _checkedMask = server.OccupiedMask;
+                StartRefusal = check(_checkedMask);
+                if (StartRefusal is not null)
+                    Log?.Invoke($"the game cannot start: {StartRefusal}");
+            }
+            if (StartRefusal is not null)
+                return;
         }
         if (_allReadyUs < 0)
             _allReadyUs = nowUs;
