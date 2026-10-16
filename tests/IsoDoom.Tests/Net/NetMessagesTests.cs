@@ -38,6 +38,7 @@ public class NetMessagesTests
         object?[] args = [.. ctor.GetParameters().Select(p =>
             NonDefault(p.ParameterType) ?? throw new InvalidOperationException($"SpawnSettings.{p.Name}: add its type to the protocol and to this test"))];
         args[3] = 1; // deathmatch: 0–2
+        args[Array.FindIndex(ctor.GetParameters(), p => p.Name == nameof(SpawnSettings.playersingame))] = 0b1101; // the Start's mask
         var spawn = (SpawnSettings)ctor.Invoke(args);
 
         var tweaks = new Tweaks();
@@ -54,6 +55,17 @@ public class NetMessagesTests
         Assert.Equal(start, back);
         Assert.Equal(spawn, back.Settings.Spawn);
         Assert.Equal(tweaks, back.Settings.Tweaks);
+    }
+
+    [Fact]
+    public void A_start_whose_settings_players_differ_from_its_mask_is_refused()
+    {
+        // T11.5a: the Start's mask and its settings' playersingame are one fact.
+        var settings = new NetGameSettings(new SpawnSettings(GameMode.shareware, skill_t.sk_medium, netgame: true, playersingame: 0b0011), Tweaks.Vanilla, 1, 1);
+        byte[] good = NetMessages.EncodeStart(new NetStart(1, 0b0011, 0, 2, settings));
+        Assert.Equal(0b0011, NetMessages.DecodeStart(Reader(good, NetMessageType.Start)).PlayerMask);
+        byte[] bad = NetMessages.EncodeStart(new NetStart(1, 0b0111, 0, 2, settings));
+        Assert.Throws<NetProtocolException>(() => NetMessages.DecodeStart(Reader(bad, NetMessageType.Start)));
     }
 
     [Fact]

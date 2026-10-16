@@ -37,10 +37,14 @@
 //   client -> Ready      ready (u8 0/1).
 //   server -> Start      consoleplayer (u8: the receiver's slot), players in
 //                        game (u8 mask), start tic (i32), input delay in tics
-//                        (u8), the game settings.
+//                        (u8), the game settings, whose players in game
+//                        must be the same mask (the server sets them to it:
+//                        one source of truth, checked on decoding).
 // Game settings: gamemode, gameskill (u8), flags (u8: 1 netgame, 2
 // nomonsters, 4 respawnparm, 8 fastparm), deathmatch (u8), gameversion (u8,
-// 255 for the IWAD's default), gamemission (u8), episode, map (u8), timer in
+// 255 for the IWAD's default), gamemission (u8), players in game (u8 mask,
+// SpawnSettings.playersingame; T11.5a: in the lobby the host's, at the
+// Start the players'), episode, map (u8), timer in
 // minutes (u16), the tweaks (u8 flags: 1 AbsoluteAiming, 2 AbsoluteMovement,
 // 4 UseFallback, 8 InstantStop; u32 AimAssistCone). Every player runs these.
 //
@@ -102,8 +106,8 @@ namespace IsoDoom.Net;
 /// <summary>The protocol's constants (see the comment block at the top of <c>NetMessages.cs</c>).</summary>
 public static class NetProtocol
 {
-    /// <summary>The protocol version; a hello with another is refused.</summary>
-    public const ushort Version = 1;
+    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a).</summary>
+    public const ushort Version = 2;
 
     /// <summary>vanilla's <c>MAXPLAYERS</c>: the slots.</summary>
     public const int MaxPlayers = 4;
@@ -366,6 +370,8 @@ public static class NetMessages
             throw new NetProtocolException($"Start: player {consoleplayer} not in mask {mask}.");
         if (delay > NetProtocol.MaxDelay)
             throw new NetProtocolException($"Start: delay {delay}.");
+        if (settings.Spawn.playersingame != mask)
+            throw new NetProtocolException($"Start: players in game {settings.Spawn.playersingame} differ from the mask {mask}.");
         return new NetStart(consoleplayer, mask, startTic, delay, settings);
     }
 
@@ -564,6 +570,7 @@ public sealed class NetWriter
         U8(checked((byte)s.deathmatch));
         U8(s.gameversion is GameVersion v ? checked((byte)v) : byte.MaxValue);
         U8((byte)s.gamemission);
+        U8(checked((byte)s.playersingame));
         U8(checked((byte)settings.Episode));
         U8(checked((byte)settings.Map));
         U16(checked((ushort)settings.TimerMinutes));
@@ -659,6 +666,7 @@ public sealed class NetReader
         int deathmatch = U8();
         int version = U8();
         var mission = Enum<GameMission>(U8());
+        int playersingame = U8();
         int episode = U8();
         int map = U8();
         int timer = U16();
@@ -666,8 +674,11 @@ public sealed class NetReader
         uint cone = U32();
         if (flags > 15 || tweakFlags > 15 || deathmatch > 2)
             throw new NetProtocolException("Settings: unknown flags.");
+        if (playersingame >= 1 << NetProtocol.MaxPlayers)
+            throw new NetProtocolException($"Settings: players in game {playersingame}.");
         var spawn = new SpawnSettings(gamemode, skill, (flags & 1) != 0, deathmatch, (flags & 2) != 0,
-            (flags & 4) != 0, (flags & 8) != 0, version == byte.MaxValue ? null : Enum<GameVersion>(version), mission);
+            (flags & 4) != 0, (flags & 8) != 0, version == byte.MaxValue ? null : Enum<GameVersion>(version), mission,
+            playersingame);
         var tweaks = new Tweaks
         {
             AbsoluteAiming = (tweakFlags & 1) != 0,

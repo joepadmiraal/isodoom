@@ -170,6 +170,8 @@ public sealed class NetServer
         CompleteTic = startTic - 1;
         _startUs = _nowUs;
         _playerMask = OccupiedMask;
+        // The players in game are the Start's mask (T11.5a: one source of truth).
+        _settings = _settings with { Spawn = _settings.Spawn with { playersingame = _playerMask } };
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)
         {
             _quitTic[i] = int.MaxValue;

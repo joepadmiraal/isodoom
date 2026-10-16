@@ -288,9 +288,9 @@ public sealed class LockstepHarness
     public static World MakeWorld(WadArchive wad, NetStart start, bool allPlayers)
     {
         NetGameSettings s = start.Settings;
-        var world = new World(s.Spawn, s.Tweaks);
-        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
-            world.playeringame[i] = allPlayers ? (start.PlayerMask & (1 << i)) != 0 : i == 0;
+        // The players in game through the spawn settings (T11.1), as the Start sets them.
+        SpawnSettings spawn = allPlayers ? s.Spawn : s.Spawn with { playersingame = 1 };
+        var world = new World(spawn, s.Tweaks);
         string map = s.Spawn.gamemode == GameMode.commercial ? $"MAP{s.Map:00}" : $"E{s.Episode}M{s.Map}";
         world.G_DoLoadLevel(Level.Load(wad, map));
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)

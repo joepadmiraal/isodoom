@@ -253,7 +253,8 @@ public class LockstepTests
         for (int i = 0; i < h.Players.Count; i++)
         {
             NetStart start = h.Players[i].Client.Start!;
-            Assert.Equal(new NetStart(i, 0b111, 100, 2, settings), start);
+            // T11.5a: the Start sets the settings' players in game to its mask.
+            Assert.Equal(new NetStart(i, 0b111, 100, 2, settings with { Spawn = settings.Spawn with { playersingame = 0b111 } }), start);
         }
         Assert.Throws<InvalidOperationException>(() => h.Server.Settings = _coop);
     }

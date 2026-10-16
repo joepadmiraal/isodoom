@@ -298,6 +298,7 @@ Vanilla plays multi-player demos (`G_DoPlayDemo`: `playeringame[1..3]` in the he
   - `net` prints the slot, players, delay, ping, tics waiting and the last checksum exchange;
   - `netwait N` waits until N players are in;
   - the `cmd`/`step`/`checksum` commands keep working per machine, feeding the local player's commands.
+- **Maps without enough co-op starts are refused (T11.1a, the user's decision):** the host does not start a co-op game on a map that lacks a co-op start for a player in game; the refusal is a message naming the map and the missing starts (T11.9 shows it on the lobby page). No spawning elsewhere. Settle and log whether the later maps the game can reach are checked too.
 - **A two-process loopback test** (T11.6's script, now playing): host and client on E1M1 with monsters at skill 4.
   - The client walks to the exit with a route (the route's commands as its local input), and the host stands still or fires.
   - Both reach the intermission and the next map, and their checksums agree at every exchange.

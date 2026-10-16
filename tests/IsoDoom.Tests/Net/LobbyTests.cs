@@ -71,7 +71,7 @@ public class LobbyTests
         Assert.True(raw.Poll(out NetEvent connected));
         Assert.Equal(NetEventKind.Connected, connected.Kind);
         // A future version's hello: the type byte, its version, then whatever it carries.
-        raw.Send(peer, [(byte)NetMessageType.Hello, 2, 0, 0xde, 0xad], NetChannel.Reliable);
+        raw.Send(peer, [(byte)NetMessageType.Hello, NetProtocol.Version + 1, 0, 0xde, 0xad], NetChannel.Reliable);
         network.Advance(1);
         server.Update(network.NowUs);
         Assert.True(raw.Poll(out NetEvent refusal));
@@ -138,6 +138,9 @@ public class LobbyTests
         server.Start(2);
         Run();
         Assert.All(clients.GetRange(0, 2), c => Assert.Equal(NetClientState.InGame, c.State));
+        // T11.5a: the settings' players in game are the Start's mask.
+        Assert.All(clients.GetRange(0, 2), c => Assert.Equal(0b11, c.Settings!.Spawn.playersingame));
+        Assert.Equal(0b11, server.Settings.Spawn.playersingame);
 
         var late = new NetClient(network.CreateEndpoint("late"), LockstepHarness.Identity);
         clients.Add(late);
