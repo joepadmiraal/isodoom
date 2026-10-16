@@ -33,15 +33,6 @@ public sealed class NetSimTests
     private static SpawnSettings Coop(int players, skill_t skill = skill_t.sk_medium) =>
         new(GameMode.shareware, skill, netgame: true, playersingame: NetSim.FirstPlayers(players));
 
-    private static void GodMode(World world)
-    {
-        for (int i = 0; i < World.MAXPLAYERS; i++)
-        {
-            if (world.playeringame[i])
-                world.players[i].cheats |= player_t.CF_GODMODE;
-        }
-    }
-
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -130,29 +121,53 @@ public sealed class NetSimTests
             cmd.buttons |= buttoncode_t.BT_ATTACK;
         if (tic == 200 && player == 1)
             cmd.buttons = buttoncode_t.BT_CHANGE | (int)weapontype_t.wp_shotgun << buttoncode_t.BT_WEAPONSHIFT;
+        if (world.players[player].playerstate == playerstate_t.PST_DEAD && tic % 10 == 0)
+            cmd.buttons = buttoncode_t.BT_USE; // T11.3a: no god mode; a dead player reborns
         return cmd;
     }
 
-    public static TheoryData<int, bool> CoopCases => new() { { 2, false }, { 4, false }, { 2, true }, { 4, true } };
+    // T11.3a: without god mode the monsters kill players (whose dead commands use, so they reborn
+    // at their starts and walk west again), except with four twin-stick players, who kill the four
+    // monsters first.
+    public static TheoryData<int, bool, bool> CoopCases => new() { { 2, false, true }, { 4, false, true }, { 2, true, true }, { 4, true, false } };
 
     [Theory]
     [MemberData(nameof(CoopCases))]
-    public void CoopOnTheTestMapStaysInSync(int players, bool topdown)
+    public void CoopOnTheTestMapStaysInSync(int players, bool topdown, bool reborns)
     {
-        var net = new NetSim(CoopWad(), "E1M1", Coop(players), topdown ? Tweaks.TopDown : Tweaks.Vanilla, NetSim.EachPlayer(players), GodMode);
+        var net = new NetSim(CoopWad(), "E1M1", Coop(players), topdown ? Tweaks.TopDown : Tweaks.Vanilla, NetSim.EachPlayer(players));
         World world = net.World;
-        net.Run(120, (tic, player) => CoopInput(world, tic, player));
+        bool[] throughDoor = new bool[players];
+        bool shotgun = false;
+        ticcmd_t Input(int tic, int player)
+        {
+            player_t p = world.players[player];
+            throughDoor[player] |= p.mo!.x < 400 << Fixed.FRACBITS;
+            shotgun |= player == 3 && p.weaponowned[(int)weapontype_t.wp_shotgun];
+            return CoopInput(world, tic, player);
+        }
+        net.Run(120, Input);
         Assert.True(world.sectors[1].ceilingheight > 64 << Fixed.FRACBITS, "the door opened");
-        net.Run(580, (tic, player) => CoopInput(world, tic, player));
+        net.Run(580, Input);
         net.AssertSameState();
+        Assert.All(world.players.Take(players), p => Assert.Equal(0, p.cheats));
         for (int i = 0; i < players; i++)
         {
-            player_t p = world.players[i];
-            Assert.True(p.mo!.x < 400 << Fixed.FRACBITS, $"player {i + 1} went through the door");
-            Assert.Equal(1, p.itemcount); // its health bonus
+            Assert.True(throughDoor[i], $"player {i + 1} went through the door");
+            Assert.Equal(1, world.players[i].itemcount); // its health bonus (kept over a reborn)
         }
-        Assert.True(world.players.Take(players).Sum(p => p.killcount) >= 1, "the players killed a monster");
-        Assert.Equal(players == 4, world.players[3].weaponowned[(int)weapontype_t.wp_shotgun]); // the netgame's shotgun
+        int kills = world.players.Take(players).Sum(p => p.killcount);
+        if (reborns)
+        {
+            Assert.True(world.bodyqueslot > 0, "nobody died and reborn");
+            Assert.All(world.players.Take(players), p => Assert.NotEqual(playerstate_t.PST_DEAD, p.playerstate));
+        }
+        else
+        {
+            Assert.Equal(0, world.bodyqueslot);
+            Assert.Equal(4, kills); // every monster
+        }
+        Assert.Equal(players == 4, shotgun); // the netgame's shotgun
     }
 
     [Fact]
@@ -160,7 +175,7 @@ public sealed class NetSimTests
     {
         // Saves keep the players in game (SaveGameFile.VERSION 5), and a loaded world on another
         // machine (another consoleplayer) goes on in sync: the state stays snapshot-able.
-        var net = new NetSim(CoopWad(), "E1M1", Coop(4) with { playersingame = 0b1011 }, Tweaks.Vanilla, [0], GodMode);
+        var net = new NetSim(CoopWad(), "E1M1", Coop(4) with { playersingame = 0b1011 }, Tweaks.Vanilla, [0]);
         World world = net.World;
         net.Run(150, (tic, player) => CoopInput(world, tic, player));
         World loaded = SaveGameTests.Load(SaveGameTests.Save(world), CoopWad());
@@ -184,7 +199,8 @@ public sealed class NetSimTests
     /// <summary>
     /// Player 1 plays <c>e1m1-exit</c> (doors, the lift, the nukage), the
     /// others wander from their starts by a fixed pseudo-random script,
-    /// firing and using, all in god mode, with monsters, for the route's length.
+    /// firing and using (so a dead one reborns), with monsters and no god mode
+    /// (T11.3a: players die and reborn), for the route's length.
     /// </summary>
     [Theory]
     [InlineData(2)]
@@ -193,7 +209,7 @@ public sealed class NetSimTests
     {
         var wad = WadArchive.Open(TestWads.RequireDoom1());
         VanillaRoute route = VanillaRoute.Load("e1m1-exit");
-        var net = new NetSim(wad, "E1M1", Coop(players, skill_t.sk_hard), Tweaks.Vanilla, NetSim.EachPlayer(players), GodMode);
+        var net = new NetSim(wad, "E1M1", Coop(players, skill_t.sk_hard), Tweaks.Vanilla, NetSim.EachPlayer(players));
         World world = net.World;
         int[] ceilings = [.. world.sectors.Select(s => s.ceilingheight)];
         var opened = new System.Collections.Generic.SortedSet<int>();
@@ -220,7 +236,8 @@ public sealed class NetSimTests
         net.AssertSameState();
         Assert.Contains(4, opened); // the first door
         Assert.True(world.players.Take(players).Sum(p => p.itemcount) >= players, "items picked up");
-        Assert.True(world.players.Take(players).Sum(p => p.killcount) >= 1, "monsters killed");
+        Assert.All(world.players.Take(players), p => Assert.Equal(0, p.cheats));
+        Assert.True(world.bodyqueslot > 0, "nobody died and reborn"); // T11.3a: no god mode
         Assert.All(world.players.Take(players), p => Assert.Equal(playerstate_t.PST_LIVE, p.playerstate));
     }
 
