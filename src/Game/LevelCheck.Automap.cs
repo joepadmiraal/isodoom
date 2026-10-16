@@ -26,7 +26,7 @@ public partial class LevelCheck
 {
     private int _automapMaps, _automapLines, _automapDeaths;
 
-    private static InputEventKey KeyUp(Key key) => new() { Keycode = key, PhysicalKeycode = key, Pressed = false };
+    private static InputEventKey KeyUp(Key key) => Held(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = false });
 
     private void Press(Key key)
     {
@@ -169,10 +169,10 @@ public partial class LevelCheck
             return;
         }
         string Step(string what) => $"automap (T7.9): {what}: {_scene.AutomapText()}, message line \"{_scene.HudMessage}\"";
-        var y = new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = true };
+        var y = Held(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = true });
         if (!_scene.AutomapEvent(y) || !am.automapactive)
             Fail(Step("the pad's Y did not open it"));
-        _scene.AutomapEvent(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = false });
+        _scene.AutomapEvent(Held(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = false }));
         CheckAutomapTurn();
 
         // following: the arrows are the game's; not following, the automap's
@@ -186,11 +186,11 @@ public partial class LevelCheck
         if (am.followplayer != 0 || _scene.HudMessage != AmMap.AMSTR_FOLLOWOFF)
             Fail(Step("F: follow not off, or no message"));
         int x = am.m_x;
-        var stick = new InputEventJoypadMotion { Axis = JoyAxis.RightX, AxisValue = 1 };
+        var stick = Held(new InputEventJoypadMotion { Axis = JoyAxis.RightX, AxisValue = 1 });
         if (!_scene.AutomapEvent(stick))
             Fail(Step("not following, the right stick was not taken"));
         _scene.Tic(default);
-        _scene.AutomapEvent(new InputEventJoypadMotion { Axis = JoyAxis.RightX, AxisValue = 0 });
+        _scene.AutomapEvent(Held(new InputEventJoypadMotion { Axis = JoyAxis.RightX, AxisValue = 0 }));
         int moved = am.m_x - x;
         _scene.Tic(default);
         if (moved <= 0 || am.m_x - x != moved)
@@ -203,11 +203,11 @@ public partial class LevelCheck
         _scene.AutomapEvent(KeyUp(Key.Equal));
         if (am.scale_mtof <= scale)
             Fail(Step("= held a tic: no zoom"));
-        var dpad = new InputEventJoypadButton { ButtonIndex = JoyButton.DpadDown, Pressed = true };
+        var dpad = Held(new InputEventJoypadButton { ButtonIndex = JoyButton.DpadDown, Pressed = true });
         _scene.AutomapEvent(dpad);
         scale = am.scale_mtof;
         _scene.Tic(default);
-        _scene.AutomapEvent(new InputEventJoypadButton { ButtonIndex = JoyButton.DpadDown, Pressed = false });
+        _scene.AutomapEvent(Held(new InputEventJoypadButton { ButtonIndex = JoyButton.DpadDown, Pressed = false }));
         if (am.scale_mtof >= scale)
             Fail(Step("the D-pad's down held a tic: no zoom out"));
         // the grid's and the marks' messages

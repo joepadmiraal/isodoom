@@ -399,7 +399,7 @@ public partial class LevelScene : IMenuHost
         {
             if (!InputMap.HasAction(action))
                 continue;
-            foreach (InputEvent e in InputMap.ActionGetEvents(action))
+            foreach (InputEvent e in Render.GodotRefs.ActionEvents(action))
             {
                 foreach (int d in devices)
                 {

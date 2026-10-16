@@ -65,19 +65,20 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     public MonsterMarkers()
     {
         CastShadow = ShadowCastingSetting.Off;
-        _chevron = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
-        _chevron.SetShaderParameter("thing_actors", _actors.Texture);
-        _beam = new ShaderMaterial { Shader = GD.Load<Shader>(ItemBeams.ShaderPath) };
-        _beam.SetShaderParameter("thing_actors", _actors.Texture);
+        _chevron = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
+        _chevron.SetParam("thing_actors", _actors.Texture);
+        _beam = new ShaderMaterial { Shader = GodotRefs.LoadShader(ItemBeams.ShaderPath) };
+        _beam.SetParam("thing_actors", _actors.Texture);
         _beam.SetShaderParameter("beam_height", ItemBeams.Height);
         _beam.SetShaderParameter("beam_half_width", ItemBeams.HalfWidth);
         MaterialOverride = _chevron;
+        using ArrayMesh quad = QuadMesh(); // T8.3d: held across the setter, then disposed (GodotRefs)
         Multimesh = _multimesh = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
             UseColors = true,
             UseCustomData = true,
-            Mesh = QuadMesh(),
+            Mesh = quad,
         };
     }
 
@@ -96,15 +97,17 @@ public partial class MonsterMarkers : MultiMeshInstance3D
         }
     }
 
+    private static readonly int[] _quadIndices = [0, 2, 1, 0, 3, 2];
+
     /// <summary>The marker mesh: a quad, x −1…1 across, y 0 (tip, or the beam's foot) … 1 (top); the shader sizes and places it (the chevron up to 320 units above the foot, the beam <see cref="ItemBeams.Height"/>).</summary>
     private static ArrayMesh QuadMesh()
     {
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 1, 0), new Vector3(-1, 1, 0) };
-        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 1, 0, 3, 2 };
+        arrays.SetSlot(Mesh.ArrayType.Vertex, new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 1, 0), new Vector3(-1, 1, 0) });
+        arrays.SetSlot(Mesh.ArrayType.Index, _quadIndices);
         var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.AddSurface(arrays);
         const float Reach = 320f / LevelMesh.MapUnitsPerMetre;
         mesh.CustomAabb = new Aabb(new Vector3(-Reach, -Reach, -Reach), new Vector3(2 * Reach, 2 * Reach, 2 * Reach));
         return mesh;
@@ -135,8 +138,8 @@ public partial class MonsterMarkers : MultiMeshInstance3D
     {
         foreach (ShaderMaterial material in new[] { _chevron, _beam })
         {
-            material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
-            material.SetShaderParameter("sprite_info", atlas.InfoTexture);
+            material.SetParam("sprite_atlas", atlas.AtlasTexture);
+            material.SetParam("sprite_info", atlas.InfoTexture);
         }
     }
 

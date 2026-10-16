@@ -27,10 +27,14 @@ public partial class Main : Node
     /// The release version, from the tag CI exported it for
     /// (<c>tools/stamp-version.sh</c>), or <c>dev</c> for any other build.
     /// </summary>
-    public static string Version =>
-        ProjectSettings.GetSetting("application/config/version", "").AsString() is { Length: > 0 } version
-            ? version
-            : "dev";
+    public static string Version
+    {
+        get
+        {
+            using Variant setting = ProjectSettings.GetSetting("application/config/version"); // T8.3d: disposed (Render.GodotRefs)
+            return setting.AsString() is { Length: > 0 } version ? version : "dev";
+        }
+    }
 
     public override void _Ready()
     {

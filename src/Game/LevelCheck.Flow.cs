@@ -230,7 +230,7 @@ public partial class LevelCheck
         }
         if (_scene.Sound is { } sound && sound.mus_playing != musicenum_t.mus_evil)
             Fail($"the cast call: the song is {sound.mus_playing}, not mus_evil");
-        var key = new InputEventKey { Keycode = Key.Space, PhysicalKeycode = Key.Space, Pressed = true };
+        var key = Held(new InputEventKey { Keycode = Key.Space, PhysicalKeycode = Key.Space, Pressed = true });
         if (!_scene.CastEvent(key) || !fi.castdeath || fi.caststate != statenum_t.S_POSS_DIE1)
             Fail($"the cast call: a key through the input glue did not kill the zombieman: {flow.StateText()}");
         _scene.Tic(new ticcmd_t());

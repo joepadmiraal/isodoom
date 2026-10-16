@@ -170,11 +170,14 @@ public partial class LevelScene : ISetupHost
     /// <summary>Writes <paramref name="values"/> to <paramref name="path"/> (its other sections kept). Returns whether it worked.</summary>
     public static bool SaveSettingsTo(string path, SettingValues values)
     {
-        var config = new ConfigFile();
+        using var config = new ConfigFile(); // T8.3d: disposed, never finalized during a call on it
         config.Load(path); // a missing file is fine
         (List<(string Key, string Value)> keep, List<string> drop) = values.ToSave();
         foreach ((string key, string value) in keep)
-            config.SetValue(key[..key.IndexOf('/')], key[(key.IndexOf('/') + 1)..], value);
+        {
+            using Variant v = value; // T8.3d: disposed after the call (GodotRefs)
+            config.SetValue(key[..key.IndexOf('/')], key[(key.IndexOf('/') + 1)..], v);
+        }
         foreach (string key in drop)
         {
             string section = key[..key.IndexOf('/')], name = key[(key.IndexOf('/') + 1)..];
@@ -190,7 +193,7 @@ public partial class LevelScene : ISetupHost
     /// <summary>Reads <paramref name="path"/>'s settings (not the IWAD's) as <see cref="InitSettings"/> does, or null when it can't.</summary>
     public static Dictionary<string, string>? LoadSettingsFrom(string path)
     {
-        var config = new ConfigFile();
+        using var config = new ConfigFile(); // T8.3d: disposed, never finalized during a call on it
         if (config.Load(path) != Error.Ok)
             return null;
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -199,7 +202,10 @@ public partial class LevelScene : ISetupHost
             if (section == "wad")
                 continue;
             foreach (string key in config.GetSectionKeys(section))
-                values[$"{section}/{key}"] = config.GetValue(section, key).AsString();
+            {
+                using Variant value = config.GetValue(section, key); // T8.3d: disposed after its use (GodotRefs)
+                values[$"{section}/{key}"] = value.AsString();
+            }
         }
         return values;
     }
@@ -263,7 +269,7 @@ public partial class LevelScene : ISetupHost
         var list = new List<Binding>();
         if (!InputMap.HasAction(action))
             return list;
-        foreach (InputEvent e in InputMap.ActionGetEvents(action))
+        foreach (InputEvent e in GodotRefs.ActionEvents(action))
         {
             if (BindingOf(e) is Binding b)
                 list.Add(b);
@@ -274,13 +280,25 @@ public partial class LevelScene : ISetupHost
     /// <summary><paramref name="action"/>'s bindings in <c>project.godot</c> (whatever the run changed).</summary>
     public static List<Binding> DefaultBindings(string action)
     {
+        // T8.3d: every Godot value here disposed after its use, none left to the finalizer (GodotRefs).
         var list = new List<Binding>();
-        if (ProjectSettings.GetSetting("input/" + action).AsGodotDictionary() is { } d && d.TryGetValue("events", out Variant events))
+        using Variant setting = ProjectSettings.GetSetting("input/" + action);
+        if (setting.VariantType != Variant.Type.Dictionary)
+            return list;
+        using Godot.Collections.Dictionary d = setting.AsGodotDictionary();
+        using Variant key = "events";
+        if (!d.TryGetValue(key, out Variant events))
+            return list;
+        using (events)
         {
-            foreach (Variant v in events.AsGodotArray())
+            using Godot.Collections.Array array = events.AsGodotArray();
+            foreach (Variant v in array)
             {
-                if (v.AsGodotObject() is InputEvent e && BindingOf(e) is Binding b)
-                    list.Add(b);
+                using (v)
+                {
+                    if (v.AsGodotObject() is InputEvent e && BindingOf(e) is Binding b)
+                        list.Add(b);
+                }
             }
         }
         return list;
@@ -321,7 +339,10 @@ public partial class LevelScene : ISetupHost
         List<Binding> list = [.. bindings]; // before the erase: it may read the action's events
         InputMap.ActionEraseEvents(action);
         foreach (Binding b in list)
-            InputMap.ActionAddEvent(action, EventOf(b));
+        {
+            using InputEvent e = EventOf(b); // T8.3d: held across the call (the map keeps its own reference), then disposed
+            InputMap.ActionAddEvent(action, e);
+        }
     }
 
     /// <summary>

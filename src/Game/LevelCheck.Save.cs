@@ -72,7 +72,7 @@ public partial class LevelCheck
             _scene.MenuEvent(KeyEvent(Key.Down));
         _scene.MenuEvent(KeyEvent(Key.Enter));
         foreach (Key k in new[] { Key.C, Key.H, Key.E, Key.C, Key.K })
-            _scene.MenuEvent(new InputEventKey { Keycode = k, PhysicalKeycode = k, Unicode = (char)('a' + (k - Key.A)), Pressed = true });
+            _scene.MenuEvent(Held(new InputEventKey { Keycode = k, PhysicalKeycode = k, Unicode = (char)('a' + (k - Key.A)), Pressed = true }));
         _scene.MenuEvent(KeyEvent(Key.Enter));
         if (menu.StateName != "closed" || !flow.sendsave || menu.quickSaveSlot != 3)
         {

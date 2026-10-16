@@ -17,9 +17,24 @@ namespace IsoDoom.Game;
 // is compared pixel by pixel (CheckMenuDrawn).
 public partial class LevelCheck
 {
-    private static InputEventKey KeyEvent(Key key) => new() { Keycode = key, PhysicalKeycode = key, Pressed = true };
+    private static InputEventKey KeyEvent(Key key) => Held(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = true });
 
-    private static InputEventJoypadButton PadEvent(JoyButton button) => new() { ButtonIndex = button, Pressed = true };
+    private static InputEventJoypadButton PadEvent(JoyButton button) => Held(new InputEventJoypadButton { ButtonIndex = button, Pressed = true });
+
+    /// <summary>
+    /// T8.3d: the events the check makes, held for its run. An event made for
+    /// one call (<c>_scene.MenuEvent(KeyEvent(…))</c>) is otherwise only its
+    /// wrapper's, which the finalizer thread could free during a native call
+    /// on it (SPEC §12 T8.3d, <see cref="GodotRefs"/>).
+    /// </summary>
+    private static T Held<T>(T e)
+        where T : InputEvent
+    {
+        _heldEvents.Add(e);
+        return e;
+    }
+
+    private static readonly System.Collections.Generic.List<InputEvent> _heldEvents = [];
 
     /// <summary>The viewport point of vanilla's screen point <paramref name="x"/>, <paramref name="y"/> on the menu screen (its pixel's centre).</summary>
     private Vector2 MenuPoint(int x, int y)
@@ -82,8 +97,8 @@ public partial class LevelCheck
         _scene.UpdateScreens();
         int x = menu.currentMenu.x + 20, y = menu.currentMenu.y + 2 * MMenu.LINEHEIGHT + 4;
         Vector2 at = MenuPoint(x, y);
-        _scene.MenuEvent(new InputEventMouseMotion { Position = at });
-        _scene.MenuEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, Position = at });
+        _scene.MenuEvent(Held(new InputEventMouseMotion { Position = at }));
+        _scene.MenuEvent(Held(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, Position = at }));
         if (menu.StateName != "closed" || flow.gameaction != gameaction_t.ga_newgame)
         {
             Fail(Step($"a click at {at} (menu point {x}, {y}) on Hurt Me Plenty"));

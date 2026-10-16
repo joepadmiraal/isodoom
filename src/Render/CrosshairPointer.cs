@@ -79,7 +79,8 @@ public static class CrosshairPointer
     public static void Apply(int scale)
     {
         ImageTexture? old = _texture;
-        _texture = scale > 0 ? ImageTexture.CreateFromImage(Build(scale)) : null;
+        using Image? image = scale > 0 ? Build(scale) : null; // T8.3d: held across the call, then disposed (GodotRefs)
+        _texture = image is not null ? ImageTexture.CreateFromImage(image) : null;
         if (_texture is null)
             Input.SetCustomMouseCursor(null);
         else

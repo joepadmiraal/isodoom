@@ -107,10 +107,10 @@ public partial class LevelCheck
         }
         if (CanCapture)
         {
-            Image? gpu = atlas.AtlasTexture.GetImage();
+            using Image? gpu = atlas.AtlasTexture.GetImage(); // T8.3d: disposed (so held) after its last call
             if (gpu is null || gpu.GetFormat() != Image.Format.Rg8 || !gpu.GetData().AsSpan().SequenceEqual(IndexedTextures.ToRg8(atlas.Atlas.Image)))
                 Fail("the sprite atlas upload differs from the atlas");
-            Image? info = atlas.InfoTexture.GetImage();
+            using Image? info = atlas.InfoTexture.GetImage(); // T8.3d: disposed (so held) after its last call
             for (int i = 0; info is not null && i < 2 * atlas.Lumps.Count; i++)
             {
                 if (info.GetPixel(i % LevelMesh.DataWidth, i / LevelMesh.DataWidth) != atlas.InfoTexel(i))

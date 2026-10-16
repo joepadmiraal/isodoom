@@ -140,16 +140,16 @@ public partial class LevelCheck
     {
         if (button is JoyButton.DpadUp or JoyButton.DpadDown or JoyButton.DpadLeft or JoyButton.DpadRight)
         {
-            Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = button, Pressed = true });
+            Input.ParseInputEvent(Held(new InputEventJoypadButton { Device = 0, ButtonIndex = button, Pressed = true }));
             Input.FlushBufferedEvents();
             _scene.PollMenuPad(0.1);
-            Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = button, Pressed = false });
+            Input.ParseInputEvent(Held(new InputEventJoypadButton { Device = 0, ButtonIndex = button, Pressed = false }));
             Input.FlushBufferedEvents();
             _scene.PollMenuPad(0.1);
             return;
         }
         _scene.MenuEvent(PadEvent(button));
-        _scene.MenuEvent(new InputEventJoypadButton { ButtonIndex = button, Pressed = false });
+        _scene.MenuEvent(Held(new InputEventJoypadButton { ButtonIndex = button, Pressed = false }));
     }
 
     /// <summary>T7.9b: the pad's D-pad down until the skull is on the item <paramref name="text"/> of the menu up; false when it isn't there.</summary>
@@ -290,8 +290,8 @@ public partial class LevelCheck
         {
             while (menu.Active)
                 PadTap(JoyButton.B);
-            _scene.AutomapEvent(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = true });
-            _scene.AutomapEvent(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = false });
+            _scene.AutomapEvent(Held(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = true }));
+            _scene.AutomapEvent(Held(new InputEventJoypadButton { ButtonIndex = JoyButton.Y, Pressed = false }));
             if (!am.automapactive || !PadToCheatsPage() || !PadToItem("MAP DETAIL"))
                 Fail(Step("the automap (the pad's Y), then the cheats page"));
             foreach (int step in new[] { 1, 2, 0 })

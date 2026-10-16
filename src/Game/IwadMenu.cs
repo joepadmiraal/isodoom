@@ -70,11 +70,16 @@ public partial class IwadMenu : Control
         float height = GetViewport().GetVisibleRect().Size.Y;
         int text = Math.Max(16, (int)(height / 26)); // about 31 px at 800 rows: readable on a 7" 1280×800 screen
         box.AddThemeConstantOverride("separation", text / 2);
+        // T8.3d: each label's settings held across its setter, then disposed (Render.GodotRefs).
+        using var titleSettings = new LabelSettings { FontSize = text * 2, FontColor = new Color(0.8f, 0.1f, 0.1f) };
+        using var textSettings = new LabelSettings { FontSize = text };
+        using var statusSettings = new LabelSettings { FontSize = Math.Max(14, text * 3 / 4) };
+        using var errorSettings = new LabelSettings { FontSize = Math.Max(14, text * 3 / 4), FontColor = new Color(1, 0.6f, 0.4f) };
         box.AddChild(new Label
         {
             Text = "IsoDoom",
             HorizontalAlignment = HorizontalAlignment.Center,
-            LabelSettings = new LabelSettings { FontSize = text * 2, FontColor = new Color(0.8f, 0.1f, 0.1f) },
+            LabelSettings = titleSettings,
         });
         float wrap = Math.Min(GetViewport().GetVisibleRect().Size.X * 0.8f, 1200);
         box.AddChild(new Label
@@ -83,7 +88,7 @@ public partial class IwadMenu : Control
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             CustomMinimumSize = new Vector2(wrap, 0),
-            LabelSettings = new LabelSettings { FontSize = text },
+            LabelSettings = textSettings,
         });
 
         Button? focus = null;
@@ -104,7 +109,7 @@ public partial class IwadMenu : Control
         _status = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,
-            LabelSettings = new LabelSettings { FontSize = Math.Max(14, text * 3 / 4) },
+            LabelSettings = statusSettings,
         };
         box.AddChild(_status);
         _error = new Label
@@ -112,7 +117,7 @@ public partial class IwadMenu : Control
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             CustomMinimumSize = new Vector2(wrap, 0),
-            LabelSettings = new LabelSettings { FontSize = Math.Max(14, text * 3 / 4), FontColor = new Color(1, 0.6f, 0.4f) },
+            LabelSettings = errorSettings,
         };
         box.AddChild(_error);
 
@@ -147,7 +152,7 @@ public partial class IwadMenu : Control
         {
             if (!InputMap.HasAction(action))
                 return;
-            foreach (InputEvent existing in InputMap.ActionGetEvents(action))
+            foreach (InputEvent existing in Render.GodotRefs.ActionEvents(action))
             {
                 if (existing.IsMatch(e))
                     return;

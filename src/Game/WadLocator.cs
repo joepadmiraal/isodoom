@@ -89,19 +89,21 @@ public static class WadLocator
     /// <summary>The IWAD path saved by the file picker, or null.</summary>
     public static string? LoadConfiguredIwad()
     {
-        var config = new ConfigFile();
+        using var config = new ConfigFile(); // T8.3d: disposed, never finalized during a call on it
         if (config.Load(SettingsPath) != Error.Ok)
             return null;
-        string value = config.GetValue(Section, IwadKey, "").AsString();
-        return value.Length > 0 ? value : null;
+        using Variant value = config.GetValue(Section, IwadKey); // T8.3d: disposed after its use (GodotRefs)
+        string path = value.AsString();
+        return path.Length > 0 ? path : null;
     }
 
     /// <summary>Saves <paramref name="path"/> as the configured IWAD (searched before the folders on the next start).</summary>
     public static void SaveConfiguredIwad(string path)
     {
-        var config = new ConfigFile();
+        using var config = new ConfigFile(); // T8.3d: disposed, never finalized during a call on it
         config.Load(SettingsPath); // keep other settings; a missing file is fine
-        config.SetValue(Section, IwadKey, path);
+        using Variant value = path; // T8.3d: disposed after the call (GodotRefs)
+        config.SetValue(Section, IwadKey, value);
         Error err = config.Save(SettingsPath);
         if (err != Error.Ok)
             GD.PushWarning($"Could not save {SettingsPath}: {err}");

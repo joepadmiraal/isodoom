@@ -293,7 +293,7 @@ public partial class LevelScript : Node
                             break;
                         }
                     case "look":
-                        Input.ParseInputEvent(new InputEventMouseMotion { Relative = new Vector2(Int(w[1]), Int(w[2])) });
+                        Parse(new InputEventMouseMotion { Relative = new Vector2(Int(w[1]), Int(w[2])) });
                         break;
                     case "wheel":
                         for (int i = 0, n = w.Length > 2 ? Int(w[2]) : 1; i < n; i++)
@@ -310,7 +310,7 @@ public partial class LevelScript : Node
                         break;
                     case "mouse":
                         _mouse = new Vector2(Int(w[1]), Int(w[2]));
-                        Input.ParseInputEvent(new InputEventMouseMotion { Position = _mouse, GlobalPosition = _mouse });
+                        Parse(new InputEventMouseMotion { Position = _mouse, GlobalPosition = _mouse });
                         break;
                     case "place":
                         _scene.PlacePlayer(Int(w[1]), Int(w[2]), w.Length > 3 ? float.Parse(w[3], CultureInfo.InvariantCulture) : null);
@@ -640,10 +640,10 @@ public partial class LevelScript : Node
                             break;
                         }
                     case "joy":
-                        Input.ParseInputEvent(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
+                        Parse(new InputEventJoypadMotion { Device = 0, Axis = Enum.Parse<JoyAxis>(w[1], true), AxisValue = float.Parse(w[2], CultureInfo.InvariantCulture) });
                         break;
                     case "joybutton":
-                        Input.ParseInputEvent(new InputEventJoypadButton { Device = 0, ButtonIndex = Enum.Parse<JoyButton>(w[1], true), Pressed = w[2] == "down" });
+                        Parse(new InputEventJoypadButton { Device = 0, ButtonIndex = Enum.Parse<JoyButton>(w[1], true), Pressed = w[2] == "down" });
                         break;
                     case "setting":
                         // T7.3: prints setting KEY, or sets it to VALUE as the options menu does (applied at once, saved to --settings's file)
@@ -1143,12 +1143,24 @@ public partial class LevelScript : Node
 
     private static int Int(string s) => int.Parse(s, CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// <see cref="Input.ParseInputEvent"/>, then disposes <paramref name="e"/> (the
+    /// input keeps its own reference): an event made for the call is otherwise
+    /// only its wrapper's, which the finalizer thread could free during it (T8.3d,
+    /// <see cref="Render.GodotRefs"/>).
+    /// </summary>
+    private static void Parse(InputEvent e)
+    {
+        using (e)
+            Input.ParseInputEvent(e);
+    }
+
     private static void Key(string name, bool pressed)
     {
         Key key = OS.FindKeycodeFromString(name);
         if (key == Godot.Key.None)
             throw new ArgumentException($"unknown key \"{name}\"");
-        Input.ParseInputEvent(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = pressed });
+        Parse(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = pressed });
     }
 
     // Where the last `mouse` put the cursor (a click happens there; T7.2's menus read it).
@@ -1157,14 +1169,14 @@ public partial class LevelScript : Node
     private void Click(MouseButton button)
     {
         foreach (bool pressed in new[] { true, false })
-            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, Position = _mouse, GlobalPosition = _mouse });
+            Parse(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, Position = _mouse, GlobalPosition = _mouse });
     }
 
     private static void Wheel(MouseButton button)
     {
         bool ctrl = Input.IsPhysicalKeyPressed(Godot.Key.Ctrl);
         foreach (bool pressed in new[] { true, false })
-            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, CtrlPressed = ctrl, Factor = 1 });
+            Parse(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, CtrlPressed = ctrl, Factor = 1 });
     }
 
     /// <summary>Prints wall-clock frame times over <paramref name="n"/> frames (T3.8; after a few frames to settle).</summary>
@@ -1245,7 +1257,8 @@ public partial class LevelScript : Node
         for (int i = 0; i < 3; i++)
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         path = WadLocator.ResolveUserPath(path);
-        Error err = GetViewport().GetTexture().GetImage().SavePng(path);
+        using Image shot = GetViewport().GetTexture().GetImage(); // T8.3d: held across the save (Render.GodotRefs)
+        Error err = shot.SavePng(path);
         GD.Print(err == Error.Ok ? $"Level script: saved {path}" : $"Level script: could not save {path}: {err}");
         return err == Error.Ok ? 0 : 1;
     }

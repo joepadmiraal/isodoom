@@ -53,8 +53,10 @@ public partial class AimMarker : MeshInstance3D
     public AimMarker()
     {
         CastShadow = ShadowCastingSetting.Off;
-        Mesh = Build();
-        MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
+        using ArrayMesh mesh = Build(); // T8.3d: held across the setter, then disposed (GodotRefs)
+        Mesh = mesh;
+        using var material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) }; // T8.3d: held across the setter
+        MaterialOverride = material;
     }
 
     /// <summary>Puts the marker at <paramref name="feet"/> (map units: x, y, height) pointing along <paramref name="angle"/> (BAM, 0 = east).</summary>
@@ -67,7 +69,7 @@ public partial class AimMarker : MeshInstance3D
 
     private static ArrayMesh Build()
     {
-        var st = new SurfaceTool();
+        using var st = new SurfaceTool(); // T8.3d: disposed (so held) after Commit (GodotRefs)
         st.Begin(Mesh.PrimitiveType.Triangles);
         float s = 1 / LevelMesh.MapUnitsPerMetre;
         Color ring = MarkerColor with { A = 0.45f }, chevron = MarkerColor with { A = 0.9f };

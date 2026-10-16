@@ -80,29 +80,32 @@ public partial class ItemBeams : MultiMeshInstance3D
     public ItemBeams()
     {
         CastShadow = ShadowCastingSetting.Off;
-        _material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
+        _material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
         _material.SetShaderParameter("beam_height", Height);
         _material.SetShaderParameter("beam_half_width", HalfWidth);
-        _material.SetShaderParameter("thing_actors", _actors.Texture);
+        _material.SetParam("thing_actors", _actors.Texture);
         MaterialOverride = _material;
+        using ArrayMesh quad = QuadMesh(); // T8.3d: held across the setter, then disposed (GodotRefs)
         Multimesh = _multimesh = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
             UseColors = true,
             UseCustomData = true,
-            Mesh = QuadMesh(),
+            Mesh = quad,
         };
     }
+
+    private static readonly int[] _quadIndices = [0, 2, 1, 0, 3, 2];
 
     /// <summary>The beam mesh: a quad, x −1…1 across, y 0 (foot) … 1 (top); the shader sizes it.</summary>
     private static ArrayMesh QuadMesh()
     {
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 1, 0), new Vector3(-1, 1, 0) };
-        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 1, 0, 3, 2 };
+        arrays.SetSlot(Mesh.ArrayType.Vertex, new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 1, 0), new Vector3(-1, 1, 0) });
+        arrays.SetSlot(Mesh.ArrayType.Index, _quadIndices);
         var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.AddSurface(arrays);
         const float Reach = 256f / LevelMesh.MapUnitsPerMetre;
         mesh.CustomAabb = new Aabb(new Vector3(-Reach, -Reach, -Reach), new Vector3(2 * Reach, 2 * Reach, 2 * Reach));
         return mesh;
@@ -111,8 +114,8 @@ public partial class ItemBeams : MultiMeshInstance3D
     /// <summary>Uses <paramref name="atlas"/>'s patches for the hidden test (the things' atlas, <see cref="ThingSprites.Bind"/>).</summary>
     public void Bind(SpriteAtlas atlas)
     {
-        _material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
-        _material.SetShaderParameter("sprite_info", atlas.InfoTexture);
+        _material.SetParam("sprite_atlas", atlas.AtlasTexture);
+        _material.SetParam("sprite_info", atlas.InfoTexture);
     }
 
     /// <summary>Takes the sprites' tilt, tilt depth, wall pull and upright hiding (<see cref="LevelMesh.SetSprites"/>), so the hidden test puts the billboard where it is drawn.</summary>

@@ -709,10 +709,11 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(MenuScreens); // T7.2: layer 2, over everything
         // A release export (the shipped game) starts with the overlay hidden; F3 still shows it.
         Overlay = new CanvasLayer { Visible = OS.IsDebugBuild() };
+        using var messageSettings = new LabelSettings { FontSize = 14, OutlineSize = 4, OutlineColor = Colors.Black }; // T8.3d: held across the setter
         _message = new Label
         {
             Position = new Vector2(8, 8),
-            LabelSettings = new LabelSettings { FontSize = 14, OutlineSize = 4, OutlineColor = Colors.Black },
+            LabelSettings = messageSettings,
         };
         Overlay.AddChild(_message);
         _crosshair = Crosshair();
@@ -959,19 +960,21 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(Player);
 
         // The cursor ground point: a small ring on the floor, drawn over everything (debug, hidden with the overlay).
-        var ring = new TorusMesh
+        // T8.3d: the material and the mesh held across their setters, then disposed (Render.GodotRefs).
+        using var ringMaterial = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = new Color(1f, 0.85f, 0.1f),
+            NoDepthTest = true,
+            RenderPriority = 1,
+        };
+        using var ring = new TorusMesh
         {
             InnerRadius = 5f / LevelMesh.MapUnitsPerMetre,
             OuterRadius = 8f / LevelMesh.MapUnitsPerMetre,
             Rings = 16,
             RingSegments = 4,
-            Material = new StandardMaterial3D
-            {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                AlbedoColor = new Color(1f, 0.85f, 0.1f),
-                NoDepthTest = true,
-                RenderPriority = 1,
-            }
+            Material = ringMaterial,
         };
         _cursorMarker = new MeshInstance3D { Mesh = ring, Name = "CursorMarker", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_cursorMarker);

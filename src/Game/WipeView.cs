@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using IsoDoom.Render;
 
 namespace IsoDoom.Game;
 
@@ -35,7 +36,8 @@ void fragment() {
 ";
 
     private readonly ColorRect _rect = new() { Name = "Melt", MouseFilter = Control.MouseFilterEnum.Ignore };
-    private readonly ShaderMaterial _material = new() { Shader = new Shader { Code = ShaderCode } };
+    private readonly Shader _shader = new() { Code = ShaderCode }; // T8.3d: held, not a temporary handed to the material (Render.GodotRefs)
+    private readonly ShaderMaterial _material = new();
     private readonly float[] _offsets = new float[FWipe.COLUMNS];
     private ImageTexture? _start;
     private int _shown = -1;
@@ -44,6 +46,7 @@ void fragment() {
     {
         Visible = false;
         _rect.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        _material.Shader = _shader;
         _rect.Material = _material;
         AddChild(_rect);
     }
@@ -65,7 +68,7 @@ void fragment() {
             _start = ImageTexture.CreateFromImage(StartFrame);
         else
             _start.Update(StartFrame);
-        _material.SetShaderParameter("start_screen", _start);
+        _material.SetParam("start_screen", _start);
     }
 
     /// <summary>
@@ -90,6 +93,6 @@ void fragment() {
             wipe.Offsets(_offsets);
         else
             Array.Clear(_offsets);
-        _material.SetShaderParameter("offsets", _offsets);
+        _material.SetParam("offsets", _offsets);
     }
 }

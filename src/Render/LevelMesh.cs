@@ -757,10 +757,10 @@ public sealed class LevelMesh : IDisposable
         Sprites = settings;
         // The upright hiding (T3.6a) is a shader variant; the parameters stay on the material.
         bool upright = settings.Hidden == SpriteHidden.Upright;
-        Shader shader = GD.Load<Shader>(upright ? ThingSprites.HiddenShaderPath : ThingSprites.ShaderPath);
+        Shader shader = GodotRefs.LoadShader(upright ? ThingSprites.HiddenShaderPath : ThingSprites.ShaderPath);
         if (SpriteMaterial.Shader != shader)
             SpriteMaterial.Shader = shader;
-        Shader fuzz = GD.Load<Shader>(upright ? ThingSprites.FuzzHiddenShaderPath : ThingSprites.FuzzShaderPath);
+        Shader fuzz = GodotRefs.LoadShader(upright ? ThingSprites.FuzzHiddenShaderPath : ThingSprites.FuzzShaderPath);
         if (FuzzMaterial.Shader != fuzz)
             FuzzMaterial.Shader = fuzz;
         foreach (ShaderMaterial material in new[] { SpriteMaterial, FuzzMaterial })
@@ -986,11 +986,15 @@ public sealed class LevelMesh : IDisposable
     private void SetParameter(string name, Variant value)
     {
         // T8.3: set every frame for some (the light origin, the cutaway): no StringName or array made per call.
+        // T8.3d: the value disposed after the calls (a texture's Variant, GodotRefs).
         StringName stringName = StringNames.Get(name);
-        Material.SetShaderParameter(stringName, value);
-        MaskedMaterial.SetShaderParameter(stringName, value);
-        SpriteMaterial.SetShaderParameter(stringName, value);
-        FuzzMaterial.SetShaderParameter(stringName, value);
+        using (value)
+        {
+            Material.SetShaderParameter(stringName, value);
+            MaskedMaterial.SetShaderParameter(stringName, value);
+            SpriteMaterial.SetShaderParameter(stringName, value);
+            FuzzMaterial.SetShaderParameter(stringName, value);
+        }
     }
 
     // One sector's texel; returns whether it changed.
@@ -1158,11 +1162,11 @@ public sealed class LevelMesh : IDisposable
         using (Image dim = Image.CreateFromData(256, 1, false, Image.Format.R8, new byte[256]))
             _fogDimTexture = ImageTexture.CreateFromImage(dim);
 
-        Material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
-        MaskedMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MaskedShaderPath) };
-        FuzzMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.FuzzShaderPath) };
-        SpriteMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShaderPath), NextPass = FuzzMaterial };
-        ShadowMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ThingSprites.ShadowShaderPath) };
+        Material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
+        MaskedMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(MaskedShaderPath) };
+        FuzzMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(ThingSprites.FuzzShaderPath) };
+        SpriteMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(ThingSprites.ShaderPath), NextPass = FuzzMaterial };
+        ShadowMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(ThingSprites.ShadowShaderPath) };
         SetParameter("atlas", AtlasTexture);
         SetParameter("texture_info", TextureInfoTexture);
         SetParameter("sector_data", SectorDataTexture);
@@ -1500,15 +1504,16 @@ public sealed class LevelMesh : IDisposable
                     continue;
                 // T8.3b: disposed, never finalized. Godot's binding passes the native array by a
                 // borrowed pointer, so a GC during the call could otherwise finalize (free) it.
+                // T8.3d: so is each slot's Variant, after its store (GodotRefs.SetSlot).
                 using var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
-                arrays[(int)Mesh.ArrayType.Vertex] = c.Vertices.ToArray();
-                arrays[(int)Mesh.ArrayType.TexUV] = c.Uv.ToArray();
-                arrays[(int)Mesh.ArrayType.Custom0] = c.Custom0.ToArray();
-                arrays[(int)Mesh.ArrayType.Custom1] = c.Custom1.ToArray();
-                arrays[(int)Mesh.ArrayType.Custom2] = c.Custom2.ToArray();
-                arrays[(int)Mesh.ArrayType.Index] = c.Indices.ToArray();
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, flags: Custom);
+                arrays.SetSlot(Mesh.ArrayType.Vertex, c.Vertices.ToArray());
+                arrays.SetSlot(Mesh.ArrayType.TexUV, c.Uv.ToArray());
+                arrays.SetSlot(Mesh.ArrayType.Custom0, c.Custom0.ToArray());
+                arrays.SetSlot(Mesh.ArrayType.Custom1, c.Custom1.ToArray());
+                arrays.SetSlot(Mesh.ArrayType.Custom2, c.Custom2.ToArray());
+                arrays.SetSlot(Mesh.ArrayType.Index, c.Indices.ToArray());
+                mesh.AddSurface(arrays, Custom);
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
                 foreach (Vector3 v in c.Vertices)
                 {

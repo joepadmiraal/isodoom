@@ -51,7 +51,7 @@ public partial class ShotTracers : MeshInstance3D
     {
         Mesh = _mesh;
         CastShadow = ShadowCastingSetting.Off;
-        MaterialOverride = new StandardMaterial3D
+        using var material = new StandardMaterial3D // T8.3d: held across the setter, then disposed (GodotRefs)
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             VertexColorUseAsAlbedo = true,
@@ -60,6 +60,7 @@ public partial class ShotTracers : MeshInstance3D
             NoDepthTest = true,
             RenderPriority = 1,
         };
+        MaterialOverride = material;
     }
 
     /// <summary>Adds a tracer from <paramref name="from"/> to <paramref name="to"/> (map units: x, y, height).</summary>

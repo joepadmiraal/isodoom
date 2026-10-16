@@ -49,8 +49,9 @@ public partial class FlashGlow : MeshInstance3D
     public FlashGlow()
     {
         CastShadow = ShadowCastingSetting.Off;
-        Mesh = Build();
-        MaterialOverride = _material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
+        using ArrayMesh mesh = Build(); // T8.3d: held across the setter, then disposed (GodotRefs)
+        Mesh = mesh;
+        MaterialOverride = _material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
     }
 
     /// <summary>The colour and alpha (sRGB, at the centre) as last set (<see cref="SetGlow"/>, <see cref="SetRipple"/>).</summary>
@@ -112,7 +113,7 @@ public partial class FlashGlow : MeshInstance3D
 
     private static ArrayMesh Build()
     {
-        var st = new SurfaceTool();
+        using var st = new SurfaceTool(); // T8.3d: disposed (so held) after Commit (GodotRefs)
         st.Begin(Mesh.PrimitiveType.Triangles);
         float s = Radius / LevelMesh.MapUnitsPerMetre;
         Color centre = Colors.White, rim = Colors.White with { A = 0 };

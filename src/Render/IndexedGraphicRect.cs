@@ -52,7 +52,8 @@ public partial class IndexedGraphicRect : Control
     /// <summary>Shows <paramref name="image"/> (uploaded as an RG8 texture) with <paramref name="material"/>.</summary>
     public void SetGraphic(IndexedImage image, bool flip, ShaderMaterial material)
     {
-        _image.Texture = IndexedTextures.CreateTexture(image);
+        using ImageTexture texture = IndexedTextures.CreateTexture(image); // T8.3d: held across the setter (GodotRefs)
+        _image.Texture = texture;
         _image.Material = material;
         _image.FlipH = flip;
         _size = new Vector2I(image.Width, image.Height);
@@ -90,7 +91,7 @@ public partial class IndexedGraphicRect : Control
 
     private static ImageTexture CreateChecker()
     {
-        var img = Image.CreateEmpty(16, 16, false, Image.Format.Rgb8);
+        using var img = Image.CreateEmpty(16, 16, false, Image.Format.Rgb8); // T8.3d: held across the upload (GodotRefs)
         for (int y = 0; y < 16; y++)
         {
             for (int x = 0; x < 16; x++)

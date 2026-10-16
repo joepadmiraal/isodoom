@@ -23,7 +23,13 @@ public static class StringNames
         return stringName;
     }
 
-    /// <summary><see cref="ShaderMaterial.SetShaderParameter"/> through <see cref="Get"/>.</summary>
-    public static void SetParam(this ShaderMaterial material, string name, Variant value) =>
-        material.SetShaderParameter(Get(name), value);
+    /// <summary>
+    /// <see cref="ShaderMaterial.SetShaderParameter"/> through <see cref="Get"/>;
+    /// <paramref name="value"/> is disposed after the call (T8.3d, <see cref="GodotRefs"/>).
+    /// </summary>
+    public static void SetParam(this ShaderMaterial material, string name, Variant value)
+    {
+        using (value)
+            material.SetShaderParameter(Get(name), value);
+    }
 }

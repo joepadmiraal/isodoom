@@ -63,9 +63,9 @@ public static class IndexedTextures
     /// </summary>
     public static ShaderMaterial CreatePaletteMaterial(Texture2D playpal, Texture2D colormap)
     {
-        var material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
-        material.SetShaderParameter("playpal", playpal);
-        material.SetShaderParameter("colormap", colormap);
+        var material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
+        material.SetParam("playpal", playpal);
+        material.SetParam("colormap", colormap);
         SetPalette(material, 0);
         SetColormap(material, 0);
         return material;

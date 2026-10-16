@@ -99,9 +99,9 @@ public partial class LevelCheck
                 Fail($"aspect (T7.11): the menu screen is square with 4:3 on: {layout}");
             int x = menu.currentMenu.x + 20, y = menu.currentMenu.y + 2 * MMenu.LINEHEIGHT + 4;
             Vector2 at = MenuPoint(x, y);
-            _scene.MenuEvent(new InputEventMouseMotion { Position = at });
+            _scene.MenuEvent(Held(new InputEventMouseMotion { Position = at }));
             int hovered = menu.itemOn;
-            _scene.MenuEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, Position = at });
+            _scene.MenuEvent(Held(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, Position = at }));
             if (hovered != 2 || menu.StateName != "closed" || flow.gameaction != gameaction_t.ga_newgame)
             {
                 Fail($"aspect (T7.11): a click at {at} (menu point {x}, {y}, scale {layout.ScaleX:0.###}x{layout.ScaleY:0.###}) hovered item {hovered}, then {menu.StateText()}, {flow.gameaction}");

@@ -172,19 +172,23 @@ public partial class ThingSprites : MultiMeshInstance3D
         _shadowMultimesh.Dispose();
     }
 
+    private static readonly int[] _shadowIndices = [0, 1, 2, 0, 2, 3];
+
     /// <summary>The shadow mesh: a horizontal square, x and z in −1…1 (the shader sizes it).</summary>
     private static ArrayMesh ShadowMesh()
     {
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = new[] { new Vector3(-1, 0, -1), new Vector3(1, 0, -1), new Vector3(1, 0, 1), new Vector3(-1, 0, 1) };
-        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 0, 2, 3 };
+        arrays.SetSlot(Mesh.ArrayType.Vertex, new[] { new Vector3(-1, 0, -1), new Vector3(1, 0, -1), new Vector3(1, 0, 1), new Vector3(-1, 0, 1) });
+        arrays.SetSlot(Mesh.ArrayType.Index, _shadowIndices);
         var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.AddSurface(arrays);
         const float Reach = 128f / LevelMesh.MapUnitsPerMetre;
         mesh.CustomAabb = new Aabb(new Vector3(-Reach, -Reach, -Reach), new Vector3(2 * Reach, 2 * Reach, 2 * Reach));
         return mesh;
     }
+
+    private static readonly int[] _quadIndices = [0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6];
 
     /// <summary>
     /// The billboard mesh: two quads in "sprite space" (VERTEX.x: 0 left, 1
@@ -201,10 +205,10 @@ public partial class ThingSprites : MultiMeshInstance3D
         ];
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
-        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6 };
+        arrays.SetSlot(Mesh.ArrayType.Vertex, vertices);
+        arrays.SetSlot(Mesh.ArrayType.Index, _quadIndices);
         var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.AddSurface(arrays);
         // The shader sizes and moves the quads (sprites up to 256 units, the lower part pulled up to 128 units).
         const float Reach = 512f / LevelMesh.MapUnitsPerMetre;
         mesh.CustomAabb = new Aabb(new Vector3(-Reach, -Reach, -Reach), new Vector3(2 * Reach, 2 * Reach, 2 * Reach));
@@ -221,13 +225,13 @@ public partial class ThingSprites : MultiMeshInstance3D
     {
         _atlas = atlas;
         Shadows.MaterialOverride = shadowMaterial;
-        material.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
-        material.SetShaderParameter("sprite_info", atlas.InfoTexture);
+        material.SetParam("sprite_atlas", atlas.AtlasTexture);
+        material.SetParam("sprite_info", atlas.InfoTexture);
         if (material.NextPass is ShaderMaterial fuzz)
         {
             // T6.9: the fuzz pass (LevelMesh.FuzzMaterial) draws from the same atlas.
-            fuzz.SetShaderParameter("sprite_atlas", atlas.AtlasTexture);
-            fuzz.SetShaderParameter("sprite_info", atlas.InfoTexture);
+            fuzz.SetParam("sprite_atlas", atlas.AtlasTexture);
+            fuzz.SetParam("sprite_info", atlas.InfoTexture);
         }
         MaterialOverride = material;
         Refresh();

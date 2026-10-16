@@ -667,7 +667,8 @@ public partial class WadViewer : Control
             {
                 PreviewSound = sound;
                 Resource? old = _preview.Stream;
-                _preview.Stream = IsoDoom.Audio.SfxPlayer.ToStream(sound);
+                using (AudioStreamWav stream = IsoDoom.Audio.SfxPlayer.ToStream(sound)) // T8.3d: held across the setter
+                    _preview.Stream = stream;
                 old?.Dispose();
                 PlayPreview();
                 line += "\nPlaying it (double-click or Enter plays it again).";

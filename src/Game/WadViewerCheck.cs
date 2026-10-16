@@ -346,7 +346,7 @@ public partial class WadViewerCheck : Node
         // Drawn pixels against the CPU conversion.
         await NextFrame();
         await NextFrame();
-        Image frame = _viewer.GetViewport().GetTexture().GetImage();
+        using Image frame = _viewer.GetViewport().GetTexture().GetImage(); // T8.3d: disposed (so held) after its last call
         Rect2 rect = _viewer.MainView.ImageRect.GetGlobalRect();
         int ox = (int)rect.Position.X, oy = (int)rect.Position.Y;
         if (ox < 0 || oy < 0 || ox + img.Width > frame.GetWidth() || oy + img.Height > frame.GetHeight()
@@ -413,7 +413,8 @@ public partial class WadViewerCheck : Node
             await NextFrame();
             await NextFrame();
             string path = Path.Combine(dir, file);
-            Error err = _viewer.GetViewport().GetTexture().GetImage().SavePng(path);
+            using Image shot = _viewer.GetViewport().GetTexture().GetImage(); // T8.3d: held across the save
+            Error err = shot.SavePng(path);
             if (err != Error.Ok)
                 Fail($"screenshot {path}: {err}");
             else
@@ -453,7 +454,8 @@ public partial class WadViewerCheck : Node
             await NextFrame();
             await NextFrame();
             string path = Path.Combine(dir, file);
-            Error err = _viewer.GetViewport().GetTexture().GetImage().SavePng(path);
+            using Image shot = _viewer.GetViewport().GetTexture().GetImage(); // T8.3d: held across the save
+            Error err = shot.SavePng(path);
             if (err != Error.Ok)
                 Fail($"screenshot {path}: {err}");
             else

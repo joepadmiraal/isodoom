@@ -355,7 +355,7 @@ public partial class LevelCheck : Godot.Node
     /// <summary>Every sector's data texel (and, with a renderer, the GPU copy) against the level.</summary>
     private void CheckSectorData(LevelMesh m, string map)
     {
-        Image? gpu = CanCapture ? m.SectorDataTexture.GetImage() : null;
+        using Image? gpu = CanCapture ? m.SectorDataTexture.GetImage() : null; // T8.3d: disposed (so held) after its last call
         if (CanCapture && (gpu is null || gpu.GetFormat() != Image.Format.Rgbaf))
             Fail($"{map}: the sector data texture can't be read back as RGBAF");
         foreach (Sector s in m.Level.Sectors)
@@ -369,7 +369,7 @@ public partial class LevelCheck : Godot.Node
 
         // T6.13b: the lids' texels, the lowest neighbouring ceiling and the ceiling flat's slot (none elsewhere); T6.13d: the door flag;
         // and whether its ceiling moves (a door at least: the upper walls over it are kept).
-        Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null;
+        using Image? lidGpu = CanCapture ? m.LidDataTexture.GetImage() : null; // T8.3d: disposed (so held) after its last call
         bool[] doors = DoorLids.FindDoors(m.Level);
         foreach (Sector s in m.Level.Sectors)
         {
@@ -522,13 +522,14 @@ public partial class LevelCheck : Godot.Node
 
         // The uploads: the atlas as RG8, texture_info as RGBAF (read back from the GPU when there is one).
         byte[] rg8 = IndexedTextures.ToRg8(m.Atlas.Image);
-        Image? atlasImage = CanCapture ? m.AtlasTexture.GetImage() : IndexedTextures.CreateImage(m.Atlas.Image);
+        // T8.3d: a new Image only this local owns, disposed (so held) after its last call (Render.GodotRefs).
+        using Image? atlasImage = CanCapture ? m.AtlasTexture.GetImage() : IndexedTextures.CreateImage(m.Atlas.Image);
         if (atlasImage is null || atlasImage.GetFormat() != Image.Format.Rg8 || atlasImage.GetWidth() != m.Atlas.Image.Width
             || atlasImage.GetHeight() != m.Atlas.Image.Height || !atlasImage.GetData().AsSpan().SequenceEqual(rg8))
             Fail($"{map}: the atlas upload differs from the atlas");
         if (CanCapture)
         {
-            Image? info = m.TextureInfoTexture.GetImage();
+            using Image? info = m.TextureInfoTexture.GetImage(); // T8.3d: disposed (so held) after its last call
             for (int i = 0; info is not null && i < m.Atlas.Rects.Count; i++)
             {
                 if (info.GetPixel(i % LevelMesh.DataWidth, i / LevelMesh.DataWidth) != m.TextureInfo(i))
@@ -548,10 +549,16 @@ public partial class LevelCheck : Godot.Node
             || m.Material.GetShaderParameter("side_textures").As<Texture2D>() != m.SideTexturesTexture)
             Fail($"{map}: the material doesn't bind the level's atlas and data textures");
         // The masked middles' material (T3.1) gets every parameter the level material has.
-        foreach (Godot.Collections.Dictionary parameter in m.Material.Shader.GetShaderUniformList())
+        // T8.3d: the uniform list, its entries and the Variants disposed after their use (GodotRefs).
+        using Godot.Collections.Array uniforms = m.Material.Shader.GetShaderUniformList();
+        using Variant nameKey = "name";
+        foreach (Variant entry in uniforms)
         {
-            string name = parameter["name"].AsString();
-            Variant a = m.Material.GetShaderParameter(name), b = m.MaskedMaterial.GetShaderParameter(name);
+            using Godot.Collections.Dictionary parameter = entry.AsGodotDictionary();
+            entry.Dispose();
+            using Variant nameValue = parameter[nameKey];
+            string name = nameValue.AsString();
+            using Variant a = m.Material.GetShaderParameter(name), b = m.MaskedMaterial.GetShaderParameter(name);
             if (a.VariantType != b.VariantType || a.ToString() != b.ToString()
                 || (a.VariantType == Variant.Type.Object && a.AsGodotObject() != b.AsGodotObject()))
                 Fail($"{map}: the masked material's {name} ({b}) differs from the level material's ({a})");
@@ -563,7 +570,7 @@ public partial class LevelCheck : Godot.Node
     private void CheckLightTables(LevelMesh m, string map)
     {
         byte[] expected = m.Lights.ToBytes();
-        Image? image = m.LightTablesTexture.GetImage(); // null under the dummy renderer
+        using Image? image = m.LightTablesTexture.GetImage(); // null under the dummy renderer; T8.3d: disposed (so held) after its last call
         if (image is null)
         {
             if (CanCapture)
@@ -718,7 +725,7 @@ public partial class LevelCheck : Godot.Node
         int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + markers.Sum(k => k.Pieces.Sum(p => 3 * (p.Length - 2)))
             + ledges.Sum(e => e.Pieces.Sum(p => 3 * (p.Length - 2))) + 6 * extensionQuads;
         int expectedVertices = floorCopies * floorVertices + 4 * quadCount + capVertices; // the floor, the walls, the caps and lid, the wall caps
-        Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface);
+        using Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface); // T8.3d: disposed, so held across its reads (GodotRefs)
         Vector3[] pos = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         Vector2[] uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
         float[] c0 = arrays[(int)Mesh.ArrayType.Custom0].AsFloat32Array();
@@ -1404,7 +1411,7 @@ public partial class LevelCheck : Godot.Node
     {
         await NextFrame();
         await NextFrame();
-        Image frame = GetViewport().GetTexture().GetImage();
+        using Image frame = GetViewport().GetTexture().GetImage(); // T8.3d: disposed (so held) after its last call
         Vector2I size = ViewSize();
         if (frame.GetWidth() != size.X || frame.GetHeight() != size.Y)
         {
