@@ -132,6 +132,10 @@ namespace IsoDoom.Game;
 /// <c>--level-hud-aspect=4:3|square</c> (T7.11, <see cref="HudAspect43"/>:
 /// vanilla's screen at 4:3, its pixels 1.2 times taller than wide, or square;
 /// default 4:3);
+/// <c>--level-hud-weapon-icon=on|off</c> and <c>--level-hud-weapon-digit=on|off</c>
+/// (T6.13x, <see cref="WeaponIconShown"/>, <see cref="WeaponDigit"/>: the
+/// ready weapon's icon above the HUD's ammo, and its ARMS digit brighter;
+/// default on);
 /// <c>--level-wipe=melt|off</c> (T7.1a, <see cref="ScreenWipes"/>: f_wipe.c's
 /// melt at each game state change, the game holding still meanwhile; default melt);
 /// <c>--level-palette-effects=screen|player|off</c> (T6.8, T6.13v, <see cref="PaletteFlashes"/>:
@@ -485,6 +489,38 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>T6.11: the message line (hu_stuff.c), in the WAD's <c>STCFN*</c> font; null until a WAD is open.</summary>
     public HuStuff? MessageLine { get; private set; }
+
+    /// <summary>T6.13x: the ready weapon's icon above the status bar or the fullscreen HUD's ammo, and its ARMS digit brightened.</summary>
+    public WeaponIcon? WeaponIcon { get; private set; }
+
+    // T6.13x: the options, kept here too for a WAD opened after they were set
+    private bool _weaponIcon = true, _weaponDigit = true;
+
+    /// <summary>T6.13x: the ready weapon's icon shows (<c>hud/weapon_icon</c>, <c>--level-hud-weapon-icon</c>; not vanilla, SPEC §12).</summary>
+    public bool WeaponIconShown
+    {
+        get => _weaponIcon;
+        set
+        {
+            _weaponIcon = value;
+            WeaponIcon?.Enabled = value;
+            if (StatusBar is not null && PlayerMobj is not null)
+                WeaponIcon?.Draw(StatusBar, Hud.Mode);
+        }
+    }
+
+    /// <summary>T6.13x: the bar's ARMS digit of the ready weapon drawn brighter (<c>hud/weapon_digit</c>, <c>--level-hud-weapon-digit</c>; not vanilla, SPEC §12).</summary>
+    public bool WeaponDigit
+    {
+        get => _weaponDigit;
+        set
+        {
+            _weaponDigit = value;
+            WeaponIcon?.Digit = value;
+            if (StatusBar is not null && PlayerMobj is not null)
+                WeaponIcon?.Draw(StatusBar, Hud.Mode);
+        }
+    }
 
     /// <summary>T6.11: shows <see cref="StatusBar"/> and <see cref="MessageLine"/> under the game camera (<c>--level-hud</c>); hidden under the other cameras and the level check.</summary>
     public HudView Hud { get; } = new() { Name = StringNames.Get("Hud") };
@@ -861,6 +897,10 @@ public partial class LevelScene : Node3D, IGameHost
                 MusicOpl3 = ParseOpl(opl, "--level-opl"); // T7.8g
             if (WadLocator.GetUserArg("--level-hud-aspect") is string hudAspect)
                 HudAspect43 = ParseAspect(hudAspect, "--level-hud-aspect"); // T7.11
+            if (WadLocator.GetUserArg("--level-hud-weapon-icon") is string weaponIcon)
+                WeaponIconShown = ParseOnOff(weaponIcon, "--level-hud-weapon-icon"); // T6.13x
+            if (WadLocator.GetUserArg("--level-hud-weapon-digit") is string weaponDigit)
+                WeaponDigit = ParseOnOff(weaponDigit, "--level-hud-weapon-digit");
             if (WadLocator.GetUserArg("--level-hud-scale") is string hudScale)
                 Hud.FixedScale = hudScale == "auto" ? 0
                     : int.TryParse(hudScale, out int n) && n >= 1 && n <= 16 ? n
@@ -1724,6 +1764,7 @@ public partial class LevelScene : Node3D, IGameHost
         _redrawStatusBar = false;
         StatusBar?.ST_DrawFullscreen();
         MessageLine?.HU_Drawer();
+        WeaponIcon?.Draw(StatusBar, Hud.Mode); // T6.13x
     }
 
     /// <summary>
@@ -1735,7 +1776,7 @@ public partial class LevelScene : Node3D, IGameHost
     {
         Hud.Visible = IsoActive && PlayerMobj is not null && StatusBar is not null && GameState == gamestate_t.GS_LEVEL;
         if (Hud.Visible && Playpal is not null)
-            Hud.Show(StatusBar, MessageLine, ScreenPalette(LevelScreenPalette.Row));
+            Hud.Show(StatusBar, MessageLine, WeaponIcon, ScreenPalette(LevelScreenPalette.Row));
         Iso?.BottomInset = Hud.BottomInset;
         _message.Position = new Vector2(8, 8 + Hud.TopInset);
     }
@@ -2772,6 +2813,7 @@ public partial class LevelScene : Node3D, IGameHost
         Colormap = Colormap.Load(wad);
         StatusBar = new StStuff(StStuff.Graphics.Load(wad), MRandom); // T6.11: st_stuff.c ST_Init
         MessageLine = new HuStuff(wad); // hu_stuff.c HU_Init
+        WeaponIcon = new WeaponIcon(wad, Colormap, Playpal.GetPalette(0)) { Enabled = _weaponIcon, Digit = _weaponDigit }; // T6.13x
         MapNames = FindMaps(wad);
         Wad = wad;
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;

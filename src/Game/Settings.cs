@@ -143,6 +143,9 @@ public static class Settings
         new("hud/scale", "SCALE", SettingPage.Hud, "auto", ["auto", "1", "2", "3", "4", "5", "6", "7", "8"], "--level-hud-scale"),
         // T7.11: vanilla's screen at 4:3 (its pixels 1.2 times taller than wide, as on a CRT) or square
         new("hud/aspect", "ASPECT", SettingPage.Hud, "4:3", ["4:3", "square"], "--level-hud-aspect"),
+        // T6.13x: the ready weapon's icon above the ammo, and its ARMS digit brighter
+        new("hud/weapon_icon", "WEAPON ICON", SettingPage.Hud, "on", _onOff, "--level-hud-weapon-icon"),
+        new("hud/weapon_digit", "WEAPON DIGIT", SettingPage.Hud, "on", _onOff, "--level-hud-weapon-digit"),
         new("hud/messages", "MESSAGES", SettingPage.Hud, "on", _onOff),
         new("hud/detail", "GRAPHIC DETAIL", SettingPage.Hud, "high", ["high", "low"]),
         // T7.12: the mouse pointer a crosshair on a level, or the system's arrow

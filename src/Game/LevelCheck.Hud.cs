@@ -139,6 +139,7 @@ public partial class LevelCheck
                 Fail($"{what}: {bad} pixels differ; first: {first}");
         }
         _pixels += compared;
+        await CheckWeaponIconDrawn(st, hu, view, ur, ug, ub); // T6.13x
         GD.Print($"Level check: {map}: HUD (T6.11): status bar, fullscreen HUD and message line at scale {view.PixelScale}, {compared} pixels compared");
         view.Mode = mode;
         view.Visible = false;

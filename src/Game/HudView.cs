@@ -4,9 +4,6 @@ using IsoDoom.Wad.Graphics;
 
 namespace IsoDoom.Game;
 
-/// <summary>The level scene's HUD (T6.11, <c>--level-hud</c>): vanilla's status bar, the minimal fullscreen HUD, or none (the message line shows with all three).</summary>
-public enum HudMode { Bar, Full, Off }
-
 /// <summary>
 /// Shows the HUD (T6.11, SPEC §7.6): the status bar (<see cref="StStuff"/>)
 /// scaled at the bottom of the screen, or the minimal fullscreen HUD, and the
@@ -23,9 +20,10 @@ public partial class HudView : CanvasLayer
     private readonly TextureRect _bar = ScreenRects.New("StatusBar");
     private readonly TextureRect _message = ScreenRects.New("MessageLine");
     private readonly TextureRect _title = ScreenRects.New("MapTitle");
-    private Image? _barImage, _messageImage, _titleImage;
-    private ImageTexture? _barTexture, _messageTexture, _titleTexture;
-    private byte[] _barRgba = [], _messageRgba = [], _titleRgba = [];
+    private readonly TextureRect _weapon = ScreenRects.New("WeaponIcon");
+    private Image? _barImage, _messageImage, _titleImage, _weaponImage;
+    private ImageTexture? _barTexture, _messageTexture, _titleTexture, _weaponTexture;
+    private byte[] _barRgba = [], _messageRgba = [], _titleRgba = [], _weaponRgba = [];
 
     /// <summary>What shows (<c>--level-hud</c>; = and - keys).</summary>
     public HudMode Mode { get; set; } = HudMode.Bar;
@@ -77,6 +75,7 @@ public partial class HudView : CanvasLayer
         AddChild(_bar);
         AddChild(_message);
         AddChild(_title);
+        AddChild(_weapon);
     }
 
     /// <summary>
@@ -86,16 +85,21 @@ public partial class HudView : CanvasLayer
     /// lays them out for the viewport.
     /// </summary>
     public void Show(StStuff? st, HuStuff? hu, Playpal playpal, int palette) =>
-        Show(st, hu, playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)));
+        Show(st, hu, null, playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)));
 
-    /// <summary>As <see cref="Show(StStuff?, HuStuff?, Playpal, int)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
-    public void Show(StStuff? st, HuStuff? hu, ReadOnlySpan<byte> pal)
+    /// <summary>
+    /// As <see cref="Show(StStuff?, HuStuff?, Playpal, int)"/>, through palette
+    /// <paramref name="pal"/> (768 bytes; T6.13v: a blended flash), with
+    /// <paramref name="weapon"/>'s icon and its bar (T6.13x: the ARMS digit
+    /// brightened) as last drawn.
+    /// </summary>
+    public void Show(StStuff? st, HuStuff? hu, WeaponIcon? weapon, ReadOnlySpan<byte> pal)
     {
         Vector2 size = GetViewport().GetVisibleRect().Size;
         ScreenLayout layout = Layout = LayoutFor(size);
         ScreenLayout top = MessageLayout(layout);
 
-        HudScreen? strip = st is null ? null : AutomapShown || Mode == HudMode.Bar ? st.Screen : Mode == HudMode.Full ? st.FullScreen : null;
+        HudScreen? strip = st is null ? null : AutomapShown || Mode == HudMode.Bar ? weapon?.Bar ?? st.Screen : Mode == HudMode.Full ? st.FullScreen : null;
         _bar.Visible = strip is not null;
         if (strip is not null)
         {
@@ -107,6 +111,14 @@ public partial class HudView : CanvasLayer
         {
             Upload(hu.Screen, pal, ref _messageImage, ref _messageTexture, ref _messageRgba, _message);
             ScreenRects.Place(_message, top.Rect(0, hu.Screen.Top, hu.Screen.Width, hu.Screen.Height), hu.Screen.Width, hu.Screen.Height);
+        }
+        // T6.13x: the ready weapon's icon above the bar or the fullscreen HUD's ammo (not over the automap)
+        _weapon.Visible = weapon is { Enabled: true } && !AutomapShown && Mode != HudMode.Off;
+        if (_weapon.Visible && weapon is not null)
+        {
+            HudScreen icon = weapon.Screen;
+            Upload(icon, pal, ref _weaponImage, ref _weaponTexture, ref _weaponRgba, _weapon);
+            ScreenRects.Place(_weapon, layout.Rect(0, icon.Top, HudScreen.SCREENWIDTH, HudScreen.SCREENHEIGHT - icon.Top), icon.Width, icon.Height);
         }
         _title.Visible = AutomapShown && hu is not null;
         if (AutomapShown && hu is not null)
@@ -139,6 +151,9 @@ public partial class HudView : CanvasLayer
 
     /// <summary>The status bar's (or fullscreen HUD's) texture rectangle (the level check reads it back).</summary>
     public TextureRect Bar => _bar;
+
+    /// <summary>T6.13x: the weapon icon's texture rectangle.</summary>
+    public TextureRect WeaponIconRect => _weapon;
 
     /// <summary>The message line's texture rectangle.</summary>
     public TextureRect MessageLine => _message;
