@@ -1,6 +1,7 @@
 # Dev image for IsoDoom: .NET 10 SDK + Godot 4 (.NET build), with the
-# libraries the editor needs to open a window on the host's Wayland/X11
-# display, render through Mesa (Vulkan/GL) and play audio through PulseAudio,
+# libraries the editor needs to open a window on the host's Wayland display
+# (and X11's, for Xvfb inside the container: the host's X11 is not passed
+# through), render through Mesa (Vulkan/GL) and play audio through PulseAudio,
 # plus Xvfb for running windowed checks without a display and actionlint for CI.
 FROM mcr.microsoft.com/devcontainers/dotnet:2-10.0-noble
 
@@ -49,7 +50,7 @@ RUN set -eux; \
     rm /tmp/actionlint.tar.gz
 
 # `godot` wrapper: prefer native Wayland when a Wayland socket is available,
-# otherwise fall back to Godot's default (X11).
+# otherwise fall back to Godot's default (X11: Xvfb under xvfb-run).
 RUN printf '%s\n' \
       '#!/bin/sh' \
       'if [ -n "$WAYLAND_DISPLAY" ] && [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then' \
@@ -60,9 +61,14 @@ RUN printf '%s\n' \
     && chmod +x /usr/local/bin/godot
 
 # XDG_RUNTIME_DIR for the container user. Godot's Wayland backend requires it
-# to be owned by the user with mode 0700; the host's Wayland and PulseAudio
-# sockets are bind-mounted into it (see devcontainer.json).
+# to be owned by the user with mode 0700; the host's Wayland socket and
+# PulseAudio socket dir are bind-mounted into it (see devcontainer.json and
+# initialize.sh).
 RUN install -d -m 0700 -o vscode -g vscode /tmp/runtime-vscode
+
+# Xvfb's socket dir (the host's /tmp/.X11-unix is not mounted): it must be
+# root's and sticky, which Xvfb running as vscode cannot make itself.
+RUN install -d -m 1777 /tmp/.X11-unix
 
 USER vscode
 RUN set -eux; \

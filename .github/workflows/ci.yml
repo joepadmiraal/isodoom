@@ -236,6 +236,9 @@ jobs:
           mkdir -p export/linux
           godot --headless --export-release "Linux" export/linux/IsoDoom.x86_64
           test -x export/linux/IsoDoom.x86_64
+          # T8.3c: Godot copies .NET's crash-dump tool without its exec bit,
+          # so DOTNET_DbgEnableMiniDump=1 could write no dump.
+          chmod +x export/linux/data_IsoDoom_linuxbsd_x86_64/createdump
           ls -la export/linux
 
       - name: Smoke-test the exported build
@@ -498,7 +501,9 @@ jobs:
             cp "docs-dist/$f" artifacts/IsoDoom-linux-x86_64/
             cp "docs-dist/$f" artifacts/IsoDoom-windows-x86_64/
           done
-          (cd artifacts/IsoDoom-linux-x86_64 && chmod +x IsoDoom.x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-linux-x86_64.zip" .)
+          # Artifacts drop file modes: the game and createdump (T8.3c) get
+          # their exec bits back before zipping.
+          (cd artifacts/IsoDoom-linux-x86_64 && chmod +x IsoDoom.x86_64 data_IsoDoom_linuxbsd_x86_64/createdump && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-linux-x86_64.zip" .)
           (cd artifacts/IsoDoom-windows-x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-windows-x86_64.zip" .)
           cp artifacts/IsoDoom-macos-universal/IsoDoom.zip "dist/IsoDoom-$TAG-macos-universal.zip"
           (cd docs-dist && zip -9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-macos-universal.zip" README.txt COPYING THIRD-PARTY-NOTICES.md)
@@ -506,6 +511,9 @@ jobs:
             for f in README.txt COPYING THIRD-PARTY-NOTICES.md; do
               unzip -l "$z" | grep -q " $f$" || { echo "::error::$z lacks $f"; exit 1; }
             done
+          done
+          for f in IsoDoom.x86_64 data_IsoDoom_linuxbsd_x86_64/createdump; do
+            zipinfo "dist/IsoDoom-$TAG-linux-x86_64.zip" "$f" | grep -q "^-rwx" || { echo "::error::$f is not executable in the Linux zip"; exit 1; }
           done
           ls -la dist
 
