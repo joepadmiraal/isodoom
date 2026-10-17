@@ -390,6 +390,47 @@ public class GameFlowTests
         Assert.Equal(buttoncode_t.BT_USE, p2.cmd.buttons);
     }
 
+    [Fact]
+    public void AQuitDuringTheIntermissionIsHeldForTheNextLevel()
+    {
+        // T11.11's follow-up: player 2 leaves during the intermission; the console player's message waits for E1M2
+        var host = new Host(GameMode.shareware) { Players = 0b11 }; // the synthetic E1M1's co-op starts (T11.5a), then E1M2
+        var flow = new GameFlow(host, GameMode.shareware, new DoomRandom());
+        flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
+        World world = host.World!;
+        world.G_ExitLevel();
+        var cmds = new ticcmd_t[World.MAXPLAYERS];
+        flow.RunTic(cmds, 0b11);
+        Assert.Equal(gamestate_t.GS_INTERMISSION, flow.gamestate);
+        flow.RunTic(cmds, 0b01); // player 2's commands stop: it quits before this tic
+        Assert.False(world.playeringame[1]);
+        Assert.Equal("Player 2 left the game", flow.HeldMessage);
+        Assert.Null(world.players[0].message); // not in the world: every machine's state the same
+        Assert.DoesNotContain(world.events, e => e.type == simevent_t.se_message);
+
+        int tics = 0;
+        cmds[0] = _use;
+        while (flow.gamestate != gamestate_t.GS_LEVEL)
+        {
+            cmds[0].buttons = (tics & 1) == 0 ? buttoncode_t.BT_USE : (byte)0;
+            flow.RunTic(cmds, 0b01);
+            Assert.True(++tics < 2000);
+        }
+        Assert.Equal("E1M2", world.level.Name);
+        Assert.Equal("Player 2 left the game", flow.HeldMessage); // the next level's load kept it (the scene's message line takes it)
+        Assert.Equal("Player 2 left the game", flow.TakeHeldMessage());
+        Assert.Null(flow.HeldMessage);
+
+        // a new game drops one still held
+        world.G_ExitLevel();
+        flow.RunTic(cmds, 0b01);
+        world.playeringame[1] = true;
+        flow.RunTic(cmds, 0b01);
+        Assert.NotNull(flow.HeldMessage);
+        flow.G_InitNewMap(skill_t.sk_medium, "E1M1");
+        Assert.Null(flow.HeldMessage);
+    }
+
     // ---- the pause, a reborn ----
 
     [Fact]

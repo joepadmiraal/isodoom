@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IsoDoom.Audio;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
@@ -341,10 +342,46 @@ public sealed class GameFlow
                     Log?.Invoke($"Net: player {i + 1} left the game at gametic {gametic}");
                     if (gamestate != gamestate_t.GS_LEVEL || paused)
                         world.HU_TakeMessages(); // no level tic to take it
+                    if (gamestate != gamestate_t.GS_LEVEL)
+                        HoldMessages(world); // no message line to show it: the next level's
                 }
             }
         }
         G_Ticker(netcmds);
+    }
+
+    /// <summary>
+    /// Not vanilla (T11.11's follow-up, SPEC §12 "A quit's message outside a
+    /// level"): the console player's message taken outside a level (a quit
+    /// during the intermission or the finale, <see cref="RunTic"/>), held
+    /// for the next level's message line (the level scene shows it at that
+    /// level's first tic, <see cref="TakeHeldMessage"/>). Per machine, as
+    /// the message itself: never in the world, so every machine's saved
+    /// state stays the same. A new game or the title loop drops it.
+    /// </summary>
+    public string? HeldMessage { get; private set; }
+
+    /// <summary>The held message (<see cref="HeldMessage"/>), taken: the level scene's message line at a level's tic.</summary>
+    public string? TakeHeldMessage()
+    {
+        string? message = HeldMessage;
+        HeldMessage = null;
+        return message;
+    }
+
+    // Moves the console player's queued messages (HU_TakeMessages' events, which the next level's load would drop) to HeldMessage.
+    private void HoldMessages(World world)
+    {
+        List<sim_event_t> events = world.events;
+        for (int i = 0; i < events.Count; i++)
+        {
+            if (events[i].type == simevent_t.se_message)
+            {
+                if (events[i].player == world.consoleplayer)
+                    HeldMessage = events[i].message; // the last one, as the message line's
+                events.RemoveAt(i--);
+            }
+        }
     }
 
     /// <summary>
@@ -1037,6 +1074,7 @@ public sealed class GameFlow
         }
         advancedemo = false; // not vanilla: a title loop step due (the game started before the title's first tic) is dropped
         MRandom.M_ClearRandom();
+        HeldMessage = null; // T11.11's follow-up: the last game's held message goes with it
         usergame = true; // will be set false if a demo
         gameskill = skill;
         // the sky (R_TextureNumForName("SKY1"…)) is the presentation's: never drawn (SPEC §7.2)
@@ -1149,6 +1187,7 @@ public sealed class GameFlow
     /// </summary>
     public void D_StartTitle(string? why)
     {
+        HeldMessage = null; // T11.11's follow-up: the game's held message goes with it
         host.EndGame(why);
         gameaction = gameaction_t.ga_nothing;
         demosequence = -1;

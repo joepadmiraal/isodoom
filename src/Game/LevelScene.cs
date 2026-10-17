@@ -1917,6 +1917,12 @@ public partial class LevelScene : Node3D, IGameHost
                     break;
             }
         }
+        // T11.11's follow-up: a message held from the intermission or finale (a player's quit) shows at the level's first tic
+        if (_flow?.TakeHeldMessage() is { } held)
+        {
+            message ??= held; // the tic's own message comes first, as a later one replaces the line
+            GD.Print($"Level: tic {World.leveltime}: \"{held}\" (held from the intermission or finale)");
+        }
         if (MessageLine is { } hu)
         {
             // T7.2: the menus' message (players[consoleplayer].message) and the messages toggle
