@@ -87,6 +87,13 @@ public partial class LevelCheck
             mobj_t other = world.players[0].mo!;
             if (_scene.FogShows(other) != LevelScene.FogLets(_scene.Fog!, _scene.FogThings, other, 1))
                 Fail($"deathmatch: {map}: the other player is not drawn as the fog lets a monster be");
+            // T11.10a: no teammate rings in deathmatch
+            _scene.RingsEverywhere = true;
+            _scene.UpdateTeammateRings();
+            _scene.RingsEverywhere = false;
+            if (_scene.TeammateRings.Rings.Count != 0)
+                Fail($"deathmatch: {map}: {_scene.TeammateRings.Rings.Count} teammate ring(s) (T11.10a: co-op only)");
+            _scene.UpdateTeammateRings();
 
             // a game alone: the reborn reloads the level, at a deathmatch start
             _scene.PlayersInGame = 1;
@@ -105,7 +112,7 @@ public partial class LevelCheck
                 Fail($"deathmatch: {map}: alone, the reborn did not reload the level at a deathmatch start (reloads {_scene.Reborns - reborns}, leveltime {world.leveltime})");
             GD.Print($"Level check: deathmatch (T11.4): {map}: two players at deathmatch starts with every card, the fog from the local player alone, "
                 + "a frag on the status bar's frags widget, a netgame reborn at a deathmatch start without a reload (the body left, the HUD following the new mobj), "
-                + "the other player drawn as a monster under the fog; alone, a reborn reloading the level at a deathmatch start");
+                + "the other player drawn as a monster under the fog, no teammate rings; alone, a reborn reloading the level at a deathmatch start");
         }
         finally
         {

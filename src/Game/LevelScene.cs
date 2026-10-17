@@ -101,6 +101,8 @@ namespace IsoDoom.Game;
 /// <c>--level-brain-marker=on|off</c> (T10.4: the Icon of Sin's brain marked
 /// as the monster markers whatever the player's sight, yellow while a rocket
 /// fired now would reach it, <see cref="IconAim"/>; default on);
+/// <c>--level-teammate-rings=on|off</c> (T11.10a: in co-op a ring in each
+/// teammate's colour around its feet, <see cref="Render.TeammateRings"/>; default on);
 /// <c>--level-upper-walls=doors|all</c> (<see cref="UpperWallMode"/>: only the
 /// upper walls over doors, lintels, windows and crushers, or every one, as
 /// vanilla, whose bands over a room's lower ceiling hang in the air; default
@@ -706,6 +708,7 @@ public partial class LevelScene : Node3D, IGameHost
         AddChild(new WorldEnvironment { Environment = Environment });
         AddChild(_shotTracers); // in the tree from the start, so a failed load or the check still frees it at exit
         AddChild(_aimMarker);
+        AddChild(TeammateRings); // T11.10a
         AddChild(Glow);
         AddChild(Beams);
         AddChild(Markers);
@@ -823,6 +826,8 @@ public partial class LevelScene : Node3D, IGameHost
                 MonsterMarking = ParseMonsterMarkers(monsterMarkers, "--level-monster-markers");
             if (WadLocator.GetUserArg("--level-brain-marker") is string brainMarker)
                 BrainMarking = ParseBrainMarker(brainMarker, "--level-brain-marker");
+            if (WadLocator.GetUserArg("--level-teammate-rings") is string rings)
+                TeammateRinging = ParseBrainMarker(rings, "--level-teammate-rings"); // (on or off, T11.10a)
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
@@ -1410,6 +1415,7 @@ public partial class LevelScene : Node3D, IGameHost
                 FollowPlayer(delta);
                 _shotTracers.Update(delta, GetViewport().GetCamera3D());
                 UpdateAimMarker();
+                UpdateTeammateRings(); // T11.10a
                 if (GetViewport().GetCamera3D() is Camera3D current)
                     Things?.UpdateRotations(current);
                 UpdateItemBeams();

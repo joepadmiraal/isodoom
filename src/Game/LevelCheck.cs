@@ -1354,6 +1354,8 @@ public partial class LevelCheck : Godot.Node
 
         await MonsterMarkerCheck(m); // T6.13u
 
+        await TeammateRingCheck(m); // T11.10a
+
         await FlashGlowCheck(m); // T6.13v
 
         await UpperWallCheck(m);

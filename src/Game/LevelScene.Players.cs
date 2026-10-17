@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using IsoDoom.Map;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 
 namespace IsoDoom.Game;
@@ -116,6 +117,47 @@ public partial class LevelScene
         }
     }
 
+    /// <summary>
+    /// T11.10a (the user's decision, SPEC §12): in co-op, a ring in each
+    /// teammate's colour around its feet (<see cref="Render.TeammateRings"/>,
+    /// <c>--level-teammate-rings</c>, <c>sprites/teammate_rings</c>; default
+    /// on). Never in single player or deathmatch, never under the local player
+    /// (it has the aim marker), nor under a dead teammate or one the fog hides.
+    /// </summary>
+    public bool TeammateRinging { get; set; } = true;
+
+    /// <summary>The teammate rings' node (T11.10a).</summary>
+    public TeammateRings TeammateRings { get; } = new() { Name = StringNames.Get("TeammateRings") };
+
+    /// <summary>The teammate rings under any camera (the level check's, which has no game camera).</summary>
+    public bool RingsEverywhere { get; set; }
+
+    private readonly TeammateRings.Ring[] _ringList = new TeammateRings.Ring[World.MAXPLAYERS];
+
+    /// <summary>
+    /// T11.10a: the teammate rings (<see cref="TeammateRinging"/>) at the drawn
+    /// teammates under the game camera (or <see cref="RingsEverywhere"/>) in a
+    /// co-op game: every live player in the game but the local one whose mobj
+    /// is drawn and the fog shows, in its colour (<see cref="TeammateRings.ColourOf"/>).
+    /// </summary>
+    public void UpdateTeammateRings()
+    {
+        int n = 0;
+        if (TeammateRinging && _showThings && (IsoActive || RingsEverywhere) && Mesh is not null && Playpal is { } palette
+            && World is { netgame: true } world && world.settings.deathmatch == 0)
+        {
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (i == world.consoleplayer || !world.playeringame[i] || world.players[i] is not { playerstate: playerstate_t.PST_LIVE, mo: { } mo }
+                    || !IsDrawn(mo) || !FogShows(mo))
+                    continue;
+                (Godot.Vector3 feet, _) = Interpolated(mo);
+                _ringList[n++] = new TeammateRings.Ring(i, feet, TeammateRings.ColourOf(palette, i));
+            }
+        }
+        TeammateRings.Set(_ringList.AsSpan(0, n));
+    }
+
     /// <summary>The overlay's and the script's <c>players</c> line (T11.10): the players in the game, the local one and the fog's viewpoints.</summary>
     public string PlayersText()
     {
@@ -125,6 +167,6 @@ public partial class LevelScene
             .Select(i => $"{i + 1}{(world.players[i].playerstate == playerstate_t.PST_LIVE ? "" : " (dead)")}");
         string mode = !world.netgame ? "single player" : world.settings.deathmatch != 0 ? "deathmatch" : "co-op";
         return string.Create(CultureInfo.InvariantCulture,
-            $"players: {string.Join(", ", inGame)} ({mode}), local {world.consoleplayer + 1}{(world.netgame ? " (F12)" : "")}, fog from {FogViewpoints(world, _fogPoints)}");
+            $"players: {string.Join(", ", inGame)} ({mode}), local {world.consoleplayer + 1}{(world.netgame && Net is null ? " (F12)" : "")}, fog from {FogViewpoints(world, _fogPoints)}, teammate rings {(TeammateRinging ? TeammateRings.Rings.Count.ToString(CultureInfo.InvariantCulture) : "off")}");
     }
 }

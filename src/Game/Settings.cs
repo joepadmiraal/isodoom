@@ -137,6 +137,7 @@ public static class Settings
         new("sprites/monster_markers", "MONSTER MARKERS", SettingPage.Sprites, "beam", ["beam", "chevron", "off"], "--level-monster-markers"), // T6.13u
         new("sprites/sight_dim", "SIGHT DIM", SettingPage.Sprites, "6", ["off", "6", "10", "14"], "--level-sight-dim"), // T6.13t
         new("sprites/brain_marker", "ICON OF SIN MARKER", SettingPage.Sprites, "on", _onOff, "--level-brain-marker"), // T10.4
+        new("sprites/teammate_rings", "TEAMMATE RINGS", SettingPage.Sprites, "on", _onOff, "--level-teammate-rings"), // T11.10a: co-op only
 
         // HUD (vanilla's screen size, messages and detail too)
         new("hud/mode", "SCREEN", SettingPage.Hud, "bar", ["bar", "full", "off"], "--level-hud"),
