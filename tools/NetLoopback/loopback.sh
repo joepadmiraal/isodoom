@@ -79,6 +79,8 @@ if [ $# -gt 0 ] && [ "$1" = "--" ]; then shift; [ $# -gt 0 ] && client_game=("$@
 # made with cygpath under Git Bash or as Wine's drive Z: under Wine; others
 # take it as it is. The first word of a game command says which.
 native() { # GAME_FIRST_WORD PATH
+    # (an empty path, the exchange's route, stays empty: cygpath refuses it)
+    [ -n "$2" ] || { echo; return; }
     case "$1" in
         wine|wine64|*/wine|*/wine64) echo "Z:$2" ;;
         *.exe) if command -v cygpath >/dev/null; then cygpath -m "$2"; else echo "$2"; fi ;;
