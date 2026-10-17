@@ -916,10 +916,15 @@ public partial class LevelScene : Node3D, IGameHost
                 string? map = WadLocator.GetUserArg("--level");
                 if (map is null || map.StartsWith('-'))
                     map = DefaultMap();
-                LoadMap(map);
-                _flow.wipegamestate = gamestate_t.GS_LEVEL; // T7.1a: no melt into the map (vanilla's -warp melts its startup screen; SPEC §12 T7.1a)
-                if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
-                    MoveFloors(Mesh!.Level, moves);
+                if (IsCheckRun || WadLocator.HasUserArg("--level-screenshot") || HasLump(map.ToUpperInvariant()))
+                {
+                    LoadMap(map);
+                    _flow.wipegamestate = gamestate_t.GS_LEVEL; // T7.1a: no melt into the map (vanilla's -warp melts its startup screen; SPEC §12 T7.1a)
+                    if (WadLocator.GetUserArg("--level-sector-floor") is string moves)
+                        MoveFloors(Mesh!.Level, moves);
+                }
+                else // a map the WAD lacks (E1M1 on Doom II): the title loop, the reason in the overlay, the scene set up as without --level
+                    _flow.D_StartTitle($"--level {map}: the WAD has no map {map.ToUpperInvariant()}");
             }
             else
                 _flow.D_StartTitle(null); // T7.1: d_main.c D_DoomMain without a map: the title loop
