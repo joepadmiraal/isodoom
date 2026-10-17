@@ -300,6 +300,18 @@ jobs:
       - name: Netgame loopback play (exported build, headless)
         run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- export/linux/IsoDoom.x86_64
 
+      # T11.11: drop-outs and desyncs: the client killed mid-game (SIGKILL;
+      # the host drops it after -nettimeout 5 and plays on alone, in sync),
+      # the host killed (the client times out back to the title loop), and a
+      # forced desync (both stop at the same window and write their dumps).
+      # About 25 s each.
+      - name: Netgame loopback drop-outs and desync (exported build, headless)
+        run: |
+          r=tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --kill client "$r" -- export/linux/IsoDoom.x86_64
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --kill host "$r" -- export/linux/IsoDoom.x86_64
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --desync "$r" -- export/linux/IsoDoom.x86_64
+
       - uses: actions/upload-artifact@v7
         with:
           name: IsoDoom-linux-x86_64

@@ -762,6 +762,8 @@ public partial class LevelScript : Node
                     case "netcheck": exit |= await NetCheck(w.Length > 1 ? Int(w[1]) : 30); break; // T11.8
                     case "until": exit |= await Until(w[1], w[2], w.Length > 3 ? Int(w[3]) : 120); break; // T11.8
                     case "kill": Kill(w.Length > 1 ? Int(w[1]) - 1 : null); break; // T11.8
+                    case "netdesync": exit |= NetDesync(); break; // T11.11
+                    case "netuntil": exit |= await NetUntil(w); break; // T11.11
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }

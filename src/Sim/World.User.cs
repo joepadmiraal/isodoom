@@ -66,6 +66,33 @@ public sealed partial class World
     private readonly ticcmd_t[] _onecmd = new ticcmd_t[MAXPLAYERS];
 
     /// <summary>
+    /// Chocolate Doom d_net.c <c>PlayerQuitGame</c> (vanilla's d_net.c
+    /// <c>GetPackets</c> on <c>NCMD_EXIT</c>; T11.11): player
+    /// <paramref name="playernum"/> left the netgame. It is out of the game
+    /// from now on (<see cref="playeringame"/>); its mobj stays where it is,
+    /// as vanilla's (it no longer thinks as a player: <c>P_PlayerThink</c>
+    /// skips it, its mobj still moves, falls and can be shot). The console
+    /// player gets "Player N left the game". Chocolate Doom's
+    /// <c>RunTic</c> calls it before the tic for each player in the game
+    /// that the tic's set of commands leaves out, so every machine does it
+    /// at the same tic (the bundles' players, T11.5); vanilla's did it when
+    /// the packet came, which could desync. The message is per machine
+    /// (the console player's), as the turbo message's: the tic's
+    /// <see cref="HU_TakeMessages"/> takes it (the caller takes it at once
+    /// when no level tic follows).
+    /// </summary>
+    public void PlayerQuitGame(int playernum)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(playernum);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playernum, MAXPLAYERS);
+        // Do this the same way as Vanilla Doom does, to allow dehacked replacements of this message
+        string exitmsg = "Player " + (char)('1' + playernum) + " left the game";
+        playeringame[playernum] = false;
+        players[consoleplayer].message = exitmsg;
+        // (demorecording: G_CheckDemoStatus; no demo recording here)
+    }
+
+    /// <summary>
     /// g_game.c <c>G_Ticker</c>'s "do player reborns if needed" (T6.12):
     /// <see cref="G_DoReborn"/> for each player in the game that
     /// <see cref="P_DeathThink"/> made <see cref="playerstate_t.PST_REBORN"/>.

@@ -72,7 +72,7 @@ public sealed class NetSession : IDisposable
         if (options.Role == NetRole.Host)
         {
             _serverTransport = newTransport(NetTransportUse.Server);
-            Server = new NetServer(_serverTransport, identity, settings, HostToken(), options.Players);
+            Server = new NetServer(_serverTransport, identity, settings, HostToken(), options.Players) { TimeoutUs = options.TimeoutUs }; // T11.11
             Server.Log += line => Log?.Invoke($"server: {line}");
             Server.Listen(options.Port);
             Port = _serverTransport is INetPortTransport { LocalPort: > 0 } p ? p.LocalPort : options.Port;
@@ -81,7 +81,7 @@ public sealed class NetSession : IDisposable
         else
             Port = options.Port;
         _clientTransport = newTransport(NetTransportUse.Client);
-        Client = new NetClient(_clientTransport, identity, Server?.HostToken ?? 0);
+        Client = new NetClient(_clientTransport, identity, Server?.HostToken ?? 0) { TimeoutUs = options.TimeoutUs }; // T11.11
         Client.Log += line => Log?.Invoke($"client: {line}");
         Address = options.Role == NetRole.Host ? OwnAddress(options.BindAddress) : options.ConnectAddress!;
         Client.Connect(Address, Port);
@@ -190,6 +190,65 @@ public sealed class NetSession : IDisposable
         server.Start(delay);
     }
 
+    /// <summary>
+    /// T11.11: the overlay's (F3) <c>net:</c> line: this machine's player
+    /// (slot), the round trip of each player in the game as the host last
+    /// reported them, the input delay, the tics waiting (bundles come and not
+    /// run yet), the stalls that began in the last second (the clock past the
+    /// last bundle: the world held), how late the bundle is now and whom the
+    /// host waits for, the players who left (and at which tic), the desync.
+    /// </summary>
+    public string OverlayText()
+    {
+        NetClient c = Client;
+        var s = new System.Text.StringBuilder("net: ");
+        s.Append(Options.Role == NetRole.Host ? "host, " : "join, ");
+        if (c.State != NetClientState.InGame || c.Start is not { } start)
+        {
+            s.Append(System.Globalization.CultureInfo.InvariantCulture, $"{c.State}{(c.Slot >= 0 ? $", slot {c.Slot}" : "")}, ping {Ms(c.RttUs)}");
+            if (Failure is not null)
+                s.Append("; ").Append(Failure);
+            return s.ToString();
+        }
+        s.Append(System.Globalization.CultureInfo.InvariantCulture, $"player {c.Slot + 1}, ping");
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+        {
+            if ((start.PlayerMask & (1 << i)) == 0)
+                continue;
+            ushort rtt = c.PlayerRttMs[i];
+            string ping = c.QuitTics[i] != int.MaxValue ? $"left at tic {c.QuitTics[i]}"
+                : i == c.Slot && c.RttUs >= 0 ? Ms(c.RttUs)
+                : rtt == NetProtocol.NoRtt ? "-"
+                : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{rtt} ms");
+            s.Append(System.Globalization.CultureInfo.InvariantCulture, $" {i + 1}: {ping}");
+        }
+        s.Append(System.Globalization.CultureInfo.InvariantCulture, $", delay {start.Delay}, tics waiting {Math.Max(0, c.BundleTic - c.LastRanTic)}, stalls {c.StallsLastSecond} in the last second");
+        if (c.LateUs > 0)
+            s.Append(System.Globalization.CultureInfo.InvariantCulture, $", late {c.LateUs / 1000} ms ({WaitingText(c.WaitingFor, c.Slot).TrimEnd('.')})");
+        if ((Server?.Desync ?? c.Desync) is { } desync)
+            s.Append(System.Globalization.CultureInfo.InvariantCulture, $", DESYNC in tics {desync.FirstTic}-{desync.LastTic}: stopped after tic {c.LastRanTic}");
+        return s.ToString();
+    }
+
+    private static string Ms(int us) => us < 0 ? "-" : (us / 1000.0).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " ms";
+
+    /// <summary>T11.11: "Waiting for player 2...", "players 2 and 3", or the host when no player but <paramref name="self"/> is named.</summary>
+    public static string WaitingText(byte waiting, int self)
+    {
+        var players = new List<string>();
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+        {
+            if ((waiting & (1 << i)) != 0 && i != self)
+                players.Add((i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return players.Count switch
+        {
+            0 => "Waiting for the host...",
+            1 => $"Waiting for player {players[0]}...",
+            _ => $"Waiting for players {string.Join(", ", players.GetRange(0, players.Count - 1))} and {players[^1]}...",
+        };
+    }
+
     /// <summary>The host's own client connects to its server here: loopback when it listens on every interface.</summary>
     private static string OwnAddress(string bind) => bind is "*" or "0.0.0.0" ? "127.0.0.1" : bind == "::" ? "::1" : bind;
 
@@ -260,6 +319,15 @@ public sealed class NetSession : IDisposable
         spawn = options.Apply(spawn with { netgame = true, deathmatch = options.Deathmatch, timelimit = options.TimerMinutes });
         (int episode, int number) = MapNumbers(map);
         return new NetGameSettings(spawn, tweaks, episode, number);
+    }
+
+    /// <summary>The map a netgame's settings start on (<c>ExMy</c>, or <c>MAPxx</c> in Doom II).</summary>
+    public static string MapName(NetGameSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.Spawn.gamemode == IsoDoom.Wad.GameMode.commercial
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"MAP{settings.Map:00}")
+            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"E{settings.Episode}M{settings.Map}");
     }
 
     /// <summary><c>ExMy</c> as (x, y), <c>MAPxx</c> as (1, xx), anything else (1, 1).</summary>

@@ -33,6 +33,10 @@ public enum NetRole
 /// <item>The host's game modes (T11.4's, carried in the Start): <c>-deathmatch</c>,
 /// <c>-altdeath</c>, <c>-timer MINUTES</c>, <c>-avg</c> (20 minutes), <c>-respawn</c>, <c>-fast</c>,
 /// <c>-nomonsters</c>; T11.4: <see cref="Modes"/> reads them for a game alone too.</item>
+/// <item>T11.11: <c>-nettimeout SECONDS</c> (both sides, 1–600, default 10:
+/// <see cref="IsoDoom.Net.NetProtocol.DefaultTimeoutUs"/>) how long a silent
+/// peer, or a player whose command the game waits for, is waited for before
+/// it is dropped (ENet's peer timeout too).</item>
 /// </list>
 /// Plain C#: parsed from the user arguments (<c>OS.GetCmdlineUserArgs</c>) and tested without the engine.
 /// </summary>
@@ -61,6 +65,12 @@ public sealed record NetOptions
 
     /// <summary>The input delay in tics, or null for the measured default.</summary>
     public int? Delay { get; init; }
+
+    /// <summary>T11.11: <c>-nettimeout</c>'s seconds: how long a silent peer (or a late player's command) is waited for.</summary>
+    public int TimeoutSeconds { get; init; } = (int)(IsoDoom.Net.NetProtocol.DefaultTimeoutUs / IsoDoom.Net.NetProtocol.MicrosecondsPerSecond);
+
+    /// <summary>T11.11: <see cref="TimeoutSeconds"/> in microseconds.</summary>
+    public long TimeoutUs => TimeoutSeconds * IsoDoom.Net.NetProtocol.MicrosecondsPerSecond;
 
     /// <summary>0 cooperative, 1 deathmatch (<c>-deathmatch</c>), 2 altdeath (<c>-altdeath</c>).</summary>
     public int Deathmatch { get; init; }
@@ -159,6 +169,9 @@ public sealed record NetOptions
                     break;
                 case "-netdelay":
                     o = o with { Delay = Int(Value(args, ref i, a), a, 1, IsoDoom.Net.NetProtocol.MaxDelay) };
+                    break;
+                case "-nettimeout": // T11.11
+                    o = o with { TimeoutSeconds = Int(Value(args, ref i, a), a, 1, 600) };
                     break;
                 case "-deathmatch":
                     o = o with { Deathmatch = Math.Max(o.Deathmatch, 1) };

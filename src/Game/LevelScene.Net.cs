@@ -49,6 +49,27 @@ public partial class LevelScene
     private readonly ticcmd_t[] _netCmds = new ticcmd_t[World.MAXPLAYERS];
     private readonly short[] _netConsistancy = new short[World.MAXPLAYERS];
 
+    // T11.11: the desync's dumps (the last tics and windows), the forced desync asked for, the banner over the view.
+    private NetDesyncLog? _desyncLog;
+    private bool _netBumpRandom;
+    private CanvasLayer? _netBannerLayer;
+    private Label? _netBanner;
+
+    /// <summary>T11.11: how late a bundle is (the world holding) before "waiting for player N" shows over the view, µs (SPEC §12 T11.11).</summary>
+    public const long NetWaitingMessageUs = 1_000_000;
+
+    /// <summary>T11.11: the desync this machine stopped for, once it did (its dumps written: <see cref="NetDesyncDumps"/>).</summary>
+    public NetDesync? NetStoppedDesync { get; private set; }
+
+    /// <summary>T11.11: the directory of this machine's desync dumps, once written (null: none, or they could not be).</summary>
+    public string? NetDesyncDumps { get; private set; }
+
+    /// <summary>T11.11: why the netgame ended on this machine (the host left, the link timed out), once it went back to the title loop.</summary>
+    public string? NetEnded { get; private set; }
+
+    /// <summary>T11.11: the text shown over the view (waiting for a player, the desync), or null.</summary>
+    public string? NetBannerText { get; private set; }
+
     // The level script's commands in a netgame: from tic _netScriptFrom on (nettic), the tic the last one went to,
     // and the events of a route to run before their game tics (every machine playing the route runs them).
     private int _netScriptFrom;
@@ -89,9 +110,15 @@ public partial class LevelScene
             NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath, _pwadPaths);
             GD.Print($"Net: {options.Role}, build {identity.Build}, IWAD {identity.IwadMd5}" + (identity.PwadMd5s.Count > 0 ? $", PWADs {string.Join(' ', identity.PwadMd5s)}" : ""));
             Net = new NetSession(options, identity, settings,
-                use => new NetEnetTransport(options.Players) { BindAddress = use == NetTransportUse.Server ? options.BindAddress : "*" },
+                use => new NetEnetTransport(options.Players)
+                {
+                    BindAddress = use == NetTransportUse.Server ? options.BindAddress : "*",
+                    TimeoutMs = options.TimeoutSeconds * 1000, // T11.11
+                },
                 line => GD.Print($"Net: {line}"));
             Flow.netsession = true; // T11.8: the menus refuse a new game, loads, saves and the end of the game
+            NetEnded = null;
+            AddNetBanner(); // T11.11
             if (Net.Server is not null && Wad is { } wad)
             {
                 // T11.1a: the host refuses a game whose maps lack a start for a player in it (SPEC §12 T11.8)
@@ -117,16 +144,11 @@ public partial class LevelScene
         if (NetGame is null && !NetExchangeOnly && NetExchange is null && net.Client is { State: NetClientState.InGame, Start: { } start })
             StartNetGame(start);
         NetExchange?.Frame();
+        UpdateNetBanner(); // T11.11
     }
 
     /// <summary>The map a netgame's settings start on (<c>ExMy</c>, or <c>MAPxx</c> in Doom II).</summary>
-    public static string MapName(NetGameSettings settings)
-    {
-        ArgumentNullException.ThrowIfNull(settings);
-        return settings.Spawn.gamemode == IsoDoom.Wad.GameMode.commercial
-            ? string.Create(CultureInfo.InvariantCulture, $"MAP{settings.Map:00}")
-            : string.Create(CultureInfo.InvariantCulture, $"E{settings.Episode}M{settings.Map}");
-    }
+    public static string MapName(NetGameSettings settings) => NetSession.MapName(settings);
 
     /// <summary>
     /// T11.8: the Start came: a new game (<see cref="GameFlow.G_InitNewMap"/>,
@@ -147,6 +169,9 @@ public partial class LevelScene
             return;
         }
         NetGame = start;
+        _desyncLog = new NetDesyncLog(start); // T11.11
+        NetStoppedDesync = null;
+        NetDesyncDumps = null;
         _netScriptFrom = start.StartTic;
         _netScriptLast = int.MinValue;
         _netBefore.Clear();
@@ -177,6 +202,14 @@ public partial class LevelScene
         if (c.State != NetClientState.InGame)
         {
             TicFraction = 1;
+            EndNetGame(Net.Failure ?? "disconnected"); // T11.11: the host left, or the link to it is gone
+            return;
+        }
+        if (c.Desync is { } desync)
+        {
+            TicFraction = 1;
+            if (NetStoppedDesync is null)
+                StopForDesync(c, desync); // T11.11: every machine stops, with its dumps
             return;
         }
         while (c.CommandsDue > 0)
@@ -207,9 +240,9 @@ public partial class LevelScene
         }
         _ticTime = 0;
         int ran = 0;
-        while (ran < MaxTicsPerFrame && !flow.Wipe.go && !Paused && !Quitting && flow.CanTic && c.TryTakeTic(_netCmds, out int tic, out _))
+        while (ran < MaxTicsPerFrame && !flow.Wipe.go && !Paused && !Quitting && flow.CanTic && c.TryTakeTic(_netCmds, out int tic, out byte mask))
         {
-            RunNetTic(c, tic);
+            RunNetTic(c, tic, mask);
             ran++;
         }
         TicFraction = flow.Wipe.go || flow.paused || flow.gamestate != gamestate_t.GS_LEVEL ? 1 : Math.Clamp(c.ClockTics - c.LastRanTic, 0, 1);
@@ -240,28 +273,156 @@ public partial class LevelScene
     }
 
     /// <summary>
-    /// Runs tic <paramref name="tic"/> of the bundle (<see cref="_netCmds"/>):
-    /// a route's events for it first, then every player's command
-    /// (<see cref="TicPlayers"/>), then reports it to the client with each
+    /// Runs tic <paramref name="tic"/> of the bundle (<see cref="_netCmds"/>,
+    /// its players <paramref name="mask"/>): a route's events for it first,
+    /// then every player's command (<see cref="TicPlayers"/>: T11.11, a player
+    /// the bundle leaves out quits), then reports it to the client with each
     /// player's consistancy and, at a checksum window's end, <c>World.Checksum()</c>.
+    /// T11.11: each tic is logged for the desync dumps (<see cref="NetDesyncLog"/>,
+    /// the checksum every tic), and the world is saved at the start and at each window's end.
     /// </summary>
-    private void RunNetTic(NetClient c, int tic)
+    private void RunNetTic(NetClient c, int tic, byte mask)
     {
+        if (tic == c.Start!.StartTic && World is { } first)
+            KeepNetSave(NetDesyncLog.StartWindow, first); // T11.11: the state before the first tic, the desync dumps' last agreed one for window 0
         if (_netBefore.Remove(tic, out Action<World>? before) && World is { } w)
             before(w);
-        TicPlayers(_netCmds);
-        World? world = World;
-        int sinceStart = tic - c.Start!.StartTic;
-        ulong checksum = 0;
-        if ((sinceStart + 1) % NetProtocol.WindowTics == 0)
+        if (_netBumpRandom && World is { } bumped)
         {
-            checksum = world?.Checksum() ?? 0;
-            LastNetChecksum = (sinceStart / NetProtocol.WindowTics, checksum);
+            // T11.11: the level script's netdesync: this machine's world alone takes a P_Random
+            _netBumpRandom = false;
+            bumped.P_Random();
+            GD.Print($"Net: forced desync: P_Random taken before tic {tic} on this machine (index {bumped.random.prndindex})");
         }
+        TicPlayers(_netCmds, mask); // T11.11: the bundle's players: a player it leaves out quits at this tic
+        World? world = World;
+        int sinceStart = tic - c.Start.StartTic;
+        ulong checksum = world?.Checksum() ?? 0; // T11.11: every tic's, for the desync dumps
         for (int i = 0; i < World.MAXPLAYERS; i++)
             _netConsistancy[i] = Consistancy(world, i);
+        _desyncLog?.Tic(tic, mask, _netCmds, checksum, _netConsistancy);
+        if ((sinceStart + 1) % NetProtocol.WindowTics == 0)
+        {
+            LastNetChecksum = (sinceStart / NetProtocol.WindowTics, checksum);
+            if (world is not null)
+                KeepNetSave(sinceStart / NetProtocol.WindowTics, world);
+        }
         c.TicRan(tic, checksum, _netConsistancy);
     }
+
+    /// <summary>T11.11: keeps the world's save after checksum window <paramref name="window"/> (the desync dumps' last agreed state).</summary>
+    private void KeepNetSave(int window, World world)
+    {
+        try
+        {
+            _desyncLog?.Window(window, world);
+        }
+        catch (Exception e) when (e is SaveGameException or InvalidOperationException or System.IO.IOException)
+        {
+            GD.PushWarning($"Net: the world after window {window} could not be kept for the desync dumps: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// T11.11: the server announced a desync: this machine stops (no tic
+    /// runs, no command goes: <see cref="NetClient.Stopped"/>), writes its
+    /// dumps (<see cref="NetDesyncLog.Write"/>: the last tics' checksums and
+    /// commands, and the world at the last agreed window) under
+    /// <see cref="NetDesyncRoot"/>, says where in the log, and shows the
+    /// desync over the view until the game is quit.
+    /// </summary>
+    private void StopForDesync(NetClient c, NetDesync desync)
+    {
+        NetStoppedDesync = desync;
+        string root = NetDesyncRoot();
+        try
+        {
+            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now);
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            GD.PushError($"Net: the desync dumps could not be written to {root}: {e.Message}");
+        }
+        GD.Print($"Net: desync in window {desync.Window} (tics {desync.FirstTic}-{desync.LastTic}): the game stopped after tic {c.LastRanTic}; "
+            + (NetDesyncDumps is { } dir ? $"dumps in {dir}" : "no dumps"));
+    }
+
+    /// <summary>T11.11: where the desync dumps go: <c>--netdesync=DIR</c>, else <c>user://netdesync</c>.</summary>
+    private static string NetDesyncRoot()
+        => System.IO.Path.GetFullPath(ProjectSettings.GlobalizePath(WadLocator.GetUserArg("--netdesync") is string dir ? WadLocator.ResolveUserPath(dir) : "user://netdesync"));
+
+    /// <summary>
+    /// T11.11: the netgame's session ended under this machine (the host
+    /// quit, or its link timed out): back to the title loop with a message
+    /// (the menus' message box and the overlay), the session closed; the
+    /// game is single player again.
+    /// </summary>
+    private void EndNetGame(string why)
+    {
+        if (NetGame is null)
+            return;
+        string text = why.Contains("server is gone", StringComparison.OrdinalIgnoreCase) ? "the host left the game"
+            : why.Replace("disconnected: ", "", StringComparison.Ordinal).TrimEnd('.');
+        GD.Print($"Net: the netgame ended: {text}");
+        NetEnded = text;
+        NetGame = null;
+        _desyncLog = null;
+        _netBefore.Clear();
+        ClearQueuedTics(); // the netgame's scripted commands are not single player's
+        StopNet();
+        Flow.netsession = false;
+        Flow.D_StartTitle($"the netgame ended: {text}");
+        Flow.Menu.M_StartMessage($"the netgame ended:\n{text}.\n\n{MMenu.PRESSKEY}", null, false);
+    }
+
+    /// <summary>T11.11: the level script's <c>netdesync</c>: before the next tic this machine's world alone takes a <c>P_Random</c> (a forced desync, for the tests).</summary>
+    public void ForceNetDesync() => _netBumpRandom = true;
+
+    /// <summary>T11.11: the banner over the view (a label of its own, centred at the top; shown only with text).</summary>
+    private void AddNetBanner()
+    {
+        if (_netBannerLayer is not null)
+            return;
+        _netBannerLayer = new CanvasLayer { Layer = 1 };
+        using var settings = new LabelSettings { FontSize = 22, OutlineSize = 6, OutlineColor = Colors.Black }; // T8.3d: held across the setter
+        _netBanner = new Label
+        {
+            LabelSettings = settings,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _netBanner.SetAnchorsPreset(Control.LayoutPreset.TopWide);
+        _netBanner.OffsetTop = 64;
+        _netBannerLayer.AddChild(_netBanner);
+        AddChild(_netBannerLayer);
+    }
+
+    /// <summary>
+    /// T11.11: the banner's text: the desync this machine stopped for, or,
+    /// while a bundle is over <see cref="NetWaitingMessageUs"/> late, the
+    /// players the host waits for (or the host itself when it named none:
+    /// the link to it is slow). Vanilla shows nothing (SPEC §12 T11.11).
+    /// </summary>
+    private void UpdateNetBanner()
+    {
+        string? text = null;
+        if (NetStoppedDesync is { } d)
+            text = $"Desync: the machines differ in tics {d.FirstTic}-{d.LastTic}. The game stopped."
+                + (NetDesyncDumps is { } dir ? $"\nDumps: {dir}" : "");
+        else if (NetPlaying && Net!.Client is { State: NetClientState.InGame, LateUs: > NetWaitingMessageUs } c)
+            text = WaitingText(c.WaitingFor, c.Slot);
+        NetBannerText = text;
+        if (_netBanner is null)
+            return;
+        if (_netBanner.Text != (text ?? ""))
+            _netBanner.Text = text ?? "";
+        _netBanner.Visible = text is not null;
+    }
+
+    /// <summary>T11.11: "Waiting for player 2...", "players 2 and 3", or the host when no player is named (or only this one).</summary>
+    public static string WaitingText(byte waiting, int self) => NetSession.WaitingText(waiting, self);
 
     /// <summary>g_game.c <c>G_Ticker</c>'s consistancy of player <paramref name="player"/>: its mobj's <c>x</c>, or the <c>P_Random</c> index without one; 0 not in the game (or without a world: the title loop after the game).</summary>
     public static short Consistancy(World? world, int player)

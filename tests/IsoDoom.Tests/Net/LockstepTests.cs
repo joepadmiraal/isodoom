@@ -176,7 +176,7 @@ public class LockstepTests
     public void A_moved_player_fails_the_others_consistancy_check()
     {
         // vanilla's per-tic check: player 1's mobj moves a unit in its own
-        // world only before tic 5, so its command for tic 5 + ConsistancyLag
+        // world only during tic 5, so its command for tic 5 + ConsistancyLag
         // carries an x the others' worlds do not have.
         WadArchive wad = Synthetic();
         var h = new LockstepHarness(_coop, Setups(3, 20, 5, 0), (slot, tic) => LockstepHarness.Wander(slot, tic, fire: false),
@@ -185,14 +185,18 @@ public class LockstepTests
             AllowDesync = true,
             BeforeTic = (p, tic) =>
             {
+                // T11.11: and back before tic 6, so window 0's checksums agree (a desync stops
+                // every machine: the consistancy check must find it first, in window 1)
                 if (p.Index == 0 && tic == 5)
                     p.World!.players[0].mo!.x += 1;
+                if (p.Index == 0 && tic == 6)
+                    p.World!.players[0].mo!.x -= 1;
             },
         };
         h.JoinAndReady();
         h.Server.Start(3);
-        h.RunUntil(() => h.Players.TrueForAll(p => p.TicsRun >= 200), 20_000_000, "200 tics");
-        Assert.Equal(0, h.Server.Desync?.Window);
+        h.RunUntil(() => h.Players.TrueForAll(p => p.Client.Desync is not null), 20_000_000, "the desync");
+        Assert.Equal(1, h.Server.Desync?.Window);
         Assert.Equal(-1, h.Players[0].Client.FirstBadTic);
         Assert.Equal(5 + NetProtocol.ConsistancyLag, h.Players[1].Client.FirstBadTic);
         Assert.Equal(5 + NetProtocol.ConsistancyLag, h.Players[2].Client.FirstBadTic);

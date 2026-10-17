@@ -42,6 +42,15 @@ public sealed class HarnessPlayer
 
     /// <summary>The commands it sent, by tic (consistancy left out).</summary>
     internal Dictionary<int, ticcmd_t> Sent { get; } = [];
+
+    /// <summary>T11.11: its machine is gone without a word (killed): it runs no frames, sends nothing, quits nothing.</summary>
+    public bool Down { get; set; }
+
+    /// <summary>T11.11: its game hangs but its network goes on: it updates (pings) and runs no tics and sends no commands.</summary>
+    public bool Mute { get; set; }
+
+    /// <summary>T11.11: the players who left the game in its world, with the tic they left before (<see cref="World.PlayerQuitGame"/>).</summary>
+    public List<(int Player, int Tic)> Quits { get; } = [];
 }
 
 /// <summary>How a <see cref="LockstepHarness"/> player's machine behaves.</summary>
@@ -181,7 +190,7 @@ public sealed class LockstepHarness
         long now = Network.NowUs;
         foreach (HarnessPlayer p in Players)
         {
-            if (_nextFrame[p] > now || (HostDown && p.Index == 0))
+            if (_nextFrame[p] > now || (HostDown && p.Index == 0) || p.Down)
                 continue;
             _nextFrame[p] += p.Setup.FrameUs;
             if (p.Index == 0)
@@ -201,6 +210,8 @@ public sealed class LockstepHarness
             return;
         if (before != NetClientState.InGame && _makeWorld is not null)
             p.World = _makeWorld(c.Start!);
+        if (p.Mute)
+            return;
         while (c.CommandsDue > 0)
         {
             ticcmd_t cmd = _script(c.Slot, c.MakeTic);
@@ -264,6 +275,15 @@ public sealed class LockstepHarness
         if (BumpRandom is (int player, int at) && player == p.Index && at == tic)
             world.P_Random();
         BeforeTic?.Invoke(p, tic);
+        // T11.11: Chocolate Doom d_net.c RunTic: a player in the game the bundle leaves out quits first
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+        {
+            if (world.playeringame[i] && (mask & (1 << i)) == 0)
+            {
+                world.PlayerQuitGame(i);
+                p.Quits.Add((i, tic));
+            }
+        }
         world.G_Ticker(_cmds);
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)
             _consistancy[i] = Consistancy(world, i);

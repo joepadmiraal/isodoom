@@ -108,6 +108,56 @@ public partial class LevelScript
     }
 
     /// <summary>
+    /// T11.11: <c>netdesync</c>: before this machine's next tic its world alone
+    /// takes a <c>P_Random</c> (vanilla's random index bumped), so the
+    /// netgame desyncs on purpose: the test of the desync's stop and dumps.
+    /// </summary>
+    private int NetDesync()
+    {
+        if (_scene.NetGame is null)
+        {
+            GD.PrintErr("Level script: netdesync: no netgame under way");
+            return 1;
+        }
+        _scene.ForceNetDesync();
+        return 0;
+    }
+
+    /// <summary>
+    /// T11.11: <c>netuntil desync [SECONDS]</c> waits until this machine
+    /// stopped for a desync and wrote its dumps; <c>netuntil left N
+    /// [SECONDS]</c> until player N left the game (its <c>playeringame</c>
+    /// false in this machine's world); <c>netuntil ended [SECONDS]</c> until
+    /// the netgame ended under this machine (the host gone) and the title
+    /// loop shows. Fails after SECONDS (default 60). Prints the session.
+    /// </summary>
+    private async Task<int> NetUntil(string[] w)
+    {
+        string what = w[1];
+        int player = what == "left" ? Int(w[2]) - 1 : -1;
+        int seconds = w.Length > (what == "left" ? 3 : 2) ? Int(w[what == "left" ? 3 : 2]) : 60;
+        Func<bool> reached = what switch
+        {
+            "desync" => () => _scene.NetStoppedDesync is not null,
+            "left" when player is >= 0 and < World.MAXPLAYERS => () => _scene.World is { } world && !world.playeringame[player],
+            "ended" => () => _scene.NetEnded is not null && _scene.GameState == gamestate_t.GS_DEMOSCREEN,
+            _ => throw new ArgumentException($"netuntil: \"{string.Join(' ', w[1..])}\" (desync, left N or ended)"),
+        };
+        ulong deadline = Time.GetTicksMsec() + (ulong)seconds * 1000;
+        while (!reached() && Time.GetTicksMsec() < deadline)
+            await Frames(1);
+        bool ok = reached();
+        string state = what switch
+        {
+            "desync" => _scene.NetStoppedDesync is { } d ? $"desync in window {d.Window} (tics {d.FirstTic}-{d.LastTic}), dumps {_scene.NetDesyncDumps ?? "none"}" : "no desync",
+            "ended" => _scene.NetEnded is { } why ? $"ended ({why}), game {_scene.Flow.StateText()}" : "not ended",
+            _ => $"player {player + 1} {(ok ? "left" : "still in the game")} at tic {_scene.TicsRun}",
+        };
+        GD.Print($"Level script: netuntil {what}: {(ok ? "reached" : "NOT reached")}: {state}; {_scene.NetText()}");
+        return ok ? 0 : 1;
+    }
+
+    /// <summary>
     /// <c>kill [K]</c> (T11.8, from T11.3; not in a netgame): before the next
     /// tic player K (1–4; default the local one) takes 10000 damage from nowhere
     /// (<c>P_DamageMobj</c>, as a telefrag's), so a script can see it die and,

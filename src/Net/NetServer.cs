@@ -39,6 +39,9 @@ public sealed class NetServer
     private readonly ticcmd_t[,] _cmds = new ticcmd_t[NetProtocol.MaxPlayers, RingTics];
     private readonly int[] _receivedUpTo = new int[NetProtocol.MaxPlayers];
     private readonly int[] _quitTic = new int[NetProtocol.MaxPlayers];
+    private readonly long[] _lastCommandUs = new long[NetProtocol.MaxPlayers];
+    private readonly ushort[] _rttMs = new ushort[NetProtocol.MaxPlayers];
+    private long _lastBundleUs;
     private byte _playerMask;
     private int _nextWindow;
 
@@ -49,6 +52,9 @@ public sealed class NetServer
         public bool Ready { get; set; }
         public int RttUs { get; set; } = -1;
         public bool Gone { get; set; }
+
+        /// <summary>T11.11: when the server last heard from it (any packet), µs.</summary>
+        public long LastHeardUs { get; set; }
     }
 
     /// <summary>A server over <paramref name="transport"/> for machines sharing <paramref name="identity"/>.</summary>
@@ -143,6 +149,35 @@ public sealed class NetServer
     /// <summary>The windows compared and found equal.</summary>
     public int WindowsCompared => _nextWindow;
 
+    /// <summary>
+    /// T11.11: how long the server waits without a packet from a peer, or for
+    /// the command of a player the next bundle waits for, before it drops it
+    /// (µs; the host's own client in slot 0 is never dropped so).
+    /// </summary>
+    public long TimeoutUs { get; set; } = NetProtocol.DefaultTimeoutUs;
+
+    /// <summary>
+    /// T11.11: the players in game (bit i: slot i) whose command for the next
+    /// tic (<see cref="CompleteTic"/> + 1) has not come: the ones the bundles
+    /// wait for. 0 in the lobby and after a desync.
+    /// </summary>
+    public byte WaitingMask
+    {
+        get
+        {
+            if (Phase != NetServerPhase.InGame || Desync is not null)
+                return 0;
+            int tic = CompleteTic + 1;
+            byte mask = MaskAt(tic), waiting = 0;
+            for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+            {
+                if ((mask & (1 << i)) != 0 && _receivedUpTo[i] < tic)
+                    waiting |= (byte)(1 << i);
+            }
+            return waiting;
+        }
+    }
+
     /// <summary>A line for each lobby or game event (joins, refusals, quits, the desync), for the log.</summary>
     public event Action<string>? Log;
 
@@ -169,12 +204,14 @@ public sealed class NetServer
         Delay = delay;
         CompleteTic = startTic - 1;
         _startUs = _nowUs;
+        _lastBundleUs = _nowUs;
         _playerMask = OccupiedMask;
         // The players in game are the Start's mask (T11.5a: one source of truth).
         _settings = _settings with { Spawn = _settings.Spawn with { playersingame = _playerMask } };
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)
         {
             _quitTic[i] = int.MaxValue;
+            _lastCommandUs[i] = _nowUs;
             _receivedUpTo[i] = startTic + delay - 1;
             for (int t = startTic; t < startTic + delay; t++)
                 _cmds[i, t % RingTics] = default;
@@ -197,7 +234,7 @@ public sealed class NetServer
             switch (e.Kind)
             {
                 case NetEventKind.Connected:
-                    _peers[e.Peer] = new Peer(e.Peer);
+                    _peers[e.Peer] = new Peer(e.Peer) { LastHeardUs = nowUs };
                     break;
                 case NetEventKind.Disconnected:
                     if (_peers.Remove(e.Peer, out Peer? gone))
@@ -206,6 +243,7 @@ public sealed class NetServer
                 case NetEventKind.Data:
                     if (_peers.TryGetValue(e.Peer, out Peer? peer) && !peer.Gone)
                     {
+                        peer.LastHeardUs = nowUs;
                         try
                         {
                             Handle(peer, e.Data);
@@ -213,14 +251,45 @@ public sealed class NetServer
                         catch (NetProtocolException ex)
                         {
                             Log?.Invoke($"peer {peer.Id} (slot {peer.Slot}) dropped: {ex.Message}");
-                            Drop(peer);
+                            Drop(peer, "protocol error");
                         }
                     }
                     break;
             }
         }
+        CheckTimeouts();
         if (Phase == NetServerPhase.InGame)
             SendBundles();
+    }
+
+    /// <summary>
+    /// T11.11: drop a peer not heard from for <see cref="TimeoutUs"/>, and a
+    /// player whose command the next bundle has waited for that long (from
+    /// the later of its last command and the last bundle sent, so a player
+    /// held back by another's lateness is not counted late). After the
+    /// polling, so what came during a hitch of this machine counts; never the
+    /// host's own client (slot 0: the same machine).
+    /// </summary>
+    private void CheckTimeouts()
+    {
+        List<(Peer Peer, string Why)>? late = null;
+        foreach (Peer peer in _peers.Values)
+        {
+            if (peer.Gone || peer.Slot == 0)
+                continue;
+            if (_nowUs - peer.LastHeardUs > TimeoutUs)
+                (late ??= []).Add((peer, $"timed out: no word for {(_nowUs - peer.LastHeardUs) / 1000} ms"));
+            else if (Phase == NetServerPhase.InGame && Desync is null && peer.Slot > 0 && (WaitingMask & (1 << peer.Slot)) != 0
+                && _nowUs - Math.Max(_lastCommandUs[peer.Slot], _lastBundleUs) > TimeoutUs)
+                (late ??= []).Add((peer, $"timed out: no command for {(_nowUs - Math.Max(_lastCommandUs[peer.Slot], _lastBundleUs)) / 1000} ms"));
+        }
+        if (late is null)
+            return;
+        foreach ((Peer peer, string why) in late)
+        {
+            Log?.Invoke($"peer {peer.Id} (slot {peer.Slot}) {why}");
+            Drop(peer, why);
+        }
     }
 
     private void Handle(Peer peer, ReadOnlyMemory<byte> data)
@@ -233,7 +302,9 @@ public sealed class NetServer
             r.End();
             peer.RttUs = rtt;
             long clock = Phase == NetServerPhase.InGame ? _nowUs - _startUs : long.MinValue;
-            _transport.Send(peer.Id, NetMessages.EncodePong(clientTime, clock), NetChannel.Unreliable);
+            for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+                _rttMs[i] = _slots[i] is { RttUs: >= 0 } p ? (ushort)Math.Min(p.RttUs / 1000, NetProtocol.NoRtt - 1) : NetProtocol.NoRtt;
+            _transport.Send(peer.Id, NetMessages.EncodePong(clientTime, clock, WaitingMask, _rttMs), NetChannel.Unreliable);
             return;
         }
         if (peer.Slot < 0)
@@ -266,7 +337,7 @@ public sealed class NetServer
                 break;
             case NetMessageType.Quit:
                 r.End();
-                Drop(peer);
+                Drop(peer, "quit");
                 break;
             default:
                 throw new NetProtocolException($"Unexpected {r.Type} from a client.");
@@ -330,6 +401,7 @@ public sealed class NetServer
         for (int i = 0; i < _received.Count; i++)
             _cmds[slot, (first + i) % RingTics] = _received[i];
         _receivedUpTo[slot] = last;
+        _lastCommandUs[slot] = _nowUs;
     }
 
     /// <summary>The players in game at <paramref name="tic"/>.</summary>
@@ -350,7 +422,7 @@ public sealed class NetServer
     /// <summary>Bundle and send every tic whose commands are all in, in tic order.</summary>
     private void SendBundles()
     {
-        while (true)
+        while (Desync is null) // T11.11: nothing after a desync: every machine stops
         {
             int first = CompleteTic + 1;
             int count = 0;
@@ -376,6 +448,7 @@ public sealed class NetServer
             if (count == 0)
                 return;
             CompleteTic = first + count - 1;
+            _lastBundleUs = _nowUs;
             Broadcast(NetMessages.EncodeBundle(first, count, _bundleMasks.AsSpan(0, count), _bundleCmds.AsSpan(0, count * NetProtocol.MaxPlayers)));
         }
     }
@@ -435,13 +508,13 @@ public sealed class NetServer
         }
     }
 
-    /// <summary>A quit or a protocol error: the peer goes.</summary>
-    private void Drop(Peer peer)
+    /// <summary>A quit, a protocol error or a timeout (<paramref name="why"/>): the peer goes.</summary>
+    private void Drop(Peer peer, string why)
     {
         peer.Gone = true;
         _transport.Disconnect(peer.Id);
         _peers.Remove(peer.Id);
-        Leave(peer, "quit");
+        Leave(peer, why);
     }
 
     private void Leave(Peer peer, string why)

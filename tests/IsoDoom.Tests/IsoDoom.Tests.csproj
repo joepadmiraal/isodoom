@@ -43,6 +43,7 @@
     <Compile Include="../../src/Game/NetArgs.cs" Link="Game/NetArgs.cs" />
     <Compile Include="../../src/Game/NetSession.cs" Link="Game/NetSession.cs" />
     <Compile Include="../../src/Game/NetStarts.cs" Link="Game/NetStarts.cs" />
+    <Compile Include="../../src/Game/NetDesyncLog.cs" Link="Game/NetDesyncLog.cs" />
     <Compile Include="../../src/Render/Fuzz.cs" Link="Render/Fuzz.cs" />
     <Compile Include="../../src/Audio/SSound.cs" Link="Audio/SSound.cs" />
     <Compile Include="../../src/Audio/MusicDevice.cs" Link="Audio/MusicDevice.cs" />

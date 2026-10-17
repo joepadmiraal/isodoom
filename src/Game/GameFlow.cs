@@ -320,6 +320,34 @@ public sealed class GameFlow
     private bool PlayerInGame(int i) => host.World is { } w ? w.playeringame[i] : i == ConsolePlayer;
 
     /// <summary>
+    /// Chocolate Doom d_net.c <c>RunTic</c> (T11.11): a netgame's tic of
+    /// every player's command (<paramref name="netcmds"/>) with the set of
+    /// players it carries (<paramref name="ingame"/>, bit i: player i + 1;
+    /// the bundle's): each player in the game that it leaves out quits first
+    /// (<see cref="World.PlayerQuitGame"/>: at the same tic on every machine),
+    /// then <see cref="G_Ticker(ticcmd_t[])"/>.
+    /// </summary>
+    public void RunTic(ticcmd_t[] netcmds, byte ingame)
+    {
+        ArgumentNullException.ThrowIfNull(netcmds);
+        // Chocolate Doom d_net.c RunTic: check for player quits (T11.11: the tic's set of commands, the bundle's players)
+        if (host.World is { } world)
+        {
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (world.playeringame[i] && (ingame & (1 << i)) == 0)
+                {
+                    world.PlayerQuitGame(i);
+                    Log?.Invoke($"Net: player {i + 1} left the game at gametic {gametic}");
+                    if (gamestate != gamestate_t.GS_LEVEL || paused)
+                        world.HU_TakeMessages(); // no level tic to take it
+                }
+            }
+        }
+        G_Ticker(netcmds);
+    }
+
+    /// <summary>
     /// g_game.c <c>G_Ticker</c> for every player's command
     /// (<paramref name="netcmds"/>, indexed by player; T11.1: those of the
     /// players in the game are read), after d_main.c's title loop step

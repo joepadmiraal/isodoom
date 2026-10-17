@@ -1,7 +1,7 @@
 #!/bin/bash
 # The netgame's loopback test: two headless game processes on this machine, a
 # host and a client, connect over ENet on 127.0.0.1 and finish the lobby
-# handshake. Two modes:
+# handshake. Four modes:
 #  - exchange (T11.6, the default): they exchange scripted command bundles for
 #    TICS tics (default 1000, rounded up to whole 35-tic checksum windows)
 #    without running them (the level script's `netexchange`); the host's
@@ -13,9 +13,23 @@
 #    monsters and modes, through the intermission (skipped) into map NEXT;
 #    then the host's server must have compared every checksum window with no
 #    desync, and the client must have seen no consistency failure.
+#  - --kill client|host ROUTE (T11.11): they play ROUTE as --play does, and
+#    after 210 game tics the client's (or the host's) process is killed
+#    (SIGKILL: no quit, no disconnect). Killing the client: the host must drop
+#    it after the timeout (-nettimeout 5), player 2 must leave the host's game
+#    and the host go on alone in sync (70 more tics, every window compared).
+#    Killing the host: the client must time out and end the game at the title
+#    loop.
+#  - --desync ROUTE (T11.11): they play ROUTE, and after 140 game tics the
+#    client forces a desync (`netdesync`: its world alone takes a P_Random);
+#    both must stop at the same window and write their dumps (`--netdesync`,
+#    in the logs' directory), each with its checksums, commands and the save
+#    of the last agreed window.
 # Usage:
 #   tools/NetLoopback/loopback.sh IWAD [TICS] [-- GAME COMMAND...]
 #   tools/NetLoopback/loopback.sh IWAD --play ROUTE NEXT [-- GAME COMMAND...]
+#   tools/NetLoopback/loopback.sh IWAD --kill client|host ROUTE [-- GAME COMMAND...]
+#   tools/NetLoopback/loopback.sh IWAD --desync ROUTE [-- GAME COMMAND...]
 # GAME COMMAND runs the game (default `godot`, from the repo root), e.g.
 # `-- export/linux/IsoDoom.x86_64`. The host listens on a free port of
 # 127.0.0.1 only (`-host 0 -bind 127.0.0.1`: ENet picks it, the host prints
@@ -25,14 +39,20 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 if [ $# -lt 1 ] || [ "${1#-}" != "$1" ]; then
-    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 iwad=$(realpath "$1"); shift
-tics=1000 route='' next=''
+tics=1000 route='' next='' mode=exchange victim=''
 if [ $# -gt 0 ] && [ "$1" = "--play" ]; then
     [ $# -ge 3 ] || { echo "loopback: --play ROUTE NEXT" >&2; exit 2; }
-    route=$(realpath "$2") next=$3; shift 3
+    mode=play route=$(realpath "$2") next=$3; shift 3
+elif [ $# -gt 0 ] && [ "$1" = "--kill" ]; then
+    if [ $# -lt 3 ] || { [ "$2" != client ] && [ "$2" != host ]; }; then echo "loopback: --kill client|host ROUTE" >&2; exit 2; fi
+    mode=kill victim=$2 route=$(realpath "$3"); shift 3
+elif [ $# -gt 0 ] && [ "$1" = "--desync" ]; then
+    [ $# -ge 2 ] || { echo "loopback: --desync ROUTE" >&2; exit 2; }
+    mode=desync route=$(realpath "$2"); shift 2
 elif [ $# -gt 0 ] && [ "$1" != "--" ]; then
     tics=$1; shift
 fi
@@ -40,8 +60,10 @@ game=(godot)
 if [ $# -gt 0 ] && [ "$1" = "--" ]; then shift; [ $# -gt 0 ] && game=("$@"); fi
 logs=${NET_LOOPBACK_LOGS:-$(mktemp -d)}
 mkdir -p "$logs"
+logs=$(realpath "$logs")
 host_log=$logs/host.log client_log=$logs/client.log
-host_args=(--level)
+host_args=(--level) client_args=()
+start="net; netwait 2"
 if [ -n "$route" ]; then
     # the route's header: its map, skill, monsters and modes are the host's game
     header() { sed -n "s/^$1 \(.*\)/\1/p" "$route" | head -n 1; }
@@ -51,20 +73,51 @@ if [ -n "$route" ]; then
     case "${deathmatch:-0}" in 1) host_args+=(-deathmatch) ;; 2) host_args+=(-altdeath) ;; esac
     [ -n "$timer" ] && host_args+=(-timer "$timer")
     route_tics=$(grep -c '^-\?[0-9]' "$route" || true)
-    script="net; netwait 2; nettic 70; route $route; until gamestate intermission 300; skip; until map $next 60; tics 70; netcheck; checksum; net"
-    # the route (with its xcount lines, a longer run), the intermission and the start; at 35 Hz
-    limit=$(( route_tics * 4 / 35 + 240 ))
-    result_line='^Level script: netcheck:'
-else
-    script="net; netexchange $tics"
-    # a minute and a half for the run: about 30 s of 35 Hz tics and the starts
-    limit=$(( tics / 35 + 90 ))
-    result_line='^Level script: netexchange:'
+    start="net; netwait 2; nettic 70; route $route"
 fi
-cd "$repo"
+# (the victim of --kill waits here to be killed; the marker is its own line)
+doomed="tics 210; print; sleep 600"
+case $mode in
+    play)
+        host_script="$start; until gamestate intermission 300; skip; until map $next 60; tics 70; netcheck; checksum; net"
+        client_script=$host_script
+        # the route (with its xcount lines, a longer run), the intermission and the start; at 35 Hz
+        limit=$(( route_tics * 4 / 35 + 240 ))
+        result_line='^Level script: netcheck:'
+        ;;
+    kill)
+        host_args+=(-nettimeout 5) client_args+=(-nettimeout 5)
+        if [ "$victim" = client ]; then
+            host_script="$start; netuntil left 2 60; tics 70; netcheck; checksum; print"
+            client_script="$start; $doomed"
+            result_line='^(Level script: (netuntil|netcheck)|Net: (server: (peer|slot)|player))'
+        else
+            host_script="$start; $doomed"
+            client_script="$start; netuntil ended 60; print"
+            result_line='^(Level script: netuntil|Net: (client: (The host|disconnected)|the netgame ended))'
+        fi
+        limit=150
+        ;;
+    desync)
+        host_args+=(--netdesync="$logs/desync") client_args+=(--netdesync="$logs/desync")
+        host_script="$start; netuntil desync 60; print; sleep 3"
+        client_script="$start; tics 140; netdesync; netuntil desync 60; print"
+        result_line='^(Level script: netuntil|Net: (forced desync|desync))'
+        limit=150
+        ;;
+    *)
+        host_script="net; netexchange $tics"
+        client_script=$host_script
+        # a minute and a half for the run: about 30 s of 35 Hz tics and the starts
+        limit=$(( tics / 35 + 90 ))
+        result_line='^Level script: netexchange:'
+        ;;
+esac
 # (the host waits a little after its check, so the client's ends first)
+[ "$mode" = play ] && host_script="$host_script; sleep 3"
+cd "$repo"
 timeout "$limit" "${game[@]}" --headless -- -iwad "$iwad" -host 0 -bind 127.0.0.1 -players 2 "${host_args[@]}" \
-    --level-script="$script${route:+; sleep 3}" >"$host_log" 2>&1 &
+    --level-script="$host_script" >"$host_log" 2>&1 &
 host_pid=$!
 port=
 for _ in $(seq 1 600); do
@@ -79,25 +132,87 @@ if [ -z "$port" ]; then
     kill "$host_pid" 2>/dev/null || true
     exit 1
 fi
-if [ -n "$route" ]; then what="playing $(basename "$route") into $next"; else what="$tics tics"; fi
+case $mode in
+    play) what="playing $(basename "$route") into $next" ;;
+    kill) what="playing $(basename "$route"), the $victim killed after 210 tics" ;;
+    desync) what="playing $(basename "$route"), the client desyncing after 140 tics" ;;
+    *) what="$tics tics" ;;
+esac
 echo "loopback: host on 127.0.0.1:$port, $what"
-timeout "$limit" "${game[@]}" --headless -- -iwad "$iwad" -connect "127.0.0.1:$port" --level \
-    --level-script="$script" >"$client_log" 2>&1 &
+timeout "$limit" "${game[@]}" --headless -- -iwad "$iwad" -connect "127.0.0.1:$port" --level "${client_args[@]}" \
+    --level-script="$client_script" >"$client_log" 2>&1 &
 client_pid=$!
 host_status=0 client_status=0
+if [ "$mode" = kill ]; then
+    # SIGKILL the victim once it played its tics (the `timeout` wrapper's child: the game itself)
+    if [ "$victim" = client ]; then victim_pid=$client_pid victim_log=$client_log; else victim_pid=$host_pid victim_log=$host_log; fi
+    killed=
+    for _ in $(seq 1 1200); do
+        if grep -q '^Level script: sleep 600' "$victim_log"; then
+            pkill -KILL -P "$victim_pid" 2>/dev/null || true
+            killed=yes
+            echo "loopback: killed the $victim (SIGKILL)"
+            break
+        fi
+        kill -0 "$victim_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    if [ -z "$killed" ]; then
+        echo "loopback: the $victim did not reach its tics (log: $victim_log)" >&2
+        kill "$host_pid" "$client_pid" 2>/dev/null || true
+    fi
+fi
 wait "$host_pid" || host_status=$?
 wait "$client_pid" || client_status=$?
-if [ -n "$route" ]; then
-    # both in sync (the host's server compared every window they ran: the worlds' checksums agreed)
-    result() { sed -n 's/^Level script: netcheck: \(in sync\),.*/\1/p' "$1" | head -n 1; }
-else
-    result() { sed -n 's/^Level script: netexchange: \([0-9]* of [0-9]* tics, hash [0-9a-f]*\).*/\1/p' "$1" | head -n 1; }
-fi
-host_result=$(result "$host_log") client_result=$(result "$client_log")
+ok=yes
+case $mode in
+    play)
+        # both in sync (the host's server compared every window they ran: the worlds' checksums agreed)
+        result() { sed -n 's/^Level script: netcheck: \(in sync\),.*/\1/p' "$1" | head -n 1; }
+        host_result=$(result "$host_log") client_result=$(result "$client_log")
+        [ "$host_status" -eq 0 ] && [ "$client_status" -eq 0 ] && [ -n "$host_result" ] && [ "$host_result" = "$client_result" ] || ok=
+        ;;
+    kill)
+        if [ "$victim" = client ]; then
+            survivor_status=$host_status
+            host_result=$(sed -n 's/^Level script: netcheck: \(in sync\),.*/\1/p' "$host_log" | head -n 1)
+            client_result="killed (exit $client_status)"
+            grep -q '^Level script: netuntil left: reached' "$host_log" || ok=
+            grep -q 'left the game' "$host_log" || ok=
+            [ "$host_result" = "in sync" ] || ok=
+        else
+            survivor_status=$client_status
+            host_result="killed (exit $host_status)"
+            client_result=$(sed -n 's/^Level script: netuntil ended: \(reached\): \(.*\);.*/\1: \2/p' "$client_log" | head -n 1)
+            [ -n "$client_result" ] || ok=
+        fi
+        [ -n "${killed:-}" ] && [ "$survivor_status" -eq 0 ] || ok=
+        ;;
+    desync)
+        result() { sed -n 's/^Level script: netuntil desync: reached: \(desync in window [0-9]*\).*/\1/p' "$1" | head -n 1; }
+        host_result=$(result "$host_log") client_result=$(result "$client_log")
+        [ "$host_status" -eq 0 ] && [ "$client_status" -eq 0 ] && [ -n "$host_result" ] && [ "$host_result" = "$client_result" ] || ok=
+        # each machine's dumps: summary, checksums, commands and the last agreed save
+        dumps=0
+        for dir in "$logs"/desync/*-player*; do
+            [ -d "$dir" ] || continue
+            for f in summary.txt checksums.txt commands.txt; do [ -s "$dir/$f" ] || ok=; done
+            compgen -G "$dir/agreed-*.dsg" >/dev/null || ok=
+            dumps=$((dumps + 1))
+        done
+        [ "$dumps" -eq 2 ] || ok=
+        echo "loopback: $dumps dump directories in $logs/desync"
+        ;;
+    *)
+        result() { sed -n 's/^Level script: netexchange: \([0-9]* of [0-9]* tics, hash [0-9a-f]*\).*/\1/p' "$1" | head -n 1; }
+        host_result=$(result "$host_log") client_result=$(result "$client_log")
+        [ "$host_status" -eq 0 ] && [ "$client_status" -eq 0 ] && [ -n "$host_result" ] && [ "$host_result" = "$client_result" ] || ok=
+        ;;
+esac
 echo "loopback: host:   ${host_result:-no result} (exit $host_status)"
 echo "loopback: client: ${client_result:-no result} (exit $client_status)"
-grep -h "$result_line" "$host_log" "$client_log" || true
-if [ "$host_status" -ne 0 ] || [ "$client_status" -ne 0 ] || [ -z "$host_result" ] || [ "$host_result" != "$client_result" ]; then
+grep -hE "$result_line" "$host_log" "$client_log" || true
+if [ -z "$ok" ]; then
     echo "loopback: FAILED (logs: $logs)" >&2
     for f in "$host_log" "$client_log"; do echo "--- $f" >&2; grep -E '^(Net|Level script|ERROR)|rror' "$f" | tail -n 40 >&2 || true; done
     exit 1

@@ -78,6 +78,12 @@ public sealed class NetClient
     private bool _awaitingTicRan;
     private int _badTicToReport = -1;
 
+    // T11.11: when the server was last heard from; the stall under way (since when, −1 none) and the recent stalls' starts.
+    private long _lastHeardUs;
+    private long _stallSinceUs = -1;
+    private readonly Queue<long> _stalls = new();
+    private readonly ushort[] _rttMs = [NetProtocol.NoRtt, NetProtocol.NoRtt, NetProtocol.NoRtt, NetProtocol.NoRtt];
+
     /// <summary>A client over <paramref name="transport"/> for a machine with <paramref name="identity"/>.</summary>
     /// <param name="transport">The transport.</param>
     /// <param name="identity">This machine's build and WADs, which must be the host's.</param>
@@ -126,6 +132,43 @@ public sealed class NetClient
 
     /// <summary>The last round trip to the server, in microseconds (−1 none yet).</summary>
     public int RttUs { get; private set; } = -1;
+
+    /// <summary>
+    /// T11.11: how long the client waits without a packet from the server
+    /// before it gives the game up (µs; the pings keep a live link busy).
+    /// </summary>
+    public long TimeoutUs { get; set; } = NetProtocol.DefaultTimeoutUs;
+
+    /// <summary>T11.11: the slots the server's bundles waited for at its last pong (bit i: slot i).</summary>
+    public byte WaitingFor { get; private set; }
+
+    /// <summary>T11.11: each slot's round trip as the server last reported it, in ms (<see cref="NetProtocol.NoRtt"/> unknown or empty).</summary>
+    public IReadOnlyList<ushort> PlayerRttMs => _rttMs;
+
+    /// <summary>
+    /// T11.11: how long the game clock has been past the last bundle (a tic
+    /// is due whose commands have not come: the world holds), in µs; 0 when
+    /// not (or out of the game, or after a desync).
+    /// </summary>
+    public long LateUs => _stallSinceUs < 0 ? 0 : _nowUs - _stallSinceUs;
+
+    /// <summary>T11.11: the stalls (the clock passing the last bundle) that began in the last second.</summary>
+    public int StallsLastSecond
+    {
+        get
+        {
+            int count = 0;
+            foreach (long at in _stalls)
+            {
+                if (_nowUs - at <= NetProtocol.MicrosecondsPerSecond)
+                    count++;
+            }
+            return count;
+        }
+    }
+
+    /// <summary>T11.11: whether the game stopped for the server's desync (<see cref="Desync"/>): no tic runs, no command goes.</summary>
+    public bool Stopped => Desync is not null;
 
     /// <summary>The local clock's rate (1 = real time), set by the lag adjustment.</summary>
     public double ClockRate { get; private set; } = 1;
@@ -208,6 +251,7 @@ public sealed class NetClient
             switch (e.Kind)
             {
                 case NetEventKind.Connected:
+                    _lastHeardUs = nowUs;
                     Send(NetMessages.EncodeHello(_identity, _hostToken));
                     break;
                 case NetEventKind.Disconnected:
@@ -219,6 +263,7 @@ public sealed class NetClient
                     }
                     break;
                 case NetEventKind.Data:
+                    _lastHeardUs = nowUs;
                     try
                     {
                         Handle(e.Data);
@@ -238,8 +283,39 @@ public sealed class NetClient
             _lastPingUs = nowUs;
             _transport.Send(_peer, NetMessages.EncodePing(nowUs, RttUs), NetChannel.Unreliable);
         }
+        if (State is NetClientState.Lobby or NetClientState.InGame && nowUs - _lastHeardUs > TimeoutUs)
+        {
+            // T11.11: the server is gone without a word (a killed process, a cut link)
+            Error = $"The host timed out (no word for {(nowUs - _lastHeardUs) / 1000} ms).";
+            Log?.Invoke(Error);
+            _transport.Disconnect(_peer);
+            State = NetClientState.Disconnected;
+        }
         if (State == NetClientState.InGame)
+        {
             AdjustClock();
+            TrackStalls();
+        }
+        else
+            _stallSinceUs = -1;
+    }
+
+    /// <summary>
+    /// T11.11: a stall begins when the game clock passes the last tic whose
+    /// bundle came (the world must hold), and ends when the bundles catch up.
+    /// </summary>
+    private void TrackStalls()
+    {
+        bool stalled = !Stopped && ClockTic > BundleTic;
+        if (stalled && _stallSinceUs < 0)
+        {
+            _stallSinceUs = _nowUs;
+            _stalls.Enqueue(_nowUs);
+        }
+        else if (!stalled)
+            _stallSinceUs = -1;
+        while (_stalls.Count > 0 && _nowUs - _stalls.Peek() > NetProtocol.MicrosecondsPerSecond)
+            _stalls.Dequeue();
     }
 
     private void Handle(ReadOnlyMemory<byte> data)
@@ -248,9 +324,16 @@ public sealed class NetClient
         switch (r.Type)
         {
             case NetMessageType.Pong:
-                Pong(r.I64(), r.I64());
-                r.End();
-                break;
+                {
+                    long time = r.I64(), clock = r.I64();
+                    byte waiting = r.U8();
+                    for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+                        _rttMs[i] = r.U16();
+                    r.End();
+                    WaitingFor = waiting;
+                    Pong(time, clock);
+                    break;
+                }
             case NetMessageType.Refuse:
                 Refusal = (NetRefusal)r.U8();
                 Error = r.Text();
@@ -291,7 +374,8 @@ public sealed class NetClient
                 Expect(NetClientState.InGame, r.Type);
                 Desync = new NetDesync(r.I32(), r.I32(), r.I32());
                 r.End();
-                Log?.Invoke($"desync in window {Desync.Value.Window} (tics {Desync.Value.FirstTic}–{Desync.Value.LastTic})");
+                _pending.Clear(); // T11.11: the game stops: no more commands
+                Log?.Invoke($"desync in window {Desync.Value.Window} (tics {Desync.Value.FirstTic}–{Desync.Value.LastTic}): stopped after tic {LastRanTic}");
                 break;
             case NetMessageType.PlayerQuit:
                 Expect(NetClientState.InGame, r.Type);
@@ -359,7 +443,7 @@ public sealed class NetClient
     {
         get
         {
-            if (State != NetClientState.InGame)
+            if (State != NetClientState.InGame || Stopped)
                 return 0;
             int target = Math.Min(ClockTic + Start!.Delay, LastRanTic + NetProtocol.BackupTics);
             return Math.Max(0, target - MakeTic + 1);
@@ -390,6 +474,11 @@ public sealed class NetClient
     {
         if (_pending.Count == 0)
             return;
+        if (Stopped)
+        {
+            _pending.Clear();
+            return;
+        }
         if (State == NetClientState.InGame)
             Send(NetMessages.EncodeCommands(_pendingFirst, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pending)));
         _pending.Clear();
@@ -403,7 +492,7 @@ public sealed class NetClient
     {
         get
         {
-            if (State != NetClientState.InGame || _awaitingTicRan)
+            if (State != NetClientState.InGame || _awaitingTicRan || Stopped)
                 return 0;
             return Math.Max(0, Math.Min(BundleTic, ClockTic) - NextTic + 1);
         }

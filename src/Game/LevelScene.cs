@@ -1595,13 +1595,18 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>
     /// T11.8: runs one game tic of every player's command (<paramref name="netcmds"/>,
     /// indexed by player: a netgame's bundle, a multi-player route's tic):
-    /// <see cref="GameFlow.G_Ticker(ticcmd_t[])"/>.
+    /// <see cref="GameFlow.G_Ticker(ticcmd_t[])"/>; T11.11: with a netgame's
+    /// set of players <paramref name="ingame"/> (the bundle's), those it
+    /// leaves out quit first (<see cref="GameFlow.RunTic"/>).
     /// </summary>
-    public void TicPlayers(ticcmd_t[] netcmds)
+    public void TicPlayers(ticcmd_t[] netcmds, byte? ingame = null)
     {
         ArgumentNullException.ThrowIfNull(netcmds);
         int wipes = Flow.Wipe.count;
-        Flow.G_Ticker(netcmds);
+        if (ingame is byte players)
+            Flow.RunTic(netcmds, players);
+        else
+            Flow.G_Ticker(netcmds);
         LastTiccmd = netcmds[Flow.ConsolePlayer];
         TicDone(wipes);
     }
@@ -2670,6 +2675,8 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append(CultureInfo.InvariantCulture, $"game: {flow.StateText()}{(FocusPaused ? ", focus lost (paused)" : "")}   gametic {flow.gametic}   menu: {flow.Menu.StateText()}\n");
         if (LevelEnded is not null)
             text.Append(LevelEnded + "\n");
+        if (Net is { } net)
+            text.Append(net.OverlayText()).Append('\n'); // T11.11
         if (World is { } world)
             text.Append(CultureInfo.InvariantCulture, $"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
                 + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}{(Tweaks.AimAssist ? $"   aim assist ±{Tweaks.AimAssistCone * (360.0 / 4294967296.0):0.#}°" : "")}"

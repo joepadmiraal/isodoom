@@ -50,6 +50,14 @@ public sealed class NetEnetTransport : INetTransport, INetPortTransport
     /// </summary>
     public string BindAddress { get; init; } = "*";
 
+    /// <summary>
+    /// T11.11: ENet's peer timeout, ms (<see cref="ENetPacketPeer.SetTimeout"/>'s
+    /// minimum and maximum: a peer that acknowledges nothing for this long is
+    /// disconnected; ENet's default is 5–30 s), the session's <c>-nettimeout</c>;
+    /// 0 keeps ENet's. Set before connecting or listening.
+    /// </summary>
+    public int TimeoutMs { get; init; }
+
     /// <summary>The port listened on (the one ENet picked for <see cref="Listen"/>(0)), or 0.</summary>
     public int LocalPort { get; private set; }
 
@@ -199,6 +207,8 @@ public sealed class NetEnetTransport : INetTransport, INetPortTransport
 
     private void Hold(int id, ENetPacketPeer peer)
     {
+        if (TimeoutMs > 0)
+            peer.SetTimeout(32, TimeoutMs, TimeoutMs); // T11.11: ENet's default limit factor, our minimum and maximum
         _peers[id] = peer;
         _ids[peer.GetInstanceId()] = id;
     }

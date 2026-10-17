@@ -118,6 +118,22 @@ public sealed class MemoryTransport : INetTransport
     /// <summary>Bytes received on either channel.</summary>
     public long BytesReceived { get; private set; }
 
+    /// <summary>
+    /// T11.11: until when (network time, µs) this endpoint's link is down:
+    /// a packet sent to or from it meanwhile is lost on the unreliable
+    /// channel, and on the reliable one arrives once the link is back (ENet's
+    /// resends), its latency after; packets already on the way still arrive.
+    /// A loss burst, or a long stall with <see cref="Block"/>.
+    /// </summary>
+    public long BlockedUntilUs { get; private set; }
+
+    /// <summary>T11.11: the link goes down for <paramref name="us"/> microseconds from now (<see cref="BlockedUntilUs"/>).</summary>
+    public void Block(long us)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(us);
+        BlockedUntilUs = Math.Max(BlockedUntilUs, _network.NowUs + us);
+    }
+
     private sealed class Link(MemoryTransport remote)
     {
         public MemoryTransport Remote { get; } = remote;
@@ -168,15 +184,20 @@ public sealed class MemoryTransport : INetTransport
             return;
         PacketsSent++;
         long due = _network.NowUs + Delay(link.Remote);
+        long blocked = Math.Max(BlockedUntilUs, link.Remote.BlockedUntilUs);
         if (channel == NetChannel.Unreliable)
         {
             UnreliableBytesSent += data.Length;
+            if (blocked > _network.NowUs)
+                return;
             if (_random.NextDouble() < _options.UnreliableLoss || link.Remote._random.NextDouble() < link.Remote._options.UnreliableLoss)
                 return;
         }
         else
         {
             ReliableBytesSent += data.Length;
+            if (blocked > _network.NowUs)
+                due = Math.Max(due, blocked + Delay(link.Remote));
             while (_random.NextDouble() < _options.ReliableLoss)
                 due += _options.ResendUs;
             due = Math.Max(due, link.LastReliableDueUs);

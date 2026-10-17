@@ -80,8 +80,12 @@
 //   server -> Desync     window (i32), its first and last tic (i32 × 2).
 //
 // CLOCK. client -> Ping (unreliable): the client's time (i64 µs) and its
-// last round trip (i32 µs). server -> Pong: the ping's time echoed and the
-// server's game clock (i64 µs since the start, i64.MinValue before it). The
+// last round trip (i32 µs). server -> Pong: the ping's time echoed, the
+// server's game clock (i64 µs since the start, i64.MinValue before it), and
+// (T11.11, protocol 3) the slots whose command the next bundle still waits
+// for (u8 mask, 0 in the lobby) and each slot's last reported round trip
+// (4 × u16 ms, 65535 unknown or empty): the overlay's pings and the
+// "waiting for player N" message. The
 // client estimates the server's clock now as that plus half the round trip
 // (from the samples with the shortest round trips) and runs its own clock
 // faster or slower, within ±5 %, to close the difference: Chocolate Doom's
@@ -92,7 +96,20 @@
 // it sent, and tells everyone
 //   server -> PlayerQuit slot (u8), the first tic without it (i32).
 // The bundles' masks are what the game applies (playeringame), as vanilla's
-// d_net.c does on NCMD_EXIT.
+// d_net.c does on NCMD_EXIT (T11.11: at the tic, Chocolate Doom's RunTic:
+// World.PlayerQuitGame on every machine before that tic).
+//
+// TIMEOUTS (T11.11). Each side drops the other after TimeoutUs (default
+// NetProtocol.DefaultTimeoutUs, -nettimeout) without a packet from it (the
+// pings keep a live link busy), and the server drops a player whose command
+// the next bundle has waited for that long (counted from the later of its
+// last command and the last bundle sent): the player leaves as on a quit. The
+// host's own client never times out on its server (the same machine). ENet's
+// own peer timeout is set to the same time.
+//
+// DESYNC (T11.11). On the server's Desync every client stops: it runs no
+// more tics and sends no more commands; the game stops with a message and
+// writes its dumps (the game's side). The server bundles nothing after it.
 
 using System;
 using System.Buffers.Binary;
@@ -106,8 +123,18 @@ namespace IsoDoom.Net;
 /// <summary>The protocol's constants (see the comment block at the top of <c>NetMessages.cs</c>).</summary>
 public static class NetProtocol
 {
-    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a).</summary>
-    public const ushort Version = 2;
+    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11).</summary>
+    public const ushort Version = 3;
+
+    /// <summary>
+    /// T11.11: how long either side waits without a packet from the other (or
+    /// the server for a player's command the next bundle waits for) before it
+    /// drops it, in microseconds: 10 s (<c>-nettimeout</c>; SPEC §12 T11.11).
+    /// </summary>
+    public const long DefaultTimeoutUs = 10_000_000;
+
+    /// <summary>T11.11: a pong's round trip of an empty slot, or of a player that has not reported one.</summary>
+    public const ushort NoRtt = ushort.MaxValue;
 
     /// <summary>vanilla's <c>MAXPLAYERS</c>: the slots.</summary>
     public const int MaxPlayers = 4;
@@ -484,11 +511,21 @@ public static class NetMessages
         return w.ToArray();
     }
 
-    public static byte[] EncodePong(long clientTimeUs, long serverClockUs)
+    /// <summary>
+    /// Pong: the ping's time, the server's game clock, the slots the next
+    /// bundle waits for and the slots' round trips (<paramref name="rttMs"/>,
+    /// <see cref="NetProtocol.MaxPlayers"/> of them, <see cref="NetProtocol.NoRtt"/> unknown).
+    /// </summary>
+    public static byte[] EncodePong(long clientTimeUs, long serverClockUs, byte waiting, ReadOnlySpan<ushort> rttMs)
     {
+        if (rttMs.Length != NetProtocol.MaxPlayers)
+            throw new ArgumentException("One round trip a slot.", nameof(rttMs));
         var w = new NetWriter(NetMessageType.Pong);
         w.I64(clientTimeUs);
         w.I64(serverClockUs);
+        w.U8(waiting);
+        foreach (ushort rtt in rttMs)
+            w.U16(rtt);
         return w.ToArray();
     }
 }
