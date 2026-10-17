@@ -1389,6 +1389,7 @@ public partial class LevelScene : Node3D, IGameHost
     public override void _Process(double delta)
     {
         PollNet(); // T11.6: the netgame's session, once a frame
+        NetMenuFrame(); // T11.9: the lobby page follows the session
         if (!IsCheckRun && _flow is { } flow)
         {
             if (Mesh is not null)

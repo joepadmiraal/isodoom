@@ -6,7 +6,7 @@ using System.Linq;
 namespace IsoDoom.Game;
 
 /// <summary>The options menu's pages of settings (T7.3, SPEC §8).</summary>
-public enum SettingPage { Video, Gameplay, Sprites, Hud, Controls, Sound, Walls }
+public enum SettingPage { Video, Gameplay, Sprites, Hud, Controls, Sound, Walls, Net }
 
 /// <summary>
 /// One setting of <c>user://settings.cfg</c> (T7.3): its key
@@ -159,7 +159,89 @@ public static class Settings
         new("sound/music_volume", "MUSIC VOLUME", SettingPage.Sound, "8", Range(0, 15, 1)),
         // T7.8g: the music's chip (More Options → Sound, with the volumes)
         new("sound/opl", "MUSIC CHIP", SettingPage.Sound, "opl3", ["opl3", "opl2"], "--level-opl"),
+
+        // T11.9: Multiplayer → Host Game's game, each at its last value, and Join Game's addresses (the last used first)
+        new("net/mode", "MODE", SettingPage.Net, "coop", ["coop", "deathmatch", "altdeath"]),
+        new("net/map", "MAP", SettingPage.Net, "E1M1", MapNames()),
+        new("net/skill", "SKILL", SettingPage.Net, "3", Range(1, 5, 1)),
+        new("net/monsters", "MONSTERS", SettingPage.Net, "on", _onOff),
+        new("net/respawn", "RESPAWN MONSTERS", SettingPage.Net, "off", ["off", "on"]),
+        new("net/fast", "FAST MONSTERS", SettingPage.Net, "off", ["off", "on"]),
+        new("net/timer", "TIME LIMIT (MINUTES)", SettingPage.Net, "off", ["off", "5", "10", "15", "20", "30", "45", "60"]),
+        new("net/players", "PLAYERS", SettingPage.Net, "4", ["2", "3", "4"]),
+        new("net/port", "PORT", SettingPage.Net, "5029", ["2342", .. Range(5029, 5039, 1), "10666"]),
+        new("net/addresses", "ADDRESS", SettingPage.Net, "", [""]),
     ];
+
+    /// <summary>T11.9: the most addresses Join Game keeps (<c>net/addresses</c>).</summary>
+    public const int MaxAddresses = 5;
+
+    /// <summary>T11.9: the longest address Join Game takes.</summary>
+    public const int MaxAddressLength = 48;
+
+    /// <summary>T11.9: every map name a host may pick (<c>net/map</c>): Doom's <c>ExMy</c>, then Doom II's <c>MAPxx</c>; the host page offers those of the WAD.</summary>
+    private static string[] MapNames()
+    {
+        var names = new List<string>();
+        for (int e = 1; e <= 4; e++)
+        {
+            for (int m = 1; m <= 9; m++)
+                names.Add(string.Create(CultureInfo.InvariantCulture, $"E{e}M{m}"));
+        }
+        for (int m = 1; m <= 32; m++)
+            names.Add(string.Create(CultureInfo.InvariantCulture, $"MAP{m:00}"));
+        return [.. names];
+    }
+
+    /// <summary>
+    /// T11.9: <paramref name="value"/> as setting <paramref name="def"/> of
+    /// the <see cref="SettingPage.Net"/> page keeps it: one of its choices
+    /// (a map upper case); a port 0–65535 (0: any free one); the addresses a
+    /// space-separated list of at most <see cref="MaxAddresses"/>, each once.
+    /// Anything else is an <see cref="ArgumentException"/>.
+    /// </summary>
+    public static string NetValue(SettingDef def, string value)
+    {
+        ArgumentNullException.ThrowIfNull(def);
+        ArgumentNullException.ThrowIfNull(value);
+        switch (def.Key)
+        {
+            case "net/port":
+                return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int port) && port <= 65535
+                    ? port.ToString(CultureInfo.InvariantCulture)
+                    : throw new ArgumentException($"{def.Key}: \"{value}\" (0-65535)");
+            case "net/addresses":
+                {
+                    var list = new List<string>();
+                    foreach (string a in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (!ValidAddress(a))
+                            throw new ArgumentException($"{def.Key}: \"{a}\" is no address");
+                        if (!list.Contains(a, StringComparer.OrdinalIgnoreCase) && list.Count < MaxAddresses)
+                            list.Add(a);
+                    }
+                    return string.Join(' ', list);
+                }
+            default:
+                {
+                    string v = def.Key == "net/map" ? value.ToUpperInvariant() : value;
+                    return def.Choices.Contains(v) ? v : throw new ArgumentException($"{def.Key}: \"{value}\" ({string.Join(", ", def.Choices)})");
+                }
+        }
+    }
+
+    /// <summary>T11.9: whether Join Game takes <paramref name="address"/>: a host name or IPv4/IPv6 address, with or without a port (<c>-connect</c>'s forms), at most <see cref="MaxAddressLength"/> characters.</summary>
+    public static bool ValidAddress(string address) =>
+        address is { Length: > 0 and <= MaxAddressLength } && address.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or ':' or '-' or '_' or '[' or ']');
+
+    /// <summary>T11.9: <paramref name="address"/> first in the list <paramref name="addresses"/> (<c>net/addresses</c>'s value), the oldest dropped past <see cref="MaxAddresses"/>.</summary>
+    public static string RememberAddress(string addresses, string address)
+    {
+        ArgumentNullException.ThrowIfNull(addresses);
+        var list = new List<string> { address };
+        list.AddRange(addresses.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(a => !string.Equals(a, address, StringComparison.OrdinalIgnoreCase)));
+        return string.Join(' ', list.Take(MaxAddresses));
+    }
 
     /// <summary>The setting with key <paramref name="key"/>, or null.</summary>
     public static SettingDef? Find(string key) => Array.Find(Defs, d => d.Key == key);

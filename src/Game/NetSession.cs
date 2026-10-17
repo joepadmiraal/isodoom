@@ -118,6 +118,38 @@ public sealed class NetSession : IDisposable
 
     private byte _checkedMask;
 
+    /// <summary>T11.9: the players a game started from the lobby page needs (the host and one more).</summary>
+    public const int MinPlayers = 2;
+
+    /// <summary>
+    /// T11.9: whether the host starts by itself once <see cref="NetOptions.Players"/>
+    /// are in (the command line's <c>-players</c>); false for a game hosted
+    /// from the menus, which the lobby page's Start begins (<see cref="RequestStart"/>).
+    /// </summary>
+    public bool AutoStart { get; set; } = true;
+
+    /// <summary>T11.9: the lobby page's Start was asked for and the host has not started yet (it may wait for the round trips).</summary>
+    public bool StartRequested { get; private set; }
+
+    /// <summary>T11.9: how many times the host refused to start (<see cref="StartRefusal"/>): the menus show each refusal once.</summary>
+    public int StartRefusals { get; private set; }
+
+    /// <summary>
+    /// T11.9: the lobby page's Start (the host's): the game starts once every
+    /// player in the lobby is ready and their round trips are known, if
+    /// <see cref="MinPlayers"/> are in and <see cref="CheckStart"/> lets it;
+    /// a refusal ends the request (<see cref="StartRefusals"/>). False on a
+    /// join or after the game started.
+    /// </summary>
+    public bool RequestStart()
+    {
+        if (Server is not { Phase: NetServerPhase.Lobby } server || server.PlayerCount < MinPlayers)
+            return false;
+        StartRequested = true;
+        _checkedMask = 0; // checked again at each request
+        return true;
+    }
+
     /// <summary>Why the session ended (refused, disconnected), or null while it goes on.</summary>
     public string? Failure { get; private set; }
 
@@ -147,7 +179,9 @@ public sealed class NetSession : IDisposable
     /// <summary>The host's start: <see cref="NetOptions.Players"/> in and ready, and their round trips known (or waited for long enough).</summary>
     private void StartWhenReady(NetServer server, long nowUs)
     {
-        if (!server.CanStart || server.PlayerCount < Options.Players)
+        if (StartRequested && server.PlayerCount < MinPlayers)
+            StartRequested = false; // T11.9: a player left meanwhile
+        if (!server.CanStart || (AutoStart ? server.PlayerCount < Options.Players : !StartRequested))
         {
             _allReadyUs = -1;
             return;
@@ -160,7 +194,11 @@ public sealed class NetSession : IDisposable
                 _checkedMask = server.OccupiedMask;
                 StartRefusal = check(_checkedMask);
                 if (StartRefusal is not null)
+                {
                     Log?.Invoke($"the game cannot start: {StartRefusal}");
+                    StartRefusals++;
+                    StartRequested = false; // T11.9: the lobby page shows it; Start asks again
+                }
             }
             if (StartRefusal is not null)
                 return;
@@ -188,6 +226,34 @@ public sealed class NetSession : IDisposable
             Log?.Invoke($"round trips: slowest {maxRtt / 1000.0:F1} ms{(known ? "" : " (some unknown)")}: delay {delay} tic(s)");
         }
         server.Start(delay);
+        StartRequested = false;
+    }
+
+    /// <summary>
+    /// T11.9: the players in the lobby (or the game) as this machine knows
+    /// them, by slot: whether each is ready and its round trip (µs; −1
+    /// unknown): the host's server's, or on a join its own and the others'
+    /// from the host's pong (T11.11; whole milliseconds).
+    /// </summary>
+    public List<NetLobbyPlayer> LobbyPlayers()
+    {
+        var players = new List<NetLobbyPlayer>();
+        byte occupied, ready;
+        if (Server is { } server)
+            (occupied, ready) = server.Phase == NetServerPhase.Lobby ? (server.OccupiedMask, server.ReadyMask) : (Client.Start?.PlayerMask ?? server.OccupiedMask, (byte)0xff);
+        else
+            (occupied, ready) = Client.Start is { } start ? (start.PlayerMask, (byte)0xff) : (Client.LobbyOccupied, Client.LobbyReady);
+        for (int slot = 0; slot < NetProtocol.MaxPlayers; slot++)
+        {
+            if ((occupied & (1 << slot)) == 0)
+                continue;
+            // T11.11's pong carries every player's round trip (ms): a join shows the others' too
+            int rtt = Server is { } s ? s.RttUsOf(slot)
+                : slot == Client.Slot ? Client.RttUs
+                : Client.PlayerRttMs[slot] is var ms && ms != NetProtocol.NoRtt ? ms * 1000 : -1;
+            players.Add(new NetLobbyPlayer(slot, (ready & (1 << slot)) != 0, rtt, slot == Client.Slot));
+        }
+        return players;
     }
 
     /// <summary>
@@ -340,6 +406,9 @@ public sealed class NetSession : IDisposable
         return (1, 1);
     }
 }
+
+/// <summary>T11.9: a player in the lobby: its slot, whether it is ready, its round trip (µs, −1 unknown), whether it is this machine's.</summary>
+public readonly record struct NetLobbyPlayer(int Slot, bool Ready, int RttUs, bool Local);
 
 /// <summary>
 /// T11.6's exchange without a game (the level script's <c>netexchange</c>;

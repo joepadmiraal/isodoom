@@ -213,7 +213,8 @@ public sealed partial class MMenu
     }
 
     // m_menu.c's enums
-    private const int newgame = 0, options = 1, loadgame = 2, savegame = 3, readthis = 4, quitdoom = 5, main_end = 6;
+    // T11.9: Multiplayer after New Game (not vanilla's)
+    private const int newgame = 0, multiplayer = 1, options = 2, loadgame = 3, savegame = 4, readthis = 5, quitdoom = 6, main_end = 7;
     private const int ep1 = 0, ep_end = 4;
     private const int hurtme = 2, nightmare = 4, newg_end = 5;
     private const int endgame = 0, messages = 1, detail = 2, scrnsize = 3, mousesens = 5, soundvol = 7, setup = 8, opt_end = 9;
@@ -239,6 +240,7 @@ public sealed partial class MMenu
         MainMenu =
         [
             new(1, "M_NGAME", M_NewGame, 'n', "NEW GAME"),
+            new(1, "M_ISONET", Multiplayer, 'm', "MULTIPLAYER"), // not vanilla (T11.9): the netgame's pages; no such patch, the text shows
             new(1, "M_OPTION", M_Options, 'o', "OPTIONS"),
             new(1, "M_LOADG", M_LoadGame, 'l', "LOAD GAME"),
             new(1, "M_SAVEG", M_SaveGame, 's', "SAVE GAME"),
@@ -307,6 +309,7 @@ public sealed partial class MMenu
         SaveDef = new menu_t("save", load_end, MainDef, SaveMenu, M_DrawSave, 80, 54, 0);
 
         SetupMenus(); // T7.3
+        NetMenus(); // T11.9
         currentMenu = MainDef;
         M_Init();
     }
@@ -331,6 +334,9 @@ public sealed partial class MMenu
 
     private bool messageLastMenuActive;
     private Action<int>? messageRoutine;
+
+    // Not vanilla (T11.9): the menu a message goes back to once answered (vanilla's messages close the menus).
+    private menu_t? messageBackMenu;
 
     /// <summary>m_menu.c <c>currentMenu</c>.</summary>
     public menu_t currentMenu;
@@ -948,8 +954,12 @@ public sealed partial class MMenu
     }
 
     /// <summary>m_menu.c <c>M_StartMessage</c>.</summary>
-    public void M_StartMessage(string text, Action<int>? routine, bool input)
+    public void M_StartMessage(string text, Action<int>? routine, bool input) => M_StartMessage(text, routine, input, null);
+
+    /// <summary>m_menu.c <c>M_StartMessage</c>; not vanilla (T11.9): once answered, the menus show <paramref name="back"/> (null: they close, as vanilla's).</summary>
+    public void M_StartMessage(string text, Action<int>? routine, bool input, menu_t? back)
     {
+        messageBackMenu = back;
         messageLastMenuActive = menuactive;
         messageToPrint = true;
         messageString = text;
@@ -1075,6 +1085,10 @@ public sealed partial class MMenu
             return true;
         }
 
+        // T11.9: Join Game's address typed
+        if (AddressEnter)
+            return AddressKey(key, ch);
+
         // Not vanilla: the pad's A and B (and the mouse's buttons) answer a message or work the menu.
         if (key == KEY_PAD_ACCEPT)
             key = messageToPrint ? key_menu_confirm : key_menu_forward;
@@ -1093,6 +1107,13 @@ public sealed partial class MMenu
             messageRoutine?.Invoke(key);
 
             menuactive = false;
+            if (messageBackMenu is { } back)
+            {
+                // T11.9: the netgame's messages go back to their page
+                messageBackMenu = null;
+                menuactive = true;
+                M_SetupNextMenu(back);
+            }
             S_StartSound(sfxenum_t.sfx_swtchx);
             return true;
         }
@@ -1121,6 +1142,13 @@ public sealed partial class MMenu
                 return true;
             }
             return false;
+        }
+
+        // T11.9: Escape (or back) on the lobby page leaves the lobby
+        if (currentMenu == LobbyDef && (key == key_menu_activate || key == key_menu_back))
+        {
+            LeaveLobby();
+            return true;
         }
 
         // Keys usable within menu
@@ -1258,7 +1286,7 @@ public sealed partial class MMenu
     /// <summary>The pointer moved to screen point <paramref name="x"/>, <paramref name="y"/>: the skull goes to the item under it.</summary>
     public bool M_MouseMove(int x, int y)
     {
-        if (saveStringEnter || inhelpscreens)
+        if (Typing || inhelpscreens)
             return false;
         int i = ItemAt(x, y);
         if (i < 0 || i == itemOn)
@@ -1288,8 +1316,8 @@ public sealed partial class MMenu
             return M_Responder(KEY_PAD_CANCEL);
         if (WaitingBinding is not null)
             return true; // the glue binds the button
-        if (messageToPrint || saveStringEnter || currentMenu == ReadDef1 || currentMenu == ReadDef2)
-            return M_Responder(saveStringEnter ? KEY_ENTER : KEY_PAD_ACCEPT);
+        if (messageToPrint || Typing || currentMenu == ReadDef1 || currentMenu == ReadDef2)
+            return M_Responder(Typing ? KEY_ENTER : KEY_PAD_ACCEPT);
         if (!pointed)
             return M_Responder(KEY_PAD_ACCEPT);
         if (!currentMenu.textItems && Thermo(x, y) is (int item, int cell, int value))
@@ -1390,7 +1418,11 @@ public sealed partial class MMenu
             {
                 menuitem_t item = currentMenu.menuitems[i];
                 if (item.name.Length > 0)
-                    DrawPatch(mx, my, item.name, item.text);
+                {
+                    // T11.9: a main menu item without its patch (Multiplayer) shows its text in the middle of its row
+                    int dy = currentMenu == MainDef && Graphics.Patch(DEH_String(item.name)) is null ? 4 : 0;
+                    DrawPatch(mx, my + dy, item.name, item.text);
+                }
                 my += LINEHEIGHT;
             }
 
@@ -1447,6 +1479,7 @@ public sealed partial class MMenu
         messageToPrint ? $"message \"{messageString.Replace("\n", " ")}\""
         : !menuactive ? "closed"
         : WaitingBinding is { } waiting ? $"binding, waiting for an input for {waiting}"
+        : AddressEnter ? $"{currentMenu.Name}, typing the address: \"{_address}\""
         : currentMenu.textItems ? $"{currentMenu.Name}, item {itemOn} ({currentMenu.menuitems[itemOn].text}{(currentMenu.menuitems[itemOn].value is { } v ? $": {v()}" : "")})"
         : saveStringEnter ? $"{currentMenu.Name}, typing in slot {saveSlot + 1}: \"{savegamestrings[saveSlot]}\""
         : $"{currentMenu.Name}, item {itemOn}{(currentMenu.menuitems[itemOn].name is { Length: > 0 } n ? $" ({DEH_String(n)})" : "")}";

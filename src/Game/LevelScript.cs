@@ -274,12 +274,13 @@ public partial class LevelScript : Node
                     case "up": Key(w[1], false); break;
                     case "tap": Key(w[1], true); await Frames(1); Key(w[1], false); break;
                     case "type":
-                        // T7.9a: taps each letter or digit of TEXT, a frame each (the cheats: "type iddqd")
+                        // T7.9a: taps each letter or digit of TEXT, a frame each (the cheats: "type iddqd");
+                        // T11.9: and . : - _ [ ], with the character typed (Join Game's address: "type 127.0.0.1:5029")
                         foreach (char c in w[1])
                         {
-                            Key(c.ToString(), true);
+                            TypeKey(c, true);
                             await Frames(1);
-                            Key(c.ToString(), false);
+                            TypeKey(c, false);
                         }
                         break;
                     case "hold": Key(w[1], true); await Frames(Int(w[2])); Key(w[1], false); break;
@@ -764,6 +765,7 @@ public partial class LevelScript : Node
                     case "kill": Kill(w.Length > 1 ? Int(w[1]) - 1 : null); break; // T11.8
                     case "netdesync": exit |= NetDesync(); break; // T11.11
                     case "netuntil": exit |= await NetUntil(w); break; // T11.11
+                    case "lobby": exit |= await Lobby(w.Length > 1 ? Int(w[1]) : 0, w.Length > 2 ? Int(w[2]) : 60); break; // T11.9
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");
                 }
@@ -1253,6 +1255,24 @@ public partial class LevelScript : Node
         if (key == Godot.Key.None)
             throw new ArgumentException($"unknown key \"{name}\"");
         Parse(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = pressed });
+    }
+
+    /// <summary>T11.9: a key that types <paramref name="c"/> (a letter, a digit or . : - _ [ ]), with its character.</summary>
+    private static void TypeKey(char c, bool pressed)
+    {
+        Key key = c switch
+        {
+            '.' => Godot.Key.Period,
+            ':' => Godot.Key.Colon,
+            '-' => Godot.Key.Minus,
+            '_' => Godot.Key.Underscore,
+            '[' => Godot.Key.Bracketleft,
+            ']' => Godot.Key.Bracketright,
+            _ => OS.FindKeycodeFromString(c.ToString()),
+        };
+        if (key == Godot.Key.None)
+            throw new ArgumentException($"type: no key types \"{c}\"");
+        Parse(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = pressed, Unicode = c });
     }
 
     // Where the last `mouse` put the cursor (a click happens there; T7.2's menus read it).

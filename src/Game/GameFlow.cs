@@ -556,6 +556,9 @@ public sealed class GameFlow
         return maps;
     }
 
+    /// <summary>T11.9: the maps the host page offers: <see cref="CheatMaps"/>' that the WAD has, in order.</summary>
+    public System.Collections.Generic.List<string> HostMaps() => CheatMaps().ConvertAll(m => m.Name).FindAll(host.HasLump);
+
     /// <summary>T7.9b: <c>idmus</c>'s songs for the cheats page's picker: each two digits <see cref="ST_MusSong"/> takes whose lump the WAD has, with the song's name (upper case), in order, each song once.</summary>
     public System.Collections.Generic.List<(string Digits, string Name)> CheatSongs()
     {

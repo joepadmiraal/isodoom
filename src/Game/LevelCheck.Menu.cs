@@ -193,8 +193,27 @@ public partial class LevelCheck
             Fail("the main menu: the menu screen is hidden");
             return;
         }
-        if (await Capture("the main menu over the title page") is not byte[] frame)
+        if (await CompareMenuScreen("the main menu over the title page") is not int here)
             return;
+        ScreenLayout layout = _scene.MenuScreens.Layout;
+        menu.M_ClearMenus();
+        _scene.UpdateScreens();
+        if (_scene.MenuScreens.Visible)
+            Fail("the menu screen still shows with the menus closed");
+        _scene.Overlay.Visible = overlay;
+        GD.Print($"Level check: menus (T7.2): the main menu over the title page at scale {layout.ScaleX}, {here} pixels compared");
+    }
+
+    /// <summary>
+    /// Captures what shows and compares every pixel the menus drew on their
+    /// screen (<see cref="MMenu.M_Drawer"/>, the CPU's) with the frame, in
+    /// palette 0; returns the pixels compared (counted in the check's), or
+    /// null when the capture failed or nothing was drawn.
+    /// </summary>
+    private async Task<int?> CompareMenuScreen(string what)
+    {
+        if (await Capture(what) is not byte[] frame)
+            return null;
         Vector2I size = ViewSize();
         HudScreen screen = _scene.MenuScreens.Screen;
         ScreenLayout layout = _scene.MenuScreens.Layout;
@@ -221,15 +240,13 @@ public partial class LevelCheck
             }
         }
         if (here == 0)
-            Fail("the main menu: nothing drawn");
+        {
+            Fail($"{what}: nothing drawn");
+            return null;
+        }
         if (bad > 0)
-            Fail($"the main menu: {bad} of {here} pixels differ; first: {firstBad}");
-        menu.M_ClearMenus();
-        _scene.UpdateScreens();
-        if (_scene.MenuScreens.Visible)
-            Fail("the menu screen still shows with the menus closed");
-        _scene.Overlay.Visible = overlay;
+            Fail($"{what}: {bad} of {here} pixels differ; first: {firstBad}");
         _pixels += here;
-        GD.Print($"Level check: menus (T7.2): the main menu over the title page at scale {layout.ScaleX}, {here} pixels compared");
+        return here;
     }
 }

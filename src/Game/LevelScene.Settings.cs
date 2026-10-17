@@ -38,6 +38,9 @@ public partial class LevelScene : ISetupHost
 
     private readonly Dictionary<string, (Func<string> Get, Action<string> Set)> _settingAccess = new(StringComparer.Ordinal);
 
+    // T11.9: the net/* settings (the multiplayer pages'), by key
+    private readonly Dictionary<string, string> _netSettings = new(StringComparer.Ordinal);
+
     // The video settings (applied to the window unless headless or under the level check).
     // Fullscreen by default, but scripts and screenshots keep their window (WindowedRun).
     private string _windowSize = "1280x800", _fullscreen = WindowedRun ? "off" : "on", _vsync = "on";
@@ -734,6 +737,14 @@ public partial class LevelScene : ISetupHost
             string a = action;
             Add(Settings.BindingKey(a), () => Binding.FormatList(BindingsOf(a)),
                 s => SetBindings(a, Binding.ParseList(s) ?? throw new ArgumentException($"controls/{a}: \"{s}\" is not a list of bindings")));
+        }
+
+        // T11.9: the host and join pages' values, kept for the next game (Settings.NetValue checks them)
+        foreach (SettingDef def in Settings.OnPage(SettingPage.Net))
+        {
+            SettingDef d = def;
+            _netSettings[d.Key] = d.Default;
+            Add(d.Key, () => _netSettings[d.Key], s => _netSettings[d.Key] = Settings.NetValue(d, s));
         }
 
         foreach (SettingDef def in Settings.Defs)

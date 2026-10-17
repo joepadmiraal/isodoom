@@ -276,6 +276,7 @@ public class SettingsTests
         foreach (MMenu.menuitem_t item in menu.SettingDefs.Values.SelectMany(d => d.menuitems))
             shown.Add(item.text);
         shown.AddRange(menu.ControlsDef.menuitems.Select(i => i.text));
+        shown.AddRange(menu.JoinDef.menuitems.Select(i => i.text)); // T11.9: the address is Join Game's
         foreach (SettingDef def in Settings.Defs)
             Assert.Single(shown, def.Label);
 

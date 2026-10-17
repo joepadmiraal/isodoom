@@ -86,6 +86,7 @@ public partial class LevelScene : IMenuHost
     {
         Menu.Host = this;
         Menu.SetupHost = this; // T7.3: the options' text pages
+        Menu.NetHost = this; // T11.9: the multiplayer pages
         Flow.AutomapCheats = this; // T7.9b: the cheats page's iddt
         if (_graphics is not null)
             Menu.Graphics = _graphics;
@@ -237,13 +238,13 @@ public partial class LevelScene : IMenuHost
                         return false;
                     if (KeyOf(key) == Key.Escape && Input.MouseMode == Input.MouseModeEnum.Captured)
                         return false; // the free-fly camera lets the mouse go first
-                    if (menu.Active && !menu.saveStringEnter && KeyOf(key) == Key.Delete && menu.ClearBinding(false))
+                    if (menu.Active && !menu.Typing && KeyOf(key) == Key.Delete && menu.ClearBinding(false))
                         return true; // T7.3: on a binding page, the keyboard's and mouse's bindings go
                     // T7.3: the menu actions' keys (rebindable), else a letter, digit or space; typing a save's description takes the keys as they are
-                    int code = menu.saveStringEnter ? MenuKeyOf(key) : MenuActionKey(key, menu), ch = CharOf(key);
+                    int code = menu.Typing ? MenuKeyOf(key) : MenuActionKey(key, menu), ch = CharOf(key);
                     if (code == 0)
                         code = LetterKeyOf(key);
-                    if (menu.Active && !menu.saveStringEnter && IsMenuArrow(menu, code) && !MenuStep(code, false, key.Echo))
+                    if (menu.Active && !menu.Typing && IsMenuArrow(menu, code) && !MenuStep(code, false, key.Echo))
                         return true; // the pad took this press (or holds it, and repeats it itself)
                     if ((code != 0 || ch != 0) && menu.M_Responder(code, ch))
                         return true;

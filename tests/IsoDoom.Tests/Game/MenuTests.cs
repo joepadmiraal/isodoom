@@ -61,9 +61,9 @@ public class MenuTests
         Assert.True(menu.M_Responder(Esc));
         Assert.Equal(("main", 0), (menu.StateName, (int)menu.itemOn));
         Assert.Equal(sfxenum_t.sfx_swtchn, host.Sounds[^1]);
-        Assert.Equal(6, menu.MainDef.numitems);
+        Assert.Equal(7, menu.MainDef.numitems); // T11.9: Multiplayer after New Game
         Keys(menu, Up);
-        Assert.Equal(5, menu.itemOn); // wraps
+        Assert.Equal(6, menu.itemOn); // wraps
         Keys(menu, Down);
         Assert.Equal(0, menu.itemOn);
         Assert.Equal(sfxenum_t.sfx_pstop, host.Sounds[^1]);
@@ -88,12 +88,12 @@ public class MenuTests
 
         // back to the main menu on its last item, then Escape closes
         Keys(menu, Back);
-        Assert.Equal(("main", 1), (menu.StateName, (int)menu.itemOn));
+        Assert.Equal(("main", 2), (menu.StateName, (int)menu.itemOn));
         Keys(menu, Esc);
         Assert.Equal("closed", menu.StateName);
         Assert.Equal(sfxenum_t.sfx_swtchx, host.Sounds[^1]);
         Keys(menu, Esc); // reopens on the item it was on
-        Assert.Equal(("main", 1), (menu.StateName, (int)menu.itemOn));
+        Assert.Equal(("main", 2), (menu.StateName, (int)menu.itemOn));
     }
 
     // ---- new game ----
@@ -249,7 +249,7 @@ public class MenuTests
         Assert.Equal(5, menu.itemOn);
         Assert.False(menu.M_MouseMove(120, 30)); // above the items: no change
         Assert.Equal(5, menu.itemOn);
-        Assert.True(menu.M_MouseButton(true, 120, 64 + 16 + 4)); // Options
+        Assert.True(menu.M_MouseButton(true, 120, 64 + 16 * 2 + 4)); // Options (T11.9: after Multiplayer)
         Assert.Equal("options", menu.StateName);
         // the screen size thermometer (row 4) clicked at its third cell
         menuHost.ScreenSize = 0;
@@ -274,11 +274,11 @@ public class MenuTests
     {
         (_, _, MMenu menu, _) = New();
         Keys(menu, Esc);
-        menu.M_MouseMove(120, 64 + 16 * 5 + 4); // the pointer on Quit
-        Keys(menu, Down, Down); // the skull from Quit to Options (wrapping)
-        Assert.Equal(1, menu.itemOn);
+        menu.M_MouseMove(120, 64 + 16 * 6 + 4); // the pointer on Quit
+        Keys(menu, Down, Down, Down); // the skull from Quit to Options (wrapping; T11.9: past Multiplayer)
+        Assert.Equal(2, menu.itemOn);
         // the pointer did not put the skull there (Steam Input's click with the pad's trigger): Options, not Quit
-        Assert.True(menu.M_MouseButton(true, 120, 64 + 16 * 5 + 4, pointed: false));
+        Assert.True(menu.M_MouseButton(true, 120, 64 + 16 * 6 + 4, pointed: false));
         Assert.Equal("options", menu.StateName);
     }
 
@@ -292,7 +292,7 @@ public class MenuTests
         (GameFlow flow, _, MMenu menu, MenuHost host) = New(mode);
         flow.gametic = 13;
         Keys(menu, Esc, 'q');
-        Assert.Equal(mode == GameMode.commercial ? 4 : 5, menu.itemOn);
+        Assert.Equal(mode == GameMode.commercial ? 5 : 6, menu.itemOn); // T11.9: Multiplayer is item 1
         Keys(menu, Enter);
         string[] messages = mode == GameMode.commercial ? MMenu.doom2_endmsg : MMenu.doom1_endmsg;
         Assert.Equal(messages[13 % 8] + "\n\n" + MMenu.DOSY, menu.messageString);
@@ -330,7 +330,7 @@ public class MenuTests
     {
         (_, _, MMenu menu, _) = New(mode);
         Keys(menu, Esc, 'r');
-        Assert.Equal(4, menu.itemOn);
+        Assert.Equal(5, menu.itemOn); // T11.9: Multiplayer is item 1
         var seen = new List<string>();
         do
         {
@@ -344,8 +344,8 @@ public class MenuTests
     public void Doom2HasNoReadThisAndOneHelpPage()
     {
         (_, _, MMenu menu, _) = New(GameMode.commercial);
-        Assert.Equal((5, 72), ((int)menu.MainDef.numitems, (int)menu.MainDef.y));
-        Assert.Equal("M_QUITG", menu.MainMenu[4].name);
+        Assert.Equal((6, 72), ((int)menu.MainDef.numitems, (int)menu.MainDef.y)); // T11.9: with Multiplayer
+        Assert.Equal("M_QUITG", menu.MainMenu[5].name);
         Assert.Same(menu.MainDef, menu.NewDef.prevMenu);
         // the help page (vanilla reaches it with F1, not ported) goes back to the main menu
         menu.M_StartControlPanel();

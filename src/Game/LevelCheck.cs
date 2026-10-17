@@ -136,6 +136,7 @@ public partial class LevelCheck : Godot.Node
             CheckAutomap(); // T7.9: the automap through the input glue
             CheckPlayers(); // T11.10: several players in the game, each made the local one
             CheckDeathmatch(); // T11.4: a deathmatch's starts, frags and reborns
+            await CheckLobby(); // T11.9: the multiplayer pages, hosting and joining with a second machine in this process
             await CheckMusicPlayback(); // T7.8e: a song played for a few seconds on the OPL player's thread
             // T7.7: the audio server frees the stopped playbacks between frames (else they are reported as leaked at exit)
             await _scene.AudioSettled();
@@ -153,6 +154,7 @@ public partial class LevelCheck : Godot.Node
                 await CheckScreensDrawn(); // T7.1: last, it drops the level for the title loop and starts a new game
                 await CheckBunnyDrawn(); // T9.4: E3's bunny scroll
                 await CheckMenuDrawn(); // T7.2: the main menu over the title page
+                await CheckLobbyDrawn(); // T11.9: the multiplayer pages
                 await CheckWipeDrawn(); // T7.1a: the melt from the title page into a new game
                 await CheckAspectDrawn(); // T7.11: the title page, the menu, the bar and the automap at 4:3
             }

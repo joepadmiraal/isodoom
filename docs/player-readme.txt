@@ -77,6 +77,45 @@ F1 lists the remaining keys (camera and display toggles); F3 shows a
 status overlay.
 
 
+Multiplayer
+-----------
+
+Up to four players can play co-op or deathmatch over a network or the
+internet. Every player needs the same version of IsoDoom and the same IWAD
+(and the same PWADs, in the same order); the game checks both when you
+join.
+
+Host a game: Main menu > Multiplayer > Host Game. Pick the mode (co-op,
+deathmatch or altdeath), the map, the skill, monsters on or off, respawning
+and fast monsters, a time limit (deathmatch), the number of players and the
+port, then Start Hosting. The game remembers these for next time. The lobby
+shows who has joined (with their colour and ping); pick Start Game once
+everyone is in (two players at least). Escape leaves the lobby.
+
+Join a game: Main menu > Multiplayer > Join Game. Pick Address, type the
+host's address (an IP address or a host name, with ":port" after it if the
+host did not use the default port, 5029), press Enter. The last five
+addresses you joined are listed below it; with a pad, pick one with A. You
+wait in the lobby until the host starts the game.
+
+Over the internet, the host's router must forward the game's port (UDP
+5029 by default, or the port picked on the Host Game page) to the host's
+computer, and the host tells the others its public IP address. On a home
+network (LAN) no forwarding is needed: use the host's local address (such
+as 192.168.1.20). Your firewall may ask whether to let IsoDoom accept
+connections the first time you host: allow it.
+
+From a command line (no menus needed; the game starts on its own once
+that many players are in):
+
+  IsoDoom.x86_64 -- -host -players 2 --level E1M1   (host; -deathmatch,
+                                                     -altdeath, -timer N,
+                                                     -port N also work)
+  IsoDoom.x86_64 -- -connect 192.168.1.20           (join; ADDRESS:PORT too)
+
+Saving is off in a netgame, and the pause pauses everyone.
+
+
 Running it
 ----------
 

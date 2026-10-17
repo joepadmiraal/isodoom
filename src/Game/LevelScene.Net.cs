@@ -106,24 +106,8 @@ public partial class LevelScene
                 return true; // the checks are single player
             string? map = WadLocator.GetUserArg("--level") is string m && !m.StartsWith('-') ? m : null;
             var spawn = new SpawnSettings(GameMode, Skill, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission);
-            NetGameSettings settings = NetSession.GameSettings(options, spawn, Tweaks, map ?? DefaultMap());
-            NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath, _pwadPaths);
-            GD.Print($"Net: {options.Role}, build {identity.Build}, IWAD {identity.IwadMd5}" + (identity.PwadMd5s.Count > 0 ? $", PWADs {string.Join(' ', identity.PwadMd5s)}" : ""));
-            Net = new NetSession(options, identity, settings,
-                use => new NetEnetTransport(options.Players)
-                {
-                    BindAddress = use == NetTransportUse.Server ? options.BindAddress : "*",
-                    TimeoutMs = options.TimeoutSeconds * 1000, // T11.11
-                },
-                line => GD.Print($"Net: {line}"));
-            Flow.netsession = true; // T11.8: the menus refuse a new game, loads, saves and the end of the game
-            NetEnded = null;
-            AddNetBanner(); // T11.11
-            if (Net.Server is not null && Wad is { } wad)
-            {
-                // T11.1a: the host refuses a game whose maps lack a start for a player in it (SPEC §12 T11.8)
-                Net.CheckStart = mask => NetStarts.Refusal(wad, GameMode, settings.Episode, settings.Map, mask, settings.Spawn.deathmatch != 0);
-            }
+            OpenNetSession(options, spawn, map ?? DefaultMap());
+            Menu.ShowLobby(); // T11.9: the lobby page shows who is in (Escape leaves it); the host starts at -players
             return true;
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
@@ -133,6 +117,48 @@ public partial class LevelScene
                 GetTree().Quit(1);
             return false;
         }
+    }
+
+    /// <summary>
+    /// The session for <paramref name="options"/> (T11.6; T11.9: the
+    /// command line's or the menus'), the host's game <paramref name="spawn"/>
+    /// on <paramref name="map"/>; the host checks the players' starts
+    /// (T11.1a). Its exceptions are the caller's.
+    /// </summary>
+    private NetSession OpenNetSession(NetOptions options, SpawnSettings spawn, string map)
+    {
+        NetGameSettings settings = NetSession.GameSettings(options, spawn, Tweaks, map);
+        NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath!, _pwadPaths);
+        GD.Print($"Net: {options.Role}, build {identity.Build}, IWAD {identity.IwadMd5}" + (identity.PwadMd5s.Count > 0 ? $", PWADs {string.Join(' ', identity.PwadMd5s)}" : ""));
+        var made = new List<NetEnetTransport>();
+        try
+        {
+            Net = new NetSession(options, identity, settings, use =>
+            {
+                var transport = new NetEnetTransport(options.Players)
+                {
+                    BindAddress = use == NetTransportUse.Server ? options.BindAddress : "*",
+                    TimeoutMs = options.TimeoutSeconds * 1000, // T11.11
+                };
+                made.Add(transport);
+                return transport;
+            }, line => GD.Print($"Net: {line}"));
+        }
+        catch
+        {
+            foreach (NetEnetTransport transport in made)
+                transport.Dispose(); // T11.9: a port that can't be listened on leaves no ENet host to the finalizer
+            throw;
+        }
+        Flow.netsession = true; // T11.8: the menus refuse a new game, loads, saves and the end of the game
+        NetEnded = null;
+        AddNetBanner(); // T11.11
+        if (Net.Server is not null && Wad is { } wad)
+        {
+            // T11.1a: the host refuses a game whose maps lack a start for a player in it (SPEC §12 T11.8)
+            Net.CheckStart = mask => NetStarts.Refusal(wad, GameMode, settings.Episode, settings.Map, mask, settings.Spawn.deathmatch != 0);
+        }
+        return Net;
     }
 
     /// <summary>One frame of the netgame: the session polled at this machine's clock, the game begun at the Start, and the script's exchange's frame.</summary>
