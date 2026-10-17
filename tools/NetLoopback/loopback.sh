@@ -27,7 +27,8 @@
 #    client forces a desync (`netdesync`: its world alone takes a P_Random);
 #    both must stop at the same window and write their dumps (`--netdesync`,
 #    in the logs' directory), each with its checksums, commands and the save
-#    of the last agreed window.
+#    of the last agreed window; then each shows the stop's message, and a key
+#    takes it back to the title loop (the client first, the host 3 s later).
 # Usage:
 #   tools/NetLoopback/loopback.sh IWAD [TICS] [-- GAME... [-- CLIENT GAME...]]
 #   tools/NetLoopback/loopback.sh IWAD --play ROUTE NEXT [-- GAME... [-- CLIENT GAME...]]
@@ -48,7 +49,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 if [ $# -lt 1 ] || [ "${1#-}" != "$1" ]; then
-    sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 iwad=$(realpath "$1"); shift
@@ -162,9 +163,9 @@ case $mode in
         ;;
     desync)
         host_args+=(--netdesync="$(native "$host_first" "$logs/desync")") client_args+=(--netdesync="$(native "$client_first" "$logs/desync")")
-        host_script="$start; netuntil desync 60; print; sleep 3"
-        client_script="$start; tics 140; netdesync; netuntil desync 60; print"
-        result_line='^(Level script: netuntil|Net: (forced desync|desync))'
+        host_script="$start; netuntil desync 60; print; menu message; sleep 3; tap Space; netuntil ended 10"
+        client_script="$start; tics 140; netdesync; netuntil desync 60; print; menu message; tap Space; netuntil ended 10"
+        result_line='^(Level script: netuntil|Net: (forced desync|desync|the stopped netgame))'
         limit=150
         ;;
     *)
@@ -260,6 +261,10 @@ case $mode in
         result() { sed -n 's/^Level script: netuntil desync: reached: \(desync in window [0-9]*\).*/\1/p' "$1" | head -n 1; }
         host_result=$(result "$host_log") client_result=$(result "$client_log")
         [ "$host_status" -eq 0 ] && [ "$client_status" -eq 0 ] && [ -n "$host_result" ] && [ "$host_result" = "$client_result" ] || ok=
+        # each machine back at the title loop after the stop's message (the user's decision)
+        for log in "$host_log" "$client_log"; do
+            grep -q '^Level script: netuntil ended: reached' "$log" || ok=
+        done
         # each machine's dumps: summary, checksums, commands and the last agreed save
         dumps=0
         for dir in "$logs"/desync/*-player*; do

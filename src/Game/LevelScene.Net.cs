@@ -197,6 +197,7 @@ public partial class LevelScene
         NetGame = start;
         _desyncLog = new NetDesyncLog(start); // T11.11
         NetStoppedDesync = null;
+        _quitStoppedNetGame = false;
         NetDesyncDumps = null;
         _netScriptFrom = start.StartTic;
         _netScriptLast = int.MinValue;
@@ -236,6 +237,8 @@ public partial class LevelScene
             TicFraction = 1;
             if (NetStoppedDesync is null)
                 StopForDesync(c, desync); // T11.11: every machine stops, with its dumps
+            else if (_quitStoppedNetGame)
+                QuitStoppedNetGame(); // the stop's message answered: back to the title loop
             return;
         }
         while (c.CommandsDue > 0)
@@ -371,6 +374,33 @@ public partial class LevelScene
         }
         GD.Print($"Net: desync in window {desync.Window} (tics {desync.FirstTic}-{desync.LastTic}): the game stopped after tic {c.LastRanTic}; "
             + (NetDesyncDumps is { } dir ? $"dumps in {dir}" : "no dumps"));
+        // T11.11's follow-up (the user's decision): the stopped game offers to quit to the title loop
+        _quitStoppedNetGame = false;
+        Flow.Menu.M_StartMessage(DesyncMessage(desync), _ => _quitStoppedNetGame = true, false);
+    }
+
+    /// <summary>
+    /// The menus' message when a desync stopped the game (after the dumps;
+    /// any key answers it and the game goes back to the title loop:
+    /// <see cref="QuitStoppedNetGame"/>; SPEC §12 "A desync stop offers to quit").
+    /// </summary>
+    public static string DesyncMessage(NetDesync desync) =>
+        $"desync: the machines differ in\ntics {desync.FirstTic}-{desync.LastTic}. the game stopped.\n\npress a key to return\nto the title loop.";
+
+    // The desync stop's message was answered: the next frame quits the netgame (outside the menus' responder).
+    private bool _quitStoppedNetGame;
+
+    /// <summary>
+    /// T11.11's follow-up (the user's decision): the stop's message answered,
+    /// this machine leaves the stopped netgame (its session closed, so the
+    /// others see it leave) and goes back to the title loop, single player
+    /// again; the overlay says why (<see cref="NetEnded"/>). The dumps stay.
+    /// </summary>
+    private void QuitStoppedNetGame()
+    {
+        _quitStoppedNetGame = false;
+        GD.Print("Net: the stopped netgame quit to the title loop");
+        CloseNetGame("the game desynced");
     }
 
     /// <summary>T11.11: where the desync dumps go: <c>--netdesync=DIR</c>, else <c>user://netdesync</c>.</summary>
@@ -390,6 +420,13 @@ public partial class LevelScene
         string text = why.Contains("server is gone", StringComparison.OrdinalIgnoreCase) ? "the host left the game"
             : why.Replace("disconnected: ", "", StringComparison.Ordinal).TrimEnd('.');
         GD.Print($"Net: the netgame ended: {text}");
+        CloseNetGame(text);
+        Flow.Menu.M_StartMessage($"the netgame ended:\n{text}.\n\n{MMenu.PRESSKEY}", null, false);
+    }
+
+    // The netgame ended (EndNetGame) or quit after a desync (QuitStoppedNetGame): the session closed, the title loop, the banner gone.
+    private void CloseNetGame(string text)
+    {
         NetEnded = text;
         NetGame = null;
         _desyncLog = null;
@@ -398,7 +435,9 @@ public partial class LevelScene
         StopNet();
         Flow.netsession = false;
         Flow.D_StartTitle($"the netgame ended: {text}");
-        Flow.Menu.M_StartMessage($"the netgame ended:\n{text}.\n\n{MMenu.PRESSKEY}", null, false);
+        NetStoppedDesync = null; // (the dumps' directory stays in NetDesyncDumps)
+        _quitStoppedNetGame = false;
+        UpdateNetBanner(); // its desync text gone (PollNet no longer runs it)
     }
 
     /// <summary>T11.11: the level script's <c>netdesync</c>: before the next tic this machine's world alone takes a <c>P_Random</c> (a forced desync, for the tests).</summary>
