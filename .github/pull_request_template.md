@@ -6,7 +6,7 @@
 
 - [ ] `dotnet format IsoDoom.sln --verify-no-changes --severity warn`, `dotnet build IsoDoom.sln` and `dotnet test` pass
 - [ ] The level check passes (`godot --headless -- --level-check -iwad …`), if `src/Game`, `src/Render`, `src/Audio` or the shaders changed
-- [ ] The netgame loopback tests pass (`tools/NetLoopback/loopback.sh …`, the exchange, `--play`, `--kill client`, `--kill host` and `--desync`), if `src/Net`, `src/Game/Net*` or the game loop changed
+- [ ] The netgame loopback tests pass (`tools/NetLoopback/loopback.sh …`, the exchange, `--play`, `--kill client`, `--kill host` and `--desync`; the Windows export under Wine against the Linux one if you can, as CI's `test-cross`), if `src/Net`, `src/Game/Net*` or the game loop changed
 - [ ] `actionlint` passes, if `.github/` changed
 - [ ] `src/Sim` stays deterministic (no `float`/`double`, Godot types, `System.Random`, wall-clock time or `Dictionary`/`HashSet` iteration), and vanilla deviations sit behind a tweak flag
 - [ ] No WAD data, or anything made from it, is committed

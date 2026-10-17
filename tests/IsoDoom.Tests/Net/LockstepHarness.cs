@@ -43,6 +43,19 @@ public sealed class HarnessPlayer
     /// <summary>The commands it sent, by tic (consistancy left out).</summary>
     internal Dictionary<int, ticcmd_t> Sent { get; } = [];
 
+    /// <summary>T11.12: its clock's time when it made each of its commands, by tic.</summary>
+    internal Dictionary<int, long> SentAtUs { get; } = [];
+
+    /// <summary>
+    /// T11.12: the input delay felt, per command of its own: from the frame it
+    /// made the command (its input read) to the frame it ran that command's
+    /// tic, in microseconds of its clock.
+    /// </summary>
+    public List<long> InputLagUs { get; } = [];
+
+    /// <summary>T11.12: the tics it ran after their time (the clock already past them: a bundle came late).</summary>
+    public int LateTics { get; internal set; }
+
     /// <summary>T11.11: its machine is gone without a word (killed): it runs no frames, sends nothing, quits nothing.</summary>
     public bool Down { get; set; }
 
@@ -216,6 +229,7 @@ public sealed class LockstepHarness
         {
             ticcmd_t cmd = _script(c.Slot, c.MakeTic);
             p.Sent[c.MakeTic] = cmd;
+            p.SentAtUs[c.MakeTic] = localUs;
             c.SendCommand(cmd);
         }
         c.Flush();
@@ -243,6 +257,10 @@ public sealed class LockstepHarness
             else
                 _checksums[tic] = checksum;
             c.TicRan(tic, checksum, _consistancy);
+            if (p.SentAtUs.Remove(tic, out long madeUs))
+                p.InputLagUs.Add(localUs - madeUs);
+            if (c.ClockTic > tic)
+                p.LateTics++;
             p.TicsRun++;
             ran++;
         }

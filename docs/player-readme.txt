@@ -102,8 +102,31 @@ Over the internet, the host's router must forward the game's port (UDP
 5029 by default, or the port picked on the Host Game page) to the host's
 computer, and the host tells the others its public IP address. On a home
 network (LAN) no forwarding is needed: use the host's local address (such
-as 192.168.1.20). Your firewall may ask whether to let IsoDoom accept
-connections the first time you host: allow it.
+as 192.168.1.20).
+
+Firewalls: the host's computer must let IsoDoom accept connections (UDP on
+the game's port). The first time you host, your system may ask:
+
+  Windows  "Windows Security Alert: Windows Defender Firewall has blocked
+           some features of this app" for IsoDoom.exe. Tick "Private
+           networks" (a home network; tick "Public networks" too only if
+           Windows calls your network public) and pick Allow access (this
+           needs an administrator). If you picked Cancel, IsoDoom is
+           blocked: Control Panel > Windows Defender Firewall > Allow an app or
+           feature through Windows Defender Firewall > Change settings, and
+           tick IsoDoom (or "Allow another app..." and pick IsoDoom.exe).
+           Joining usually asks nothing; if it does, allow it too.
+  macOS    "Do you want the application "IsoDoom.app" to accept incoming
+           network connections?" (only when the macOS firewall is on): pick
+           Allow. IsoDoom is not signed by a registered developer, so macOS
+           may ask again after you update it. Changed your mind: System
+           Settings > Network > Firewall > Options, set IsoDoom to "Allow
+           incoming connections".
+  Linux    nothing asks. If you run a firewall (ufw, firewalld), open the
+           port yourself, e.g. "sudo ufw allow 5029/udp".
+
+Playing on one computer (127.0.0.1) never needs any of this. A third-party
+firewall or antivirus has its own prompt: allow IsoDoom there the same way.
 
 From a command line (no menus needed; the game starts on its own once
 that many players are in):

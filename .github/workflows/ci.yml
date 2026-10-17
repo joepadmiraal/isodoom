@@ -5,6 +5,8 @@
 # data, no download) in the editor and in the exported Linux build, upload
 # the builds, and smoke-test and check the Windows build on a Windows runner
 # (T8.4) and the macOS build on macOS runners, Apple Silicon and Intel (T8.4a),
+# each with the netgame's two-process loopback (T11.6a), play the Windows
+# build under Wine against the Linux build over loopback (T11.12),
 # and on a pushed tag v* stamp its version into the builds and publish them
 # as a GitHub release. Toolchain versions are
 # pinned in SPEC §12 (keep GODOT_VERSION in sync with .devcontainer/ and
@@ -417,6 +419,19 @@ jobs:
             --level-tweaks=vanilla --level-monsters=off \
             --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
 
+      # T11.6a: the netgame's loopback on Windows: tools/NetLoopback/loopback.sh
+      # under Git Bash, the two processes through IsoDoom.console.exe (the
+      # script gives them Windows paths, cygpath -m), connected over ENet on
+      # 127.0.0.1 (no firewall prompt for loopback): the exchange (1000 tics)
+      # and the lockstep play of synthetic-dm-exit-2p into E1M2, as the
+      # export job's Linux runs.
+      - name: Netgame loopback (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          iwad="$(cygpath -u "$ISODOOM_CI_IWAD")"
+          tools/NetLoopback/loopback.sh "$iwad" 1000 -- export/windows/IsoDoom.console.exe
+          tools/NetLoopback/loopback.sh "$iwad" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- export/windows/IsoDoom.console.exe
+
   # T8.4a: the exported macOS build on macOS, headless, on both of its
   # architectures (macos-15 is Apple Silicon, macos-15-intel x86_64): the
   # smoke test, both checks and the route play, as test-windows. The
@@ -487,6 +502,15 @@ jobs:
             --level-tweaks=vanilla --level-monsters=off \
             --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
 
+      # T11.6a: the netgame's loopback on macOS (the script runs on macOS's
+      # bash 3.2 too, with no `timeout`): the exchange and the lockstep play,
+      # as on Linux and Windows. Loopback only: no incoming-connection dialog.
+      - name: Netgame loopback (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" 1000 -- "$GAME"
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- "$GAME"
+
       # The checks' failure lines as annotations, readable on the run's page.
       - name: Annotate failures
         if: failure()
@@ -496,6 +520,70 @@ jobs:
             grep -E "check: |ERROR|Unhandled|Exception" "$f" | grep -v ": OK$" | head -30 | sed "s/^/::error title=$f::/" || true
           done
 
+  # T11.12: the Windows and Linux builds playing each other. GitHub-hosted
+  # runners cannot connect to each other (each job is its own VM behind NAT,
+  # with no inbound connections and no address another job could reach;
+  # only a third-party tunnel with secrets would join them), so one Linux
+  # runner plays both: the Windows build under Wine (tools/NetLoopback/wine.sh,
+  # pinned) against the native Linux build over ENet on 127.0.0.1. Wine runs
+  # the Windows build's own native code (Godot's engine and ENet, .NET's
+  # win-x64 runtime and ReadyToRun code); only the OS beneath is Linux's.
+  # The exchange with a Windows host, then synthetic-dm-exit-2p played in
+  # lockstep both ways round, every checksum window compared.
+  test-cross:
+    name: Netgame Windows (Wine) and Linux
+    needs: export
+    runs-on: ubuntu-24.04
+    env:
+      WINEDEBUG: "-all"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: IsoDoom-linux-x86_64
+          path: export/linux
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: IsoDoom-windows-x86_64
+          path: export/windows
+
+      # (artifacts lose their executable bits)
+      - name: Prepare the builds
+        run: chmod +x export/linux/IsoDoom.x86_64 export/linux/data_IsoDoom_linuxbsd_x86_64/createdump
+
+      - name: Generate the synthetic IWAD
+        run: |
+          iwad="$RUNNER_TEMP/isodoom-synthetic.wad"
+          dotnet run --project tools/SyntheticIwad --configuration Debug -- "$iwad"
+          echo "ISODOOM_CI_IWAD=$iwad" >> "$GITHUB_ENV"
+
+      - name: Install Wine
+        run: |
+          wine="$(ISODOOM_WINE_DIR="$RUNNER_TEMP/wine" tools/NetLoopback/wine.sh)"
+          echo "WINE=$wine" >> "$GITHUB_ENV"
+          echo "WINEPREFIX=$RUNNER_TEMP/wineprefix" >> "$GITHUB_ENV"
+          WINEPREFIX="$RUNNER_TEMP/wineprefix" "$wine" wineboot --init
+          WINEPREFIX="$RUNNER_TEMP/wineprefix" "$wine" export/windows/IsoDoom.exe --headless --quit-after 60 2>&1 | tee smoke.log
+          grep -q "IsoDoom started" smoke.log
+
+      - name: Netgame Windows host, Linux client (exchange)
+        timeout-minutes: 5
+        run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" 1000 -- "$WINE" export/windows/IsoDoom.exe -- export/linux/IsoDoom.x86_64
+
+      - name: Netgame Windows host, Linux client (play)
+        timeout-minutes: 5
+        run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- "$WINE" export/windows/IsoDoom.exe -- export/linux/IsoDoom.x86_64
+
+      - name: Netgame Linux host, Windows client (play)
+        timeout-minutes: 5
+        run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- export/linux/IsoDoom.x86_64 -- "$WINE" export/windows/IsoDoom.exe
+
   # A pushed tag v* (e.g. `git tag v0.1.0 && git push origin v0.1.0`)
   # publishes a GitHub release of that commit once every job above passed:
   # the three builds (stamped with the tag's version by the export job), zipped
@@ -504,7 +592,7 @@ jobs:
   release:
     name: Release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [actionlint, export, test-windows, test-macos]
+    needs: [actionlint, export, test-windows, test-macos, test-cross]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
