@@ -53,6 +53,9 @@ public sealed class NetServer
         public int RttUs { get; set; } = -1;
         public bool Gone { get; set; }
 
+        /// <summary>T11.9c: the player's name, cleaned (<see cref="NetProtocol.CleanName"/>).</summary>
+        public string Name { get; set; } = "";
+
         /// <summary>T11.11: when the server last heard from it (any packet), µs.</summary>
         public long LastHeardUs { get; set; }
     }
@@ -180,6 +183,9 @@ public sealed class NetServer
 
     /// <summary>A line for each lobby or game event (joins, refusals, quits, the desync), for the log.</summary>
     public event Action<string>? Log;
+
+    /// <summary>T11.9c: the name of the player in <paramref name="slot"/> (cleaned), or <c>""</c> for an empty slot.</summary>
+    public string NameOf(int slot) => _slots[slot]?.Name ?? "";
 
     /// <summary>The last round trip the client in <paramref name="slot"/> reported, in microseconds (−1 none yet).</summary>
     public int RttUsOf(int slot) => _slots[slot]?.RttUs ?? -1;
@@ -379,8 +385,9 @@ public sealed class NetServer
             return;
         }
         peer.Slot = slot;
+        peer.Name = NetProtocol.CleanName(hello.Name, slot);
         _slots[slot] = peer;
-        Log?.Invoke($"peer {peer.Id} joined in slot {slot}");
+        Log?.Invoke($"peer {peer.Id} joined in slot {slot} as {peer.Name}");
         Send(peer, NetMessages.EncodeWelcome(slot, _maxPlayers));
         Send(peer, NetMessages.EncodeSettings(_settings));
         BroadcastLobby();
@@ -540,7 +547,14 @@ public sealed class NetServer
         }
     }
 
-    private void BroadcastLobby() => Broadcast(NetMessages.EncodeLobby(OccupiedMask, ReadyMask));
+    private readonly string[] _names = new string[NetProtocol.MaxPlayers];
+
+    private void BroadcastLobby()
+    {
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+            _names[i] = NameOf(i);
+        Broadcast(NetMessages.EncodeLobby(OccupiedMask, ReadyMask, _names));
+    }
 
     private void Broadcast(byte[] message)
     {

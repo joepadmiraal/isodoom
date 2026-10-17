@@ -3,6 +3,7 @@ using System.Linq;
 using IsoDoom.Game;
 using IsoDoom.Net;
 using IsoDoom.Sim;
+using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
 using Xunit;
 
@@ -104,12 +105,13 @@ public class LobbyMenuTests
         Assert.Equal(("main", 1), (menu.StateName, (int)menu.itemOn));
         Assert.Equal("MULTIPLAYER", menu.MainMenu[1].text);
         Keys(menu, Enter);
-        Assert.Equal("multiplayer", menu.StateName);
+        Assert.Equal(("multiplayer", 1), (menu.StateName, (int)menu.itemOn)); // T11.9c: on Host Game, below the name
+        Assert.Equal(["PLAYER NAME", "HOST GAME...", "JOIN GAME..."], menu.MultiplayerDef.menuitems.Select(i => i.text));
         Keys(menu, Enter);
         Assert.Equal("host", menu.StateName);
 
         // every host setting, then Start Hosting
-        string[] labels = [.. Settings.OnPage(SettingPage.Net).Where(d => d.Key != "net/addresses").Select(d => d.Label)];
+        string[] labels = [.. Settings.OnPage(SettingPage.Net).Where(d => d.Key is not ("net/addresses" or "net/name")).Select(d => d.Label)];
         Assert.Equal([.. labels, "", "START HOSTING"], menu.HostDef.menuitems.Select(i => i.text));
         Keys(menu, Right);
         Assert.Equal("deathmatch", setup.Values["net/mode"]);
@@ -266,6 +268,96 @@ public class LobbyMenuTests
         flow.netsession = true; // (the scene's, with its session)
         Keys(menu, Esc, 'm', Enter);
         Assert.Equal(("message", MMenu.NETALREADY), (menu.StateName, menu.messageString));
+    }
+
+    [Fact]
+    public void ThePlayerNameIsTypedOnTheMultiplayerPage()
+    {
+        (_, MMenu menu, SetupHost setup, _) = New();
+        string user = Settings.PlayerName("");
+        Keys(menu, Esc, 'm', Enter, 'p');
+        Assert.Contains($"PLAYER NAME: {user}", menu.StateText()); // the default: the OS user name
+
+        // typed: lower case shows upper case, what the font can't draw is not taken, Escape restores the old one
+        Keys(menu, Enter);
+        Assert.True(menu.NameEnter && menu.Typing);
+        for (int i = 0; i < 20; i++)
+            Keys(menu, Back);
+        Type(menu, "joep{~");
+        Assert.Equal("JOEP", menu.TypedName);
+        Assert.Contains("typing the name: \"JOEP\"", menu.StateText());
+        Keys(menu, Esc);
+        Assert.Equal(("multiplayer", ""), (menu.StateName, setup.Values["net/name"]));
+
+        // Enter keeps it (at most 15 characters)
+        Keys(menu, Enter);
+        for (int i = 0; i < 20; i++)
+            Keys(menu, Back);
+        Type(menu, "joep the doomguy and more");
+        Assert.Equal("JOEP THE DOOMGU", menu.TypedName);
+        Keys(menu, Enter);
+        Assert.Equal("JOEP THE DOOMGU", setup.Values["net/name"]);
+        Assert.Contains("PLAYER NAME: JOEP THE DOOMGU", menu.StateText());
+
+        // emptied: the default again
+        Keys(menu, Enter);
+        for (int i = 0; i < 20; i++)
+            Keys(menu, Back);
+        Keys(menu, Enter);
+        Assert.Equal("", setup.Values["net/name"]);
+        Assert.Contains($"PLAYER NAME: {user}", menu.StateText());
+    }
+
+    [Fact]
+    public void ThePlayerNameSettingTakesWhatTheFontDraws()
+    {
+        SettingDef name = Settings.Find("net/name")!;
+        Assert.Equal("", name.Default);
+        Assert.Equal("JOEP", Settings.NetValue(name, " joep "));
+        Assert.Equal("D00M GUY!", Settings.NetValue(name, "d00m guy!"));
+        Assert.Throws<System.ArgumentException>(() => Settings.NetValue(name, "a name far too long"));
+        Assert.Throws<System.ArgumentException>(() => Settings.NetValue(name, "{tilde~}"));
+        Assert.Equal("ZO", Settings.CleanName("Zoë"));
+        Assert.Equal("ABCDEFGHIJKLMNO", Settings.CleanName("abcdefghijklmnopq"));
+        Assert.Equal("NAMED", Settings.PlayerName("NAMED"));
+        Assert.True(Settings.ValidName(Settings.PlayerName("")) && Settings.PlayerName("").Length > 0);
+        // saved only when it differs from the default (a name typed)
+        var values = new SettingValues(null);
+        values.SetDefault("net/name", "");
+        Assert.True(values.Observe("net/name", "JOEP"));
+        Assert.Equal(new[] { ("net/name", "JOEP") }, values.ToSave().Keep);
+    }
+
+    [Fact]
+    public void TheLobbyPageNamesEachPlayer()
+    {
+        (_, MMenu menu, _, NetHost net) = New();
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+        menu.Graphics = new ScreenGraphics(wad, new HuStuff(wad));
+        Keys(menu, Esc, 'm', Enter, Enter, 's', Enter);
+        // the synthetic font has A, B and C only: slot 1's name is drawn in the name column, slot 2's (none) not
+        net.Lobby = View(host: true, players: 2) with
+        {
+            Players = [new NetLobbyPlayer(0, true, 0, true, "CAB"), new NetLobbyPlayer(1, true, 1000, false, "")],
+        };
+        var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        menu.M_Drawer(screen);
+        Assert.Equal("lobby", menu.StateName);
+        bool Drawn(int row)
+        {
+            for (int y = row; y < row + MMenu.TEXTLINEHEIGHT; y++)
+            {
+                for (int x = 30; x < 165; x++)
+                {
+                    if (screen.Opaque[y * screen.Width + x] != 0)
+                        return true;
+                }
+            }
+            return false;
+        }
+        const int Slot1 = 84; // (the lobby page's rows: where, WAD, two lines of the game, the header)
+        Assert.True(Drawn(Slot1));
+        Assert.False(Drawn(Slot1 + 10));
     }
 
     [Fact]

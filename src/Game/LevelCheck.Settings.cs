@@ -57,6 +57,8 @@ public partial class LevelCheck
                 value = def.Step(def.Default, -1); // (a number at its top: T6.13v's flash strength)
             if (def.Key == "net/addresses")
                 value = "127.0.0.1:5030 doom.example.org"; // T11.9: a list, not a choice
+            else if (def.Key == "net/name")
+                value = "CHECK NAME"; // T11.9c: typed, not a choice
             s.SetSetting(def.Key, value);
             changed[def.Key] = value;
             string now = s.GetSetting(def.Key);

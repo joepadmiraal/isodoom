@@ -88,14 +88,23 @@ public sealed class NetClient
     /// <param name="transport">The transport.</param>
     /// <param name="identity">This machine's build and WADs, which must be the host's.</param>
     /// <param name="hostToken">The server's <see cref="NetServer.HostToken"/> for the host's own client (slot 0); 0 for the others.</param>
-    public NetClient(INetTransport transport, NetIdentity identity, ulong hostToken = 0)
+    /// <param name="name">T11.9c: the player's name, sent in the hello (the server cleans it; empty: <c>PLAYER N</c>).</param>
+    public NetClient(INetTransport transport, NetIdentity identity, ulong hostToken = 0, string name = "")
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(name);
         _transport = transport;
         _identity = identity;
         _hostToken = hostToken;
+        Name = name;
     }
+
+    /// <summary>T11.9c: the name this player's hello carries.</summary>
+    public string Name { get; }
+
+    /// <summary>T11.9c: each slot's player name as the server last sent the lobby (<c>""</c> for an empty slot); kept through the game.</summary>
+    public IReadOnlyList<string> LobbyNames { get; private set; } = ["", "", "", ""];
 
     /// <summary>Where it is.</summary>
     public NetClientState State { get; private set; }
@@ -252,7 +261,7 @@ public sealed class NetClient
             {
                 case NetEventKind.Connected:
                     _lastHeardUs = nowUs;
-                    Send(NetMessages.EncodeHello(_identity, _hostToken));
+                    Send(NetMessages.EncodeHello(_identity, _hostToken, Name));
                     break;
                 case NetEventKind.Disconnected:
                     if (State != NetClientState.Refused)
@@ -358,10 +367,13 @@ public sealed class NetClient
                 break;
             case NetMessageType.Lobby:
                 Expect(NetClientState.Lobby, r.Type);
-                LobbyOccupied = r.U8();
-                LobbyReady = r.U8();
-                r.End();
-                break;
+                {
+                    NetLobby lobby = NetMessages.DecodeLobby(r);
+                    LobbyOccupied = lobby.Occupied;
+                    LobbyReady = lobby.Ready;
+                    LobbyNames = lobby.Names;
+                    break;
+                }
             case NetMessageType.Start:
                 Expect(NetClientState.Lobby, r.Type);
                 BeginGame(NetMessages.DecodeStart(r));

@@ -86,8 +86,16 @@ public sealed partial class MMenu
     /// <summary>T11.9: Join Game's address.</summary>
     public string JoinAddress => _address;
 
-    /// <summary>Whether the keys type text (a save's description, T11.9's address): the menu keys are the typed keys then.</summary>
-    public bool Typing => saveStringEnter || AddressEnter;
+    /// <summary>T11.9c: the Multiplayer page's player name is being typed.</summary>
+    public bool NameEnter { get; private set; }
+
+    private string _name = "", _nameOld = "";
+
+    /// <summary>T11.9c: the player name as typed so far (while <see cref="NameEnter"/>).</summary>
+    public string TypedName => _name;
+
+    /// <summary>Whether the keys type text (a save's description, T11.9's address, T11.9c's name): the menu keys are the typed keys then.</summary>
+    public bool Typing => saveStringEnter || AddressEnter || NameEnter;
 
     private int _seenStartRefusals;
     private bool _failureShown;
@@ -112,9 +120,11 @@ public sealed partial class MMenu
     {
         MultiplayerDef = TextMenu("multiplayer", "MULTIPLAYER", MainDef,
         [
+            new(1, "", _ => StartName(), 'p', "PLAYER NAME") { value = NameValue }, // T11.9c
             new(1, "", _ => M_SetupNextMenu(HostDef), 'h', "HOST GAME..."),
             new(1, "", _ => JoinPage(), 'j', "JOIN GAME..."),
         ]);
+        MultiplayerDef.lastOn = 1; // T11.9c: the cursor starts on Host Game, below the name, as before it
         HostDef = TextMenu("host", "HOST GAME", MultiplayerDef, HostItems());
         SettingDefs[SettingPage.Net] = HostDef;
         JoinDef = TextMenu("join", "JOIN GAME", MultiplayerDef, []);
@@ -142,6 +152,8 @@ public sealed partial class MMenu
             {
                 case "net/addresses":
                     continue; // Join Game's
+                case "net/name":
+                    continue; // the Multiplayer page's (T11.9c)
                 case "net/map":
                     step = StepHostMap;
                     value = HostMap;
@@ -228,6 +240,47 @@ public sealed partial class MMenu
         SetTextItems(JoinDef, [.. items]);
         if (JoinDef.lastOn >= items.Count)
             JoinDef.lastOn = 0;
+    }
+
+    /// <summary>T11.9c: the name the player plays as (<c>net/name</c>, or the OS user name for its default), or the one being typed.</summary>
+    private string NameValue() => NameEnter ? _name + "_" : Settings.PlayerName(NetSetting("net/name"));
+
+    /// <summary>T11.9c: PLAYER NAME picked: the name is typed from the one shown.</summary>
+    private void StartName()
+    {
+        NameEnter = true;
+        _nameOld = _name = Settings.PlayerName(NetSetting("net/name"));
+        Changes++;
+    }
+
+    /// <summary>T11.9c: a key while the name is typed: Backspace, Escape (the old one back), Enter (kept; empty: the default), else the character typed, upper case.</summary>
+    private bool NameKey(int key, int ch)
+    {
+        if (key == KEY_PAD_ACCEPT)
+            key = KEY_ENTER;
+        else if (key == KEY_PAD_CANCEL)
+            key = KEY_ESCAPE;
+        if (key == KEY_BACKSPACE)
+        {
+            if (_name.Length > 0)
+                _name = _name[..^1];
+        }
+        else if (key == KEY_ESCAPE)
+        {
+            NameEnter = false;
+            _name = _nameOld;
+        }
+        else if (key == KEY_ENTER)
+        {
+            NameEnter = false;
+            string name = _name.Trim();
+            // the OS user name typed back (or nothing) keeps the default, so it follows the user
+            SetupHost?.SetSetting("net/name", name == Settings.PlayerName("") ? "" : name);
+        }
+        else if (ch is >= ' ' and < 127 && char.ToUpperInvariant((char)ch) is char c && Settings.ValidName(_name + c) && !(c == ' ' && _name.Length == 0))
+            _name += c;
+        Changes++;
+        return true;
     }
 
     private void StartAddress()
@@ -465,8 +518,9 @@ public sealed partial class MMenu
         else
             y += 20;
         y += 14;
-        const int ColourX = 128, PingX = 208;
-        M_WriteText(x, y, "PLAYER");
+        // T11.9c: a 15-character name of the widest glyphs (9 columns) fits before the colour; "HOST" ends at 311
+        const int NameX = TextX + 12, ColourX = 170, PingX = 224, MarkX = 280;
+        M_WriteText(NameX, y, "PLAYER");
         M_WriteText(ColourX, y, "COLOUR");
         M_WriteText(PingX, y, "PING");
         for (int slot = 0; slot < Math.Clamp(lobby.MaxPlayers, 1, NetProtocol.MaxPlayers); slot++)
@@ -484,9 +538,12 @@ public sealed partial class MMenu
                 continue;
             }
             NetLobbyPlayer p = lobby.Players[i];
-            M_WriteText(x, y, $"{slot + 1}{(slot == 0 ? "  HOST" : "")}{(p.Local ? "  (YOU)" : "")}");
+            M_WriteText(x, y, (slot + 1).ToString(CultureInfo.InvariantCulture));
+            M_WriteText(NameX, y, p.Name); // T11.9c
             M_WriteText(ColourX, y, PlayerColours[slot]);
             M_WriteText(PingX, y, p.RttUs < 0 ? "-" : $"{(p.RttUs + 500) / 1000} MS");
+            if (p.Local || slot == 0)
+                M_WriteText(MarkX, y, p.Local ? "YOU" : "HOST");
         }
         string status = lobby.State is NetClientState.Connecting or NetClientState.Idle ? "WAITING FOR THE HOST'S ANSWER"
             : !lobby.Host ? "WAITING FOR THE HOST TO START"

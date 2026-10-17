@@ -81,7 +81,7 @@ public sealed class NetSession : IDisposable
         else
             Port = options.Port;
         _clientTransport = newTransport(NetTransportUse.Client);
-        Client = new NetClient(_clientTransport, identity, Server?.HostToken ?? 0) { TimeoutUs = options.TimeoutUs }; // T11.11
+        Client = new NetClient(_clientTransport, identity, Server?.HostToken ?? 0, options.PlayerName) { TimeoutUs = options.TimeoutUs }; // T11.11
         Client.Log += line => Log?.Invoke($"client: {line}");
         Address = options.Role == NetRole.Host ? OwnAddress(options.BindAddress) : options.ConnectAddress!;
         Client.Connect(Address, Port);
@@ -251,7 +251,10 @@ public sealed class NetSession : IDisposable
             int rtt = Server is { } s ? s.RttUsOf(slot)
                 : slot == Client.Slot ? Client.RttUs
                 : Client.PlayerRttMs[slot] is var ms && ms != NetProtocol.NoRtt ? ms * 1000 : -1;
-            players.Add(new NetLobbyPlayer(slot, (ready & (1 << slot)) != 0, rtt, slot == Client.Slot));
+            // T11.9c: the names the server cleaned (a join's from the lobby message, kept through the game)
+            string name = Server is { } host ? host.NameOf(slot) : Client.LobbyNames[slot];
+            players.Add(new NetLobbyPlayer(slot, (ready & (1 << slot)) != 0, rtt, slot == Client.Slot,
+                name.Length > 0 ? name : NetProtocol.CleanName(null, slot)));
         }
         return players;
     }
@@ -407,8 +410,8 @@ public sealed class NetSession : IDisposable
     }
 }
 
-/// <summary>T11.9: a player in the lobby: its slot, whether it is ready, its round trip (µs, −1 unknown), whether it is this machine's.</summary>
-public readonly record struct NetLobbyPlayer(int Slot, bool Ready, int RttUs, bool Local);
+/// <summary>T11.9: a player in the lobby: its slot, whether it is ready, its round trip (µs, −1 unknown), whether it is this machine's, and (T11.9c) its name.</summary>
+public readonly record struct NetLobbyPlayer(int Slot, bool Ready, int RttUs, bool Local, string Name = "");
 
 /// <summary>
 /// T11.6's exchange without a game (the level script's <c>netexchange</c>;

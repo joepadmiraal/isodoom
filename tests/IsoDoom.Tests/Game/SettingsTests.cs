@@ -29,7 +29,7 @@ public class SettingsTests
         {
             Assert.Contains(def.Default, def.Choices);
             Assert.True(def.Key.IndexOf('/') > 0, def.Key);
-            Assert.All(def.Args, a => Assert.StartsWith("--level-", a));
+            Assert.All(def.Args, a => Assert.True(a.StartsWith("--level-", System.StringComparison.Ordinal) || a == "-name", a)); // T11.9c: -name, a netgame argument
         }
         Assert.Equal(Settings.GameActions.Length + Settings.MenuActions.Length,
             Settings.GameActions.Concat(Settings.MenuActions).Distinct().Count());
@@ -277,6 +277,7 @@ public class SettingsTests
             shown.Add(item.text);
         shown.AddRange(menu.ControlsDef.menuitems.Select(i => i.text));
         shown.AddRange(menu.JoinDef.menuitems.Select(i => i.text)); // T11.9: the address is Join Game's
+        shown.AddRange(menu.MultiplayerDef.menuitems.Take(1).Select(i => i.text)); // T11.9c: the name is the Multiplayer page's
         foreach (SettingDef def in Settings.Defs)
             Assert.Single(shown, def.Label);
 

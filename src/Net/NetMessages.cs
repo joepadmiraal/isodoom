@@ -23,7 +23,8 @@
 //
 // LOBBY.
 //   client -> Hello      protocol (u16), build (string), IWAD MD5, PWAD count
-//                        (u8) and MD5s in load order, host token (u64). The
+//                        (u8) and MD5s in load order, host token (u64), the
+//                        player's name (string; T11.9c, protocol 4). The
 //                        type byte and protocol come first in every version,
 //                        so a server reads them before the rest.
 //   server -> Refuse     reason (u8, NetRefusal), detail (string); then the
@@ -33,7 +34,11 @@
 //                        own client's (its hello carries the host token); the
 //                        others take the lowest free slot from 1.
 //   server -> Settings   the game settings (below), on joining and on change.
-//   server -> Lobby      occupied slots (u8 mask), ready slots (u8 mask).
+//   server -> Lobby      occupied slots (u8 mask), ready slots (u8 mask), and
+//                        (T11.9c) each occupied slot's player name (string),
+//                        in slot order: the hello's, cleaned by the server
+//                        (NetProtocol.CleanName). Names are the lobby's only:
+//                        nothing in the game carries them.
 //   client -> Ready      ready (u8 0/1).
 //   server -> Start      consoleplayer (u8: the receiver's slot), players in
 //                        game (u8 mask), start tic (i32), input delay in tics
@@ -123,8 +128,34 @@ namespace IsoDoom.Net;
 /// <summary>The protocol's constants (see the comment block at the top of <c>NetMessages.cs</c>).</summary>
 public static class NetProtocol
 {
-    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11).</summary>
-    public const ushort Version = 3;
+    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c).</summary>
+    public const ushort Version = 4;
+
+    /// <summary>T11.9c: the longest player name, in characters (<see cref="CleanName"/>).</summary>
+    public const int MaxNameLength = 15;
+
+    /// <summary>T11.9c: whether the menu font draws <paramref name="c"/> (<c>STCFN033</c>–<c>STCFN095</c>: <c>!</c> to <c>_</c>), or it is a space.</summary>
+    public static bool NameChar(char c) => c is >= ' ' and <= '_';
+
+    /// <summary>
+    /// T11.9c: a player's name as the server keeps and shows it: upper case,
+    /// each character the menu font can't draw a <c>?</c>, trimmed, at most
+    /// <see cref="MaxNameLength"/> characters; an empty one <c>PLAYER N</c>
+    /// (N the slot + 1). Two players may share a name: the colours tell them apart.
+    /// </summary>
+    public static string CleanName(string? name, int slot)
+    {
+        var s = new StringBuilder(MaxNameLength);
+        foreach (Rune rune in (name ?? "").Trim().EnumerateRunes())
+        {
+            if (s.Length == MaxNameLength)
+                break;
+            char c = rune.IsAscii ? char.ToUpperInvariant((char)rune.Value) : '?';
+            s.Append(NameChar(c) ? c : '?');
+        }
+        string clean = s.ToString().Trim();
+        return clean.Length > 0 ? clean : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"PLAYER {slot + 1}");
+    }
 
     /// <summary>
     /// T11.11: how long either side waits without a packet from the other (or
@@ -289,8 +320,11 @@ public sealed record NetChecksumReport(int Window, ulong Checksum, short[] Consi
     }
 }
 
-/// <summary>A decoded hello.</summary>
-public sealed record NetHello(ushort Protocol, NetIdentity? Identity, ulong HostToken);
+/// <summary>A decoded hello (T11.9c: with the player's name, as sent).</summary>
+public sealed record NetHello(ushort Protocol, NetIdentity? Identity, ulong HostToken, string Name = "");
+
+/// <summary>A decoded Lobby message: the taken and ready slots, and (T11.9c) each slot's name (<c>""</c> for an empty slot).</summary>
+public sealed record NetLobby(byte Occupied, byte Ready, IReadOnlyList<string> Names);
 
 /// <summary>
 /// Encodes and decodes the protocol's messages (the layout is in the comment
@@ -300,8 +334,8 @@ public static class NetMessages
 {
     // ---- lobby ----
 
-    /// <summary>Hello: <paramref name="protocol"/> is <see cref="NetProtocol.Version"/> but in tests.</summary>
-    public static byte[] EncodeHello(NetIdentity identity, ulong hostToken, ushort protocol = NetProtocol.Version)
+    /// <summary>Hello: <paramref name="protocol"/> is <see cref="NetProtocol.Version"/> but in tests; <paramref name="name"/> the player's (T11.9c; the server cleans it).</summary>
+    public static byte[] EncodeHello(NetIdentity identity, ulong hostToken, string name = "", ushort protocol = NetProtocol.Version)
     {
         ArgumentNullException.ThrowIfNull(identity);
         var w = new NetWriter(NetMessageType.Hello);
@@ -314,6 +348,8 @@ public static class NetMessages
         foreach (string md5 in identity.PwadMd5s)
             w.Md5(md5);
         w.U64(hostToken);
+        if (protocol >= 4)
+            w.Text(name);
         return w.ToArray();
     }
 
@@ -331,8 +367,9 @@ public static class NetMessages
         for (int i = 0; i < count; i++)
             pwads[i] = r.Md5();
         ulong token = r.U64();
+        string name = r.Text();
         r.End();
-        return new NetHello(protocol, new NetIdentity(build, iwad, pwads), token);
+        return new NetHello(protocol, new NetIdentity(build, iwad, pwads), token, name);
     }
 
     public static byte[] EncodeRefuse(NetRefusal reason, string detail)
@@ -351,12 +388,35 @@ public static class NetMessages
         return w.ToArray();
     }
 
-    public static byte[] EncodeLobby(byte occupied, byte ready)
+    /// <summary>Lobby: the taken and ready slots, and (T11.9c) the name of each taken one, from <paramref name="names"/> (one a slot).</summary>
+    public static byte[] EncodeLobby(byte occupied, byte ready, IReadOnlyList<string> names)
     {
+        ArgumentNullException.ThrowIfNull(names);
+        if (names.Count != NetProtocol.MaxPlayers)
+            throw new ArgumentException("One name a slot.", nameof(names));
         var w = new NetWriter(NetMessageType.Lobby);
         w.U8(occupied);
         w.U8(ready);
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+        {
+            if ((occupied & (1 << i)) != 0)
+                w.Text(names[i]);
+        }
         return w.ToArray();
+    }
+
+    public static NetLobby DecodeLobby(NetReader r)
+    {
+        ArgumentNullException.ThrowIfNull(r);
+        byte occupied = r.U8();
+        byte ready = r.U8();
+        if (occupied >= 1 << NetProtocol.MaxPlayers)
+            throw new NetProtocolException($"Lobby: slots {occupied:x}.");
+        var names = new string[NetProtocol.MaxPlayers];
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+            names[i] = (occupied & (1 << i)) != 0 ? r.Text() : "";
+        r.End();
+        return new NetLobby(occupied, ready, names);
     }
 
     public static byte[] EncodeSettings(NetGameSettings settings)

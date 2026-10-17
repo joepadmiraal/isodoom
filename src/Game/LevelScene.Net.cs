@@ -127,9 +127,10 @@ public partial class LevelScene
     /// </summary>
     private NetSession OpenNetSession(NetOptions options, SpawnSettings spawn, string map)
     {
+        options = options with { PlayerName = Settings.PlayerName(GetSetting("net/name")) }; // T11.9c
         NetGameSettings settings = NetSession.GameSettings(options, spawn, Tweaks, map);
         NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath!, _pwadPaths);
-        GD.Print($"Net: {options.Role}, build {identity.Build}, IWAD {identity.IwadMd5}" + (identity.PwadMd5s.Count > 0 ? $", PWADs {string.Join(' ', identity.PwadMd5s)}" : ""));
+        GD.Print($"Net: {options.Role} as {options.PlayerName}, build {identity.Build}, IWAD {identity.IwadMd5}" + (identity.PwadMd5s.Count > 0 ? $", PWADs {string.Join(' ', identity.PwadMd5s)}" : ""));
         var made = new List<NetEnetTransport>();
         try
         {
@@ -381,7 +382,7 @@ public partial class LevelScene
         string root = NetDesyncRoot();
         try
         {
-            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now, World);
+            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now, World, c.LobbyNames);
         }
         catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -593,11 +594,20 @@ public partial class LevelScene
             return "no netgame";
         NetClient c = net.Client;
         var s = new System.Text.StringBuilder();
-        s.Append(CultureInfo.InvariantCulture, $"{net.Options.Role}, {c.State}, slot {c.Slot}");
+        s.Append(CultureInfo.InvariantCulture, $"{net.Options.Role}, {c.State}, slot {c.Slot} as {net.Options.PlayerName}");
         if (c.Start is { } start)
             s.Append(CultureInfo.InvariantCulture, $", players {start.PlayerMask:x}, delay {start.Delay}, start tic {start.StartTic}");
         else if (c.State == NetClientState.Lobby)
             s.Append(CultureInfo.InvariantCulture, $", lobby {c.LobbyOccupied:x}");
+        // T11.9c: the players' names, as the lobby named them
+        var names = new List<string>();
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+        {
+            if (c.LobbyNames[i].Length > 0)
+                names.Add(string.Create(CultureInfo.InvariantCulture, $"{i + 1} {c.LobbyNames[i]}"));
+        }
+        if (names.Count > 0)
+            s.Append(CultureInfo.InvariantCulture, $", names [{string.Join(", ", names)}]");
         s.Append(CultureInfo.InvariantCulture, $", ping {(c.RttUs < 0 ? "-" : (c.RttUs / 1000.0).ToString("F1", CultureInfo.InvariantCulture) + " ms")}");
         s.Append(CultureInfo.InvariantCulture, $", tics waiting {c.TicsReady}, bundles to {c.BundleTic}, ran {c.LastRanTic}");
         if (LastNetChecksum is (int window, ulong checksum))

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -146,8 +147,10 @@ public sealed class NetDesyncLog
     /// and (T11.11's follow-up) with <paramref name="world"/>, the world the
     /// game stopped with, field by field (<c>state.txt</c>: the last tic, its
     /// checksum, <see cref="World.DumpState"/>), for <c>tools/NetDesync/compare.py</c>.
+    /// T11.9c: <paramref name="names"/>, each slot's player name (the lobby's), names the players in the summary.
     /// </summary>
-    public string Write(string root, NetDesync desync, int player, string build, int firstBadTic, DateTime now, World? world = null)
+    public string Write(string root, NetDesync desync, int player, string build, int firstBadTic, DateTime now, World? world = null,
+        IReadOnlyList<string>? names = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         string dir = Path.Combine(root, string.Create(CultureInfo.InvariantCulture, $"{now:yyyyMMdd-HHmmss}-player{player + 1}"));
@@ -191,11 +194,18 @@ public sealed class NetDesyncLog
             File.WriteAllBytes(Path.Combine(dir, saveName), save);
         }
         NetGameSettings s = Start.Settings;
+        var named = new List<string>();
+        for (int p = 0; p < NetProtocol.MaxPlayers; p++)
+        {
+            if ((Start.PlayerMask & (1 << p)) != 0)
+                named.Add(string.Create(CultureInfo.InvariantCulture, $"{p + 1} {(names is not null && p < names.Count && names[p].Length > 0 ? names[p] : NetProtocol.CleanName(null, p))}"));
+        }
         string summary = string.Create(CultureInfo.InvariantCulture,
             $"""
             IsoDoom netgame desync dump (T11.11)
             build: {build}
             player: {player + 1} (slot {player})
+            names: {string.Join(", ", named)}
             game: {NetSession.MapName(s)}, skill {(int)s.Spawn.gameskill + 1}, deathmatch {s.Spawn.deathmatch}, players {Start.PlayerMask:x}, start tic {Start.StartTic}, delay {Start.Delay}
             desync: window {desync.Window}, tics {desync.FirstTic}-{desync.LastTic} (the first window whose checksums differed; every window before it agreed)
             first consistency failure seen here: {(firstBadTic < 0 ? "none" : firstBadTic.ToString(CultureInfo.InvariantCulture))}

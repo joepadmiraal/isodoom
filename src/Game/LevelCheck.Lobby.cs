@@ -51,13 +51,27 @@ public partial class LevelCheck
         INetMenuHost host = s;
         int failures = _failures;
         string Step(string what) => $"lobby (T11.9): {what}: menu {menu.StateText()}, net {s.NetText()}";
-        string addresses = s.GetSetting("net/addresses");
+        string addresses = s.GetSetting("net/addresses"), playerName = s.GetSetting("net/name");
         s.SetSetting("net/port", "0"); // any free port: the lobby page shows it
         flow.D_StartTitle(null);
         menu.M_ClearMenus();
 
-        // the scene hosts: Escape, M (Multiplayer), Enter, Enter (Host Game), S (Start Hosting), Enter
-        foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.H, Key.Enter })
+        // T11.9c: the scene's player name typed on the Multiplayer page (P, Enter, the name, Enter); the check's machine is CHECK
+        const string Name = "DOOMGUY 2";
+        foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.P, Key.Enter })
+            s.MenuEvent(KeyEvent(key));
+        if (!menu.NameEnter)
+            Fail(Step("Multiplayer → Player Name"));
+        for (int i = 0; i < Settings.MaxNameLength; i++)
+            s.MenuEvent(KeyEvent(Key.Backspace));
+        foreach (char c in "doomguy 2")
+            s.MenuEvent(c == ' ' ? Held(new InputEventKey { Keycode = Key.Space, PhysicalKeycode = Key.Space, Pressed = true, Unicode = ' ' }) : TypeEvent(c));
+        s.MenuEvent(KeyEvent(Key.Enter));
+        if (menu.NameEnter || s.GetSetting("net/name") != Name)
+            Fail(Step($"the typed name: \"{s.GetSetting("net/name")}\", expected \"{Name}\""));
+
+        // the scene hosts: H (Host Game), Enter, then S (Start Hosting), Enter
+        foreach (Key key in new[] { Key.H, Key.Enter })
             s.MenuEvent(KeyEvent(key));
         if (menu.StateName != "host")
         {
@@ -78,11 +92,15 @@ public partial class LevelCheck
         try
         {
             join = s.CheckSession(NetOptions.Parse(["-connect", $"127.0.0.1:{port}"])!);
-            if (!await NetFrames(() => host.Lobby?.Players.Count == 2 && s.Net.Server.CanStart && join.Client.State == NetClientState.Lobby, join))
+            if (!await NetFrames(() => host.Lobby?.Players.Count == 2 && s.Net.Server.CanStart && join.Client.State == NetClientState.Lobby
+                && join.LobbyPlayers().Count == 2, join))
                 Fail(Step("the check's machine joining"));
             NetLobbyView lobby = host.Lobby!;
             if (lobby.Players.Select(p => p.Slot).SequenceEqual([0, 1]) is false || !lobby.Players[0].Local || lobby.MaxPlayers != 4 || lobby.MapName != s.DefaultMap())
                 Fail(Step($"the lobby: {lobby}"));
+            // T11.9c: both machines' lobby pages name both players
+            CheckNames("the host's lobby page", lobby.Players.Select(p => p.Name), [Name, "CHECK"]);
+            CheckNames("the check's machine's lobby", join.LobbyPlayers().Select(p => p.Name), [Name, "CHECK"]);
 
             // a start the host's check refuses (T11.1a's) shows on the lobby page, which stays
             Func<byte, string?>? check = s.Net.CheckStart;
@@ -130,6 +148,14 @@ public partial class LevelCheck
             s.MenuEvent(KeyEvent(Key.Enter));
             if (menu.StateName != "lobby" || host.Lobby is not { Host: false })
                 Fail(Step("the join's lobby page"));
+            // T11.9c: the names on both lobbies, before the host starts (at its -players: it may start at once)
+            if (!await NetFrames(() => host.Lobby?.Players.Count == 2 && host.Lobby.Players.All(p => p.Name.Length > 0) || s.NetGame is not null, other))
+                Fail(Step("the join's lobby with both players"));
+            else
+            {
+                CheckNames("the join's lobby page", host.Lobby!.Players.Select(p => p.Name), ["CHECK", Name]);
+                CheckNames("the check's host's lobby", other.LobbyPlayers().Select(p => p.Name), ["CHECK", Name]);
+            }
             if (!await NetFrames(() => s.NetGame is not null && other.Client.State == NetClientState.InGame && menu.StateName == "closed", other))
                 Fail(Step("the joined game's start"));
             else if (s.World is not { netgame: true, consoleplayer: 1 })
@@ -171,9 +197,16 @@ public partial class LevelCheck
             menu.M_ClearMenus();
             s.SetSetting("net/addresses", addresses);
             s.SetSetting("net/port", Settings.Find("net/port")!.Default);
+            s.SetSetting("net/name", playerName);
         }
         if (_failures == failures)
-            GD.Print("Level check: lobby (T11.9): hosted from the menus, joined by a second machine, a start refused and shown, the game begun on both, F12 refused in it; joined from Join Game with a typed address and kept; a join on another IWAD refused and shown");
+            GD.Print("Level check: lobby (T11.9): hosted from the menus, joined by a second machine, a start refused and shown, the game begun on both, F12 refused in it; joined from Join Game with a typed address and kept; a join on another IWAD refused and shown; T11.9c: the player name typed, both players named on both machines' lobbies");
+
+        void CheckNames(string where, System.Collections.Generic.IEnumerable<string> names, string[] expected)
+        {
+            if (!names.SequenceEqual(expected))
+                Fail(Step($"{where}: names [{string.Join(", ", names)}], expected [{string.Join(", ", expected)}] (T11.9c)"));
+        }
     }
 
     /// <summary>T11.9: the Multiplayer, Host Game and lobby pages as drawn (a session hosted alone for the lobby), every pixel against the CPU's.</summary>

@@ -126,6 +126,8 @@ public class NetMessagesTests
         Assert.Equal("0.2.0-rc1", hello.Identity!.Build);
         Assert.Equal("f0cefca49926d00903cf57551d901abe", hello.Identity.IwadMd5);
         Assert.True(hello.Identity.SamePwads(identity));
+        Assert.Equal("", hello.Name);
+        Assert.Equal("Joep 🎮", NetMessages.DecodeHello(Reader(NetMessages.EncodeHello(identity, 1, "Joep 🎮"), NetMessageType.Hello)).Name);
 
         var report = new NetChecksumReport(41, 0xdeadbeefcafef00d, [1, -2, 3, short.MinValue], 1440);
         NetChecksumReport back = NetMessages.DecodeChecksum(Reader(NetMessages.EncodeChecksum(report), NetMessageType.Checksum));
@@ -133,6 +135,29 @@ public class NetMessagesTests
         Assert.Equal(report.FirstBadTic, back.FirstBadTic);
         Assert.True(report.SameState(back));
     }
+
+    [Fact]
+    public void Lobbies_carry_the_occupied_slots_names_in_slot_order()
+    {
+        byte[] lobby = NetMessages.EncodeLobby(0b1010, 0b0010, ["ignored", "JOEP", "", "PLAYER 4"]);
+        NetLobby back = NetMessages.DecodeLobby(Reader(lobby, NetMessageType.Lobby));
+        Assert.Equal(0b1010, back.Occupied);
+        Assert.Equal(0b0010, back.Ready);
+        Assert.Equal(["", "JOEP", "", "PLAYER 4"], back.Names);
+        // a name missing for an occupied slot is malformed
+        Assert.Throws<NetProtocolException>(() => NetMessages.DecodeLobby(Reader(NetMessages.EncodeLobby(0b0011, 0, ["A", "", "", ""])[..^1], NetMessageType.Lobby)));
+    }
+
+    [Theory]
+    [InlineData("joep", 0, "JOEP")]
+    [InlineData("  a very long player name  ", 1, "A VERY LONG PLA")]
+    [InlineData("Zoë {x}", 2, "ZO? ?X?")]
+    [InlineData("🎮🎮", 0, "??")]
+    [InlineData("", 1, "PLAYER 2")]
+    [InlineData("   ", 3, "PLAYER 4")]
+    [InlineData("12345678901234 X", 0, "12345678901234")]
+    public void The_server_cleans_names(string name, int slot, string expected) =>
+        Assert.Equal(expected, NetProtocol.CleanName(name, slot));
 
     [Theory]
     [InlineData(new byte[0])]

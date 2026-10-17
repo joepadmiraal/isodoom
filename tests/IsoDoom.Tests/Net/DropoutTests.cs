@@ -290,7 +290,8 @@ public class DropoutTests
         string root = Path.Combine(Path.GetTempPath(), $"isodoom-netdesync-test-{Environment.ProcessId}-{Guid.NewGuid():N}");
         try
         {
-            string dir = log.Write(root, new NetDesync(18, 630, 664), 1, "test", 650, new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Local));
+            string dir = log.Write(root, new NetDesync(18, 630, 664), 1, "test", 650, new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Local),
+                names: ["JOEP", "", "", ""]);
             Assert.Equal(Path.Combine(root, "20261017-120000-player2"), dir);
             Assert.Equal([17], File.ReadAllBytes(Path.Combine(dir, "agreed-window17.dsg")));
             string[] checksums = File.ReadAllLines(Path.Combine(dir, "checksums.txt"));
@@ -302,6 +303,7 @@ public class DropoutTests
             Assert.Contains("desync: window 18, tics 630-664", summary, StringComparison.Ordinal);
             Assert.Contains("first consistency failure seen here: 650", summary, StringComparison.Ordinal);
             Assert.Contains("save: agreed-window17.dsg", summary, StringComparison.Ordinal);
+            Assert.Contains("names: 1 JOEP, 2 PLAYER 2", summary, StringComparison.Ordinal); // T11.9c: the lobby's names, or PLAYER N
             // a second dump in the same second gets a directory of its own
             Assert.Equal(dir + "-2", log.Write(root, new NetDesync(18, 630, 664), 1, "test", -1, new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Local)));
 

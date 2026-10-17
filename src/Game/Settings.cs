@@ -175,7 +175,48 @@ public static class Settings
         new("net/players", "PLAYERS", SettingPage.Net, "4", ["2", "3", "4"]),
         new("net/port", "PORT", SettingPage.Net, "5029", ["2342", .. Range(5029, 5039, 1), "10666"]),
         new("net/addresses", "ADDRESS", SettingPage.Net, "", [""]),
+        // T11.9c: the Multiplayer page's player name ("": the OS user name, PlayerName), -name NAME for a run
+        new("net/name", "PLAYER NAME", SettingPage.Net, "", [""], "-name"),
     ];
+
+    /// <summary>T11.9c: the longest player name (<c>net/name</c>).</summary>
+    public const int MaxNameLength = IsoDoom.Net.NetProtocol.MaxNameLength;
+
+    /// <summary>T11.9c: whether <c>net/name</c> takes <paramref name="name"/>: at most <see cref="MaxNameLength"/> characters the menu font draws (upper case) or spaces; empty is the default.</summary>
+    public static bool ValidName(string name) =>
+        name is { Length: <= MaxNameLength } && name.All(c => IsoDoom.Net.NetProtocol.NameChar(c) && !char.IsAsciiLetterLower(c));
+
+    /// <summary>T11.9c: <paramref name="name"/> made a name <see cref="ValidName"/> takes: upper case, what the font can't draw dropped, trimmed, cut to <see cref="MaxNameLength"/>.</summary>
+    public static string CleanName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        string kept = new([.. name.ToUpperInvariant().Where(c => c < 128 && IsoDoom.Net.NetProtocol.NameChar(c))]);
+        kept = kept.Trim();
+        return kept.Length > MaxNameLength ? kept[..MaxNameLength].TrimEnd() : kept;
+    }
+
+    /// <summary>
+    /// T11.9c: the player name a <c>net/name</c> of <paramref name="setting"/>
+    /// plays as: the setting, or for the default <c>""</c> the OS user name
+    /// (<see cref="Environment.UserName"/>, resolved here so the default stays
+    /// a constant) made drawable, or <c>PLAYER</c> when nothing of it is.
+    /// </summary>
+    public static string PlayerName(string setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        if (setting.Length > 0)
+            return setting;
+        string user;
+        try
+        {
+            user = CleanName(Environment.UserName);
+        }
+        catch (InvalidOperationException)
+        {
+            user = "";
+        }
+        return user.Length > 0 ? user : "PLAYER";
+    }
 
     /// <summary>T11.9: the most addresses Join Game keeps (<c>net/addresses</c>).</summary>
     public const int MaxAddresses = 5;
@@ -201,7 +242,8 @@ public static class Settings
     /// T11.9: <paramref name="value"/> as setting <paramref name="def"/> of
     /// the <see cref="SettingPage.Net"/> page keeps it: one of its choices
     /// (a map upper case); a port 0–65535 (0: any free one); the addresses a
-    /// space-separated list of at most <see cref="MaxAddresses"/>, each once.
+    /// space-separated list of at most <see cref="MaxAddresses"/>, each once;
+    /// T11.9c: a name upper case, <see cref="ValidName"/>.
     /// Anything else is an <see cref="ArgumentException"/>.
     /// </summary>
     public static string NetValue(SettingDef def, string value)
@@ -214,6 +256,11 @@ public static class Settings
                 return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int port) && port <= 65535
                     ? port.ToString(CultureInfo.InvariantCulture)
                     : throw new ArgumentException($"{def.Key}: \"{value}\" (0-65535)");
+            case "net/name": // T11.9c: upper case, the font's characters
+                {
+                    string name = value.ToUpperInvariant().Trim();
+                    return ValidName(name) ? name : throw new ArgumentException($"{def.Key}: \"{value}\" (at most {MaxNameLength} letters, digits, spaces or the menu font's signs)");
+                }
             case "net/addresses":
                 {
                     var list = new List<string>();

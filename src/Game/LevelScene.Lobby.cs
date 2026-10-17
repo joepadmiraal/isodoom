@@ -127,10 +127,12 @@ public partial class LevelScene : INetMenuHost
     /// <summary>
     /// T11.9 (the level check): a session of the check's own over ENet
     /// loopback, another machine in this process: this machine's WADs, or
-    /// with <paramref name="otherIwad"/> another IWAD's MD5 (refused).
+    /// with <paramref name="otherIwad"/> another IWAD's MD5 (refused);
+    /// T11.9c: its player named <paramref name="name"/>.
     /// </summary>
-    internal NetSession CheckSession(NetOptions options, bool otherIwad = false)
+    internal NetSession CheckSession(NetOptions options, bool otherIwad = false, string name = "CHECK")
     {
+        options = options with { PlayerName = name };
         NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath!, _pwadPaths);
         if (otherIwad)
             identity = identity with { IwadMd5 = new string('0', 32) };

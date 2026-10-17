@@ -72,6 +72,13 @@ public sealed record NetOptions
     /// <summary>T11.11: <see cref="TimeoutSeconds"/> in microseconds.</summary>
     public long TimeoutUs => TimeoutSeconds * IsoDoom.Net.NetProtocol.MicrosecondsPerSecond;
 
+    /// <summary>
+    /// T11.9c: the player's name the hello carries (the server cleans it;
+    /// empty: <c>PLAYER N</c>). Not parsed here: the scene sets it from
+    /// <c>net/name</c>, which <c>-name NAME</c> overrides for the run.
+    /// </summary>
+    public string PlayerName { get; init; } = "";
+
     /// <summary>0 cooperative, 1 deathmatch (<c>-deathmatch</c>), 2 altdeath (<c>-altdeath</c>).</summary>
     public int Deathmatch { get; init; }
 

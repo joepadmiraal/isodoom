@@ -59,6 +59,64 @@ public class LobbyTests
     }
 
     [Fact]
+    public void A_protocol_3_hello_is_refused_as_another_protocol()
+    {
+        var network = new MemoryNetwork();
+        var server = new NetServer(network.CreateEndpoint("host"), LockstepHarness.Identity, _settings, hostToken: 1);
+        server.Listen(LockstepHarness.Port);
+        MemoryTransport raw = network.CreateEndpoint("raw");
+        int peer = raw.Connect("host", LockstepHarness.Port);
+        network.Advance(1);
+        server.Update(network.NowUs);
+        Assert.True(raw.Poll(out _));
+        // T11.9c: protocol 3's hello had no name
+        raw.Send(peer, NetMessages.EncodeHello(LockstepHarness.Identity, 0, protocol: 3), NetChannel.Reliable);
+        network.Advance(1);
+        server.Update(network.NowUs);
+        Assert.True(raw.Poll(out NetEvent refusal));
+        var r = new NetReader(refusal.Data);
+        Assert.Equal(NetMessageType.Refuse, r.Type);
+        Assert.Equal(NetRefusal.ProtocolMismatch, (NetRefusal)r.U8());
+        Assert.Equal(0, server.PlayerCount);
+    }
+
+    [Fact]
+    public void Every_client_learns_the_players_cleaned_names_and_duplicates_stay()
+    {
+        var network = new MemoryNetwork();
+        var server = new NetServer(network.CreateEndpoint("host"), LockstepHarness.Identity, _settings, hostToken: 7);
+        server.Listen(LockstepHarness.Port);
+        var clients = new[]
+        {
+            new NetClient(network.CreateEndpoint("h"), LockstepHarness.Identity, 7, "joep"),
+            new NetClient(network.CreateEndpoint("a"), LockstepHarness.Identity, 0, "JOEP"),
+            new NetClient(network.CreateEndpoint("b"), LockstepHarness.Identity),
+        };
+        foreach (NetClient c in clients)
+            c.Connect("host", LockstepHarness.Port);
+        for (int i = 0; i < 10; i++)
+        {
+            network.Advance(1000);
+            server.Update(network.NowUs);
+            foreach (NetClient c in clients)
+                c.Update(network.NowUs);
+        }
+        Assert.Equal(["JOEP", "JOEP", "PLAYER 3", ""], new[] { server.NameOf(0), server.NameOf(1), server.NameOf(2), server.NameOf(3) });
+        foreach (NetClient c in clients)
+            Assert.Equal(["JOEP", "JOEP", "PLAYER 3", ""], c.LobbyNames);
+        // one leaves: its name goes from everyone's lobby
+        clients[1].Quit();
+        for (int i = 0; i < 10; i++)
+        {
+            network.Advance(1000);
+            server.Update(network.NowUs);
+            foreach (NetClient c in clients)
+                c.Update(network.NowUs);
+        }
+        Assert.Equal(["JOEP", "", "PLAYER 3", ""], clients[2].LobbyNames);
+    }
+
+    [Fact]
     public void Another_protocol_is_refused_reading_only_its_version()
     {
         var network = new MemoryNetwork();

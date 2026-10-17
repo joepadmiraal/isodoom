@@ -85,6 +85,10 @@ internet. Every player needs the same version of IsoDoom and the same IWAD
 (and the same PWADs, in the same order); the game checks both when you
 join.
 
+Your name: Main menu > Multiplayer > Player Name, press Enter, type it
+(up to 15 letters, digits or signs), press Enter. Left empty, it is your
+computer's user name. The lobby shows every player's name.
+
 Host a game: Main menu > Multiplayer > Host Game. Pick the mode (co-op,
 deathmatch or altdeath), the map, the skill, monsters on or off, respawning
 and fast monsters, a time limit (deathmatch), the number of players and the

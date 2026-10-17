@@ -747,6 +747,8 @@ public partial class LevelScene : ISetupHost
         {
             SettingDef d = def;
             _netSettings[d.Key] = d.Default;
+            if (d.Key == "net/name" && WadLocator.GetUserArg("-name") is string name)
+                _netSettings[d.Key] = Settings.CleanName(name); // T11.9c: -name NAME for the run (pinned: not saved)
             Add(d.Key, () => _netSettings[d.Key], s => _netSettings[d.Key] = Settings.NetValue(d, s));
         }
 

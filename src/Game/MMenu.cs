@@ -1097,6 +1097,10 @@ public sealed partial class MMenu
         if (AddressEnter)
             return AddressKey(key, ch);
 
+        // T11.9c: the Multiplayer page's player name typed
+        if (NameEnter)
+            return NameKey(key, ch);
+
         // Not vanilla: the pad's A and B (and the mouse's buttons) answer a message or work the menu.
         if (key == KEY_PAD_ACCEPT)
             key = messageToPrint ? key_menu_confirm : key_menu_forward;
@@ -1490,6 +1494,7 @@ public sealed partial class MMenu
         : !menuactive ? "closed"
         : WaitingBinding is { } waiting ? $"binding, waiting for an input for {waiting}"
         : AddressEnter ? $"{currentMenu.Name}, typing the address: \"{_address}\""
+        : NameEnter ? $"{currentMenu.Name}, typing the name: \"{_name}\""
         : currentMenu.textItems ? $"{currentMenu.Name}, item {itemOn} ({currentMenu.menuitems[itemOn].text}{(currentMenu.menuitems[itemOn].value is { } v ? $": {v()}" : "")})"
         : saveStringEnter ? $"{currentMenu.Name}, typing in slot {saveSlot + 1}: \"{savegamestrings[saveSlot]}\""
         : $"{currentMenu.Name}, item {itemOn}{(currentMenu.menuitems[itemOn].name is { Length: > 0 } n ? $" ({DEH_String(n)})" : "")}";
