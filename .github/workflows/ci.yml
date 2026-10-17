@@ -294,6 +294,13 @@ jobs:
       - name: Netgame loopback (exported build, headless)
         run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" 1000 -- export/linux/IsoDoom.x86_64
 
+      # T11.9d: LAN discovery: the same exchange (350 tics), but the client
+      # finds the host through its Join Game browser (a UDP query on the
+      # discovery port, 5028: 127.0.0.1 among its targets) instead of
+      # -connect (about 15 s).
+      - name: Netgame loopback LAN discovery (exported build, headless)
+        run: tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --lan 350 -- export/linux/IsoDoom.x86_64
+
       # T11.8: the lockstep game loop: the same two processes play
       # synthetic-dm-exit-2p (a deathmatch: frags, a suicide, reborns) in
       # lockstep, each sending its own player's commands, through the

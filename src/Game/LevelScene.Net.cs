@@ -129,7 +129,7 @@ public partial class LevelScene
     {
         options = options with { PlayerName = Settings.PlayerName(GetSetting("net/name")) }; // T11.9c
         NetGameSettings settings = NetSession.GameSettings(options, spawn, Tweaks, map);
-        NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath!, _pwadPaths);
+        NetIdentity identity = NetIdentity();
         GD.Print($"Net: {options.Role} as {options.PlayerName}, build {identity.Build}, IWAD {identity.IwadMd5}" + (identity.PwadMd5s.Count > 0 ? $", PWADs {string.Join(' ', identity.PwadMd5s)}" : ""));
         var made = new List<NetEnetTransport>();
         try
@@ -151,6 +151,7 @@ public partial class LevelScene
                 transport.Dispose(); // T11.9: a port that can't be listened on leaves no ENet host to the finalizer
             throw;
         }
+        Net.AnswerDiscovery(IwadName(), DiscoveryPort); // T11.9d: a host is visible on the LAN (a join does nothing)
         Flow.netsession = true; // T11.8: the menus refuse a new game, loads, saves and the end of the game
         NetEnded = null;
         AddNetBanner(); // T11.11

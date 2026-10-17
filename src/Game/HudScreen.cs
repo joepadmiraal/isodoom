@@ -67,10 +67,19 @@ public sealed class HudScreen
     /// (<see cref="WideShift"/>), as the reference's patched one (SPEC §12 M9).
     /// </summary>
     [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]
-    public void V_DrawPatch(int x, int y, IndexedImage? patch)
+    public void V_DrawPatch(int x, int y, IndexedImage? patch) => V_DrawPatch(x, y, patch, default);
+
+    /// <summary>
+    /// <see cref="V_DrawPatch(int, int, IndexedImage?)"/> with each pixel
+    /// through <paramref name="map"/> (a COLORMAP row, 256 bytes; empty: as
+    /// it is). Not vanilla (T11.9d: the menus' greyed text).
+    /// </summary>
+    [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]
+    public void V_DrawPatch(int x, int y, IndexedImage? patch, ReadOnlySpan<byte> map)
     {
         if (patch is null)
             return;
+        bool mapped = map.Length >= 256;
         x -= patch.LeftOffset + WideShift(patch);
         y -= patch.TopOffset + Top;
         for (int py = 0; py < patch.Height; py++)
@@ -83,7 +92,7 @@ public sealed class HudScreen
                 int sx = x + px;
                 if (sx < 0 || sx >= Width || !patch.IsOpaque(px, py))
                     continue;
-                Pixels[sy * Width + sx] = patch[px, py];
+                Pixels[sy * Width + sx] = mapped ? map[patch[px, py]] : patch[px, py];
                 Opaque[sy * Width + sx] = 1;
             }
         }
@@ -99,7 +108,7 @@ public sealed class HudScreen
 
     /// <summary>
     /// v_video.c <c>V_DrawPatchFlipped</c> (T10.5, the cast call's): as
-    /// <see cref="V_DrawPatch"/> with the patch's columns mirrored (column
+    /// <see cref="V_DrawPatch(int, int, IndexedImage?)"/> with the patch's columns mirrored (column
     /// <c>w - 1 - col</c> at <c>x + col</c>; the offsets as they are).
     /// </summary>
     [SuppressMessage("Naming", "CA1707", Justification = "Vanilla name (v_video.c)")]

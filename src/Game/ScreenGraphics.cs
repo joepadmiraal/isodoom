@@ -158,6 +158,40 @@ public sealed class ScreenGraphics
     /// <summary>Draws a character of the message font with its top left at <paramref name="x"/>, <paramref name="y"/>.</summary>
     public void DrawChar(HudScreen screen, int x, int y, char ch) => screen.V_DrawPatch(x, y, Glyph(ch));
 
+    /// <summary>T11.9d: the COLORMAP row greyed text is drawn through: half as bright.</summary>
+    public const int GreyRow = 16;
+
+    private byte[]? _grey;
+    private bool _greyRead;
+
+    /// <summary>T11.9d: the greyed text's map (COLORMAP's <see cref="GreyRow"/>; empty without a COLORMAP: drawn as it is).</summary>
+    public ReadOnlySpan<byte> GreyMap
+    {
+        get
+        {
+            if (!_greyRead)
+            {
+                _greyRead = true;
+                if (_wad?.Find("COLORMAP") is { } lump)
+                {
+                    try
+                    {
+                        Colormap colormap = Colormap.Decode(lump.Data.Span);
+                        if (colormap.Count > GreyRow)
+                            _grey = colormap.GetMap(GreyRow).ToArray();
+                    }
+                    catch (WadFormatException)
+                    {
+                    }
+                }
+            }
+            return _grey;
+        }
+    }
+
+    /// <summary>T11.9d: a character of the message font drawn greyed (<see cref="GreyMap"/>).</summary>
+    public void DrawCharGrey(HudScreen screen, int x, int y, char ch) => screen.V_DrawPatch(x, y, Glyph(ch), GreyMap);
+
     /// <summary>The width of <paramref name="text"/> in the message font.</summary>
     public int TextWidth(string text)
     {

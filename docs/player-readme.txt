@@ -93,23 +93,31 @@ Host a game: Main menu > Multiplayer > Host Game. Pick the mode (co-op,
 deathmatch or altdeath), the map, the skill, monsters on or off, respawning
 and fast monsters, a time limit (deathmatch), the number of players and the
 port, then Start Hosting. The game remembers these for next time. The lobby
-shows who has joined (with their colour and ping); pick Start Game once
-everyone is in (two players at least). Escape leaves the lobby.
+shows the addresses the others can join you at (such as
+"HOSTING ON 192.168.1.23:5029") and who has joined (with their colour and
+ping); pick Start Game once everyone is in (two players at least). Escape
+leaves the lobby.
 
-Join a game: Main menu > Multiplayer > Join Game. Pick Address, type the
-host's address (an IP address or a host name, with ":port" after it if the
+Join a game: Main menu > Multiplayer > Join Game. The page lists the games
+hosted on your network (under LOCAL GAMES) by itself: pick one to join it
+(with a pad, A). A game you can't join is greyed, with the reason (another
+version of IsoDoom, another IWAD or other PWADs, already started, or full).
+If yours isn't listed (the host is on another subnet, a guest Wi-Fi, behind
+a firewall, or on the internet), pick Address, type the address the host's
+lobby shows (an IP address or a host name, with ":port" after it if the
 host did not use the default port, 5029), press Enter. The last five
-addresses you joined are listed below it; with a pad, pick one with A. You
-wait in the lobby until the host starts the game.
+addresses you joined are listed at the bottom; with a pad, pick one with A.
+You wait in the lobby until the host starts the game.
 
 Over the internet, the host's router must forward the game's port (UDP
 5029 by default, or the port picked on the Host Game page) to the host's
 computer, and the host tells the others its public IP address. On a home
-network (LAN) no forwarding is needed: use the host's local address (such
-as 192.168.1.20).
+network (LAN) no forwarding is needed: Join Game finds the host, or use the
+host's local address (such as 192.168.1.20).
 
 Firewalls: the host's computer must let IsoDoom accept connections (UDP on
-the game's port). The first time you host, your system may ask:
+the game's port, and on 5028 to be found by Join Game). The first time you
+host, your system may ask:
 
   Windows  "Windows Security Alert: Windows Defender Firewall has blocked
            some features of this app" for IsoDoom.exe. Tick "Private
@@ -125,9 +133,13 @@ the game's port). The first time you host, your system may ask:
            Allow. IsoDoom is not signed by a registered developer, so macOS
            may ask again after you update it. Changed your mind: System
            Settings > Network > Firewall > Options, set IsoDoom to "Allow
-           incoming connections".
+           incoming connections". The first time Join Game looks for games
+           (macOS 15 and later), macOS also asks whether IsoDoom may "find
+           and connect to devices on your local network": pick Allow, or
+           no local games are listed (System Settings > Privacy & Security
+           > Local Network turns it back on).
   Linux    nothing asks. If you run a firewall (ufw, firewalld), open the
-           port yourself, e.g. "sudo ufw allow 5029/udp".
+           ports yourself, e.g. "sudo ufw allow 5028:5029/udp".
 
 Playing on one computer (127.0.0.1) never needs any of this. A third-party
 firewall or antivirus has its own prompt: allow IsoDoom there the same way.

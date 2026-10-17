@@ -37,6 +37,9 @@ public class LobbyMenuTests
         public List<string> Calls { get; } = [];
         public string? HostError { get; set; }
         public string? JoinError { get; set; }
+        public System.Func<NetDiscoveryBrowser?>? Browser { get; set; }
+
+        public NetDiscoveryBrowser? OpenBrowser() => Browser?.Invoke();
 
         public string? HostGame()
         {
@@ -201,13 +204,96 @@ public class LobbyMenuTests
         (_, MMenu menu, SetupHost setup, NetHost net) = New();
         setup.Values["net/addresses"] = "doom.example.org 192.168.1.20:5030";
         Keys(menu, Esc, 'm', Enter, 'j', Enter);
-        Assert.Equal(["ADDRESS", "CONNECT", "", "doom.example.org", "192.168.1.20:5030"], menu.JoinDef.menuitems.Select(i => i.text));
+        Assert.Equal(["ADDRESS", "CONNECT", "RECENT:", "doom.example.org", "192.168.1.20:5030"], menu.JoinDef.menuitems.Select(i => i.text));
         Assert.Equal("doom.example.org", menu.JoinAddress); // the last one used
         Keys(menu, Down, Down, Down); // past the gap
         Assert.Equal(4, menu.itemOn);
         Keys(menu, MMenu.KEY_PAD_ACCEPT);
         Assert.Equal(["join 192.168.1.20:5030"], net.Calls);
         Assert.Equal("lobby", menu.StateName);
+    }
+
+    /// <summary>T11.9d: polls the responders and the menus (the page's browser) until <paramref name="done"/> (2 s at most).</summary>
+    private static bool PumpLan(MMenu menu, System.Func<bool> done, params NetDiscoveryResponder[] responders)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (watch.ElapsedMilliseconds < 2000)
+        {
+            foreach (NetDiscoveryResponder r in responders)
+                r.Update(menu.NetClockUs());
+            menu.NetTicker();
+            if (done())
+                return true;
+            System.Threading.Thread.Sleep(2);
+        }
+        return false;
+    }
+
+    [Fact]
+    public void JoinGameListsTheLansGamesAndJoinsOneWithOnePress()
+    {
+        (_, MMenu menu, SetupHost setup, NetHost net) = New();
+        setup.Values["net/addresses"] = "192.168.1.20:5030";
+        var identity = new NetIdentity("test", "f0cefca49926d00903cf57551d901abe", []);
+        NetDiscoveryReply Game(string name, ulong id, string iwad) => new(0, id, NetProtocol.Version, "test", iwad, name == "ANN" ? "DOOM2.WAD" : "DOOM1.WAD",
+            0, NetDiscovery.PwadHash([]), name, 5029, false, 1, 4, 0, "E1M1", 3);
+        using var joep = new NetDiscoveryResponder(System.Net.IPAddress.Loopback, 0, () => Game("JOEP", 1, identity.IwadMd5));
+        using var ann = new NetDiscoveryResponder(System.Net.IPAddress.Loopback, 0, () => Game("ANN", 2, new string('0', 32)));
+        net.Browser = () => new NetDiscoveryBrowser(identity, [new(System.Net.IPAddress.Loopback, joep.Port), new(System.Net.IPAddress.Loopback, ann.Port)]);
+        long now = 0;
+        menu.NetClockUs = () => now;
+
+        // the page searches as soon as it shows
+        Keys(menu, Esc, 'm', Enter, 'j', Enter);
+        Assert.Null(menu.LanBrowser);
+        menu.NetTicker();
+        Assert.NotNull(menu.LanBrowser);
+        Assert.Equal(["ADDRESS", "CONNECT", "LOCAL GAMES:", "SEARCHING...", "RECENT:", "192.168.1.20:5030"], menu.JoinDef.menuitems.Select(i => i.text));
+
+        // both answer: by name, the other IWAD's greyed with its reason
+        Assert.True(PumpLan(menu, () => menu.JoinDef.numitems == 7, joep, ann));
+        Assert.Equal(["ADDRESS", "CONNECT", "LOCAL GAMES:", "ANN", "JOEP", "RECENT:", "192.168.1.20:5030"], menu.JoinDef.menuitems.Select(i => i.text));
+        Assert.Equal((true, "ANOTHER IWAD (DOOM2.WAD)"), (menu.JoinDef.menuitems[3].grey, menu.JoinDef.menuitems[3].value!()));
+        Assert.Equal((false, "E1M1 COOP 1/4"), (menu.JoinDef.menuitems[4].grey, menu.JoinDef.menuitems[4].value!()));
+
+        // the greyed one picked: sfx_oof and why, back on the page
+        Keys(menu, Down, Down);
+        Assert.Equal(3, menu.itemOn); // past the heading
+        Keys(menu, Enter);
+        Assert.Equal(("message", sfxenum_t.sfx_oof), (menu.StateName, menu.LastSound));
+        Assert.Equal("can't join ann's game: another iwad (doom2.wad).", menu.messageString.Split("\n\n")[0].Replace('\n', ' '));
+        Assert.Empty(net.Calls);
+        Keys(menu, 'n');
+        Assert.Equal("join", menu.StateName);
+
+        // the cursor stays on its game as the rows change: ANN gone, JOEP still answering
+        Keys(menu, Down);
+        Assert.Equal(4, menu.itemOn);
+        ann.Dispose();
+        now = NetDiscovery.ExpireUs - 1_000_000; // a query JOEP answers, ANN not
+        Assert.True(PumpLan(menu, () => menu.LanBrowser!.Entries.Any(e => e.Reply.HostName == "JOEP" && e.LastHeardUs == now), joep));
+        Assert.Equal(7, menu.JoinDef.numitems);
+        now = NetDiscovery.ExpireUs; // ANN's last answer 5 s ago: gone
+        Assert.True(PumpLan(menu, () => menu.JoinDef.numitems == 6, joep));
+        Assert.Equal(["ADDRESS", "CONNECT", "LOCAL GAMES:", "JOEP", "RECENT:", "192.168.1.20:5030"], menu.JoinDef.menuitems.Select(i => i.text));
+        Assert.Equal(3, menu.itemOn);
+
+        // one press joins it, as a recent address; the page gone, its browser goes
+        Keys(menu, MMenu.KEY_PAD_ACCEPT);
+        Assert.Equal(["join 127.0.0.1:5029"], net.Calls);
+        Assert.Equal("lobby", menu.StateName);
+        menu.NetTicker();
+        Assert.Null(menu.LanBrowser);
+    }
+
+    [Fact]
+    public void TheHostsLobbyPageShowsItsAddresses()
+    {
+        (_, MMenu menu, _, NetHost net) = New();
+        Keys(menu, Esc, 'm', Enter, Enter, 's', Enter);
+        Assert.Equal("lobby", menu.StateName);
+        net.Lobby = net.Lobby! with { HostAddresses = ["192.168.1.23:5029", "10.0.0.5:5029"] };
+        Assert.Contains("HOSTING ON 192.168.1.23:5029", menu.HostingLine(), System.StringComparison.Ordinal);
     }
 
     [Fact]

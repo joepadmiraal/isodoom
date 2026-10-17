@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using IsoDoom.Net;
 using IsoDoom.Sim;
 
@@ -28,6 +29,13 @@ public interface INetMenuHost
 
     /// <summary>The host's Start (<see cref="NetSession.RequestStart"/>): false when it can't ask yet.</summary>
     bool StartGame();
+
+    /// <summary>
+    /// T11.9d: a LAN browser for the Join Game page (the menus own it: polled
+    /// while the page shows, disposed when it goes), or null when none can
+    /// be made (the page then lists no local games).
+    /// </summary>
+    NetDiscoveryBrowser? OpenBrowser() => null;
 }
 
 /// <summary>
@@ -51,9 +59,12 @@ public interface INetMenuHost
 /// <param name="StartRefusals">How many times the host refused to start (each shows once).</param>
 /// <param name="Starting">The host's Start was asked for, the game not begun yet.</param>
 /// <param name="InGame">The game began.</param>
+/// <param name="HostAddresses">T11.9d: the host's: where the others reach it (<see cref="NetSession.HostAddresses"/>), or null.</param>
+/// <param name="LanError">T11.9d: the host's: why it is not visible on the LAN (its discovery port taken), or null.</param>
 public sealed record NetLobbyView(bool Host, bool FromMenus, string Address, int Port, NetClientState State, int MaxPlayers,
     IReadOnlyList<NetLobbyPlayer> Players, NetGameSettings? Settings, string? MapName, string Wad,
-    string? Failure, NetRefusal? Refusal, string? StartRefusal, int StartRefusals, bool Starting, bool InGame);
+    string? Failure, NetRefusal? Refusal, string? StartRefusal, int StartRefusals, bool Starting, bool InGame,
+    IReadOnlyList<string>? HostAddresses = null, string? LanError = null);
 
 // T11.9: the multiplayer pages (not vanilla's: its netgames came from the
 // command line, or the setup program): Multiplayer (from the main menu) →
@@ -96,6 +107,18 @@ public sealed partial class MMenu
 
     /// <summary>Whether the keys type text (a save's description, T11.9's address, T11.9c's name): the menu keys are the typed keys then.</summary>
     public bool Typing => saveStringEnter || AddressEnter || NameEnter;
+
+    // T11.9d: the Join Game page's LAN browser (made when the page shows, disposed when it goes), its changes last listed, and each item's key (the cursor follows its entry)
+    private NetDiscoveryBrowser? _lan;
+    private bool _lanOpened;
+    private int _lanChanges = -1;
+    private string[] _joinKeys = [];
+
+    /// <summary>T11.9d: the Join Game page's LAN browser while the page shows (null otherwise, or when none could be made).</summary>
+    public NetDiscoveryBrowser? LanBrowser => _lan;
+
+    /// <summary>T11.9d: the clock the LAN browser runs on (µs); the tests set their own.</summary>
+    public Func<long> NetClockUs { get; set; } = () => Environment.TickCount64 * 1000;
 
     private int _seenStartRefusals;
     private bool _failureShown;
@@ -221,25 +244,133 @@ public sealed partial class MMenu
 
     private string[] RecentAddresses() => NetSetting("net/addresses").Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-    /// <summary>The Join Game page's items: the address (Enter types it), Connect, and the last few addresses (each joins).</summary>
+    /// <summary>
+    /// The Join Game page's items: the address (Enter types it), Connect,
+    /// (T11.9d) the games on the LAN under a heading (each joins; one this
+    /// machine can't join greyed; <c>SEARCHING...</c> until one answers), and
+    /// the last few addresses (each joins). Rebuilt as the LAN's games come
+    /// and go, the cursor staying on its item where it can.
+    /// </summary>
     private void JoinItems()
     {
+        string? onKey = currentMenu == JoinDef && itemOn >= 0 && itemOn < _joinKeys.Length ? _joinKeys[itemOn] : null;
         var items = new List<menuitem_t>
         {
             new(1, "", _ => StartAddress(), 'a', "ADDRESS"),
             new(1, "", _ => { if (!Connect(_address)) _itemSound = sfxenum_t.sfx_oof; }, 'c', "CONNECT"),
         };
+        var keys = new List<string> { "address", "connect" };
+        if (_lan is { } lan)
+        {
+            items.Add(new menuitem_t(-1, "", null, '\0', "LOCAL GAMES:"));
+            keys.Add("");
+            if (lan.Entries.Count == 0)
+            {
+                items.Add(new menuitem_t(-1, "", null, '\0', "SEARCHING..."));
+                keys.Add("");
+            }
+            foreach (NetDiscoveryEntry entry in lan.Entries)
+            {
+                NetDiscoveryEntry e = entry;
+                items.Add(new menuitem_t(1, "", _ => PickLan(e), '\0', e.Reply.HostName) { value = () => LanValue(e), grey = !e.Compatible });
+                keys.Add(string.Create(CultureInfo.InvariantCulture, $"lan:{e.Reply.Instance}"));
+            }
+        }
         string[] recent = RecentAddresses();
         if (recent.Length > 0)
-            items.Add(new menuitem_t(-1, "", null, '\0'));
+        {
+            items.Add(new menuitem_t(-1, "", null, '\0', "RECENT:"));
+            keys.Add("");
+        }
         foreach (string address in recent)
         {
             string a = address;
             items.Add(new menuitem_t(1, "", _ => { if (!Connect(a)) _itemSound = sfxenum_t.sfx_oof; }, '\0', a));
+            keys.Add("recent:" + a);
         }
         SetTextItems(JoinDef, [.. items]);
+        _joinKeys = [.. keys];
         if (JoinDef.lastOn >= items.Count)
             JoinDef.lastOn = 0;
+        if (currentMenu == JoinDef)
+        {
+            int on = onKey is null ? -1 : keys.IndexOf(onKey);
+            if (on < 0)
+            {
+                // its entry went: the nearest item above it that takes the cursor
+                on = Math.Clamp((int)itemOn, 0, items.Count - 1);
+                while (on > 0 && items[on].status == -1)
+                    on--;
+            }
+            if (on != itemOn)
+            {
+                itemOn = (short)on;
+                Changes++;
+            }
+        }
+    }
+
+    /// <summary>T11.9d: a LAN game's value on the Join Game page: <c>E1M1 COOP 2/4</c>, or why this machine can't join it (shortened to fit).</summary>
+    private string LanValue(NetDiscoveryEntry e)
+    {
+        if (e.Reason is { } reason)
+        {
+            int paren = reason.IndexOf(" (", StringComparison.Ordinal);
+            return paren > 0 && M_StringWidth(reason) > HudScreen.SCREENWIDTH - VALUEX ? reason[..paren] : reason;
+        }
+        string mode = e.Reply.Deathmatch switch { 1 => "DM", 2 => "ALTDM", _ => "COOP" };
+        return string.Create(CultureInfo.InvariantCulture, $"{e.Reply.MapName} {mode} {e.Reply.Players}/{e.Reply.MaxPlayers}");
+    }
+
+    /// <summary>T11.9d: a LAN game picked: joins it as a recent address does, or (one it can't join) <c>sfx_oof</c> and why, as a message back on the page.</summary>
+    private void PickLan(NetDiscoveryEntry e)
+    {
+        if (e.Reason is { } reason)
+        {
+            _itemSound = sfxenum_t.sfx_oof;
+            M_StartMessage(Wrap($"can't join {e.Reply.HostName.ToLowerInvariant()}'s game: {reason.ToLowerInvariant()}.") + "\n\n" + PRESSKEY, null, false, JoinDef);
+            return;
+        }
+        if (!Connect(e.JoinAddress))
+            _itemSound = sfxenum_t.sfx_oof;
+    }
+
+    /// <summary>
+    /// T11.9d: each frame: while the Join Game page shows, its LAN browser
+    /// (made on the first frame) queries and takes the replies, and the rows
+    /// follow it; once the page goes the browser is disposed.
+    /// </summary>
+    private void LanTicker()
+    {
+        if (!menuactive || currentMenu != JoinDef || JoinDef is null)
+        {
+            if (_lan is not null || _lanOpened)
+            {
+                _lan?.Dispose();
+                _lan = null;
+                _lanOpened = false;
+                _lanChanges = -1;
+                if (JoinDef is not null)
+                    JoinItems();
+            }
+            return;
+        }
+        if (!_lanOpened)
+        {
+            _lanOpened = true;
+            _lan = NetHost?.OpenBrowser();
+            if (_lan is not null)
+                JoinItems();
+        }
+        if (_lan is not { } lan)
+            return;
+        lan.Update(NetClockUs());
+        if (lan.Changes != _lanChanges)
+        {
+            _lanChanges = lan.Changes;
+            JoinItems();
+            Changes++;
+        }
     }
 
     /// <summary>T11.9c: the name the player plays as (<c>net/name</c>, or the OS user name for its default), or the one being typed.</summary>
@@ -392,6 +523,7 @@ public sealed partial class MMenu
     /// </summary>
     public void NetTicker()
     {
+        LanTicker(); // T11.9d
         if (NetHost?.Lobby is not { } lobby)
             return;
         if (lobby.InGame)
@@ -489,10 +621,36 @@ public sealed partial class MMenu
         // the address right of its item, wider than a value: it is typed
         string address = (_address + (AddressEnter ? "_" : "")).ToUpperInvariant();
         M_WriteText(JoinDef.x + 72, JoinDef.y, address);
-        if (JoinDef.numitems > 2)
-            M_WriteText(JoinDef.x, JoinDef.y + 2 * JoinDef.lineHeight, "RECENT:");
-        string hint = AddressEnter ? "ENTER: CONNECT   ESCAPE: CANCEL" : "ENTER ON ADDRESS: TYPE IT";
+        // T11.9d: on a LAN game, its address, or why it can't be joined in full
+        NetDiscoveryEntry? on = _lan is { } lan && currentMenu == JoinDef && itemOn >= 0 && itemOn < _joinKeys.Length && _joinKeys[itemOn].StartsWith("lan:", StringComparison.Ordinal)
+            ? lan.Entries.FirstOrDefault(e => _joinKeys[itemOn] == string.Create(CultureInfo.InvariantCulture, $"lan:{e.Reply.Instance}")) : null;
+        string hint = AddressEnter ? "ENTER: CONNECT   ESCAPE: CANCEL"
+            : on is { Reason: { } reason } ? reason
+            : on is not null ? "ENTER: JOIN " + on.JoinAddress
+            : "ENTER ON ADDRESS: TYPE IT";
         M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(hint) / 2, TEXTHINTY, hint);
+    }
+
+    /// <summary>
+    /// T11.9d: the host's first line: <c>HOSTING ON 192.168.1.23:5029</c>, its
+    /// LAN addresses (a second one when it fits), so a player can read one out
+    /// when discovery can't reach the others; the port alone without them.
+    /// Null without a host's lobby.
+    /// </summary>
+    public string? HostingLine() => NetHost?.Lobby is { Host: true } lobby ? HostingText(lobby) : null;
+
+    private string HostingText(NetLobbyView lobby)
+    {
+        if (lobby.HostAddresses is not { Count: > 0 } addresses)
+            return $"HOSTING ON PORT {lobby.Port}";
+        string text = "HOSTING ON " + addresses[0];
+        for (int i = 1; i < addresses.Count; i++)
+        {
+            string more = text + "  " + addresses[i];
+            if (TextX + M_StringWidth(more) <= HudScreen.SCREENWIDTH - TextX)
+                text = more;
+        }
+        return text;
     }
 
     /// <summary>T11.9: the lobby page: who hosts, the game and WAD, the players (slot, colour, ping), what it waits for.</summary>
@@ -502,7 +660,7 @@ public sealed partial class MMenu
         if (NetHost?.Lobby is not { } lobby)
             return;
         int x = TextX, y = 30;
-        string where = lobby.Host ? $"HOSTING ON PORT {lobby.Port}"
+        string where = lobby.Host ? HostingText(lobby)
             : lobby.State is NetClientState.Connecting or NetClientState.Idle ? $"CONNECTING TO {lobby.Address}:{lobby.Port}..."
             : $"JOINED {lobby.Address}:{lobby.Port}";
         M_WriteText(x, y, where.ToUpperInvariant());
@@ -553,6 +711,8 @@ public sealed partial class MMenu
         M_WriteText(x, LobbyItemsY - 14, status);
         if (_lobbyNote is { } note)
             M_WriteText(x, LobbyItemsY - 26, note);
+        else if (lobby.Host && lobby.LanError is not null)
+            M_WriteText(x, LobbyItemsY - 26, "NOT VISIBLE ON THE LAN"); // T11.9d: its discovery port taken
         const string Hint = "ESCAPE: LEAVE THE LOBBY";
         M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(Hint) / 2, TEXTHINTY, Hint);
     }

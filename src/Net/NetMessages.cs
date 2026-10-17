@@ -280,6 +280,26 @@ public sealed record NetIdentity(string Build, string IwadMd5, IReadOnlyList<str
         }
         return true;
     }
+
+    /// <summary>
+    /// T11.9d: why a host of <paramref name="host"/> refuses a machine whose
+    /// hello says <paramref name="protocol"/>, <paramref name="build"/>,
+    /// <paramref name="iwadMd5"/> and (<paramref name="samePwads"/>) the same
+    /// PWADs, in the hello's order: protocol, build, IWAD, PWADs, a game
+    /// <paramref name="started"/>, a game <paramref name="full"/>; null when
+    /// it lets it in. The server's hello and the LAN browser share it.
+    /// </summary>
+    public static NetRefusal? Refusal(ushort protocol, string? build, string? iwadMd5, bool samePwads, bool started, bool full, NetIdentity host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        return protocol != NetProtocol.Version ? NetRefusal.ProtocolMismatch
+            : build != host.Build ? NetRefusal.BuildMismatch
+            : !string.Equals(iwadMd5, host.IwadMd5, StringComparison.OrdinalIgnoreCase) ? NetRefusal.IwadMismatch
+            : !samePwads ? NetRefusal.PwadMismatch
+            : started ? NetRefusal.GameInProgress
+            : full ? NetRefusal.GameFull
+            : null;
+    }
 }
 
 /// <summary>

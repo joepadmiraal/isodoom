@@ -353,13 +353,17 @@ public sealed class NetServer
     private void Hello(Peer peer, NetHello hello)
     {
         NetIdentity? id = hello.Identity;
-        (NetRefusal reason, string detail)? refusal =
-            hello.Protocol != NetProtocol.Version ? (NetRefusal.ProtocolMismatch, $"protocol {hello.Protocol}, the host's is {NetProtocol.Version}")
-            : id!.Build != _identity.Build ? (NetRefusal.BuildMismatch, $"build {id.Build}, the host's is {_identity.Build}")
-            : !string.Equals(id.IwadMd5, _identity.IwadMd5, StringComparison.OrdinalIgnoreCase) ? (NetRefusal.IwadMismatch, $"IWAD {id.IwadMd5}, the host's is {_identity.IwadMd5}")
-            : !id.SamePwads(_identity) ? (NetRefusal.PwadMismatch, $"PWADs [{string.Join(", ", id.PwadMd5s)}], the host's are [{string.Join(", ", _identity.PwadMd5s)}]")
-            : Phase != NetServerPhase.Lobby ? (NetRefusal.GameInProgress, "the game has started")
-            : null;
+        // T11.9d: the comparison the LAN browser makes too (NetIdentity.Refusal); the full game is the slots' below
+        (NetRefusal reason, string detail)? refusal = NetIdentity.Refusal(hello.Protocol, id?.Build, id?.IwadMd5, id?.SamePwads(_identity) ?? false,
+            Phase != NetServerPhase.Lobby, full: false, _identity) switch
+        {
+            NetRefusal.ProtocolMismatch => (NetRefusal.ProtocolMismatch, $"protocol {hello.Protocol}, the host's is {NetProtocol.Version}"),
+            NetRefusal.BuildMismatch => (NetRefusal.BuildMismatch, $"build {id!.Build}, the host's is {_identity.Build}"),
+            NetRefusal.IwadMismatch => (NetRefusal.IwadMismatch, $"IWAD {id!.IwadMd5}, the host's is {_identity.IwadMd5}"),
+            NetRefusal.PwadMismatch => (NetRefusal.PwadMismatch, $"PWADs [{string.Join(", ", id!.PwadMd5s)}], the host's are [{string.Join(", ", _identity.PwadMd5s)}]"),
+            NetRefusal.GameInProgress => (NetRefusal.GameInProgress, "the game has started"),
+            _ => null,
+        };
         int slot = -1;
         if (refusal is null)
         {

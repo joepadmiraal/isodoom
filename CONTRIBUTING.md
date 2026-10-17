@@ -50,6 +50,8 @@ godot --headless --fixed-fps 35 -- -iwad /tmp/isodoom-synthetic.wad --level E1M1
   --level-script="route tests/IsoDoom.Tests/Sim/Routes/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route tests/IsoDoom.Tests/Sim/Routes/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
 # The netgame: a host and a client process over ENet on loopback (ends "loopback: OK").
 tools/NetLoopback/loopback.sh /tmp/isodoom-synthetic.wad 1000
+# ... the client finding the host by LAN discovery instead of its address (T11.9d; needs UDP port 5028 free).
+tools/NetLoopback/loopback.sh /tmp/isodoom-synthetic.wad --lan 350
 # ... and both playing a deathmatch route in lockstep into E1M2 (T11.8; ends "loopback: OK").
 tools/NetLoopback/loopback.sh /tmp/isodoom-synthetic.wad --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2
 # ... the client killed mid-game, the host killed, and a forced desync (T11.11; each ends "loopback: OK").

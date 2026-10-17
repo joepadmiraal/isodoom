@@ -19,6 +19,10 @@ namespace IsoDoom.Game;
 // renderer the multiplayer pages are compared pixel by pixel (CheckLobbyDrawn).
 // F12 (the harness's local-player key) is refused in both games: the local
 // player stays (T11.8; kept by the user's decision: no spy view).
+// T11.9d: the check's hosts answer LAN discovery on free ports of their own
+// (the scene's too), and Join Game's browser is aimed at them: the page lists
+// the check's host by name and the pad's A joins it; the other-IWAD host is
+// listed greyed, ANOTHER IWAD, and picking it shows why back on the page.
 public partial class LevelCheck
 {
     private static InputEventKey TypeEvent(char c) => Held(new InputEventKey
@@ -43,6 +47,18 @@ public partial class LevelCheck
         return true;
     }
 
+    /// <summary>T11.9d: the Join Game page's LAN row of <paramref name="name"/>, or null.</summary>
+    private static MMenu.menuitem_t? LanRow(MMenu menu, string name) =>
+        menu.LanBrowser is null ? null : menu.JoinDef.menuitems.Take(menu.JoinDef.numitems).FirstOrDefault(i => i.status == 1 && i.text == name);
+
+    /// <summary>T11.9d: the cursor moved down to <paramref name="item"/> on the current page (false if it isn't there).</summary>
+    private bool CursorTo(MMenu menu, MMenu.menuitem_t item)
+    {
+        for (int i = 0; i < 20 && menu.currentMenu.menuitems[menu.itemOn] != item; i++)
+            _scene.MenuEvent(KeyEvent(Key.Down));
+        return menu.currentMenu.menuitems[menu.itemOn] == item;
+    }
+
     private async Task CheckLobby()
     {
         LevelScene s = _scene;
@@ -53,6 +69,7 @@ public partial class LevelCheck
         string Step(string what) => $"lobby (T11.9): {what}: menu {menu.StateText()}, net {s.NetText()}";
         string addresses = s.GetSetting("net/addresses"), playerName = s.GetSetting("net/name");
         s.SetSetting("net/port", "0"); // any free port: the lobby page shows it
+        s.DiscoveryPort = 0; // T11.9d: the scene's host answers LAN discovery on a free port too
         flow.D_StartTitle(null);
         menu.M_ClearMenus();
 
@@ -87,6 +104,10 @@ public partial class LevelCheck
             Fail(Step("Start Hosting"));
             return;
         }
+        // T11.9d: the host's lobby page shows where the others reach it, and it answers LAN discovery
+        if (host.Lobby.HostAddresses is not { Count: > 0 } where || !where.All(a => a.EndsWith($":{s.Net.Port}", StringComparison.Ordinal))
+            || menu.HostingLine()?.StartsWith("HOSTING ON " + where[0], StringComparison.Ordinal) != true || s.Net.Discovery is null)
+            Fail(Step($"the host's addresses [{string.Join(", ", host.Lobby.HostAddresses ?? [])}], {menu.HostingLine()}, discovery {s.Net.Discovery?.Port}: {s.Net.DiscoveryError} (T11.9d)"));
         int port = s.Net.Port;
         NetSession? join = null;
         try
@@ -171,16 +192,69 @@ public partial class LevelCheck
             s.EndNetGameForCheck();
         }
 
-        // a host on another IWAD refuses the join: its address picked from the recent ones with the pad's A
+        // T11.9d: the check's host found on the LAN: Join Game lists it by name, compatible, and the pad's A joins it
         try
         {
-            other = s.CheckSession(NetOptions.Parse(["-host", "0", "-players", "2"])!, otherIwad: true);
-            s.SetSetting("net/addresses", $"127.0.0.1:{other.Port} {s.GetSetting("net/addresses")}");
+            other = s.CheckSession(NetOptions.Parse(["-host", "0", "-players", "2"])!, name: "LANHOST", discovery: true);
+            if (other.Discovery is null)
+                Fail(Step($"the check's host not answering discovery: {other.DiscoveryError} (T11.9d)"));
+            else
+            {
+                s.DiscoveryTargets = [new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, other.Discovery.Port)];
+                menu.M_ClearMenus();
+                foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.J, Key.Enter })
+                    s.MenuEvent(KeyEvent(key));
+                if (!await NetFrames(() => LanRow(menu, "LANHOST") is not null, other, 5))
+                    Fail(Step("Join Game listing the check's host (T11.9d)"));
+                else if (LanRow(menu, "LANHOST") is not { grey: false } row || row.value?.Invoke() != $"{s.DefaultMap()} COOP 1/2")
+                    Fail(Step($"the check's host's row: {LanRow(menu, "LANHOST")?.value?.Invoke()}, grey {LanRow(menu, "LANHOST")?.grey} (T11.9d)"));
+                else if (!CursorTo(menu, row))
+                    Fail(Step("the cursor on the check's host's row (T11.9d)"));
+                else
+                {
+                    s.MenuEvent(PadEvent(JoyButton.A));
+                    if (menu.StateName != "lobby" || host.Lobby is not { Host: false })
+                        Fail(Step("the LAN game joined with the pad's A (T11.9d)"));
+                    else if (!await NetFrames(() => s.NetGame is not null && other.Client.State == NetClientState.InGame && menu.LanBrowser is null, other))
+                        Fail(Step("the LAN game's start (T11.9d)"));
+                    else if (s.GetSetting("net/addresses").Split(' ').FirstOrDefault() != $"127.0.0.1:{other.Port}")
+                        Fail(Step($"the LAN game's address kept: \"{s.GetSetting("net/addresses")}\" (T11.9d)"));
+                }
+            }
+        }
+        finally
+        {
+            other?.Dispose();
+            s.EndNetGameForCheck();
+        }
+
+        // a host on another IWAD refuses the join: T11.9d: listed greyed (ANOTHER IWAD), picked: why, back on the page;
+        // then its address picked from the recent ones with the pad's A
+        try
+        {
+            other = s.CheckSession(NetOptions.Parse(["-host", "0", "-players", "2"])!, otherIwad: true, discovery: true);
+            s.DiscoveryTargets = other.Discovery is { } d ? [new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, d.Port)] : [];
+            string recent = $"127.0.0.1:{other.Port}";
+            s.SetSetting("net/addresses", $"{recent} {s.GetSetting("net/addresses")}");
             menu.M_ClearMenus();
             foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.J, Key.Enter })
                 s.MenuEvent(KeyEvent(key));
-            while (menu.itemOn != 3 && menu.StateName == "join")
-                s.MenuEvent(KeyEvent(Key.Down));
+            if (!await NetFrames(() => LanRow(menu, "CHECK") is not null, other, 5) || LanRow(menu, "CHECK") is not { grey: true } greyed)
+                Fail(Step($"the other IWAD's host listed greyed: {LanRow(menu, "CHECK")?.grey} (T11.9d)"));
+            else if (greyed.value?.Invoke() != "ANOTHER IWAD (OTHER.WAD)" || !CursorTo(menu, greyed))
+                Fail(Step($"the other IWAD's row: {greyed.value?.Invoke()} (T11.9d)"));
+            else
+            {
+                s.MenuEvent(PadEvent(JoyButton.A));
+                if (menu.StateName != "message" || menu.messageString.Replace('\n', ' ').StartsWith("can't join check's game: another iwad (other.wad).", StringComparison.Ordinal) is false
+                    || s.Net is not null || menu.LastSound != sfxenum_t.sfx_oof)
+                    Fail(Step($"the greyed LAN game picked: \"{menu.messageString}\", {menu.LastSound} (T11.9d)"));
+                s.MenuEvent(PadEvent(JoyButton.A));
+                if (menu.StateName != "join")
+                    Fail(Step("back on the join page after the greyed game (T11.9d)"));
+            }
+            if (menu.currentMenu.menuitems.Take(menu.currentMenu.numitems).FirstOrDefault(i => i.text == recent) is not { } recentRow || !CursorTo(menu, recentRow))
+                Fail(Step($"the recent address {recent} on the join page"));
             s.MenuEvent(PadEvent(JoyButton.A));
             if (!await NetFrames(() => menu.StateName == "message", other))
                 Fail(Step("the refused join's message"));
@@ -195,12 +269,14 @@ public partial class LevelCheck
             other?.Dispose();
             s.EndNetGameForCheck();
             menu.M_ClearMenus();
+            s.DiscoveryTargets = null;
+            s.DiscoveryPort = IsoDoom.Net.NetDiscovery.Port;
             s.SetSetting("net/addresses", addresses);
             s.SetSetting("net/port", Settings.Find("net/port")!.Default);
             s.SetSetting("net/name", playerName);
         }
         if (_failures == failures)
-            GD.Print("Level check: lobby (T11.9): hosted from the menus, joined by a second machine, a start refused and shown, the game begun on both, F12 refused in it; joined from Join Game with a typed address and kept; a join on another IWAD refused and shown; T11.9c: the player name typed, both players named on both machines' lobbies");
+            GD.Print("Level check: lobby (T11.9): hosted from the menus, joined by a second machine, a start refused and shown, the game begun on both, F12 refused in it; joined from Join Game with a typed address and kept; a join on another IWAD refused and shown; T11.9c: the player name typed, both players named on both machines' lobbies; T11.9d: the host's addresses shown, the LAN's host listed and joined with the pad's A, the other IWAD's greyed and refused");
 
         void CheckNames(string where, System.Collections.Generic.IEnumerable<string> names, string[] expected)
         {
@@ -220,6 +296,7 @@ public partial class LevelCheck
         flow.D_StartTitle(null);
         s.Tic(new ticcmd_t());
         s.SetSetting("net/port", "0");
+        s.DiscoveryPort = 0; // T11.9d
         int pixels = 0;
         try
         {
@@ -238,14 +315,36 @@ public partial class LevelCheck
                 Fail($"lobby (T11.9): the lobby page drawn: the host alone not in its lobby ({s.NetText()})");
             s.UpdateScreens();
             pixels += await CompareMenuScreen("the lobby page (T11.9)", dimmed: true) ?? 0;
+            s.EndNetGameForCheck();
+
+            // T11.9d: the join page listing a LAN game (and one greyed: another IWAD's)
+            using NetSession lan = s.CheckSession(NetOptions.Parse(["-host", "0", "-players", "2"])!, name: "LANHOST", discovery: true);
+            using NetSession greyed = s.CheckSession(NetOptions.Parse(["-host", "0", "-players", "2"])!, otherIwad: true, discovery: true);
+            s.DiscoveryTargets = [.. new[] { lan, greyed }.Where(n => n.Discovery is not null).Select(n => new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, n.Discovery!.Port))];
+            menu.M_ClearMenus();
+            foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.J, Key.Enter })
+                s.MenuEvent(KeyEvent(key));
+            ulong deadline = Time.GetTicksMsec() + 5000;
+            while ((LanRow(menu, "LANHOST") is null || LanRow(menu, "CHECK") is null) && Time.GetTicksMsec() < deadline)
+            {
+                lan.Update((long)Time.GetTicksUsec());
+                greyed.Update((long)Time.GetTicksUsec());
+                await NextFrame();
+            }
+            if (LanRow(menu, "LANHOST") is null || LanRow(menu, "CHECK") is null)
+                Fail("lobby (T11.9d): the join page drawn: the LAN games not listed");
+            s.UpdateScreens();
+            pixels += await CompareMenuScreen("the join page with LAN games (T11.9d)", dimmed: true) ?? 0;
         }
         finally
         {
             s.EndNetGameForCheck();
+            s.DiscoveryTargets = null;
+            s.DiscoveryPort = IsoDoom.Net.NetDiscovery.Port;
             menu.M_ClearMenus();
             s.SetSetting("net/port", Settings.Find("net/port")!.Default);
             s.Overlay.Visible = overlay;
         }
-        GD.Print($"Level check: lobby (T11.9): the multiplayer, host and lobby pages drawn over the window dimmed (T11.9b), {pixels} pixels compared");
+        GD.Print($"Level check: lobby (T11.9): the multiplayer, host, lobby and (T11.9d) join pages drawn over the window dimmed (T11.9b), {pixels} pixels compared");
     }
 }

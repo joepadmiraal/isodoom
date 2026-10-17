@@ -29,8 +29,14 @@
 #    in the logs' directory), each with its checksums, commands and the save
 #    of the last agreed window; then each shows the stop's message, and a key
 #    takes it back to the title loop (the client first, the host 3 s later).
+#  - --lan [TICS] (T11.9d): the exchange, but the client finds the host by LAN
+#    discovery instead of -connect: its Join Game browser (the level script's
+#    `lan 1 30 join`) queries 127.0.0.1 and the broadcast addresses on the
+#    discovery port (5028, which must be free here: the host answers on it,
+#    bound to 127.0.0.1) and joins the game it lists.
 # Usage:
 #   tools/NetLoopback/loopback.sh IWAD [TICS] [-- GAME... [-- CLIENT GAME...]]
+#   tools/NetLoopback/loopback.sh IWAD --lan [TICS] [-- GAME... [-- CLIENT GAME...]]
 #   tools/NetLoopback/loopback.sh IWAD --play ROUTE NEXT [-- GAME... [-- CLIENT GAME...]]
 #   tools/NetLoopback/loopback.sh IWAD --kill client|host ROUTE [-- GAME...]
 #   tools/NetLoopback/loopback.sh IWAD --desync ROUTE [-- GAME...]
@@ -49,7 +55,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 if [ $# -lt 1 ] || [ "${1#-}" != "$1" ]; then
-    sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 iwad=$(realpath "$1"); shift
@@ -63,6 +69,9 @@ elif [ $# -gt 0 ] && [ "$1" = "--kill" ]; then
 elif [ $# -gt 0 ] && [ "$1" = "--desync" ]; then
     [ $# -ge 2 ] || { echo "loopback: --desync ROUTE" >&2; exit 2; }
     mode=desync route=$(realpath "$2"); shift 2
+elif [ $# -gt 0 ] && [ "$1" = "--lan" ]; then
+    mode=lan; shift
+    if [ $# -gt 0 ] && [ "$1" != "--" ]; then tics=$1; shift; fi
 elif [ $# -gt 0 ] && [ "$1" != "--" ]; then
     tics=$1; shift
 fi
@@ -170,6 +179,12 @@ case $mode in
         result_line='^(Level script: netuntil|Net: (forced desync|desync|the stopped netgame))'
         limit=150
         ;;
+    lan)
+        host_script="net; netexchange $tics"
+        client_script="lan 1 30 join; net; netexchange $tics"
+        limit=$(( tics / 35 + 120 ))
+        result_line='^(Level script: (netexchange|lan):|Net: visible on the LAN)'
+        ;;
     *)
         host_script="net; netexchange $tics"
         client_script=$host_script
@@ -205,11 +220,14 @@ case $mode in
     play) what="playing $(basename "$route") into $next" ;;
     kill) what="playing $(basename "$route"), the $victim killed after 210 tics" ;;
     desync) what="playing $(basename "$route"), the client desyncing after 140 tics" ;;
+    lan) what="$tics tics, the client finding the host on the LAN" ;;
     *) what="$tics tics" ;;
 esac
+connect=(-connect "127.0.0.1:$port")
+[ "$mode" = lan ] && connect=()
 echo "loopback: host on 127.0.0.1:$port, $what"
 # (${a[@]+"${a[@]}"}: an empty array under `set -u` in bash 3.2)
-"${client_game[@]}" --headless -- -iwad "$(native "$client_first" "$iwad")" -connect "127.0.0.1:$port" --level ${client_args[@]+"${client_args[@]}"} \
+"${client_game[@]}" --headless -- -iwad "$(native "$client_first" "$iwad")" ${connect[@]+"${connect[@]}"} --level ${client_args[@]+"${client_args[@]}"} \
     --level-script="$client_script" >"$client_log" 2>&1 &
 client_pid=$!
 watchdog "$client_pid" "$limit" >/dev/null &
@@ -282,6 +300,10 @@ case $mode in
         result() { sed -n 's/^Level script: netexchange: \([0-9]* of [0-9]* tics, hash [0-9a-f]*\).*/\1/p' "$1" | head -n 1; }
         host_result=$(result "$host_log") client_result=$(result "$client_log")
         [ "$host_status" -eq 0 ] && [ "$client_status" -eq 0 ] && [ -n "$host_result" ] && [ "$host_result" = "$client_result" ] || ok=
+        # --lan: the host answered on the discovery port and the client joined the game it found there
+        if [ "$mode" = lan ]; then
+            grep -q "^Level script: lan: joining .* at 127\.0\.0\.1:$port\$" "$client_log" || ok=
+        fi
         ;;
 esac
 echo "loopback: host:   ${host_result:-no result} (exit $host_status)"

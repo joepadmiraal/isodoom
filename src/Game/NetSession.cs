@@ -42,6 +42,9 @@ public sealed class NetSession : IDisposable
 {
     private readonly INetTransport? _serverTransport;
     private readonly INetTransport _clientTransport;
+    private readonly NetIdentity _identity;
+    private readonly ulong _instance = NetDiscovery.RandomId();
+    private string _iwadName = "";
     private NetClientState _lastState;
     private bool _readied;
     private long _allReadyUs = -1;
@@ -69,6 +72,7 @@ public sealed class NetSession : IDisposable
             throw new ArgumentException("A session hosts or joins.", nameof(options));
         Options = options;
         Log = log;
+        _identity = identity;
         if (options.Role == NetRole.Host)
         {
             _serverTransport = newTransport(NetTransportUse.Server);
@@ -76,7 +80,7 @@ public sealed class NetSession : IDisposable
             Server.Log += line => Log?.Invoke($"server: {line}");
             Server.Listen(options.Port);
             Port = _serverTransport is INetPortTransport { LocalPort: > 0 } p ? p.LocalPort : options.Port;
-            Log?.Invoke($"listening on {options.BindAddress}:{Port}, waiting for {options.Players} player(s)");
+            Log?.Invoke($"listening on {options.BindAddress}:{Port}, waiting for {options.Players} player(s); addresses {string.Join(' ', HostAddresses(options.BindAddress, Port))}");
         }
         else
             Port = options.Port;
@@ -153,10 +157,89 @@ public sealed class NetSession : IDisposable
     /// <summary>Why the session ended (refused, disconnected), or null while it goes on.</summary>
     public string? Failure { get; private set; }
 
+    /// <summary>T11.9d: the host's LAN discovery responder (<see cref="AnswerDiscovery"/>), or null (a join, not asked, or its port taken).</summary>
+    public NetDiscoveryResponder? Discovery { get; private set; }
+
+    /// <summary>T11.9d: why the host is not visible on the LAN (its discovery port taken), or null.</summary>
+    public string? DiscoveryError { get; private set; }
+
+    /// <summary>
+    /// T11.9d: the host answers LAN discovery queries on <paramref name="port"/>
+    /// (<see cref="NetDiscovery.Port"/>; 0 any free one, the tests' and the
+    /// level check's) until the session ends, in the lobby and after the
+    /// Start, bound on the game's address (<c>-bind 127.0.0.1</c>: loopback
+    /// only), its IWAD shown as <paramref name="iwadName"/>. A port that is
+    /// taken is logged and the session goes on, not visible on the LAN.
+    /// </summary>
+    public void AnswerDiscovery(string iwadName, int port = NetDiscovery.Port)
+    {
+        ArgumentNullException.ThrowIfNull(iwadName);
+        if (Server is null || Discovery is not null)
+            return;
+        _iwadName = iwadName;
+        string bind = Options.BindAddress;
+        System.Net.IPAddress? address = bind is "*" or "0.0.0.0" or "::" ? System.Net.IPAddress.Any
+            : System.Net.IPAddress.TryParse(bind, out System.Net.IPAddress? a) && a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? a
+            : null;
+        if (address is null)
+        {
+            DiscoveryError = $"{bind} is not an IPv4 address";
+            Log?.Invoke($"not visible on the LAN: {DiscoveryError}");
+            return;
+        }
+        try
+        {
+            Discovery = new NetDiscoveryResponder(address, port, DiscoveryState);
+            Log?.Invoke($"visible on the LAN: discovery on {(address.Equals(System.Net.IPAddress.Any) ? "*" : bind)}:{Discovery.Port}");
+        }
+        catch (System.Net.Sockets.SocketException e)
+        {
+            DiscoveryError = $"port {port}: {e.Message}";
+            Log?.Invoke($"not visible on the LAN: port {port} {e.SocketErrorCode}: {e.Message}");
+        }
+    }
+
+    /// <summary>T11.9d: the discovery reply (but its nonce) for the game as it is now.</summary>
+    private NetDiscoveryReply DiscoveryState()
+    {
+        NetServer server = Server!;
+        NetGameSettings settings = server.Settings;
+        string name = server.NameOf(0) is { Length: > 0 } n ? n : NetProtocol.CleanName(Options.PlayerName, 0);
+        return new NetDiscoveryReply(0, _instance, NetProtocol.Version, _identity.Build, _identity.IwadMd5, _iwadName,
+            _identity.PwadMd5s.Count, NetDiscovery.PwadHash(_identity.PwadMd5s), name, Port, server.Phase != NetServerPhase.Lobby,
+            server.PlayerCount, Options.Players, settings.Spawn.deathmatch, MapName(settings), (int)settings.Spawn.gameskill + 1);
+    }
+
+    /// <summary>
+    /// T11.9d: where the others reach a host listening on <paramref name="bind"/>:<paramref name="port"/>,
+    /// as the lobby page shows it: the first two LAN addresses (up, not
+    /// loopback, not link-local) for every interface, else 127.0.0.1; the
+    /// bound address itself for one.
+    /// </summary>
+    public static List<string> HostAddresses(string bind, int port)
+    {
+        var list = new List<string>();
+        if (bind is "*" or "0.0.0.0" or "::")
+        {
+            foreach ((System.Net.IPAddress address, System.Net.IPAddress _) in NetDiscovery.LanAddresses())
+            {
+                string a = $"{address}:{port}";
+                if (list.Count < 2 && !list.Contains(a))
+                    list.Add(a);
+            }
+            if (list.Count == 0)
+                list.Add($"127.0.0.1:{port}");
+        }
+        else
+            list.Add(bind.Contains(':', StringComparison.Ordinal) ? $"[{bind}]:{port}" : $"{bind}:{port}");
+        return list;
+    }
+
     /// <summary>Poll the server and the client at <paramref name="nowUs"/> (µs, this machine's clock); start the game when it is time.</summary>
     public void Update(long nowUs)
     {
         Server?.Update(nowUs);
+        Discovery?.Update(nowUs); // T11.9d
         Client.Update(nowUs);
         if (Client.State != _lastState)
         {
@@ -341,6 +424,7 @@ public sealed class NetSession : IDisposable
             Client.Quit();
         _clientTransport.Dispose();
         _serverTransport?.Dispose();
+        Discovery?.Dispose();
     }
 
     /// <summary>

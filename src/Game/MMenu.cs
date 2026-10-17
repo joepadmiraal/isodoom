@@ -172,6 +172,9 @@ public sealed partial class MMenu
         /// <summary>Not vanilla (T7.9b): a slider's select (Enter, the pad's A, a click) calls this instead of stepping it right (the cheats page's pickers).</summary>
         public Action? select;
 
+        /// <summary>Not vanilla (T11.9d): a text page's item drawn greyed, text and value (a LAN game this machine can't join; a gap's text, a heading, always is).</summary>
+        public bool grey;
+
         public menuitem_t(short status, string name, Action<int>? routine, char alphaKey, string text = "")
         {
             this.status = status;
@@ -994,7 +997,10 @@ public sealed partial class MMenu
     }
 
     /// <summary>m_menu.c <c>M_WriteText</c>: upper case, a new line every 12 rows, stops at the screen's right edge.</summary>
-    public void M_WriteText(int x, int y, string text)
+    public void M_WriteText(int x, int y, string text) => M_WriteText(x, y, text, false);
+
+    /// <summary><see cref="M_WriteText(int, int, string)"/>, greyed with <paramref name="grey"/> (T11.9d: through <see cref="ScreenGraphics.GreyMap"/>).</summary>
+    public void M_WriteText(int x, int y, string text, bool grey)
     {
         if (_screen is null)
             return;
@@ -1016,7 +1022,10 @@ public sealed partial class MMenu
             int w = Graphics.CharWidth(c);
             if (cx + w > HudScreen.SCREENWIDTH)
                 break;
-            Graphics.DrawChar(_screen, cx, cy, c);
+            if (grey)
+                Graphics.DrawCharGrey(_screen, cx, cy, c);
+            else
+                Graphics.DrawChar(_screen, cx, cy, c);
             cx += w;
         }
     }

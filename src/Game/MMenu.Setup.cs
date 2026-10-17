@@ -267,10 +267,12 @@ public sealed partial class MMenu
             menuitem_t item = currentMenu.menuitems[i];
             if (item.status != -1)
             {
-                M_WriteText(currentMenu.x, my, item.text);
+                M_WriteText(currentMenu.x, my, item.text, item.grey);
                 if (item.value is { } value)
-                    M_WriteText(VALUEX, my, value());
+                    M_WriteText(VALUEX, my, value(), item.grey);
             }
+            else if (item.text.Length > 0)
+                M_WriteText(currentMenu.x, my, item.text, true); // T11.9d: a heading, greyed
             my += currentMenu.lineHeight;
         }
         M_WriteText(currentMenu.x + TEXTCURSORXOFF, currentMenu.y + itemOn * currentMenu.lineHeight, ">");

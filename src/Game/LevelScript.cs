@@ -782,6 +782,7 @@ public partial class LevelScript : Node
                     case "kill": Kill(w.Length > 1 ? Int(w[1]) - 1 : null); break; // T11.8
                     case "netdesync": exit |= NetDesync(); break; // T11.11
                     case "netuntil": exit |= await NetUntil(w); break; // T11.11
+                    case "lan": exit |= await Lan(w.Length > 1 && w[1] != "join" ? Int(w[1]) : 1, w.Length > 2 && w[2] != "join" ? Int(w[2]) : 30, w[^1] == "join"); break; // T11.9d
                     case "lobby": exit |= await Lobby(w.Length > 1 ? Int(w[1]) : 0, w.Length > 2 ? Int(w[2]) : 60); break; // T11.9
                     case "quit": await _scene.QuitQuietly(exit); return;
                     default: throw new ArgumentException($"unknown command \"{w[0]}\"");

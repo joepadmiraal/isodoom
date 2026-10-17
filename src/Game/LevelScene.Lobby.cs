@@ -16,6 +16,35 @@ public partial class LevelScene : INetMenuHost
     // T11.9: the session came from the menus (a failure ends it), and the address a join made from them connects to
     private bool _netFromMenus;
     private string? _joiningAddress;
+    private NetIdentity? _netIdentity;
+
+    /// <summary>T11.9d: the port a host's session answers LAN discovery on (<see cref="NetDiscovery.Port"/>; the level check's 0, a free one).</summary>
+    internal int DiscoveryPort { get; set; } = NetDiscovery.Port;
+
+    /// <summary>T11.9d: where the Join Game page's browser queries (null: <see cref="NetDiscovery.DefaultTargets"/>; the level check's own hosts).</summary>
+    internal System.Collections.Generic.IReadOnlyList<System.Net.IPEndPoint>? DiscoveryTargets { get; set; }
+
+    /// <summary>T11.9d: this machine's identity (the build and WADs' MD5s), read once.</summary>
+    private NetIdentity NetIdentity() => _netIdentity ??= NetSession.Identity(Main.Version, _iwadPath!, _pwadPaths);
+
+    /// <summary>T11.9d: the IWAD's file name as a host's discovery reply shows it.</summary>
+    private string IwadName() => _iwadPath is null ? "" : Path.GetFileName(_iwadPath).ToUpperInvariant();
+
+    /// <inheritdoc/>
+    NetDiscoveryBrowser? INetMenuHost.OpenBrowser()
+    {
+        if (_iwadPath is null)
+            return null;
+        try
+        {
+            return new NetDiscoveryBrowser(NetIdentity(), DiscoveryTargets);
+        }
+        catch (System.Net.Sockets.SocketException e)
+        {
+            GD.PrintErr($"Net: no LAN search: {e.Message}");
+            return null;
+        }
+    }
 
     /// <inheritdoc/>
     string? INetMenuHost.HostGame()
@@ -120,7 +149,8 @@ public partial class LevelScene : INetMenuHost
             int maxPlayers = net.Server is not null ? net.Options.Players : c.MaxPlayers > 0 ? c.MaxPlayers : NetProtocol.MaxPlayers;
             return new NetLobbyView(net.Server is not null, _netFromMenus, net.Address, net.Port, c.State, maxPlayers, net.LobbyPlayers(),
                 settings, settings is null ? null : MapName(settings), wad, net.Failure, c.Refusal, net.StartRefusal, net.StartRefusals,
-                net.StartRequested, NetGame is not null || c.State == NetClientState.InGame);
+                net.StartRequested, NetGame is not null || c.State == NetClientState.InGame,
+                net.Server is not null ? NetSession.HostAddresses(net.Options.BindAddress, net.Port) : null, net.DiscoveryError);
         }
     }
 
@@ -130,10 +160,10 @@ public partial class LevelScene : INetMenuHost
     /// with <paramref name="otherIwad"/> another IWAD's MD5 (refused);
     /// T11.9c: its player named <paramref name="name"/>.
     /// </summary>
-    internal NetSession CheckSession(NetOptions options, bool otherIwad = false, string name = "CHECK")
+    internal NetSession CheckSession(NetOptions options, bool otherIwad = false, string name = "CHECK", bool discovery = false)
     {
         options = options with { PlayerName = name };
-        NetIdentity identity = NetSession.Identity(Main.Version, _iwadPath!, _pwadPaths);
+        NetIdentity identity = NetIdentity();
         if (otherIwad)
             identity = identity with { IwadMd5 = new string('0', 32) };
         var spawn = new SpawnSettings(GameMode, Skill, gameversion: GameVersion, gamemission: GameMission);
@@ -141,12 +171,15 @@ public partial class LevelScene : INetMenuHost
         var made = new System.Collections.Generic.List<NetEnetTransport>();
         try
         {
-            return new NetSession(options, identity, settings, use =>
+            var session = new NetSession(options with { BindAddress = "127.0.0.1" }, identity, settings, use =>
             {
                 var transport = new NetEnetTransport(options.Players) { BindAddress = use == NetTransportUse.Server ? "127.0.0.1" : "*" };
                 made.Add(transport);
                 return transport;
             }, line => GD.Print($"Level check: net: {line}"));
+            if (discovery)
+                session.AnswerDiscovery(otherIwad ? "OTHER.WAD" : IwadName(), 0); // T11.9d: on a free port of its own
+            return session;
         }
         catch
         {
