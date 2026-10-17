@@ -17,6 +17,8 @@ namespace IsoDoom.Game;
 // a host on another IWAD refuses the scene's join (a recent address picked
 // with the pad's A), shown as a message back on the join page. With a real
 // renderer the multiplayer pages are compared pixel by pixel (CheckLobbyDrawn).
+// F12 (the harness's local-player key) is refused in both games: the local
+// player stays (T11.8; kept by the user's decision: no spy view).
 public partial class LevelCheck
 {
     private static InputEventKey TypeEvent(char c) => Held(new InputEventKey
@@ -101,6 +103,8 @@ public partial class LevelCheck
                 Fail(Step("the lobby's Start"));
             else if (s.World is not { netgame: true, consoleplayer: 0 } w || !w.playeringame[1] || s.Mesh?.Level.Name != s.DefaultMap())
                 Fail(Step($"the game begun: {s.World?.consoleplayer}, {s.Mesh?.Level.Name}"));
+            else if (s.LocalPlayerKey() || w.consoleplayer != 0 || s.PlayerMobj != w.players[0].mo)
+                Fail(Step($"F12 in the netgame (refused: no spy view, the user's decision): local player {w.consoleplayer + 1}"));
         }
         finally
         {
@@ -130,6 +134,8 @@ public partial class LevelCheck
                 Fail(Step("the joined game's start"));
             else if (s.World is not { netgame: true, consoleplayer: 1 })
                 Fail(Step($"the joined game: local player {s.World?.consoleplayer}"));
+            else if (s.LocalPlayerKey() || s.World.consoleplayer != 1)
+                Fail(Step($"F12 in the joined game (refused): local player {s.World.consoleplayer + 1}"));
             if (s.GetSetting("net/addresses").Split(' ').FirstOrDefault() != address)
                 Fail(Step($"the address kept: \"{s.GetSetting("net/addresses")}\""));
         }
@@ -167,7 +173,7 @@ public partial class LevelCheck
             s.SetSetting("net/port", Settings.Find("net/port")!.Default);
         }
         if (_failures == failures)
-            GD.Print("Level check: lobby (T11.9): hosted from the menus, joined by a second machine, a start refused and shown, the game begun on both; joined from Join Game with a typed address and kept; a join on another IWAD refused and shown");
+            GD.Print("Level check: lobby (T11.9): hosted from the menus, joined by a second machine, a start refused and shown, the game begun on both, F12 refused in it; joined from Join Game with a typed address and kept; a join on another IWAD refused and shown");
     }
 
     /// <summary>T11.9: the Multiplayer, Host Game and lobby pages as drawn (a session hosted alone for the lobby), every pixel against the CPU's.</summary>

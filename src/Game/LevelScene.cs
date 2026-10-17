@@ -1362,10 +1362,7 @@ public partial class LevelScene : Node3D, IGameHost
                 _overlayDue = 0; // (its text at once)
                 break;
             case Key.F12:
-                // T11.10: the next player in the game becomes the local one (a harness's debug key; T11.8: not in a netgame)
-                if (!NetRefuses("F12"))
-                    CycleLocalPlayer();
-                _overlayDue = 0;
+                LocalPlayerKey();
                 break;
             default:
                 return;

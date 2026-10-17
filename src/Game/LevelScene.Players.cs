@@ -101,6 +101,23 @@ public partial class LevelScene
         return true;
     }
 
+    /// <summary>
+    /// F12 (T11.10): the next player in the game becomes the local one
+    /// (<see cref="CycleLocalPlayer"/>), a debug key of the
+    /// <c>--level-players</c> harness. Refused in a real netgame (T11.8; kept
+    /// so by the user's decision, SPEC §12 "F12 stays refused in a
+    /// netgame"): no spy view, no <c>displayplayer</c> apart from
+    /// <c>consoleplayer</c>; a log line, nothing on screen. False when refused.
+    /// </summary>
+    public bool LocalPlayerKey()
+    {
+        _overlayDue = 0;
+        if (NetRefuses("F12"))
+            return false;
+        CycleLocalPlayer();
+        return true;
+    }
+
     /// <summary>F12: the next player in the game becomes the local one (<see cref="SetLocalPlayer"/>).</summary>
     public void CycleLocalPlayer()
     {

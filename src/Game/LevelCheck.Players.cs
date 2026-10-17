@@ -93,6 +93,10 @@ public partial class LevelCheck
             if (_scene.SetLocalPlayer(World.MAXPLAYERS) || (players.Length < World.MAXPLAYERS && _scene.SetLocalPlayer(Enumerable.Range(0, World.MAXPLAYERS).First(i => !world.playeringame[i]))))
                 Fail($"players: {map}: a player not in the game was made the local one");
             _scene.SetLocalPlayer(players[0]);
+            // F12 (the harness's key, no session): the next player in the game (a real netgame refuses it: CheckLobby)
+            if (!_scene.LocalPlayerKey() || world.consoleplayer != players[1])
+                Fail($"players: {map}: F12 made player {world.consoleplayer + 1} the local one, expected {players[1] + 1}");
+            _scene.SetLocalPlayer(players[0]);
             CheckCoopReborn(world, map, players); // T11.3
             // T11.10a: a game alone has no rings
             _scene.PlayersInGame = 1;
