@@ -18,7 +18,10 @@ namespace IsoDoom.Game;
 /// the start map and every map its exits lead to, secret maps included, as
 /// far as the WAD has them). A deathmatch game spawns at the deathmatch starts
 /// (T11.4) instead, and vanilla <c>I_Error</c>s on a map with fewer than 4 of
-/// them: such maps are refused the same way. Plain C#: reads the maps' <c>THINGS</c> only.
+/// them: only the start map is checked (the user's decision, SPEC §12
+/// "A deathmatch checks its start map only": Doom II's MAP28 has 2, and a
+/// deathmatch rarely leaves its map); a later one ends the netgame when the
+/// game gets there. Plain C#: reads the maps' <c>THINGS</c> only.
 /// </summary>
 public static class NetStarts
 {
@@ -110,17 +113,20 @@ public static class NetStarts
     /// Why a co-op game of <paramref name="playerMask"/> started on
     /// <paramref name="episode"/>, <paramref name="map"/> is refused (the maps
     /// it can reach lacking starts for some of its players), or null when every
-    /// such map has them; in <paramref name="deathmatch"/>, the maps with
-    /// fewer than 4 deathmatch starts.
+    /// such map has them; in <paramref name="deathmatch"/>, the start map
+    /// with fewer than 4 deathmatch starts (a later one is not refused: the
+    /// game ends there, <c>LevelScene</c>'s netgame over).
     /// </summary>
     public static string? Refusal(WadArchive wad, GameMode mode, int episode, int map, int playerMask, bool deathmatch = false)
     {
         if (deathmatch)
         {
             // T11.4: G_DeathMatchSpawnPlayer's "Only %i deathmatch spots, 4 required"
-            var few = ReachableMaps(wad, mode, episode, map).Select(name => (Name: name, Count: DeathmatchStarts(wad, mode, name))).Where(m => m.Count < 4).ToList();
-            return few.Count == 0 ? null
-                : "fewer than 4 deathmatch starts on " + string.Join(", ", few.Select(m => $"{m.Name} ({m.Count})"));
+            string first = mode == GameMode.commercial ? $"MAP{map:00}" : $"E{episode}M{map}";
+            if (wad.W_CheckNumForName(first) < 0)
+                return null;
+            int count = DeathmatchStarts(wad, mode, first);
+            return count < 4 ? $"fewer than 4 deathmatch starts on {first} ({count})" : null;
         }
         var lacking = new List<(string Map, IReadOnlyList<int> Players)>();
         foreach (string name in ReachableMaps(wad, mode, episode, map))

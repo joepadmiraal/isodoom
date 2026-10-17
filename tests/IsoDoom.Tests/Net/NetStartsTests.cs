@@ -14,7 +14,7 @@ namespace IsoDoom.Tests.Net;
 /// <summary>
 /// T11.1a, checked by T11.8 where the host starts the game: a co-op game is
 /// refused when a map it can reach lacks a start for a player in it, a
-/// deathmatch game when one has fewer than 4 deathmatch starts
+/// deathmatch game when its start map has fewer than 4 deathmatch starts
 /// (<see cref="NetStarts"/>), and the refused game never starts (<see cref="NetSession.CheckStart"/>).
 /// </summary>
 public sealed class NetStartsTests
@@ -73,10 +73,11 @@ public sealed class NetStartsTests
     }
 
     [Fact]
-    public void A_deathmatch_game_is_refused_with_fewer_than_four_deathmatch_starts()
+    public void A_deathmatch_game_is_refused_when_its_start_map_has_fewer_than_four_deathmatch_starts()
     {
         WadArchive wad = Maps(("E1M1", [1, 11, 11, 11, 11]), ("E1M2", [1, 11, 11, 11]));
-        Assert.Equal("fewer than 4 deathmatch starts on E1M2 (3)", NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b1111, deathmatch: true));
+        Assert.Null(NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b1111, deathmatch: true)); // a later map's are not checked
+        Assert.Equal("fewer than 4 deathmatch starts on E1M2 (3)", NetStarts.Refusal(wad, GameMode.registered, 1, 2, 0b1111, deathmatch: true));
         Assert.Equal(3, NetStarts.DeathmatchStarts(wad, GameMode.registered, "E1M2"));
         Assert.Null(NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b1)); // (co-op: player 1's start is there)
     }
@@ -103,6 +104,16 @@ public sealed class NetStartsTests
     {
         var wad = WadArchive.Open(TestWads.RequireDoom1());
         Assert.Null(NetStarts.Refusal(wad, GameMode.shareware, 1, 1, 0b1111));
+    }
+
+    [Fact]
+    public void A_Doom_II_deathmatch_starts_on_map01_though_map28_has_two_deathmatch_starts()
+    {
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
+        int count = NetStarts.DeathmatchStarts(wad, GameMode.commercial, "MAP28"); // 2 in v1.666 (only what every release has is asserted)
+        Assert.Null(NetStarts.Refusal(wad, GameMode.commercial, 1, 1, 0b11, deathmatch: true));
+        if (count < 4)
+            Assert.Equal($"fewer than 4 deathmatch starts on MAP28 ({count})", NetStarts.Refusal(wad, GameMode.commercial, 1, 28, 0b11, deathmatch: true));
     }
 
     [Fact]

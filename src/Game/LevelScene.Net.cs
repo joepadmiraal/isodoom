@@ -197,6 +197,7 @@ public partial class LevelScene
         NetGame = start;
         _desyncLog = new NetDesyncLog(start); // T11.11
         NetStoppedDesync = null;
+        _netGameOver = null;
         _quitStoppedNetGame = false;
         NetDesyncDumps = null;
         _netScriptFrom = start.StartTic;
@@ -226,6 +227,14 @@ public partial class LevelScene
     {
         GameFlow flow = Flow;
         NetClient c = Net!.Client;
+        if (_netGameOver is { } over)
+        {
+            // the game ended under the netgame: the host waits for the others to get there too, then every machine closes
+            TicFraction = 1;
+            if (Net.Server is not { PlayerCount: > 1 } || Time.GetTicksMsec() >= _netGameOverUntilMs)
+                CloseNetGame(over);
+            return;
+        }
         if (c.State != NetClientState.InGame)
         {
             TicFraction = 1;
@@ -269,10 +278,16 @@ public partial class LevelScene
         }
         _ticTime = 0;
         int ran = 0;
-        while (ran < MaxTicsPerFrame && !flow.Wipe.go && !Paused && !Quitting && flow.CanTic && c.TryTakeTic(_netCmds, out int tic, out byte mask))
+        while (ran < MaxTicsPerFrame && _netGameOver is null && !flow.Wipe.go && !Paused && !Quitting && flow.CanTic && c.TryTakeTic(_netCmds, out int tic, out byte mask))
         {
             RunNetTic(c, tic, mask);
             ran++;
+        }
+        if (_netGameOver is { } ended)
+        {
+            flow.Menu.M_StartMessage($"{flow.Menu.Wrap("the netgame ended: " + ended)}.\n\n{MMenu.PRESSKEY}", null, false);
+            TicFraction = 1;
+            return;
         }
         TicFraction = flow.Wipe.go || flow.paused || flow.gamestate != gamestate_t.GS_LEVEL ? 1 : Math.Clamp(c.ClockTics - c.LastRanTic, 0, 1);
     }
@@ -424,9 +439,35 @@ public partial class LevelScene
         Flow.Menu.M_StartMessage($"the netgame ended:\n{text}.\n\n{MMenu.PRESSKEY}", null, false);
     }
 
-    // The netgame ended (EndNetGame) or quit after a desync (QuitStoppedNetGame): the session closed, the title loop, the banner gone.
+    // Why the game ended under the netgame (NetGameOver), and until when the host waits for the others to run that tic too.
+    private string? _netGameOver;
+    private ulong _netGameOverUntilMs;
+
+    // How long the host keeps its session open after the game ended under the netgame (the others are a few tics behind).
+    private const ulong NetGameOverGraceMs = 5000;
+
+    /// <summary>
+    /// The game ended under the netgame at a tic every machine runs (a next
+    /// map that could not be built, as a deathmatch's map with fewer than 4
+    /// deathmatch starts, or one the WAD lacks; SPEC §12 "A deathmatch checks
+    /// its start map only"): no more tics run, a menu message says why, and
+    /// the netgame closes (<see cref="CloseNetGame"/>): a join's at once, the
+    /// host's once the others left or after <see cref="NetGameOverGraceMs"/>,
+    /// so a join a few tics behind gets there before the host goes.
+    /// </summary>
+    private void NetGameOver(string why)
+    {
+        if (_netGameOver is not null)
+            return;
+        _netGameOver = why;
+        _netGameOverUntilMs = Time.GetTicksMsec() + NetGameOverGraceMs;
+        GD.Print($"Net: the game ended: {why}");
+    }
+
+    // The netgame ended (EndNetGame, NetGameOver) or quit after a desync (QuitStoppedNetGame): the session closed, the title loop, the banner gone.
     private void CloseNetGame(string text)
     {
+        _netGameOver = null;
         NetEnded = text;
         NetGame = null;
         _desyncLog = null;
@@ -476,7 +517,7 @@ public partial class LevelScene
         if (NetStoppedDesync is { } d)
             text = $"Desync: the machines differ in tics {d.FirstTic}-{d.LastTic}. The game stopped."
                 + (NetDesyncDumps is { } dir ? $"\nDumps: {dir}" : "");
-        else if (NetPlaying && Net!.Client is { State: NetClientState.InGame, LateUs: > NetWaitingMessageUs } c)
+        else if (NetPlaying && _netGameOver is null && Net!.Client is { State: NetClientState.InGame, LateUs: > NetWaitingMessageUs } c)
             text = WaitingText(c.WaitingFor, c.Slot);
         NetBannerText = text;
         if (_netBanner is null)

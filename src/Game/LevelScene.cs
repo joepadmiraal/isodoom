@@ -2159,6 +2159,9 @@ public partial class LevelScene : Node3D, IGameHost
     // The exception of the last level load the flow asked for (LoadMap rethrows it).
     private Exception? _loadError;
 
+    // Why the last map that could not be built failed ("MAP28: Only 2 deathmatch spots, 4 required"), until the game ends for it (a netgame's message).
+    private string? _loadFailure;
+
     /// <summary>
     /// <see cref="IGameHost.G_InitNew"/>: a new game on <paramref name="skill"/>
     /// (<see cref="Skill"/> from now on) at map <paramref name="map"/>
@@ -2216,6 +2219,7 @@ public partial class LevelScene : Node3D, IGameHost
             GD.PrintErr($"Level: {map}: {e.Message}");
             _status = $"{map}: {e.Message}";
             _loadError = e;
+            _loadFailure = _status;
             return false;
         }
     }
@@ -2253,6 +2257,9 @@ public partial class LevelScene : Node3D, IGameHost
             LevelEnded = why;
             GD.Print($"Level: {why}; the title loop");
         }
+        if (NetGame is not null)
+            NetGameOver(why ?? _loadFailure ?? "the game ended"); // the netgame ends with it
+        _loadFailure = null;
         UnloadLevel();
     }
 
@@ -3123,7 +3130,8 @@ public partial class LevelScene : Node3D, IGameHost
     /// changes its sectors in place, SPEC §12 T4.2): <c>G_InitNew</c> and
     /// <c>G_DoLoadLevel</c>; or, with <paramref name="carry"/>, that game's
     /// next level (<see cref="World.G_DoWorldDone"/>, T5.8). A thing type the game doesn't know (vanilla
-    /// <c>I_Error</c>s) leaves the map without a world, so without things.
+    /// <c>I_Error</c>s) leaves the map without a world, so without things (in a
+    /// netgame, the netgame ends: <see cref="NetGameOver"/>).
     /// </summary>
     private void StartWorld(Level level, World? carry = null)
     {
@@ -3162,6 +3170,8 @@ public partial class LevelScene : Node3D, IGameHost
         {
             GD.PushWarning($"Level: {level.Name}: no things: {e.Message}");
             World = null;
+            if (NetGame is not null)
+                NetGameOver($"{level.Name}: {e.Message}"); // a netgame can't go on without a world (a deathmatch map with fewer than 4 deathmatch starts)
         }
     }
 
