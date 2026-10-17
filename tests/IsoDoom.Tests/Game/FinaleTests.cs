@@ -122,7 +122,10 @@ public class FinaleTests
             Assert.Equal(tic < route.Cmds.Count ? gamestate_t.GS_LEVEL : gamestate_t.GS_INTERMISSION, flow.gamestate);
             if (tic < route.Cmds.Count)
                 route.File.RunEvents(world, tic);
-            flow.G_Ticker(cmds[tic]);
+            if (tic < route.Cmds.Count && route.File.Netgame)
+                flow.G_Ticker(route.NetCmds[tic]); // T11.8's follow-up: a multi-player route's every player (coop-e1m8-exit-2p)
+            else
+                flow.G_Ticker(cmds[tic]);
         }
         Assert.Equal(gamestate_t.GS_FINALE, flow.gamestate); // no intermission after ExM8; Doom II's text after its intermission's last tic
         FFinale fi = flow.Finale;

@@ -2,7 +2,7 @@
 """Vanilla intermission reference (T7.4; dev tool). Usage:
 
     intermissions.py REF DOOM1.WAD OUTDIR ROUTE[@PRESSES]... [--images DIR TICS]
-        [--synthetic SYNTHETIC.wad] [--testmaps DIR]
+        [--synthetic SYNTHETIC.wad] [--testmaps DIR] [--all-in-outdir]
 
 Plays each DOOM1.WAD, (T10.1) Doom II, (T10.7) Final Doom or (M9) The Ultimate Doom exit route (a .route file with an exit header,
 tests/IsoDoom.Tests/Sim/Routes) in the vanilla reference (REF, dump.c built
@@ -24,7 +24,9 @@ route's exit), its gameversion header -gameversion, and a synthetic or test
 map route (with --synthetic, the synthetic IWAD; --testmaps, the test map
 PWADs' directory: routes.sh's) plays with it as -file over DOOM1.WAD, as
 routes.py plays them; its dumps are not WAD-derived and go beside the route
-(commit them), as its .vanilla does.
+(commit them), as its .vanilla does. With --all-in-outdir (wi.sh's, T11.8's
+follow-up) every dump goes to OUTDIR, the synthetic routes' too (a look,
+not the committed dumps).
 """
 import os, subprocess, sys, tempfile
 
@@ -40,6 +42,8 @@ def main():
     args = sys.argv[1:]
     images = None
     wads = {}
+    all_in_outdir = '--all-in-outdir' in args
+    args = [a for a in args if a != '--all-in-outdir']
     for opt in ('--synthetic', '--testmaps'):
         if opt in args:
             i = args.index(opt)
@@ -72,7 +76,7 @@ def main():
             extra += ['-gameversion', head['gameversion']]
         if head['timer']:
             extra += ['-timer', str(head['timer'])]
-        routedir = outdir if routes.id_wad(head) else os.path.dirname(os.path.abspath(route))
+        routedir = outdir if routes.id_wad(head) or all_in_outdir else os.path.dirname(os.path.abspath(route))
         schedules = [p for p in presses.split('@') if p] if presses else [DEFAULT, SKIP]
         name = os.path.splitext(os.path.basename(route))[0]
         for n, schedule in enumerate(schedules):

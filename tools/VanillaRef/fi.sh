@@ -19,6 +19,10 @@
 # out of the repo. Needs DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD), and Doom
 # II's IWAD for its routes (wads/doom2.wad or $ISODOOM_DOOM2_WAD).
 # T9.4: also The Ultimate Doom's ExM8 exit routes (iwad doom: wads/doom.wad or $ISODOOM_DOOM_WAD).
+# T11.8's follow-up: a multi-player route (players N) plays as a netgame in
+# both (vanilla's netdemo; the scene's --level-players=N with the header's
+# -deathmatch, -altdeath, -timer and -gameversion, sceneargs.sh), the
+# finale's commands player 1's, the others idle.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -29,7 +33,10 @@ while [ "${1:-}" = --presses ] || [ "${1:-}" = --keys ]; do
     shift 2
 done
 doom1=$(realpath "${ISODOOM_DOOM1_WAD:-$repo/wads/DOOM1.WAD}")
-header() { sed -e 's/#.*//' "$route" | awk -v k="$1" '$1 == k { print $2; exit }'; }
+# shellcheck source=tools/VanillaRef/sceneargs.sh
+. "$here/sceneargs.sh"
+header() { scene_header "$route" "$1"; }
+scene_route_args "$route" # T11.8's follow-up: a multi-player route's netgame (--level-players, -deathmatch, ...)
 map=$(header map); map=${map:-E1M1}
 iwad=$doom1 intermission=""
 if [ "$(header iwad)" = doom2 ] && [ -n "$(header exit)" ]; then
@@ -83,7 +90,7 @@ print(''.join(c + '; ' for c in out))
 PY
 )
     (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
-        godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$iwad" --level "$map" --level-tweaks=vanilla \
+        godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$iwad" --level "$map" "${scene_args[@]}" --level-tweaks=vanilla \
         --level-monsters=$monsters --level-skill="$skill" --level-wipe=off --level-hud-aspect=square --level-palette-effects=screen \
         --level-script="route $route; ${intermission}gamestate finale; ${cmds}gamestate finale; tap F3; shot $dir/o$tic.png" >/dev/null 2>&1)
 done

@@ -1,0 +1,65 @@
+# DOOM1.WAD E1M8 in co-op (T11.8's follow-up: fi.sh and the finale of a
+# netgame), two players, no monsters: e1m8-exit's way for player 1 from the
+# arena south of the stairs (its start; player 2 at its co-op start, where
+# it stands): the S1 stairs switch line 233, up the stairs onto sector 52,
+# across the WR teleport line 299 into the damage-and-exit sector 66, and
+# wait there until its hits leave 10 health or less: G_ExitLevel, the last
+# tic, then the finale. Written by tools/RouteGen (coop-e1m8-exit-2p).
+iwad doom1
+map E1M8
+players 2
+exit normal
+start 320 4384 90
+
+# each player's forwardmove sidemove turn buttons, | between them [xcount]; turn << 8 = angleturn
+0 0 0 0 | 0 0 0 0
+0 0 0 2 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x448
+50 -1 -51 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0 x4
+50 1 0 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0
+50 -1 0 0 | 0 0 0 0
+50 -40 40 0 | 0 0 0 0
+50 -40 10 0 | 0 0 0 0
+50 -40 1 0 | 0 0 0 0
+50 -40 0 0 | 0 0 0 0 x2
+50 -12 1 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0
+50 1 0 0 | 0 0 0 0 x2
+50 17 -3 0 | 0 0 0 0
+50 6 -1 0 | 0 0 0 0
+50 -2 0 0 | 0 0 0 0
+50 10 0 0 | 0 0 0 0
+50 5 -1 0 | 0 0 0 0
+50 -1 0 0 | 0 0 0 0
+50 5 -1 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0
+50 8 0 0 | 0 0 0 0
+50 4 -1 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0 x5
+50 -1 0 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0 x5
+50 -1 0 0 | 0 0 0 0
+50 0 0 0 | 0 0 0 0 x3
+10 0 0 0 | 0 0 0 0
+-5 0 0 0 | 0 0 0 0
+-4 0 0 0 | 0 0 0 0
+-3 0 0 0 | 0 0 0 0
+-4 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0
+-3 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0 x4
+-1 0 0 0 | 0 0 0 0
+-2 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x5
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0 x2
+0 0 0 0 | 0 0 0 0
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x2
+-1 0 0 0 | 0 0 0 0
+0 0 0 0 | 0 0 0 0 x13
+25 0 6 0 | 0 0 0 0
+25 0 0 0 | 0 0 0 0 x16
+0 0 0 0 | 0 0 0 0 x157

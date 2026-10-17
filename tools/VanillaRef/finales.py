@@ -121,7 +121,12 @@ def main():
                 if images:
                     os.makedirs(images[0], exist_ok=True)
                     env['DUMP_FI_DIR'], env['DUMP_FI_TICS'] = images
-                r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1), '-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
+                extra = []  # T11.8's follow-up: the reference's arguments routes.py gives the route too
+                if head['gameversion']:
+                    extra += ['-gameversion', head['gameversion']]
+                if head['timer']:
+                    extra += ['-timer', str(head['timer'])]
+                r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1)] + extra + ['-playdemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
                                    cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             finally:  # (no shutil: the dev container's Python is minimal)
                 for root, dirs, files in os.walk(tmp, topdown=False):

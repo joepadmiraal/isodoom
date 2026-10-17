@@ -931,6 +931,32 @@ exit normal
             g.WaitExit();
             log("health " + g.World.players[0].health);
         }, (320, 4384, 90)),
+        ["coop-e1m8-exit-2p"] = new(Doom1, "E1M8", """
+# DOOM1.WAD E1M8 in co-op (T11.8's follow-up: fi.sh and the finale of a
+# netgame), two players, no monsters: e1m8-exit's way for player 1 from the
+# arena south of the stairs (its start; player 2 at its co-op start, where
+# it stands): the S1 stairs switch line 233, up the stairs onto sector 52,
+# across the WR teleport line 299 into the damage-and-exit sector 66, and
+# wait there until its hits leave 10 health or less: G_ExitLevel, the last
+# tic, then the finale. Written by tools/RouteGen (coop-e1m8-exit-2p).
+iwad doom1
+map E1M8
+players 2
+exit normal
+""", (g, log) =>
+        {
+            g.TightCorners = true;
+            g.Wait(1); // G_PlayerReborn's usedown: use needs a tic without it first
+            g.Use(320, 4440);
+            g.WaitUntil(() => g.World.sectors.All(s => s.specialdata is not IsoDoom.Sim.floormove_t));
+            log("stairs built " + g.Heights(53, 54, 60, 67));
+            g.GoTo(448, 4980, 8, 50);
+            log("on sector 52");
+            g.Teleport(448, 5120);
+            log("teleported, health " + g.World.players[0].health);
+            g.WaitExit();
+            log("health " + g.World.players[0].health + "; " + Players(g));
+        }, (320, 4384, 90), Players: 2),
         ["e1m9-exit"] = new(Doom1, "E1M9", """
 # DOOM1.WAD E1M9 (T5.9): from the start to the exit switch (line 551,
 # 11), the last tic. The yellow keycard (sector 88); the yellow door
