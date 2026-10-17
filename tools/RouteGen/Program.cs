@@ -275,10 +275,21 @@ public static class Program
     /// e1m1-exit's way (T5.5) for the player steered: from the start through
     /// door 4, the nukage room, doors 68 and 76, line 308, the lift and doors
     /// 76 and 81 to the exit switch (line 330), pressed on the last tic.
-    /// T11.7: also a co-op player's (<see cref="CoopE1M1Exit"/>).
+    /// T11.7: also a co-op player's (<see cref="CoopE1M1Exit"/>). T11.8's
+    /// follow-up: <paramref name="fight"/> runs at the way's stops (after
+    /// each door and stretch; <see cref="CoopE1M1ClientExit"/>'s fights).
     /// </summary>
-    private static void E1M1Exit(Steer g, Action<string> log)
+    private static void E1M1Exit(Steer g, Action<string> log, Action? fight = null)
     {
+        if (fight is not null)
+        {
+            Action<string> say = log;
+            log = s =>
+            {
+                say(s);
+                fight();
+            };
+        }
         // Door 4 (lines 151/152, x 1536..1552, y -2560..-2432), from the west.
         g.GoTo(1500, -2496);
         log("at door 4");
@@ -333,7 +344,8 @@ public static class Program
         g.GoTo(2960, -4768);
         log("at the exit switch");
         g.Face(2900, -4768);
-        log("before press");
+        if (fight is null)
+            log("before press");
         g.Tic(0, 0, 0, 2); // the last tic: vanilla's G_ExitLevel ends the level (and the dump) here
         log("textures " + g.World.sides[g.World.lines[330].sidenum[0]].midtexture + " " + string.Join(",", g.World.Unported));
     }
@@ -379,6 +391,133 @@ public static class Program
         E1M1Exit(g, log);
         log($"exit: {State()}");
     };
+
+    /// <summary>
+    /// T11.8's follow-up: the plan's co-op exit for <c>loopback.sh --play</c>:
+    /// DOOM1.WAD's E1M1, two players, skill 4 with monsters and no route
+    /// events: player 2 (the client) takes e1m1-exit's way (<see cref="E1M1Exit"/>)
+    /// from its own start, firing its own weapons at the monsters in sight that
+    /// came near (<see cref="Steer.Hold"/>) and at each stop, picking up what lies near, and presses the exit
+    /// switch on the last tic, alive; player 1 (the host) stands at its start.
+    /// </summary>
+    private static void CoopE1M1ClientExit(Steer g, Action<string> log)
+    {
+        string State() => string.Join("; ", Enumerable.Range(0, 2).Select(i =>
+        {
+            IsoDoom.Sim.player_t p = g.World.players[i];
+            return $"p{i + 1} ({p.mo!.x >> 16},{p.mo.y >> 16}) h{p.health} a{p.armorpoints} {p.playerstate} {p.readyweapon} k{p.killcount}";
+        })) + " " + g.Monsters();
+        g.Player = 1;
+        // the netgame's first 70 tics, before loopback.sh's nettic 70 (both stand): the route's world then is the netgame's
+        g.Wait(72); // 2 more idle tics than the netgame's 70: a start whose monsters' randomness the walker lives through (0-11 tried: 2, 8, 9, 11 do)
+        int shots = 0;
+        var looted = new HashSet<IsoDoom.Sim.mobj_t>();
+        var spared = new HashSet<IsoDoom.Sim.mobj_t>(); // monsters a fight could not kill: not fought again
+        double Dist(IsoDoom.Sim.mobj_t m) => Math.Sqrt(Math.Pow((m.x - g.Mo.x) / 65536.0, 2) + Math.Pow((m.y - g.Mo.y) / 65536.0, 2));
+        bool Awake(IsoDoom.Sim.mobj_t m) => m.state != m.info.spawnstate && m.state != IsoDoom.Sim.Info.states[(int)m.info.spawnstate].nextstate;
+        IsoDoom.Sim.mobj_t? Nearest(double range, bool awakeOnly) => g.World.Mobjs()
+            .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && !spared.Contains(m) && Dist(m) < range
+                && (!awakeOnly || Awake(m)) && g.World.P_CheckSight(g.Mo, m))
+            .OrderBy(Dist).FirstOrDefault();
+        // fires at the nearest live monster in sight until none has shown for QUIET tics
+        int Shoot(double range, int quiet)
+        {
+            int fired = 0, still = 0;
+            IsoDoom.Sim.mobj_t? last = null;
+            int on = 0;
+            for (int i = 0; i < 2400 && still < quiet && g.Mo.health > 0; i++)
+            {
+                IsoDoom.Sim.mobj_t? t = Nearest(range, awakeOnly: false);
+                if (t is null)
+                {
+                    g.Wait(1);
+                    still++;
+                    continue;
+                }
+                on = t == last ? on + 1 : 0;
+                last = t;
+                if (on > 350)
+                {
+                    spared.Add(t); // out of the pistol's reach in practice (behind a window, a ledge)
+                    continue;
+                }
+                g.Fire(t.x / 65536.0, t.y / 65536.0);
+                fired++;
+                still = 0;
+            }
+            shots += fired;
+            return fired;
+        }
+        // on the walk: an awake monster in sight near by stops it for a fight, then the pickups near by
+        // (not on a door's way, after "at door": the door would close behind a detour)
+        bool looting = false;
+        string stop = "";
+        // the stops before a door or the lift: a detour for a pickup there loses the door's or the lift's time
+        bool Timed() => stop.StartsWith("at door", StringComparison.Ordinal) || stop.StartsWith("through door 68", StringComparison.Ordinal) || stop.StartsWith("north of line 195 again", StringComparison.Ordinal)
+            || stop.StartsWith("lift idle", StringComparison.Ordinal) || stop.StartsWith("at the exit switch", StringComparison.Ordinal);
+        g.Hold = () =>
+        {
+            if (looting || g.Mo.health <= 0 || Nearest(700, awakeOnly: true) is null || Shoot(900, 35) == 0)
+                return false;
+            if (!Timed())
+                Loot(400);
+            return true;
+        };
+        void Fight()
+        {
+            // at a stop: every live monster in sight within reach, nearest first, until none has shown for 3 seconds
+            // (the awake ones come to the player: it holds where it stopped, a doorway or a corner)
+            if (stop.StartsWith("textures", StringComparison.Ordinal))
+                return; // after the exit switch's press, the last tic
+            int before = shots;
+            if (!stop.StartsWith("lift idle", StringComparison.Ordinal) && !stop.StartsWith("through door 68", StringComparison.Ordinal))
+                Shoot(1200, 105); // (not on the lift's time)
+            if (!Timed())
+                Loot(320); // (not before a door: Door() opens it from where the player stands)
+            log($"  fought {shots - before} tics: {State()}");
+        }
+        // the pickups near by (the shotguns the sergeants dropped, health, armor, ammo)
+        void Loot(double range)
+        {
+            looting = true;
+            for (int n = 0; n < 8 && g.Mo.health > 0; n++)
+            {
+                IsoDoom.Sim.mobj_t me = g.Mo;
+                IsoDoom.Sim.mobj_t? item = g.World.Mobjs()
+                    .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_SPECIAL) != 0 && !looted.Contains(m) && Dist(m) < range
+                        && Math.Abs(m.z - me.z) < 24 * 65536 && g.World.P_CheckSight(me, m))
+                    .OrderBy(Dist).FirstOrDefault();
+                if (item is null)
+                    break;
+                looted.Add(item);
+                try
+                {
+                    g.GoTo(item.x / 65536.0, item.y / 65536.0, 12);
+                }
+                catch (InvalidOperationException e)
+                {
+                    log($"  no way to {item.type}: {e.Message}");
+                }
+            }
+            looting = false;
+        }
+        try
+        {
+            E1M1Exit(g, s =>
+            {
+                stop = s;
+                log($"{s}: {State()}");
+            }, Fight);
+        }
+        catch (InvalidOperationException e)
+        {
+            throw new InvalidOperationException($"{e.Message}: {State()}", e);
+        }
+        g.Hold = null;
+        log($"exit: {State()}; {shots} tics firing");
+        if (g.World.players[1].health <= 0 || g.World.players[1].playerstate != IsoDoom.Sim.playerstate_t.PST_LIVE)
+            throw new InvalidOperationException($"player 2 died on the way: {State()}");
+    }
 
     /// <summary>T11.4: every player in the game's position, health, frags, weapon and cards, for the log.</summary>
     private static string Players(Steer g) => string.Join("; ", Enumerable.Range(0, g.Players).Select(i =>
@@ -637,7 +776,7 @@ public static class Program
 iwad doom1
 exit normal
 
-""", E1M1Exit),
+""", (g, log) => E1M1Exit(g, log)),
         ["e1m2-exit"] = new(Doom1, "E1M2", """
 # DOOM1.WAD E1M2 (T5.9): from the start to the exit switch. East for the
 # red keycard (1136, 352), back west through the red door (sector 99) and
@@ -1518,6 +1657,25 @@ monsters
 exit normal
 
 """, CoopE1M1Exit(2, frag: false), Monsters: true, Players: 2),
+        ["coop-e1m1-client-exit"] = new(Doom1, "E1M1", """
+# DOOM1.WAD E1M1 in co-op to its exit (T11.8's follow-up: the plan's
+# lockstep game for loopback.sh --play, the client walking), two players,
+# skill 4 with monsters, no route events: both stand for 72 tics (the
+# netgame's first 70, before loopback.sh's nettic 70: it plays the route
+# from=70, so the game is this one); then player 2 (the client) takes
+# e1m1-exit's way from its own start, shooting the monsters in sight with
+# its own weapons (BT_ATTACK) at each stop and whenever an awake one comes
+# near on the way, picking up what lies near (the sergeants' shotguns, a
+# chaingun, health, armor), and presses the exit switch alive on the last
+# tic; player 1 (the host) stands at its start. Written by tools/RouteGen
+# (coop-e1m1-client-exit).
+iwad doom1
+skill 4
+players 2
+monsters
+exit normal
+
+""", CoopE1M1ClientExit, Skill: IsoDoom.Sim.skill_t.sk_hard, Monsters: true, Players: 2),
         ["coop-e1m1-exit-4p"] = new(Doom1, "E1M1", """
 # DOOM1.WAD E1M1 in co-op to its exit (T11.7: the net game intermission
 # with its frags column), four players, skill 3 with monsters: every monster

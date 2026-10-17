@@ -9,7 +9,10 @@
 #    and both must print the same hash.
 #  - --play ROUTE NEXT (T11.8): they play the game in lockstep. Both play the
 #    multi-player ROUTE (each machine sends its own player's commands, from
-#    game tic 70 on; both run its events), the host in the route's map, skill,
+#    game tic 70 on; both run its events; a route whose first 70 tics are
+#    idle, with no event, plays from its tic 70 instead, `route ROUTE from=70`,
+#    so its game is the netgame's from the first tic: coop-e1m1-client-exit,
+#    whose fights depend on every tic's randomness), the host in the route's map, skill,
 #    monsters and modes, through the intermission (skipped) into map NEXT;
 #    then the host's server must have compared every checksum window with no
 #    desync, and the client must have seen no consistency failure.
@@ -121,7 +124,18 @@ if [ -n "$route" ]; then
     case "${deathmatch:-0}" in 1) host_args+=(-deathmatch) ;; 2) host_args+=(-altdeath) ;; esac
     [ -n "$timer" ] && host_args+=(-timer "$timer")
     route_tics=$(grep -cE '^-?[0-9]' "$route" || true)
-    start="net; netwait 2; nettic 70; route ROUTE"
+    from=""
+    # (routes.py's parse: the first 70 tics idle for every player, and no route events)
+    if command -v python3 >/dev/null && PYTHONDONTWRITEBYTECODE=1 python3 - "$repo/tools/VanillaRef" "$route" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import routes
+head, cmds = routes.parse(sys.argv[2])
+idle = len(cmds) > 70 and all(all(v == 0 for c in ([t] if isinstance(t[0], int) else t) for v in c) for t in cmds[:70])
+sys.exit(0 if idle and not head['events'] else 1)
+PY
+    then from=" from=70"; fi
+    start="net; netwait 2; nettic 70; route ROUTE$from"
 fi
 # (the victim of --kill waits here to be killed; the marker is its own line)
 doomed="tics 210; print; sleep 600"

@@ -60,6 +60,14 @@ public sealed class Steer
     /// <summary>T6.4: called after every tic (e.g. a <see cref="Gunner"/> adding the next tic's events).</summary>
     public Action? OnTic { get; set; }
 
+    /// <summary>
+    /// T11.8's follow-up: asked before each tic of a <see cref="GoTo"/>
+    /// walk; it may run tics of its own (a fight) and returns true when it
+    /// did, and the walk then plans again from where the player is (not
+    /// counted as an attempt). Null: walks go on.
+    /// </summary>
+    public Func<bool>? Hold { get; set; }
+
     public Steer(WadArchive wad, string map, skill_t skill = skill_t.sk_medium, bool monsters = false, int players = 1, int deathmatch = 0, int timer = 0)
     {
         Players = players;
@@ -522,8 +530,14 @@ public sealed class Steer
             List<(double X, double Y)> path = Plan(x, y);
             int i = 0, stuck = 0, blocked = 0;
             double best = double.MaxValue;
+            bool held = false;
             while (true)
             {
+                if (Hold is { } hold && hold())
+                {
+                    held = true;
+                    break; // plan again from here
+                }
                 double dGoal = Math.Sqrt((x - X) * (x - X) + (y - Y) * (y - Y));
                 double vx = Mo.momx / (double)FU, vy = Mo.momy / (double)FU;
                 if (dGoal <= tol && vx * vx + vy * vy < 1)
@@ -585,6 +599,11 @@ public sealed class Steer
                 {
                     break; // replan
                 }
+            }
+            if (held)
+            {
+                attempt--; // a fight, not a failed walk
+                continue;
             }
             Settle();
         }

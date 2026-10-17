@@ -117,6 +117,9 @@ namespace IsoDoom.Game;
 /// <c>route FILE TICS</c> (T6.11) queues only the route's first TICS tics, so
 /// <c>tics TICS; shot FILE.png</c> captures the scene (and its HUD) after
 /// exactly that tic, as <c>tools/VanillaRef/routes.sh</c>'s <c>DUMP_HUD_TICS</c> does vanilla's.
+/// <c>route FILE [TICS] from=N</c> (T11.8's follow-up) queues it from its
+/// tic N on: in a netgame after <c>nettic N</c>, a route whose first N tics
+/// are idle plays from the game's first tic (<c>loopback.sh --play</c>).
 /// <c>joy AXIS VALUE</c> (T4.9) moves a gamepad axis by Godot <c>JoyAxis</c>
 /// name (<c>LeftX</c>, <c>LeftY</c>: the move stick, <c>RightX</c>,
 /// <c>RightY</c>: the aim stick, <c>TriggerRight</c>: fire; Y down is
@@ -484,14 +487,28 @@ public partial class LevelScript : Node
                             break;
                         }
                     case "route":
-                        if (!(w.Length > 2 && int.TryParse(w[^1], out int routeTics) && routeTics >= 0
-                                ? QueueRoute(string.Join(' ', w[1..^1]), routeTics)
-                                : QueueRoute(string.Join(' ', w[1..]))))
                         {
-                            GetTree().Quit(1);
-                            return;
+                            // T11.8's follow-up: from=N plays the route from its tic N (a netgame's nettic N; its first N tics idle)
+                            int routeFrom = 0;
+                            if (w.Length > 2 && w[^1].StartsWith("from=", StringComparison.Ordinal))
+                            {
+                                if (!int.TryParse(w[^1].AsSpan(5), out routeFrom) || routeFrom < 0)
+                                {
+                                    GD.PrintErr("Level script: expected route FILE [TICS] [from=N]");
+                                    GetTree().Quit(1);
+                                    return;
+                                }
+                                w = w[..^1];
+                            }
+                            if (!(w.Length > 2 && int.TryParse(w[^1], out int routeTics) && routeTics >= 0
+                                    ? QueueRoute(string.Join(' ', w[1..^1]), routeTics, routeFrom)
+                                    : QueueRoute(string.Join(' ', w[1..]), null, routeFrom)))
+                            {
+                                GetTree().Quit(1);
+                                return;
+                            }
+                            break;
                         }
-                        break;
                     case "demo":
                         if (w.Length is < 2 or > 3 || !(w.Length == 2 ? QueueDemo(w[1].ToUpperInvariant())
                                 : int.TryParse(w[2], out int demoTics) && demoTics >= 0 && QueueDemo(w[1].ToUpperInvariant(), demoTics)))
@@ -1050,7 +1067,7 @@ public partial class LevelScript : Node
     /// (and places the player at its <c>start</c>); false, with an error,
     /// when the scene cannot play it as vanilla does.
     /// </summary>
-    private bool QueueRoute(string path, int? tics = null)
+    private bool QueueRoute(string path, int? tics = null, int from = 0)
     {
         RouteFile route;
         try
@@ -1062,7 +1079,7 @@ public partial class LevelScript : Node
             GD.PrintErr($"Level script: route: {e.Message}");
             return false;
         }
-        return QueueRoute(route, $"route {path}", tics);
+        return QueueRoute(route, $"route {path}", tics, from);
     }
 
     /// <summary>
@@ -1091,7 +1108,7 @@ public partial class LevelScript : Node
     }
 
     /// <summary>Queues a parsed route's (or demo's) tics; <paramref name="what"/> names it in messages.</summary>
-    private bool QueueRoute(RouteFile route, string what, int? tics)
+    private bool QueueRoute(RouteFile route, string what, int? tics, int from = 0)
     {
         string map = (route.Map ?? "E1M1").ToUpperInvariant();
         string? shown = _scene.Mesh?.Level.Name;
@@ -1138,7 +1155,8 @@ public partial class LevelScript : Node
         _scene.ScriptedTics = true;
         _scene.RouteStartPoint = route.Start; // T6.12: placed again after a reborn
         int count = Math.Min(tics ?? route.Cmds.Count, route.Cmds.Count);
-        for (int tic = 0; tic < count; tic++)
+        from = Math.Min(from, count); // T11.8's follow-up: from=N, the route from its tic N
+        for (int tic = from; tic < count; tic++)
         {
             int t = tic;
             Action<IsoDoom.Sim.World>? events = System.Linq.Enumerable.Any(route.Events, e => e.Tic == t) ? world => route.RunEvents(world, t) : null;
@@ -1148,7 +1166,7 @@ public partial class LevelScript : Node
                 _scene.QueueTic(route.Cmds[tic], events);
         }
         _netTic = false; // (the next route needs its own nettic)
-        GD.Print($"Level script: {what}: {count} tics queued on {map}{(count < route.Cmds.Count ? $" (of {route.Cmds.Count})" : route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
+        GD.Print($"Level script: {what}: {count - from} tics queued on {map}{(from > 0 ? $" (from its tic {from})" : "")}{(count < route.Cmds.Count ? $" (of {route.Cmds.Count})" : route.Exit switch { 1 => ", ending at the exit", 2 => ", ending at the secret exit", _ => "" })}");
         return true;
     }
 
