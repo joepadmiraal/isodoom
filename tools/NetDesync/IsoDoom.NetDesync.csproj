@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Replays a netgame desync's dumps (T11.11's follow-up): the world saved
+       after the last agreed window, then the logged commands, each tic's
+       checksum against the logged one and its state dumped (replay.txt), for
+       compare.py. See Program.cs for the command line. A dev tool: plain
+       .NET, no Godot reference; never ships with the game. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>IsoDoom.Tools.NetDesync</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Game/SaveGame.cs" Link="Game/SaveGame.cs" />
+    <Compile Include="../../src/Game/NetDesyncReplay.cs" Link="Game/NetDesyncReplay.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />
+    <ProjectReference Include="../../src/Map/IsoDoom.Map.csproj" />
+    <ProjectReference Include="../../src/Sim/IsoDoom.Sim.csproj" />
+    <ProjectReference Include="../../src/Net/IsoDoom.Net.csproj" />
+    <ProjectReference Include="../SyntheticIwad/IsoDoom.SyntheticIwad.csproj" />
+  </ItemGroup>
+</Project>

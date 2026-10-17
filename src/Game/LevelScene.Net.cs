@@ -363,7 +363,7 @@ public partial class LevelScene
         string root = NetDesyncRoot();
         try
         {
-            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now);
+            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now, World);
         }
         catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
         {

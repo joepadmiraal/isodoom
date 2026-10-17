@@ -142,9 +142,12 @@ public sealed class NetDesyncLog
     /// consistancy), <c>commands.txt</c> (a line a tic: tic, players, each
     /// player's <c>forwardmove sidemove angleturn buttons chatchar
     /// consistancy</c>) for the tics kept, and the save at the last agreed
-    /// window (<c>agreed-windowW.dsg</c>, <c>agreed-start.dsg</c>; the save format).
+    /// window (<c>agreed-windowW.dsg</c>, <c>agreed-start.dsg</c>; the save format),
+    /// and (T11.11's follow-up) with <paramref name="world"/>, the world the
+    /// game stopped with, field by field (<c>state.txt</c>: the last tic, its
+    /// checksum, <see cref="World.DumpState"/>), for <c>tools/NetDesync/compare.py</c>.
     /// </summary>
-    public string Write(string root, NetDesync desync, int player, string build, int firstBadTic, DateTime now)
+    public string Write(string root, NetDesync desync, int player, string build, int firstBadTic, DateTime now, World? world = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         string dir = Path.Combine(root, string.Create(CultureInfo.InvariantCulture, $"{now:yyyyMMdd-HHmmss}-player{player + 1}"));
@@ -174,6 +177,12 @@ public sealed class NetDesyncLog
         }
         File.WriteAllText(Path.Combine(dir, "checksums.txt"), checksums.ToString());
         File.WriteAllText(Path.Combine(dir, "commands.txt"), commands.ToString());
+        if (world is not null)
+        {
+            var state = new StringBuilder(string.Create(CultureInfo.InvariantCulture, $"tic {LastTic} checksum {world.Checksum():x16}\n"));
+            world.DumpState(state);
+            File.WriteAllText(Path.Combine(dir, "state.txt"), state.ToString());
+        }
 
         string saveName = "none kept";
         if (AgreedSave(desync) is (int window, byte[] save))
@@ -192,7 +201,7 @@ public sealed class NetDesyncLog
             first consistency failure seen here: {(firstBadTic < 0 ? "none" : firstBadTic.ToString(CultureInfo.InvariantCulture))}
             tics logged: {(_count == 0 ? "none" : $"{_tics[first]}-{LastTic}")} (the game stopped after tic {LastTic})
             save: {saveName}{(saveName.EndsWith(".dsg", StringComparison.Ordinal) ? " (the world after the last agreed window; the save format, SaveGameFile)" : "")}
-            files: checksums.txt, commands.txt
+            files: checksums.txt, commands.txt{(world is not null ? ", state.txt" : "")}
 
             """);
         File.WriteAllText(Path.Combine(dir, "summary.txt"), summary);

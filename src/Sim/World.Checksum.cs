@@ -128,6 +128,73 @@ public sealed partial class World
         return h;
     }
 
+    /// <summary>
+    /// Not vanilla (T11.11's follow-up, the desync replay): every field
+    /// <see cref="Checksum"/> hashes, as text, a labelled line per part
+    /// (<c>world</c>, <c>mobj I</c> in thinker order, <c>sector I</c>,
+    /// <c>brain</c>, <c>player N</c>), each <c>name=value</c>, appended to
+    /// <paramref name="sb"/>. Two machines' dumps of the same tic differ in
+    /// a line exactly where their checksums' inputs differ, which names the
+    /// field (<c>tools/NetDesync/compare.py</c>).
+    /// </summary>
+    public void DumpState(System.Text.StringBuilder sb)
+    {
+        System.ArgumentNullException.ThrowIfNull(sb);
+        System.Globalization.CultureInfo inv = System.Globalization.CultureInfo.InvariantCulture;
+        sb.Append(inv, $"world leveltime={leveltime} prndindex={random.prndindex} iquehead={iquehead} iquetail={iquetail}\n");
+
+        _checksumIndex.Clear();
+        foreach (mobj_t mo in Mobjs())
+            _checksumIndex[mo] = _checksumIndex.Count;
+        int n = 0;
+        foreach (mobj_t mo in Mobjs())
+        {
+            sb.Append(inv, $"mobj {n++} type={mo.type} x={mo.x} y={mo.y} z={mo.z} momx={mo.momx} momy={mo.momy} momz={mo.momz}");
+            sb.Append(inv, $" angle={mo.angle} health={mo.health} state={mo.state} tics={mo.tics} flags={(uint)mo.flags:x}");
+            sb.Append(inv, $" movedir={mo.movedir} movecount={mo.movecount} reactiontime={mo.reactiontime} threshold={mo.threshold} target={MobjIndex(mo.target)}\n");
+        }
+        for (int i = 0; i < sectors.Length; i++)
+        {
+            sector_t sec = sectors[i];
+            sb.Append(inv, $"sector {i} floorheight={sec.floorheight} ceilingheight={sec.ceilingheight} lightlevel={sec.lightlevel} soundtarget={MobjIndex(sec.soundtarget)}\n");
+        }
+        if (braintargets.Count > 0)
+        {
+            sb.Append("brain targets=");
+            for (int i = 0; i < braintargets.Count; i++)
+                sb.Append(inv, $"{(i > 0 ? "," : "")}{MobjIndex(braintargets[i])}");
+            sb.Append(inv, $" braintargeton={braintargeton} braineasy={braineasy}\n");
+        }
+        _checksumIndex.Clear();
+
+        for (int i = 0; i < MAXPLAYERS; i++)
+        {
+            if (!playeringame[i])
+                continue;
+            player_t p = players[i];
+            sb.Append(inv, $"player {i + 1} playerstate={p.playerstate} health={p.health} armorpoints={p.armorpoints} armortype={p.armortype}");
+            sb.Append(inv, $" viewz={p.viewz} viewheight={p.viewheight} deltaviewheight={p.deltaviewheight}");
+            sb.Append(inv, $" readyweapon={p.readyweapon} pendingweapon={p.pendingweapon} refire={p.refire} attackdown={p.attackdown} extralight={p.extralight}");
+            sb.Append(inv, $" ammo={string.Join(',', p.ammo)} maxammo={string.Join(',', p.maxammo)} weaponowned={Bits(p.weaponowned)}");
+            sb.Append(inv, $" powers={string.Join(',', p.powers)} cards={Bits(p.cards)} backpack={p.backpack} frags={string.Join(',', p.frags)}");
+            sb.Append(inv, $" cheats={p.cheats} killcount={p.killcount} itemcount={p.itemcount} secretcount={p.secretcount}");
+            for (int k = 0; k < p.psprites.Length; k++)
+            {
+                pspdef_t psp = p.psprites[k];
+                sb.Append(inv, $" psp{k}={psp.state}/{psp.tics}/{psp.sx}/{psp.sy}");
+            }
+            sb.Append('\n');
+        }
+    }
+
+    private static string Bits(bool[] bits)
+    {
+        var chars = new char[bits.Length];
+        for (int i = 0; i < bits.Length; i++)
+            chars[i] = bits[i] ? '1' : '0';
+        return new string(chars);
+    }
+
     private readonly System.Collections.Generic.Dictionary<mobj_t, int> _checksumIndex = new(ReferenceEqualityComparer.Instance);
 
     private int MobjIndex(mobj_t? mo) => mo != null && _checksumIndex.TryGetValue(mo, out int i) ? i : -1;
