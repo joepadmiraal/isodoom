@@ -349,6 +349,14 @@ public sealed partial class MMenu
 
     private static readonly string[] skullName = ["M_SKULL1", "M_SKULL2"];
 
+    /// <summary>
+    /// T11.9b: the last <see cref="M_Drawer"/> drew one of our own text pages
+    /// (the options' and setup pages, a binding's wait, the multiplayer, host,
+    /// join and lobby pages), which show over the window dimmed (the user's
+    /// decision, SPEC §12); vanilla's patch menus and the messages do not.
+    /// </summary>
+    public bool TextPageDrawn { get; private set; }
+
     /// <summary>m_menu.c <c>inhelpscreens</c>: the last <see cref="M_Drawer"/> drew a read-this screen (a full-screen picture).</summary>
     public bool inhelpscreens;
 
@@ -1385,6 +1393,7 @@ public sealed partial class MMenu
     {
         _screen = screen;
         inhelpscreens = false;
+        TextPageDrawn = false;
         try
         {
             // Horiz. & Vertically center string and print it.
@@ -1407,6 +1416,7 @@ public sealed partial class MMenu
             if (WaitingBinding is not null || currentMenu.textItems)
             {
                 DrawTextMenu(); // T7.3
+                TextPageDrawn = true; // T11.9b: over the window dimmed
                 return;
             }
 

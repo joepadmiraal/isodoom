@@ -18,7 +18,19 @@ namespace IsoDoom.Game;
 public partial class ScreenView : CanvasLayer
 {
     private readonly ColorRect _backdrop = new() { Name = StringNames.Get("Backdrop"), Color = Colors.Black, MouseFilter = Control.MouseFilterEnum.Ignore };
+    // T11.9b (the user's decision): the window dimmed behind our own text pages
+    private readonly ColorRect _dim = new() { Name = StringNames.Get("Dim"), Color = new Color(0, 0, 0, DimAlpha), MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
     private readonly TextureRect _rect = ScreenRects.New("Screen");
+
+    /// <summary>
+    /// T11.9b: the opacity of the black over the whole window behind a dimmed
+    /// screen (<see cref="Show(ReadOnlySpan{byte}, bool, int, bool, bool?, bool)"/>'s
+    /// <c>dim</c>: our own text pages, SPEC §12 "A dim backdrop behind our text pages").
+    /// </summary>
+    public const float DimAlpha = 0.6f;
+
+    /// <summary>T11.9b: whether the last <c>Show</c> dimmed what is behind the screen.</summary>
+    public bool Dimmed => _dim.Visible;
     private Image? _image;
     private ImageTexture? _texture;
     private byte[] _rgba = [];
@@ -34,6 +46,8 @@ public partial class ScreenView : CanvasLayer
         Visible = false;
         _backdrop.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(_backdrop);
+        _dim.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        AddChild(_dim);
         AddChild(_rect);
     }
 
@@ -44,16 +58,18 @@ public partial class ScreenView : CanvasLayer
     /// <paramref name="fixedScale"/> (0: the largest that fits), vanilla's
     /// pixels 1.2 times taller than wide with <paramref name="aspect43"/>, centred
     /// (by default only <paramref name="opaque"/>, else at the top, as the
-    /// pause graphic over the level) when <paramref name="centre"/>.
+    /// pause graphic over the level) when <paramref name="centre"/>; with
+    /// <paramref name="dim"/> (T11.9b) over the window dimmed by <see cref="DimAlpha"/>.
     /// </summary>
-    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool aspect43, bool? centre = null) =>
-        Show(playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)), opaque, fixedScale, aspect43, centre);
+    public void Show(Playpal playpal, int palette, bool opaque, int fixedScale, bool aspect43, bool? centre = null, bool dim = false) =>
+        Show(playpal.GetPalette(Math.Clamp(palette, 0, playpal.Count - 1)), opaque, fixedScale, aspect43, centre, dim);
 
-    /// <summary>As <see cref="Show(Playpal, int, bool, int, bool, bool?)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
-    public void Show(ReadOnlySpan<byte> pal, bool opaque, int fixedScale, bool aspect43, bool? centre = null)
+    /// <summary>As <see cref="Show(Playpal, int, bool, int, bool, bool?, bool)"/>, through palette <paramref name="pal"/> (768 bytes; T6.13v: a blended flash).</summary>
+    public void Show(ReadOnlySpan<byte> pal, bool opaque, int fixedScale, bool aspect43, bool? centre = null, bool dim = false)
     {
         Visible = true;
         _backdrop.Visible = opaque;
+        _dim.Visible = dim && !opaque;
         Vector2 size = GetViewport().GetVisibleRect().Size;
         if (_rgba.Length != Screen.Pixels.Length * 4)
             _rgba = new byte[Screen.Pixels.Length * 4];
@@ -78,7 +94,8 @@ public partial class ScreenView : CanvasLayer
     /// T7.1a: draws what this view showed last into <paramref name="image"/>
     /// (RGBA8, the viewport's size) as the renderer does: the black backdrop,
     /// then the screen at its rectangle (T7.11: <see cref="SharpBilinear"/>,
-    /// nearest at a whole scale). Nothing when hidden.
+    /// nearest at a whole scale); T11.9b: a dimmed screen over the image
+    /// dimmed (<see cref="DimRgb"/>). Nothing when hidden.
     /// </summary>
     public void ComposeInto(Image image)
     {
@@ -88,9 +105,25 @@ public partial class ScreenView : CanvasLayer
             image.Fill(Colors.Black);
         int w = image.GetWidth(), h = image.GetHeight();
         byte[] data = image.GetData();
+        if (_dim.Visible)
+        {
+            for (int i = 0; i < data.Length; i += 4)
+            {
+                data[i] = DimRgb(data[i]);
+                data[i + 1] = DimRgb(data[i + 1]);
+                data[i + 2] = DimRgb(data[i + 2]);
+            }
+        }
         SharpBilinear.Draw(data, w, h, _rgba, Screen.Width, Screen.Height, ScreenRects.RectOf(_rect));
         image.SetData(w, h, false, Image.Format.Rgba8, data);
     }
+
+    /// <summary>
+    /// T11.9b: a colour channel (0–255, the framebuffer's sRGB value) under
+    /// the dim: black at <see cref="DimAlpha"/> blended over it as the 2D
+    /// renderer blends (in sRGB values), rounded.
+    /// </summary>
+    public static byte DimRgb(byte value) => (byte)MathF.Round(value * (1 - DimAlpha));
 
     /// <summary>The screen's texture rectangle (checks read it back).</summary>
     public TextureRect Rect => _rect;

@@ -196,27 +196,69 @@ public partial class LevelCheck
         if (await CompareMenuScreen("the main menu over the title page") is not int here)
             return;
         ScreenLayout layout = _scene.MenuScreens.Layout;
+        // T11.9b: Options → More Options, our own text page: over the title page dimmed
+        foreach (Key key in new[] { Key.O, Key.Enter, Key.O, Key.Enter })
+            _scene.MenuEvent(KeyEvent(key));
+        _scene.UpdateScreens();
+        if (menu.StateName != "setup")
+            Fail($"the more options page (T11.9b): the menu shows {menu.StateText()}");
+        else
+            here += await CompareMenuScreen("the more options page over the title page, dimmed (T11.9b)", dimmed: true) ?? 0;
         menu.M_ClearMenus();
         _scene.UpdateScreens();
         if (_scene.MenuScreens.Visible)
             Fail("the menu screen still shows with the menus closed");
         _scene.Overlay.Visible = overlay;
-        GD.Print($"Level check: menus (T7.2): the main menu over the title page at scale {layout.ScaleX}, {here} pixels compared");
+        GD.Print($"Level check: menus (T7.2): the main menu over the title page at scale {layout.ScaleX}, and the more options page over it dimmed (T11.9b), {here} pixels compared");
     }
 
     /// <summary>
     /// Captures what shows and compares every pixel the menus drew on their
     /// screen (<see cref="MMenu.M_Drawer"/>, the CPU's) with the frame, in
-    /// palette 0; returns the pixels compared (counted in the check's), or
-    /// null when the capture failed or nothing was drawn.
+    /// palette 0; T11.9b: and every other pixel of the window with the frame
+    /// captured without the menus' layer, dimmed (<see cref="ScreenView.DimRgb"/>)
+    /// when <paramref name="dimmed"/> (our own text pages) and the same when
+    /// not (vanilla's patch menus). Returns the pixels compared (counted in
+    /// the check's), or null when the capture failed or nothing was drawn.
     /// </summary>
-    private async Task<int?> CompareMenuScreen(string what)
+    private async Task<int?> CompareMenuScreen(string what, bool dimmed = false)
     {
         if (await Capture(what) is not byte[] frame)
             return null;
         Vector2I size = ViewSize();
         HudScreen screen = _scene.MenuScreens.Screen;
         ScreenLayout layout = _scene.MenuScreens.Layout;
+        if (_scene.MenuScreens.Dimmed != dimmed || _scene.Flow.Menu.TextPageDrawn != dimmed)
+            Fail($"{what}: the window behind {(_scene.MenuScreens.Dimmed ? "dimmed" : "not dimmed")} (a text page drawn: {_scene.Flow.Menu.TextPageDrawn}), expected {(dimmed ? "dimmed" : "not dimmed")} (T11.9b)");
+        _scene.MenuScreens.Visible = false;
+        byte[]? under = await Capture($"{what}, without the menus");
+        _scene.MenuScreens.Visible = true;
+        if (under is null)
+            return null;
+        int behind = 0, badBehind = 0;
+        string firstBehind = "";
+        for (int y = 0; y < size.Y; y++)
+        {
+            for (int x = 0; x < size.X; x++)
+            {
+                (int mx, int my) = layout.ToScreen(x + 0.5f, y + 0.5f);
+                if (mx >= 0 && my >= 0 && mx < screen.Width && my < screen.Height && screen.Opaque[my * screen.Width + mx] != 0)
+                    continue;
+                int i = (y * size.X + x) * 4;
+                behind++;
+                bool ok = true;
+                for (int c = 0; c < 3; c++)
+                {
+                    int expected = dimmed ? ScreenView.DimRgb(under[i + c]) : under[i + c];
+                    ok &= Math.Abs(frame[i + c] - expected) <= 1;
+                }
+                if (!ok && badBehind++ == 0)
+                    firstBehind = $"({x}, {y}): ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}) over ({under[i]}, {under[i + 1]}, {under[i + 2]})";
+            }
+        }
+        if (badBehind > 0)
+            Fail($"{what}: {badBehind} of the {behind} pixels behind the menu are not {(dimmed ? "dimmed" : "as without it")} (T11.9b); first {firstBehind}");
+        _pixels += behind;
         byte[] pal = Playpal.GetPalette(0).ToArray();
         int bad = 0, here = 0;
         string firstBad = "";
@@ -247,6 +289,6 @@ public partial class LevelCheck
         if (bad > 0)
             Fail($"{what}: {bad} of {here} pixels differ; first: {firstBad}");
         _pixels += here;
-        return here;
+        return here + behind; // (T11.9b: the pixels behind the menu too)
     }
 }

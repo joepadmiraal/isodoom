@@ -377,6 +377,47 @@ public class SettingsTests
         menu.M_Drawer(screen);
         Assert.Contains(screen.Opaque, b => b != 0);
         Assert.Equal(-1, menu.ItemAt(100, 100));
+        Assert.True(menu.TextPageDrawn); // T11.9b: the wait is a text page too
+    }
+
+    [Fact]
+    public void OnlyOurTextPagesAreDrawnOverTheWindowDimmed()
+    {
+        // T11.9b (the user's decision): our own text pages dim the window behind them; vanilla's patch menus and the messages do not
+        (GameFlow flow, _) = GameFlowTests.New(GameMode.shareware);
+        flow.Menu.SetupHost = new SetupHost();
+        MMenu menu = flow.Menu;
+        var wad = new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
+        menu.Graphics = new ScreenGraphics(wad, new HuStuff(wad));
+        var screen = new HudScreen(0, HudScreen.SCREENHEIGHT);
+        bool Dimmed()
+        {
+            screen.Clear();
+            menu.M_Drawer(screen);
+            return menu.TextPageDrawn;
+        }
+        Keys(menu, Esc);
+        Assert.Equal("main", menu.StateName);
+        Assert.False(Dimmed());
+        Keys(menu, 'o', Enter);
+        Assert.Equal("options", menu.StateName);
+        Assert.False(Dimmed());
+        Keys(menu, 'o', Enter);
+        Assert.Equal("setup", menu.StateName);
+        Assert.True(Dimmed());
+        Keys(menu, 'g', Enter);
+        Assert.Equal("gameplay", menu.StateName);
+        Assert.True(Dimmed());
+        Keys(menu, Back, Back, Back, 'm', Enter);
+        Assert.Equal("multiplayer", menu.StateName);
+        Assert.True(Dimmed());
+        Keys(menu, 'h', Enter);
+        Assert.Equal("host", menu.StateName);
+        Assert.True(Dimmed());
+        menu.M_StartMessage("a message", null, false);
+        Assert.False(Dimmed());
+        menu.M_ClearMenus();
+        Assert.False(Dimmed());
     }
 
     [Fact]

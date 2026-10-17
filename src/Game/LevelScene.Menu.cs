@@ -439,7 +439,8 @@ public partial class LevelScene : IMenuHost
     /// <summary>
     /// T7.2: m_menu.c <c>M_Drawer</c> on <see cref="MenuScreens"/> when it
     /// changed, in the screens' palette (the level's in a level), centred;
-    /// a read-this page over a black backdrop. When a read-this page goes,
+    /// a read-this page over a black backdrop, our own text pages over the
+    /// window dimmed (T11.9b). When a read-this page goes,
     /// the status bar is redrawn whole (d_main.c <c>D_Display</c>'s
     /// <c>redrawsbar</c>).
     /// </summary>
@@ -464,7 +465,7 @@ public partial class LevelScene : IMenuHost
             _helpShown = true;
         else
             HelpGone();
-        MenuScreens.Show(ScreenPalette(palette.Row), menu.inhelpscreens, Hud.FixedScale, Aspect43, centre: true);
+        MenuScreens.Show(ScreenPalette(palette.Row), menu.inhelpscreens, Hud.FixedScale, Aspect43, centre: true, dim: menu.TextPageDrawn); // T11.9b: our text pages over the window dimmed
     }
 
     private void HelpGone()

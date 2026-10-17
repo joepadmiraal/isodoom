@@ -194,17 +194,17 @@ public partial class LevelCheck
             foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter })
                 s.MenuEvent(KeyEvent(key));
             s.UpdateScreens();
-            pixels += await CompareMenuScreen("the multiplayer page (T11.9)") ?? 0;
+            pixels += await CompareMenuScreen("the multiplayer page (T11.9)", dimmed: true) ?? 0;
             s.MenuEvent(KeyEvent(Key.H)); // Host Game (the page may be on Join Game: its last item)
             s.MenuEvent(KeyEvent(Key.Enter));
             s.UpdateScreens();
-            pixels += await CompareMenuScreen("the host page (T11.9)") ?? 0;
+            pixels += await CompareMenuScreen("the host page (T11.9)", dimmed: true) ?? 0;
             s.MenuEvent(KeyEvent(Key.S));
             s.MenuEvent(KeyEvent(Key.Enter));
             if (!await NetFrames(() => ((INetMenuHost)s).Lobby?.Players.Count == 1, null, 3))
                 Fail($"lobby (T11.9): the lobby page drawn: the host alone not in its lobby ({s.NetText()})");
             s.UpdateScreens();
-            pixels += await CompareMenuScreen("the lobby page (T11.9)") ?? 0;
+            pixels += await CompareMenuScreen("the lobby page (T11.9)", dimmed: true) ?? 0;
         }
         finally
         {
@@ -213,6 +213,6 @@ public partial class LevelCheck
             s.SetSetting("net/port", Settings.Find("net/port")!.Default);
             s.Overlay.Visible = overlay;
         }
-        GD.Print($"Level check: lobby (T11.9): the multiplayer, host and lobby pages drawn, {pixels} pixels compared");
+        GD.Print($"Level check: lobby (T11.9): the multiplayer, host and lobby pages drawn over the window dimmed (T11.9b), {pixels} pixels compared");
     }
 }
