@@ -17,6 +17,14 @@
 #                       the samples. DIR defaults to
 #                       $ISODOOM_OPL_MUSIC/NAME (~/.cache/isodoom/opl-music/
 #                       doom1 for DOOM1.WAD). WAD-derived: never commit them.
+#   music.sh --pwad SET [DIR]
+#                       P2: the same for the D_* lumps of a PWAD set of
+#                       docs/PWAD-VALIDATION.md (tools/VanillaRef/pwads.py:
+#                       its IWAD and -file list), played from one WAD of the
+#                       IWAD and the set (tools/VanillaRef/mergewad.py), so
+#                       the songs use the IWAD's GENMIDI (or the set's, if it
+#                       has one) as vanilla's w_wad.c finds it. DIR defaults
+#                       to $ISODOOM_OPL_MUSIC/SET.
 # Needs what build.sh needs, python3 and (synthetic) the .NET SDK.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -66,23 +74,42 @@ if [ $# -eq 0 ]; then
     exit 0
 fi
 
-wad=$1
-base=$(basename "$wad")
-base=${base%.*}
-out=${2:-${ISODOOM_OPL_MUSIC:-$HOME/.cache/isodoom/opl-music}/${base,,}}
+if [ "$1" = --pwad ]; then
+    set=${2:?music.sh --pwad SET [DIR]}
+    wads=$(python3 -I "$here/../VanillaRef/pwads.py" "$set")
+    mapfile -t pwads <<< "$wads"
+    wad="$tmp/$set.wad"
+    python3 -I "$here/../VanillaRef/mergewad.py" "$wad" "${pwads[@]}"
+    only=("${pwads[@]:1}")  # the set's own songs, not the IWAD's
+    base=$set
+    shift 2
+else
+    wad=$1
+    only=()
+    base=$(basename "$wad")
+    base=${base%.*}
+    shift
+fi
+out=${1:-${ISODOOM_OPL_MUSIC:-$HOME/.cache/isodoom/opl-music}/${base,,}}
 mkdir -p "$out"
 # The song lumps and their lengths in seconds (MUS: the delays at 140 Hz;
-# anything else: 5 minutes).
-python3 -I - "$wad" > "$tmp/songs" <<'EOF'
+# anything else: 5 minutes); with --pwad, only those the set's PWADs have.
+python3 -I - "$wad" "${only[@]}" > "$tmp/songs" <<'EOF'
 import struct, sys
-d = open(sys.argv[1], 'rb').read()
-n, ofs = struct.unpack_from('<ii', d, 4)
-songs = {}
-for i in range(n):
-    pos, size, name = struct.unpack_from('<ii8s', d, ofs + 16 * i)
-    name = name.rstrip(b'\0').decode('ascii', 'replace').upper()
-    if name.startswith('D_'):
-        songs[name] = d[pos:pos + size]
+
+
+def directory(path):
+    d = open(path, 'rb').read()
+    n, ofs = struct.unpack_from('<ii', d, 4)
+    for i in range(n):
+        pos, size, name = struct.unpack_from('<ii8s', d, ofs + 16 * i)
+        yield name.split(b'\0')[0].decode('ascii', 'replace').upper(), d[pos:pos + size]
+
+
+songs = {name: lump for name, lump in directory(sys.argv[1]) if name.startswith('D_')}
+if len(sys.argv) > 2:
+    own = {name for path in sys.argv[2:] for name, _ in directory(path)}
+    songs = {name: lump for name, lump in songs.items() if name in own}
 for name, lump in sorted(songs.items()):
     secs = 300
     if lump[:4] == b'MUS\x1a':

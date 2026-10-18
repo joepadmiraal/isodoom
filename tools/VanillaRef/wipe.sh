@@ -36,7 +36,7 @@ if [ ! -x "$ref" ] || [ "$(cat "$here/ref.patch" "$here/dump.c" | sha256sum)" !=
     ref=$("$here/build.sh" "$refdir")
 fi
 rm -f "$dir"/wipe*.ppm "$dir"/o*.png "$dir"/c*.png
-python3 "$here/wipes.py" "$ref" "$doom1" "$dir" "$route" --images "$dir" "$steps" >/dev/null
+python3 -B "$here/wipes.py" "$ref" "$doom1" "$dir" "$route" --images "$dir" "$steps" >/dev/null
 # wipes.py's tail: the intermission skipped (use at its tics 20, 40, 60), then the next level; or the finale
 tail="" next=""
 if [ -n "$(header exit)" ]; then

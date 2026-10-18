@@ -121,7 +121,7 @@ def main():
                 if images:
                     os.makedirs(images[0], exist_ok=True)
                     env['DUMP_FI_DIR'], env['DUMP_FI_TICS'] = images
-                extra = []  # T11.8's follow-up: the reference's arguments routes.py gives the route too
+                extra = routes.pwad_args(head)  # T11.8's follow-up: the reference's arguments routes.py gives the route too (P2: a PWAD set's)
                 if head['gameversion']:
                     extra += ['-gameversion', head['gameversion']]
                 if head['timer']:

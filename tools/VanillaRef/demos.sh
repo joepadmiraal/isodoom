@@ -1,6 +1,6 @@
 #!/bin/bash
 # The vanilla demo reference (T6.13; dev tool). Usage:
-#   tools/VanillaRef/demos.sh [--doom|--doom2|--tnt|--plutonia] [--gameversion V] [DEMO1 DEMO2 DEMO3]
+#   tools/VanillaRef/demos.sh [--doom|--doom2|--tnt|--plutonia|--pwad SET] [--gameversion V] [DEMO1 DEMO2 DEMO3]
 # Plays each demo lump of DOOM1.WAD (wads/ or $ISODOOM_DOOM1_WAD; default
 # all three) in the vanilla reference (build.sh; $VANILLA_REF or
 # ~/.cache/isodoom/vanilla-ref) with -playdemo and writes its per-tic dump
@@ -19,6 +19,13 @@
 # M9: with --doom, The Ultimate Doom's IWAD (wads/DOOM.WAD or wads/doom.wad,
 # $ISODOOM_DOOM_WAD) as doom-demoN.vanilla (default all four, DEMO4 E4's),
 # played as ultimate (Chocolate Doom's default for retail).
+# P2: with --pwad SET, a PWAD set of docs/PWAD-VALIDATION.md (pwads.py: its
+# IWAD and its -file list from wads/pwads/SET or $ISODOOM_PWADS/SET) as
+# SET-demoN.vanilla, by default every DEMOn lump of the set's PWADs (HR's
+# DEMO5 and DEMO6 too, outside the attract loop). A Doom II set's demo plays
+# as its version byte says (every set's are v1.9: -gameversion 1.9 on the
+# v1.666 IWAD), an Ultimate Doom set's as ultimate. The reference gets a
+# 32 MiB zone for them (-mb 32: its 6 MiB default runs out on AV's MAP20).
 # WAD-derived: never commit them. DemoSyncTests compares the sim with them.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,6 +37,7 @@ if [ ! -x "$ref" ] || [ "$(cat "$here/ref.patch" "$here/dump.c" | sha256sum)" !=
 fi
 iwad=$(realpath "${ISODOOM_DOOM1_WAD:-$repo/wads/DOOM1.WAD}")
 prefix=
+pwads=()
 if [ "${1:-}" = --doom2 ]; then
     shift
     iwad=${ISODOOM_DOOM2_WAD:-$repo/wads/doom2.wad}
@@ -45,6 +53,15 @@ elif [ "${1:-}" = --doom ]; then
     prefix=doom-
     ultimate=1
     demo4=1
+elif [ "${1:-}" = --pwad ]; then
+    set=$2
+    shift 2
+    wads=$(python3 -I "$here/pwads.py" "$set")
+    mapfile -t pwads <<< "$wads"
+    iwad=${pwads[0]}
+    pwads=("${pwads[@]:1}")
+    prefix=$set-
+    if [ "$(python3 -I "$here/pwads.py" --iwad "$set")" = doom ]; then ultimate=1; fi
 elif [ "${1:-}" = --tnt ] || [ "${1:-}" = --plutonia ]; then
     game=${1#--}
     shift
@@ -65,7 +82,28 @@ if [ "${1:-}" = --gameversion ]; then
 fi
 out=$(realpath -m "${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes}")
 mkdir -p "$out"
+if [ $# -eq 0 ] && [ ${#pwads[@]} -gt 0 ]; then
+    # P2: the set's own demo lumps (DEMO1, DEMO2, ...), in name order.
+    demos=$(python3 -I -c '
+import re, struct, sys
+names = set()
+for path in sys.argv[1:]:
+    d = open(path, "rb").read()
+    n, off = struct.unpack("<ii", d[4:12])
+    for i in range(n):
+        name = d[off + 16 * i + 8:off + 16 * i + 16].split(b"\0")[0].decode("ascii", "replace").upper()
+        if re.fullmatch(r"DEMO[0-9]+", name):
+            names.add(name)
+print(" ".join(sorted(names, key=lambda s: int(s[4:]))))
+' "${pwads[@]}")
+    read -ra list <<< "$demos"
+    [ ${#list[@]} -gt 0 ] || { echo "PWAD set $set has no demo lumps" >&2; exit 1; }
+    set -- "${list[@]}"
+fi
 if [ $# -eq 0 ]; then set -- DEMO1 DEMO2 DEMO3; if [ -n "${demo4:-}" ]; then set -- "$@" DEMO4; fi; fi
+files=()
+# P2: and a 32 MiB zone (-mb; the reference's 6 MiB default fails AV's MAP20).
+if [ ${#pwads[@]} -gt 0 ]; then files=(-mb 32 -file "${pwads[@]}"); fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 for demo in "$@"; do
@@ -73,22 +111,27 @@ for demo in "$@"; do
     dump="$out/$prefix$name.vanilla"
     rm -f "$dump"
     # The demo's version byte picks the reference's -gameversion (T10.6).
+    # P2: the last lump of that name across the IWAD and the set's PWADs.
     version=$(python3 -I -c '
 import struct, sys
-d = open(sys.argv[1], "rb").read()
-n, off = struct.unpack("<ii", d[4:12])
-for i in range(n):
-    o, s, name = struct.unpack("<ii8s", d[off + 16 * i:off + 16 * i + 16])
-    if name.rstrip(b"\0").decode().upper() == sys.argv[2].upper():
-        print({106: "1.666", 107: "1.7", 108: "1.8", 109: "1.9"}.get(d[o], "1.9"))
-        break
-' "$iwad" "$demo")
+found = None
+for path in sys.argv[2:]:
+    d = open(path, "rb").read()
+    n, off = struct.unpack("<ii", d[4:12])
+    for i in range(n):
+        o, s, name = struct.unpack("<ii8s", d[off + 16 * i:off + 16 * i + 16])
+        if name.split(b"\0")[0].decode("ascii", "replace").upper() == sys.argv[1].upper():
+            found = d[o]
+if found is None:
+    sys.exit("no demo lump " + sys.argv[1])
+print({106: "1.666", 107: "1.7", 108: "1.8", 109: "1.9"}.get(found, "1.9"))
+' "$demo" "$iwad" "${pwads[@]}")
     # The lump by name (no NAME.lmp in the working directory); dump.c's
     # patched G_ReadDemoTiccmd exits at the demo's marker.
     if [ -n "${final:-}" ]; then version=final; fi
     if [ -n "${ultimate:-}" ]; then version=ultimate; fi
     if [ -n "$forced" ]; then version=$forced; fi
     (cd "$tmp" && env -u VIEWS -u DUMP_START -u DUMP_EVENTS DUMP_TICS="$dump" \
-        "$ref" -iwad "$iwad" -gameversion "$version" -playdemo "$name" -nosound -nomusic -nogui >/dev/null)
+        "$ref" -iwad "$iwad" "${files[@]}" -gameversion "$version" -playdemo "$name" -nosound -nomusic -nogui >/dev/null)
     echo "$demo: $(wc -l < "$dump") tics -> $dump"
 done

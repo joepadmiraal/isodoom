@@ -43,4 +43,4 @@ if grep -qE '^ *iwad +testmap *$' "${@%%@*}" 2>/dev/null; then
     (cd "$repo" && ISODOOM_TESTMAP_WADS="$tmp/testmaps" dotnet run --project tests/IsoDoom.Tests -- \
         -method "IsoDoom.Tests.Sim.VanillaRouteTests.WritesTheTestMapPwads" >/dev/null)
 fi
-python3 "$here/intermissions.py" "$ref" "$doom1" "$out" "$@" --synthetic "$tmp/synthetic.wad" --testmaps "$tmp/testmaps"
+python3 -B "$here/intermissions.py" "$ref" "$doom1" "$out" "$@" --synthetic "$tmp/synthetic.wad" --testmaps "$tmp/testmaps"

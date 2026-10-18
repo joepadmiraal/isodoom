@@ -24,7 +24,10 @@ namespace IsoDoom.Game;
 /// header; its events name their player with a last <c>pN</c> (default
 /// <c>p1</c>). The single-player format is unchanged. T11.4: a
 /// <c>timer MINUTES</c> header is vanilla's <c>-timer</c> (the level ends
-/// after that many minutes in deathmatch).
+/// after that many minutes in deathmatch). P2: a <c>pwad SET</c> header
+/// names a PWAD set of <c>docs/PWAD-VALIDATION.md</c> loaded over the
+/// route's IWAD as <c>-file</c> (the tests' <c>PwadSets</c>, the vanilla
+/// reference's <c>tools/VanillaRef/pwads.py</c>).
 /// </summary>
 public sealed class RouteFile
 {
@@ -47,6 +50,8 @@ public sealed class RouteFile
 
     /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom</c> (M9), <c>doom2</c>, <c>tnt</c>, <c>plutonia</c> or <c>testmap</c> (not checked here).</summary>
     public string? Iwad { get; private init; }
+    /// <summary>P2: the <c>pwad</c> header, a PWAD set's folder (<c>av</c>, <c>dtwid</c>, …; not checked here), or null.</summary>
+    public string? Pwad { get; private init; }
     /// <summary>The <c>map</c> header as written, or null.</summary>
     public string? Map { get; private init; }
     /// <summary>The <c>skill</c> header, 1-5 (default 3).</summary>
@@ -158,7 +163,7 @@ public sealed class RouteFile
     /// <summary>Parses the route's lines; <paramref name="path"/> names it in errors (<see cref="FormatException"/>).</summary>
     public static RouteFile Parse(IEnumerable<string> lines, string path)
     {
-        string? iwad = null, map = null;
+        string? iwad = null, map = null, pwad = null;
         int skill = 3, exit = 0, players = 1, deathmatch = 0, timer = 0;
         (int, int, int)? start = null;
         bool monsters = false;
@@ -181,6 +186,11 @@ public sealed class RouteFile
                     continue;
                 case "map":
                     map = f[1];
+                    continue;
+                case "pwad": // P2
+                    if (f.Length != 2)
+                        throw new FormatException($"{where}: expected pwad SET");
+                    pwad = f[1];
                     continue;
                 case "skill":
                     skill = Int(f[1]);
@@ -272,6 +282,7 @@ public sealed class RouteFile
         return new RouteFile
         {
             Iwad = iwad,
+            Pwad = pwad,
             Map = map,
             Skill = skill,
             Start = start,

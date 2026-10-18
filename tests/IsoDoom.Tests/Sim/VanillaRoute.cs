@@ -32,7 +32,9 @@ namespace IsoDoom.Tests.Sim;
 /// <c>-gameversion</c>: <see cref="GameVersion"/>; <c>iwad tnt|plutonia</c>,
 /// Final Doom's IWADs, play as <c>final</c> without one; M9: <c>iwad doom</c>,
 /// The Ultimate Doom's IWAD (<see cref="TestWads.DoomPath"/>, <c>ExMy</c> of E1-E4,
-/// <c>retail</c>), as <c>ultimate</c>);
+/// <c>retail</c>), as <c>ultimate</c>) and (P2) <c>pwad SET</c> (a PWAD set of
+/// <see cref="PwadSets"/> loaded over the route's IWAD, <c>doom2</c> or <c>doom</c> as the set's,
+/// in both: the reference's <c>-file</c>; the test skips without the set);
 /// then one line per <c>ticcmd</c>: <c>FORWARD SIDE TURN BUTTONS [xCOUNT]</c>,
 /// <c>forwardmove</c> and <c>sidemove</c> as signed bytes, <c>TURN</c> the
 /// demo's signed angleturn byte (<c>angleturn = TURN &lt;&lt; 8</c>: a demo's
@@ -148,6 +150,13 @@ public sealed class VanillaRoute
 
     /// <summary>Whether the route's dumps are WAD-derived (DOOM1.WAD's or Doom II's: in <see cref="DumpDirEnvVar"/>, never committed).</summary>
     public bool IdWad => Iwad is "doom1" or "doom" or "doom2" or "tnt" or "plutonia";
+
+    /// <summary>
+    /// P2: the <c>pwad</c> header's PWAD set (<see cref="PwadSets"/>), loaded
+    /// over the IWAD as <c>-file</c> (its dumps in <see cref="DumpDirEnvVar"/>,
+    /// as <c>routes.py</c> writes them), or null.
+    /// </summary>
+    public PwadSet? Pwad => File.Pwad is string folder ? PwadSets.Get(folder) : null;
     public string Map { get; }
     public skill_t Skill { get; }
     /// <summary>The <c>start</c> header (map units, degrees), or null for the map's player 1 start (T5.6).</summary>
@@ -260,6 +269,14 @@ public sealed class VanillaRoute
             if (!commercial && (map.Length != 4 || map[0] != 'E' || map[2] != 'M' || map[1] < '1' || map[1] > (iwad == "doom" ? '4' : '3') || map[3] is < '1' or > '9'))
                 throw new FormatException($"{path}: map {map}: ExMy, E1-E3 (M9: E1-E4 for \"iwad doom\")");
         }
+        if (route.Pwad is string pwad) // P2
+        {
+            if (!PwadSets.All.Any(set => set.Folder == pwad))
+                throw new FormatException($"{path}: pwad {pwad}: one of {string.Join("|", PwadSets.All)}");
+            string over = PwadSets.Get(pwad).Iwad == PwadIwad.Doom2 ? "doom2" : "doom";
+            if (iwad != over)
+                throw new FormatException($"{path}: \"pwad {pwad}\" plays over \"iwad {over}\"");
+        }
         return new VanillaRoute(path, iwad, map, (skill_t)(route.Skill - 1), route.Start, route.Exit, route.Cmds, route);
     }
 
@@ -303,7 +320,7 @@ public sealed class VanillaRoute
         {
             "synthetic" => new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]),
             "testmap" => new WadArchive([WadFile.FromBytes(RouteTestMaps.Get(Map).Build(), Map + ".wad")]),
-            _ => WadArchive.Open(RequireWad()),
+            _ => WadArchive.Open(RequireWad(), Pwad is { } set ? set.Require().Pwads : []), // P2: a set's PWADs as -file
         };
         var world = new World(File.Settings(GameMode, Skill, GameVersion, GameMission), Tweaks.Vanilla) // T11.2: the players, netgame and deathmatch too
         {
@@ -320,9 +337,10 @@ public sealed class VanillaRoute
 
     /// <summary>
     /// The path of the route's id IWAD (DOOM1.WAD, or Doom II's for <c>doom2</c>, or, M9, The Ultimate Doom's for <c>doom</c>:
-    /// a registered DOOM.WAD, without E4, skips); skips the test without it.
+    /// a registered DOOM.WAD, without E4, skips); skips the test without it,
+    /// or (P2) without the <c>pwad</c> header's set.
     /// </summary>
-    public string RequireWad() => Iwad switch
+    public string RequireWad() => Pwad is { } set ? set.Require().Iwad : Iwad switch
     {
         "doom2" => TestWads.RequireDoom2(),
         "doom" => TestWads.RequireUltimateDoom(),
@@ -566,6 +584,8 @@ public sealed class VanillaRoute
     /// </summary>
     public WadArchive? HudGraphics()
     {
+        if (Pwad is { IsPresent: true } set) // P2: the set's PWADs over its IWAD
+            return WadArchive.Open(RequireWad(), [.. set.Paths]);
         if (Iwad == "doom2")
             return TestWads.Doom2Path is string doom2 ? WadArchive.Open(doom2) : null; // T10.1: Doom II's own
         if (Iwad is "tnt" or "plutonia")

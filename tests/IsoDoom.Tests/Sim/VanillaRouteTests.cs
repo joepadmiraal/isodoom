@@ -64,6 +64,36 @@ public class VanillaRouteTests
         }
     }
 
+    /// <summary>P2: the <c>pwad</c> header names a set of <see cref="Support.PwadSets"/> played over its own IWAD.</summary>
+    [Theory]
+    [InlineData("iwad doom2\npwad av\nmap MAP20\n", "av")]
+    [InlineData("iwad doom\npwad neis\nmap E4M4\n", "neis")]
+    [InlineData("iwad doom2\n", null)]
+    [InlineData("iwad doom\npwad scythe\nmap E1M1\n", "")]
+    [InlineData("iwad doom2\npwad nosuchset\n", "")]
+    [InlineData("iwad doom2\npwad\n", "")]
+    public void ParsesThePwadHeader(string header, string? pwad)
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isodoom-route-{System.Guid.NewGuid():N}.route");
+        System.IO.File.WriteAllText(path, header + "0 0 0 2\n");
+        try
+        {
+            if (pwad == "")
+            {
+                Assert.Throws<System.FormatException>(() => VanillaRoute.Parse(path));
+                return;
+            }
+            var route = VanillaRoute.Parse(path);
+            Assert.Equal(pwad, route.File.Pwad);
+            Assert.Equal(pwad, route.Pwad?.Folder);
+            Assert.True(route.IdWad); // its dump is WAD-derived: never committed
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
+    }
+
     /// <summary>The environment variable naming the directory <see cref="WritesTheTestMapPwads"/> writes to.</summary>
     public const string TestMapWadsEnvVar = "ISODOOM_TESTMAP_WADS";
 

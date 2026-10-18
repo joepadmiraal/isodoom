@@ -26,4 +26,4 @@ while [ $# -gt 0 ]; do
 done
 route=${rest[0]:-$repo/tests/IsoDoom.Tests/Sim/Routes/e1m1-exit.route}
 tics=${rest[1]:-5,350,900,1500,2100}
-python3 "$here/automap.py" "$ref" "$doom1" "$out" "$route" "$tics" "${images[@]}"
+python3 -B "$here/automap.py" "$ref" "$doom1" "$out" "$route" "$tics" "${images[@]}"

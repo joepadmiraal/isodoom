@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """IsoDoom vs vanilla, view by view (T2.9; dev tool). Usage:
 
-    compare.py DIR IWAD [--images]
+    compare.py DIR IWAD [PWAD...] [--images]
 
 DIR holds vanilla's vN.ppm (dump.c: 320x200, cyan where vanilla draws a
 ceiling or sky) and IsoDoom's oN.png (a 16:10 multiple of 320x200, void in
@@ -17,7 +17,8 @@ in 4-connected groups of 12 or more (a misaligned texture shows there).
 a 1-pixel ceiling strip vanilla rounds the other way), `specks` IsoDoom void
 pixels with geometry all around them (T-junction sparkles). --images writes
 dN.png: grey = equal, green = near/light, red = other, blue = vanilla
-ceiling/sky.
+ceiling/sky. P2: with PWADs (compare.sh's --pwad), the palette and colormap
+are the last WAD's that has them, as w_wad.c finds a lump (D2TWID replaces both).
 """
 import os, struct, subprocess, sys, zlib
 from collections import defaultdict
@@ -71,16 +72,17 @@ def write_png(path, w, h, rgb):
                            + chunk(b'IDAT', zlib.compress(raw, 6)) + chunk(b'IEND', b''))
 
 
-def lump_tables(iwad):
-    wad = open(iwad, 'rb').read()
-    n, off = struct.unpack('<4xii', wad[:12])
-    lumps = {}
-    for k in range(n):
-        p, sz, nm = struct.unpack('<ii8s', wad[off + 16 * k:off + 16 * k + 16])
-        lumps.setdefault(nm.rstrip(b'\0').decode(), p)
-    p = lumps['PLAYPAL']
+def lump_tables(wads):
+    lumps = {}  # name -> (WAD bytes, offset) of the last lump of that name, as W_CheckNumForName
+    for path in wads:
+        wad = open(path, 'rb').read()
+        n, off = struct.unpack('<4xii', wad[:12])
+        for k in range(n):
+            p, sz, nm = struct.unpack('<ii8s', wad[off + 16 * k:off + 16 * k + 16])
+            lumps[nm.split(b'\0')[0].decode('ascii', 'replace').upper()] = (wad, p)
+    wad, p = lumps['PLAYPAL']
     pal = [bytes(wad[p + 3 * i:p + 3 * i + 3]) for i in range(256)]
-    p = lumps['COLORMAP']
+    wad, p = lumps['COLORMAP']
     cm = [wad[p + 256 * m:p + 256 * m + 256] for m in range(34)]
     index = defaultdict(list)
     for i, c in enumerate(pal):
@@ -185,11 +187,13 @@ def compare(args):
 def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
-    folder, iwad, images = sys.argv[1], sys.argv[2], '--images' in sys.argv
+    folder, images = sys.argv[1], '--images' in sys.argv
+    args = sys.argv[2:sys.argv.index('--worker')] if '--worker' in sys.argv else sys.argv[2:]
+    wads = [a for a in args if a != '--images']  # the IWAD, then the PWADs (P2)
     views = sorted(int(f[1:-4]) for f in os.listdir(folder) if f.startswith('v') and f.endswith('.ppm'))
     if '--worker' in sys.argv:  # one share of the views, a line each
         k, n = map(int, sys.argv[sys.argv.index('--worker') + 1].split('/'))
-        tables = lump_tables(iwad)
+        tables = lump_tables(wads)
         for i in views[k::n]:
             i, st = compare((folder, i, images, tables))
             print(i, ' '.join(f'{k}={v}' for k, v in st.items()), flush=True)

@@ -38,4 +38,4 @@ if [ ${#routes[@]} -eq 0 ]; then
         doom-e1m8-exit doom-e2m8-cyber doom-e3m8-spider doom-e4m8-line877 doom-e2m5-line1166 doom-e2m9-walk-exit \
         doom-e3m6-line662 doom-e3m9-line289 doom-e4m2-line674 doom-e4m9-line1622; do routes+=("$repo/tests/IsoDoom.Tests/Sim/Routes/$n.route"); done
 fi
-python3 "$here/wipes.py" "$ref" "$doom1" "$out" "${routes[@]}" "${images[@]}"
+python3 -B "$here/wipes.py" "$ref" "$doom1" "$out" "${routes[@]}" "${images[@]}"

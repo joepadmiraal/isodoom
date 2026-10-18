@@ -86,7 +86,7 @@ def main():
                 os.makedirs(images[0], exist_ok=True)
                 env['DUMP_WIPE_DIR'], env['DUMP_WIPE_STEPS'] = images
             # -timedemo: singletics, D_Display after every tic (as vanilla's at 35 frames a second or more)
-            r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1), '-timedemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
+            r = subprocess.run([ref, '-iwad', routes.iwad(head, doom1)] + routes.pwad_args(head) + ['-timedemo', 'route.lmp', '-nosound', '-nomusic', '-nogui'],
                                cwd=tmp, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         finally:  # (no shutil: the dev container's Python is minimal)
             for root, dirs, files in os.walk(tmp, topdown=False):

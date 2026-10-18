@@ -62,7 +62,7 @@ def main():
         head, cmds = routes.parse(route)
         if head['exit'] is None:
             sys.exit(f'{route}: only routes with an exit header')
-        extra = []  # T11.7a: the reference's arguments routes.py gives the route too
+        extra = routes.pwad_args(head)  # T11.7a: the reference's arguments routes.py gives the route too (P2: a PWAD set's)
         if head['iwad'] == 'synthetic':
             if '--synthetic' not in wads:
                 sys.exit(f'{route}: a synthetic route needs --synthetic SYNTHETIC.wad')

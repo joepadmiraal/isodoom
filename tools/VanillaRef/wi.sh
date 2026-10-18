@@ -53,7 +53,7 @@ if [ ! -x "$ref" ] || [ "$(cat "$here/ref.patch" "$here/dump.c" | sha256sum)" !=
     ref=$("$here/build.sh" "$refdir")
 fi
 rm -f "$dir"/wi*.ppm "$dir"/o*.png "$dir"/c*.png
-python3 "$here/intermissions.py" "$ref" "$doom1" "$dir" "$route@$presses" --images "$dir" "$tics" "${synthetic[@]}" --all-in-outdir >/dev/null
+python3 -B "$here/intermissions.py" "$ref" "$doom1" "$dir" "$route@$presses" --images "$dir" "$tics" "${synthetic[@]}" --all-in-outdir >/dev/null
 IFS=',' read -ra list <<< "$tics"
 IFS=',' read -ra down <<< "$presses"
 for tic in "${list[@]}"; do

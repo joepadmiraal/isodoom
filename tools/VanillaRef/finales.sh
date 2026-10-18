@@ -38,4 +38,4 @@ if [ $# -eq 0 ]; then
         fi
     done
 fi
-python3 "$here/finales.py" "$ref" "$doom1" "$out" "$@"
+python3 -B "$here/finales.py" "$ref" "$doom1" "$out" "$@"

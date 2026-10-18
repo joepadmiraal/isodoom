@@ -64,7 +64,7 @@ if [ -n "$keys" ]; then
     # T10.5: finales.py's "PRESSES;KEYS;LENGTH" (the cast call goes on until the demo's end)
     schedule="$presses;$keys;$(printf '%s\n' "${list[@]}" | sort -n | tail -1)"
 fi
-python3 "$here/finales.py" "$ref" "$doom1" "$dir" "$route@$schedule" --images "$dir" "$tics" >/dev/null
+python3 -B "$here/finales.py" "$ref" "$doom1" "$dir" "$route@$schedule" --images "$dir" "$tics" >/dev/null
 for tic in "${list[@]}"; do
     # the finale's ticcmds up to TIC: BT_USE (2) at the presses, nothing between; a key (T10.5) after the tics of --keys
     cmds=$(python3 - "$tic" "$presses" "$keys" <<'PY'

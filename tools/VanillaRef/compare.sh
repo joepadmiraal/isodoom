@@ -1,6 +1,6 @@
 #!/bin/bash
 # IsoDoom vs vanilla at eye level (T2.9; dev tool). Usage:
-#   tools/VanillaRef/compare.sh DIR IWAD MAP "X Y ANGLE;X Y ANGLE;..." [--images] [--tic N] [-- LEVEL-ARGS...]
+#   tools/VanillaRef/compare.sh DIR IWAD MAP "X Y ANGLE;X Y ANGLE;..." [--images] [--tic N] [--pwad SET] [-- LEVEL-ARGS...]
 # Renders each view with the vanilla reference renderer (build.sh; $VANILLA_REF
 # or ~/.cache/isodoom/vanilla-ref) and with the level scene offscreen (Xvfb +
 # lavapipe; free-fly camera at eye level, vanilla's field of view, camera-depth
@@ -12,19 +12,36 @@
 # views then, with the light specials, animated textures and flats and
 # scrolling walls as they are at that tic (the same in both when the sim
 # matches vanilla: the light thinkers' P_Random calls included).
+# P2: --pwad SET loads a PWAD set of docs/PWAD-VALIDATION.md (pwads.py: its
+# -file list from wads/pwads/SET or $ISODOOM_PWADS/SET) in both, over IWAD
+# (pass the set's: wads/doom2.wad or wads/doom.wad; - picks it), and
+# compare.py takes the palette and colormap from the last WAD that has them;
+# the reference gets a 32 MiB zone then (-mb 32: limit-removing maps outgrow 6).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-dir=$(mkdir -p "$1" && cd "$1" && pwd); iwad=$(realpath "$2"); map=${3^^}; views=$4; shift 4
+dir=$(mkdir -p "$1" && cd "$1" && pwd); iwad=$2; map=${3^^}; views=$4; shift 4
 images=""
 tic=""
+set=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --images) images=--images; shift ;;
         --tic) tic=$2; shift 2 ;;
+        --pwad) set=$2; shift 2 ;;
         *) break ;;
     esac
 done
+pwads=()
+if [ -n "$set" ]; then
+    wads=$(python3 -I "$here/pwads.py" "$set")
+    mapfile -t pwads <<< "$wads"
+    if [ "$iwad" = - ]; then iwad=${pwads[0]}; fi
+    pwads=("${pwads[@]:1}")
+fi
+iwad=$(realpath "$iwad")
+files=()
+if [ ${#pwads[@]} -gt 0 ]; then files=(-file "${pwads[@]}"); refmem=(-mb 32); else refmem=(); fi
 if [ "${1:-}" = "--" ]; then shift; fi
 ref=${VANILLA_REF:-$HOME/.cache/isodoom/vanilla-ref}/doomgeneric/doomgeneric
 refdir=$(dirname "$(dirname "$ref")")
@@ -38,12 +55,12 @@ else echo "unknown map $map" >&2; exit 1; fi
 rm -f "$dir"/v*.ppm "$dir"/v*.z "$dir"/o*.png "$dir"/d*.png
 echo "$views" > "$dir/views.txt"
 if [ -n "$tic" ]; then
-    (cd "$dir" && VIEWS="$views" OUTDIR="$dir" DUMP_TIC="$tic" "$ref" -iwad "$iwad" -warp "${warp[@]}" -nomonsters -nosound -nomusic >/dev/null 2>&1)
+    (cd "$dir" && VIEWS="$views" OUTDIR="$dir" DUMP_TIC="$tic" "$ref" "${refmem[@]}" -iwad "$iwad" "${files[@]}" -warp "${warp[@]}" -nomonsters -nosound -nomusic >/dev/null 2>&1)
     # N tics standing still (scripted: the world then holds), with no monsters as vanilla's -nomonsters.
     script="cmd 0 0 0 0 $tic; checksum; tap F3; fov vanilla"
     set -- --level-monsters=off --level-tweaks=vanilla "$@"
 else
-    (cd "$dir" && VIEWS="$views" OUTDIR="$dir" DUMP_STATIC=1 "$ref" -iwad "$iwad" -warp "${warp[@]}" -nomonsters -nosound -nomusic >/dev/null 2>&1)
+    (cd "$dir" && VIEWS="$views" OUTDIR="$dir" DUMP_STATIC=1 "$ref" "${refmem[@]}" -iwad "$iwad" "${files[@]}" -warp "${warp[@]}" -nomonsters -nosound -nomusic >/dev/null 2>&1)
     # The world holds still at its start (no tic runs): the map's lights, no animation (T5.7).
     script="sim scripted; tap F3; fov vanilla"
 fi
@@ -51,6 +68,6 @@ IFS=';' read -ra list <<< "$views"
 # At vanilla's eye height (the highest floor within the player's radius, plus 41).
 for i in "${!list[@]}"; do script="$script; view ${list[$i]} $(cat "$dir/v$i.z"); shot $dir/o$i.png"; done
 (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
-    godot --fixed-fps 60 --resolution 1280x800 -- -iwad "$iwad" --level "$map" --level-camera=fly --level-light=camera \
-    --level-background=00ff00 --level-things=off --level-masked-back=off "$@" --level-script="$script" >/dev/null 2>&1)
-python3 "$here/compare.py" "$dir" "$iwad" $images
+    godot --fixed-fps 60 --resolution 1280x800 -- -iwad "$iwad" "${files[@]}" --level "$map" --level-camera=fly --level-light=camera \
+    --level-background=00ff00 --level-things=off --level-masked-back=off --level-upper-walls=all "$@" --level-script="$script" >/dev/null 2>&1)
+python3 "$here/compare.py" "$dir" "$iwad" "${pwads[@]}" $images

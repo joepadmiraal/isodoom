@@ -26,4 +26,4 @@ trap 'rm -rf "$tmp"' EXIT
 (cd "$repo" && ISODOOM_TESTMAP_WADS="$tmp/testmaps" dotnet run --project tests/IsoDoom.Tests -- \
     -method "IsoDoom.Tests.Sim.VanillaRouteTests.WritesTheTestMapPwads" >/dev/null)
 if [ $# -eq 0 ]; then set -- "$repo"/tests/IsoDoom.Tests/Sim/Routes/*.route; fi
-python3 "$here/routes.py" "$ref" "$doom1" "$tmp/synthetic.wad" "$tmp/testmaps" "$out" "$@"
+python3 -B "$here/routes.py" "$ref" "$doom1" "$tmp/synthetic.wad" "$tmp/testmaps" "$out" "$@"
