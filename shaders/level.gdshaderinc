@@ -360,7 +360,7 @@ void vertex() {
 		v_rect = ivec4(0);
 		v_kind = 4;
 		v_cap = -1;
-		v_lightnum = shade_light(max((clamp(int(l_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight, l_front.r);
+		v_lightnum = shade_light(max((int(floor(l_front.b + 0.5)) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight, l_front.r);
 		v_texcoord = UV;
 		v_normal = vec3(0.0, 0.0, 1.0);
 		v_wall_normal = vec2(0.0);
@@ -390,7 +390,7 @@ void vertex() {
 		v_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
 		v_rect = m_slot >= 0 ? ivec4(data_texel(texture_info, m_slot) + 0.5) : ivec4(0);
 		v_kind = 3;
-		v_lightnum = (clamp(int(m_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight;
+		v_lightnum = (int(floor(m_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight;
 		v_texcoord = vec2(UV.x + m_side.g, UV.y);
 		v_normal = vec3(0.0, 0.0, 1.0);
 		v_wall_normal = vec2(0.0);
@@ -432,7 +432,7 @@ void vertex() {
 		}
 		v_rect = cap_slot >= 0 ? ivec4(data_texel(texture_info, cap_slot) + 0.5) : ivec4(0);
 		v_kind = 3;
-		v_lightnum = (clamp(int(cap_front.b + 0.5), 0, 255) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
+		v_lightnum = (int(floor(cap_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
 		v_lightnum = shade_light(v_lightnum, cap_z);
 		v_texcoord = vec2(UV.x + cap_side.g, UV.y);
 		v_normal = vec3(0.0, 0.0, 1.0);
@@ -483,7 +483,8 @@ void vertex() {
 		ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
 		v_rect = rect;
 		v_kind = kind;
-		int light = clamp(int(front.b + 0.5), 0, 255);
+		// (not clamped before the shift, as r_segs.c: light 256 is 16 before the fake contrast; P3, D2TWID MAP31)
+		int light = int(floor(front.b + 0.5));
 		v_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
 
 		if (kind == 0) {

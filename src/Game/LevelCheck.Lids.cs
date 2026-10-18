@@ -79,8 +79,8 @@ public partial class LevelCheck
     /// </summary>
     private void CheckLidEndData(LevelMesh m, string map)
     {
-        int ends = 0, shown = 0, facing = 0, badFacing = 0;
-        string firstFacing = "";
+        int ends = 0, shown = 0, facing = 0, badFacing = 0, nodeArtefacts = 0;
+        string firstFacing = "", firstArtefact = "";
         float Ceiling(int s) => m.Level.Sectors[s].CeilingHeight / 65536f;
         // The shader's span of a lid end: (bottom, top), top == bottom when it collapses.
         (float Bottom, float Top) Span(int sector)
@@ -107,7 +107,29 @@ public partial class LevelCheck
                 double mx = (ax + bx) / 2, my = (ay + by) / 2, nx = (by - ay) / len, ny = -(bx - ax) / len; // towards the sector
                 int inside = CursorGround.DrawnSectorAt(m, (int)Math.Round((mx + nx) * 65536), (int)Math.Round((my + ny) * 65536));
                 int outside = CursorGround.DrawnSectorAt(m, (int)Math.Round((mx - nx) * 65536), (int)Math.Round((my - ny) * 65536));
+                // P3: a sector a unit thin there (AV MAP29 sector 559, lines 4066 and 4069): half a unit in
+                if (inside != sector)
+                {
+                    int half = CursorGround.DrawnSectorAt(m, (int)Math.Round((mx + nx / 2) * 65536), (int)Math.Round((my + ny / 2) * 65536));
+                    if (half == sector)
+                        inside = half;
+                }
                 facing++;
+                // P3: where the map's BSP leaves themselves put another sector just inside the line, or
+                // the line's own sector just outside it (a node artefact, T2.2a, or a one-sided line
+                // within its sector), the floor drawn there follows the leaves: the map's data, not the
+                // end's facing (PWADs: Scythe MAP17 line 985, MAP22 line 109, MAP24 line 729; AV).
+                if (inside != sector || outside == sector)
+                {
+                    int leafInside = m.Level.R_PointInSubsector((int)Math.Round((mx + nx) * 65536), (int)Math.Round((my + ny) * 65536)).Sector.Index;
+                    int leafOutside = m.Level.R_PointInSubsector((int)Math.Round((mx - nx) * 65536), (int)Math.Round((my - ny) * 65536)).Sector.Index;
+                    if (leafInside != sector || leafOutside == sector)
+                    {
+                        if (nodeArtefacts++ == 0)
+                            firstArtefact = $"line {s.Line.Index}: BSP leaves of sectors {leafInside} on its right and {leafOutside} on its left (sector {sector})";
+                        continue;
+                    }
+                }
                 // Out of its sector (the void, or rarely another sector overlapping it: Doom II MAP17 line 728, MAP19 line 430).
                 if ((inside != sector || outside == sector) && badFacing++ == 0)
                     firstFacing = $"line {s.Line.Index}: sector {inside} on its right, {outside} on its left (expected {sector} and not it)";
@@ -124,6 +146,8 @@ public partial class LevelCheck
         }
         if (badFacing > 0)
             Fail($"{map}: {badFacing} of {facing} lid end piece(s) do not face the void from their sector, first {firstFacing}");
+        if (nodeArtefacts > 0)
+            GD.Print($"Level check: {map}: {nodeArtefacts} of {facing} lid end piece(s) lie where the BSP leaves put another sector inside them or theirs outside (node artefacts, T2.2a), first {firstArtefact}");
 
         // A lid end collapses when the lid no longer shows: the lowest neighbour's ceiling lowered to the sector's.
         WallSection? one = m.Walls.Sections.FirstOrDefault(s => m.Lids.HasEnd(s) && Span(s.FrontSector.Index) is var (b, t) && t > b);

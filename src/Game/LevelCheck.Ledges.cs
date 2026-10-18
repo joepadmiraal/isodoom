@@ -32,7 +32,7 @@ public partial class LevelCheck
     private static double DataFloor(LevelMesh m, int sector) => m.SectorData(sector).R;
 
     /// <summary>A sector's light level as the shader has it (its data texel), 0–255.</summary>
-    private static int DataLight(LevelMesh m, int sector) => Math.Clamp((int)(m.SectorData(sector).B + 0.5f), 0, 255);
+    private static int DataLight(LevelMesh m, int sector) => (int)Math.Floor(m.SectorData(sector).B + 0.5f); // (unclamped, as the shader since P3: light 256 is 16)
 
     /// <summary>
     /// Every ledge edge of <paramref name="map"/> on a side of a two-sided line

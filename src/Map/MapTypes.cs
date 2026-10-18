@@ -72,6 +72,12 @@ public sealed class Sector
 
     public short Special { get; set; }
 
+    /// <summary>
+    /// The special as the map lump has it, which the sim never changes (P3: it
+    /// clears <see cref="Special"/> 10 and 14 at spawn, and 9 once found).
+    /// </summary>
+    public short LoadedSpecial { get; init; }
+
     public short Tag { get; set; }
 
     /// <summary>

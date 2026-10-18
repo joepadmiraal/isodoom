@@ -161,14 +161,27 @@ public partial class LevelCheck
             foreach (Line near in door.Lines.Where(l => l.BackSector is not null))
             {
                 Sector here = near.FrontSector == door ? near.BackSector! : near.FrontSector!;
+                double dx = near.Dx / 65536.0, dy = near.Dy / 65536.0, length = Math.Sqrt(dx * dx + dy * dy);
+                double side = near.FrontSector == here ? 1 : -1;
+                // P3: the far line across the door from the near one: parallel to it, 1 to 128 units
+                // into the door, beside its span, a sector the door opens to (PWADs have door sectors
+                // in several parts, far apart: HR MAP01's sector 24, NEIS E3M6's 215; two openings side
+                // by side, NEIS E1M3's sector 4; and a ring round a sector no higher, Requiem MAP21's 215)
+                double nmx = (near.V1.X + near.V2.X) / 131072.0, nmy = (near.V1.Y + near.V2.Y) / 131072.0;
+                bool Across(Line l)
+                {
+                    double ldx = l.Dx / 65536.0, ldy = l.Dy / 65536.0, llen = Math.Sqrt(ldx * ldx + ldy * ldy);
+                    double ox = (l.V1.X + l.V2.X) / 131072.0 - nmx, oy = (l.V1.Y + l.V2.Y) / 131072.0 - nmy;
+                    double depth = -side * (ox * dy - oy * dx) / length, lateral = (ox * dx + oy * dy) / length;
+                    return Math.Abs(ldx * dy - ldy * dx) / (llen * length) < 0.1 && depth is >= 1 and <= 128 && Math.Abs(lateral) <= length / 2;
+                }
                 Line? far = door.Lines.FirstOrDefault(l => l != near && l.BackSector is not null && (l.FrontSector == door ? l.BackSector : l.FrontSector) != here
-                    && (l.FrontSector == door ? l.BackSector : l.FrontSector)!.CeilingHeight > (l.FrontSector == door ? l.BackSector : l.FrontSector)!.FloorHeight);
+                    && (l.FrontSector == door ? l.BackSector : l.FrontSector)!.CeilingHeight > (l.FrontSector == door ? l.BackSector : l.FrontSector)!.FloorHeight
+                    && Math.Min(here.CeilingHeight, (l.FrontSector == door ? l.BackSector : l.FrontSector)!.CeilingHeight) > door.FloorHeight && Across(l));
                 if (far is null || here.CeilingHeight <= here.FloorHeight)
                     continue;
                 Sector there = far.FrontSector == door ? far.BackSector! : far.FrontSector!;
                 // 24 units off the line's middle, on here's side (the front side is the right).
-                double dx = near.Dx / 65536.0, dy = near.Dy / 65536.0, length = Math.Sqrt(dx * dx + dy * dy);
-                double side = near.FrontSector == here ? 1 : -1;
                 double px = (near.V1.X + near.V2.X) / 131072.0 + side * 24 * dy / length, py = (near.V1.Y + near.V2.Y) / 131072.0 - side * 24 * dx / length;
                 if (level.R_PointInSubsector((int)(px * 65536), (int)(py * 65536)).Sector != here)
                     continue;

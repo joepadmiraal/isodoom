@@ -64,13 +64,18 @@ public partial class LevelCheck
         p.cards[(int)card_t.it_bluecard] = true;
         p.weaponowned[(int)weapontype_t.wp_shotgun] = true;
         p.armorpoints = 50;
+        // P3: a PWAD map's monsters, crushers or floors can kill the player in the check's tics before
+        // this kill (as vanilla, its AM_Stop then never runs for this one)
+        bool aliveBefore = p.playerstate == playerstate_t.PST_LIVE && me.health > 0;
+        if (!aliveBefore)
+            GD.Print($"Level check: {map}: the player was dead before the reborn check's kill (health {me.health}, at {me.x >> 16}, {me.y >> 16}, sector {me.subsector.sector.Index}, attacker {p.attacker?.type.ToString() ?? "none"})");
         OpenAutomapForDeath(); // T7.9: the death closes it
         world.P_DamageMobj(me, null, null, 10000);
         int x = me.x, y = me.y;
         var cmd = new ticcmd_t { forwardmove = 50 };
         for (int i = 0; i < 4; i++)
             _scene.Tic(cmd);
-        CheckAutomapClosedByDeath(map);
+        CheckAutomapClosedByDeath(map, aliveBefore);
         bool deathFrame = me.state is >= statenum_t.S_PLAY_DIE1 and <= statenum_t.S_PLAY_XDIE9;
         if (p.playerstate != playerstate_t.PST_DEAD || p.health > 0 || !deathFrame || (me.x, me.y) != (x, y) || _scene.PlayerMobj != me
             || world.gameaction != gameaction_t.ga_nothing)

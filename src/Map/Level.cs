@@ -91,6 +91,7 @@ public sealed class Level
         level.P_LoadSectors(Lump(ML_SECTORS));
         level.P_LoadSideDefs(Lump(ML_SIDEDEFS));
         level.P_LoadLineDefs(Lump(ML_LINEDEFS));
+        level._badSideSectors = null;
         level.P_LoadSubsectors(Lump(ML_SSECTORS));
         level.P_LoadNodes(Lump(ML_NODES));
         level.P_LoadSegs(Lump(ML_SEGS));
@@ -186,6 +187,9 @@ public sealed class Level
         return Encoding.Latin1.GetString(len < 0 ? raw : raw[..len]).ToUpperInvariant();
     }
 
+    // P3: the sidedefs that name a sector the map lacks, and that sector (P_LoadSideDefs); only while loading.
+    private Dictionary<int, int>? _badSideSectors;
+
     private T At<T>(T[] array, int index, string what, string user)
     {
         if ((uint)index >= (uint)array.Length)
@@ -219,6 +223,7 @@ public sealed class Level
                 CeilingPic = Name8(ms[12..]),
                 LightLevel = S16(ms, 20),
                 Special = S16(ms, 22),
+                LoadedSpecial = S16(ms, 22),
                 Tag = S16(ms, 24),
             };
         }
@@ -231,7 +236,16 @@ public sealed class Level
         for (int i = 0; i < Sides.Length; i++)
         {
             ReadOnlySpan<byte> msd = data.Slice(i * 30, 30);
-            Sides[i] = new Side(i, At(Sectors, U16(msd, 28), "sector", $"sidedef {i}"))
+            // P3: vanilla points a sidedef at sectors[n] without looking, so a sidedef no linedef
+            // uses may name a sector the map lacks (Memento Mori MAP16, Requiem MAP03: 65535). It
+            // keeps sector 0 here; a linedef that uses it fails in P_LoadLineDefs, as At would here.
+            int sector = U16(msd, 28);
+            if ((uint)sector >= (uint)Sectors.Length && Sectors.Length > 0)
+            {
+                (_badSideSectors ??= [])[i] = sector;
+                sector = 0;
+            }
+            Sides[i] = new Side(i, At(Sectors, sector, "sector", $"sidedef {i}"))
             {
                 TextureOffset = S16(msd, 0) << Fixed.FRACBITS,
                 RowOffset = S16(msd, 2) << Fixed.FRACBITS,
@@ -293,6 +307,11 @@ public sealed class Level
             {
                 int sidenum = U16(mld, 10 + 2 * s);
                 ld.SideNum[s] = sidenum == 0xFFFF ? -1 : sidenum;
+            }
+            for (int s = 0; s < 2; s++)
+            {
+                if (ld.SideNum[s] != -1 && _badSideSectors is not null && _badSideSectors.TryGetValue(ld.SideNum[s], out int bad))
+                    throw new WadFormatException($"Map {Name}: sidedef {ld.SideNum[s]} (of {user}) refers to sector {bad}, but there are {Sectors.Length}.");
             }
             if (ld.SideNum[0] != -1)
                 ld.FrontSector = At(Sides, ld.SideNum[0], "sidedef", user).Sector;

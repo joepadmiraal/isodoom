@@ -153,7 +153,8 @@ public sealed class DoorLids
         }
         foreach (Sector s in level.Sectors)
         {
-            if (Array.IndexOf(_doorSectorSpecials, (int)s.Special) >= 0)
+            // (or as loaded: the sim clears 10 and 14 at spawn, and the fog of war is built after it, P3)
+            if (Array.IndexOf(_doorSectorSpecials, (int)s.Special) >= 0 || Array.IndexOf(_doorSectorSpecials, (int)s.LoadedSpecial) >= 0)
                 doors[s.Index] = true;
         }
         return doors;

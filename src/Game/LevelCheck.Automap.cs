@@ -147,10 +147,10 @@ public partial class LevelCheck
             Press(Key.Tab);
     }
 
-    /// <summary>T7.9: the console player's death closed it.</summary>
-    private void CheckAutomapClosedByDeath(string map)
+    /// <summary>T7.9: the console player's death closed it (when it died then: <paramref name="aliveBefore"/>).</summary>
+    private void CheckAutomapClosedByDeath(string map, bool aliveBefore)
     {
-        if (_scene.Automap is not { } am)
+        if (_scene.Automap is not { } am || !aliveBefore)
             return;
         _automapDeaths++;
         if (am.automapactive)

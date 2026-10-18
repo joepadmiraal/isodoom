@@ -36,6 +36,7 @@ public sealed class TestMap
     private readonly List<short> _nodes = [];
     private readonly List<short> _things = [];
     private readonly List<(int S1, int S2)> _rejects = [];
+    private readonly List<(int Sector, int OnLine)> _extraSides = [];
 
     private TestMap()
     {
@@ -210,6 +211,17 @@ public sealed class TestMap
         return this;
     }
 
+    /// <summary>
+    /// Adds a sidedef after the lines' own naming <paramref name="sector"/>
+    /// (which may be one the map lacks, P3): unused, or the front side of line
+    /// <paramref name="onLine"/> in place of its own.
+    /// </summary>
+    public TestMap ExtraSide(int sector, int onLine = -1)
+    {
+        _extraSides.Add((sector, onLine));
+        return this;
+    }
+
     /// <summary>Adds player 1's start.</summary>
     public TestMap Player(int x, int y, int angle = 0) => Thing(x, y, 1, angle);
 
@@ -229,6 +241,12 @@ public sealed class TestMap
                 sides.Add((l.Back, 0));
             }
             linedefs.AddRange([(short)l.V1, (short)l.V2, (short)l.Flags, (short)l.Special, (short)l.Tag, (short)right, (short)left]);
+        }
+        foreach ((int sector, int onLine) in _extraSides)
+        {
+            if (onLine >= 0)
+                linedefs[7 * onLine + 5] = (short)sides.Count;
+            sides.Add((sector, 0));
         }
 
         byte[] sidedefs = new byte[30 * sides.Count];

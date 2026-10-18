@@ -240,7 +240,7 @@ int sprite_colormap(int flags, int sector, vec3 foot_world, mat4 view) {
 	}
 	int row = 0;
 	if ((flags & 2) == 0) {
-		int light = clamp(int(data_texel(sector_data, sector).b + 0.5), 0, 255);
+		int light = int(floor(data_texel(sector_data, sector).b + 0.5));
 		if ((flags & 8) != 0) {
 			light = max(light, own_light);
 		}

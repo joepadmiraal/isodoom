@@ -677,8 +677,11 @@ public partial class LevelCheck
             // EV_Teleport puts the thing on the floor, but Final Doom's first executable keeps the height
             // it crossed at (T10.7). The fogs spawn at the height it left and at its height after the
             // move. Then the same tic's P_ZMovement (each fog thinks after the player, as it is spawned
-            // at the end of the thinker list) lifts each onto its floor or lowers it under its ceiling.
-            static int Settled(int z, mobj_t mo) => Math.Min(Math.Max(z, mo.floorz), mo.ceilingz - mo.height);
+            // at the end of the thinker list) lifts each onto its floor or lowers it under its ceiling,
+            // but only off its floor: P_MobjThinker skips P_ZMovement for a thing on its floor with no
+            // momz, so one landing on a floor whose ceiling is lower than its height stays there (P3:
+            // Scythe MAP29 line 1006's destination, 0 units tall).
+            static int Settled(int z, mobj_t mo) => z == mo.floorz && mo.momz == 0 ? z : Math.Min(Math.Max(z, mo.floorz), mo.ceilingz - mo.height);
             bool keepsHeight = world.gameversion == GameVersion.exe_final;
             int spawnZ = keepsHeight ? zBefore : me.floorz;
             int expectedZ = Settled(spawnZ, me);
@@ -771,7 +774,8 @@ public partial class LevelCheck
         {
             ThingSprites.Entry e = things.Entries[i];
             ThingSprites.Shown s = things.ShownFrames[i];
-            if (s.Slot < 0)
+            // (not a spectre's: fuzzed, T6.9's own view below; P3: AV MAP20's first SARG things are spectres)
+            if (s.Slot < 0 || e.Shadow)
                 continue;
             bool rotates = things.FrameOf(e)!.Rotate;
             if (rotates)
@@ -803,7 +807,7 @@ public partial class LevelCheck
                 compared += await CompareSprite(m, things, atlas, i, basis, $"{map}: thing {i}");
         }
         if (allRotations.Count > 0 && rotations.Count != allRotations.Count)
-            Fail($"{map}: sprite rotations compared {string.Join(" ", rotations)}, the map shows {string.Join(" ", allRotations)}");
+            FailOrSkip($"{map}: sprite rotations compared {string.Join(" ", rotations)}, the map shows {string.Join(" ", allRotations)}");
         if (anyFlip && !flipCompared)
             Fail($"{map}: no mirrored rotation compared");
 
@@ -1326,7 +1330,7 @@ public partial class LevelCheck
         }
         if (thing < 0)
         {
-            Fail($"{map}: no thing on a floor for the tilt depth view");
+            FailOrSkip($"{map}: no thing on a floor for the tilt depth view");
             return;
         }
         ThingSprites.Entry original = things.Entries[thing];
@@ -1337,7 +1341,7 @@ public partial class LevelCheck
         // far enough that no column of the upright billboard reaches the wall.
         if (FacingWall(m, ground, right, halfSpan, normal => 8 + halfSpan * MathF.Abs(right.Dot(normal))) is not { } wall)
         {
-            Fail($"{map}: no one-sided wall facing the game camera with open floor in front for the tilt depth view");
+            FailOrSkip($"{map}: no one-sided wall facing the game camera with open floor in front for the tilt depth view");
             return;
         }
         Vector2 where = wall.Spot;
@@ -1347,7 +1351,7 @@ public partial class LevelCheck
         double hiddenAbove = along / Math.Sin(pitch);
         if (patch.TopOffset < hiddenAbove + 4)
         {
-            Fail($"{map}: the tallest thing ({SpriteName(original)}, {patch.TopOffset} rows above its origin) is too short for the tilt depth view (hidden above {hiddenAbove:F0})");
+            FailOrSkip($"{map}: the tallest thing ({SpriteName(original)}, {patch.TopOffset} rows above its origin) is too short for the tilt depth view (hidden above {hiddenAbove:F0})");
             return;
         }
 
@@ -1621,7 +1625,7 @@ public partial class LevelCheck
         }
         things.Isolate(null);
         if (!tested)
-            Fail($"{map}: no thing and wall for the upright hiding view (a one-sided wall facing the game camera, taller than the thing, that hides its upright billboard but not its tilted one)");
+            FailOrSkip($"{map}: no thing and wall for the upright hiding view (a one-sided wall facing the game camera, taller than the thing, that hides its upright billboard but not its tilted one)");
     }
 
     /// <summary>

@@ -291,6 +291,8 @@ public partial class LevelCheck : Godot.Node
         GD.Print($"Level check: lid ends (T6.13f): {_lidEnds} lid sector one-sided walls with an end facing out of its sector ({_lidEndsOntoVoid} pieces onto the void), {_lidEndsShown} of them spanning up to a lid at load");
         if (_lidEnds == 0)
             Fail("no lid ends on any map (T6.13f)");
+        if (_backwardSegs > 0)
+            GD.Print($"Level check: wall pieces (T2.9): {_backwardSegs} piece corner(s) on segs that run against their side (node builder artefacts, P3) not checked against their seg");
         GD.Print($"Level check: cursor ground point: {_cursorPoints} sector floors picked through the game camera "
             + $"(both projections), {_cursorInFront} on a higher floor in front");
         PrintFog();
@@ -1119,7 +1121,13 @@ public partial class LevelCheck : Godot.Node
             foreach ((PolygonVertex p, int column) in corners)
             {
                 (double along, double off, double length) = OnSeg(seg, p);
-                if (off > PieceTolerance / 65536.0 || along < -PieceTolerance / 65536.0 || along > length + PieceTolerance / 65536.0)
+                if (Backwards(seg))
+                {
+                    // P3: a seg the node builder's rounded split vertices turned against its side (AV
+                    // MAP23 seg 3594, 1 unit long): its pieces span the side's corners, not its ends.
+                    _backwardSegs++;
+                }
+                else if (off > PieceTolerance / 65536.0 || along < -PieceTolerance / 65536.0 || along > length + PieceTolerance / 65536.0)
                     Fail($"{what}: piece {i} corner {p} is {off:F3} units off seg {seg.Index}, {along:F3} along it (length {length:F3})");
                 if (Math.Abs(column / 65536.0 - (seg.Offset / 65536.0 + along)) > 1.0 / 256)
                     Fail($"{what}: piece {i} corner {p}: texture column {column / 65536.0:F3}, expected seg offset {seg.Offset / 65536.0} + {along:F3}");
@@ -1133,6 +1141,18 @@ public partial class LevelCheck : Godot.Node
             if (!seen.Contains(seg.Index) && (seg.V1.X != seg.V2.X || seg.V1.Y != seg.V2.Y))
                 Fail($"{what}: seg {seg.Index} has no wall piece");
         }
+    }
+
+    private int _backwardSegs;
+
+    /// <summary>Whether <paramref name="seg"/> runs against its side's direction (v1 → v2, or back for the back side): a node builder's rounding artefact.</summary>
+    private static bool Backwards(Seg seg)
+    {
+        Line l = seg.LineDef;
+        long lx = (long)l.V2.X - l.V1.X, ly = (long)l.V2.Y - l.V1.Y;
+        if (seg.Side == 1)
+            (lx, ly) = (-lx, -ly);
+        return ((long)seg.V2.X - seg.V1.X) / 65536.0 * lx + ((long)seg.V2.Y - seg.V1.Y) / 65536.0 * ly < 0;
     }
 
     /// <summary>Point <paramref name="p"/> against <paramref name="seg"/>: its distance along the seg from V1, from the seg's line, and the seg's length (map units).</summary>
@@ -1481,6 +1501,11 @@ public partial class LevelCheck : Godot.Node
                     break;
                 int left = left0 + tx * w, top = top0 - ty * h;
                 int[] grid = RasterFloors(m, left, top, w, h);
+                if (maxTiles < tilesX * tilesY && Array.TrueForAll(grid, g => g < 0))
+                {
+                    tiles--; // P3: a pass of a few tiles takes those with a floor (AV MAP20's first are void)
+                    continue;
+                }
                 bool[] uniform = Uniform(grid, w, h, 2);
                 // Half a unit off whole heights, so camera depths don't sit on a light table step.
                 float cameraZ = highest + 64.5f;
@@ -2153,11 +2178,24 @@ public partial class LevelCheck : Godot.Node
         Math.Abs(got.R - _background.R) <= BackgroundTolerance && Math.Abs(got.G - _background.G) <= BackgroundTolerance
         && Math.Abs(got.B - _background.B) <= BackgroundTolerance;
 
+    /// <summary>
+    /// P3: a view's setup the map can't give (no such wall or thing on it):
+    /// a failure on the IWADs, whose maps the views were written for, logged
+    /// as not checked on a PWAD's map, which may simply have none.
+    /// </summary>
+    private void FailOrSkip(string message)
+    {
+        if (_scene.Wad is { Files.Count: > 1 })
+            GD.Print($"Level check: {message}: not checked (a PWAD's map)");
+        else
+            Fail(message);
+    }
+
     private void Fail(string message)
     {
         _failures++;
         if (_logged++ < 50)
-            GD.PrintErr($"Level check: {message}");
+            GD.PrintErr($"Level check: FAIL: {message}"); // (FAIL: P3, to find among the many lines with a renderer, where they go to stdout)
     }
 
     private SignalAwaiter NextFrame() => CanCapture

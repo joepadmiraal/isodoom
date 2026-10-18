@@ -191,6 +191,19 @@ public class DoorLidsTests
         Assert.Equal([5], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
     }
 
+    /// <summary>P3: a door sector special the sim cleared at spawn (NEIS E1M9's 14) still makes a door, as the mesh built before the spawn says.</summary>
+    [Fact]
+    public void DoorSectorSpecialsClearedAtSpawnStayDoors()
+    {
+        foreach (int special in new[] { 10, 14 })
+        {
+            IsoDoom.Sim.World world = TestMap.Polygon(0, 0, (0, 0), (0, 64), (64, 64), (64, 0)).SectorSpecial(0, special).Player(32, 32).Load();
+            Assert.Equal(0, world.level.Sectors[0].Special); // P_SpawnDoorCloseIn30, P_SpawnDoorRaiseIn5Mins
+            Assert.Equal(special, world.level.Sectors[0].LoadedSpecial);
+            Assert.True(DoorLids.FindDoors(world.level)[0]);
+        }
+    }
+
     [Fact]
     public void Doom2ThickDoorsButNotClosets()
     {

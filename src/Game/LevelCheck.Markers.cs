@@ -58,12 +58,25 @@ public partial class LevelCheck
                 sides.Add((s.Line.Index, s.Side));
         }
         var shown = new List<int>();
+        int noFloor = 0;
         foreach ((int line, int side) in sides)
         {
             string what = $"{map}: line {line} side {side}'s switch";
             if (!bySide.TryGetValue((line, side), out SwitchMarker? marker))
             {
-                Fail($"{what}: no marker");
+                // P3: no floor of its sector in front of it because the map's BSP leaf there is
+                // another sector's (a node artefact, T2.2a: AV MAP31 line 1141): the map's data.
+                WallSection sw = m.Walls.Sections.First(k => k.Line.Index == line && k.Side == side);
+                double ldx = (sw.V2.X - (double)sw.V1.X) / 65536, ldy = (sw.V2.Y - (double)sw.V1.Y) / 65536, llen = Math.Sqrt(ldx * ldx + ldy * ldy);
+                double px = (sw.V1.X + sw.V2.X) / 131072.0 + 4 * ldy / llen, py = (sw.V1.Y + sw.V2.Y) / 131072.0 - 4 * ldx / llen;
+                int leaf = m.Level.R_PointInSubsector((int)Math.Round(px * 65536), (int)Math.Round(py * 65536)).Sector.Index;
+                if (leaf != sw.FrontSector.Index)
+                {
+                    GD.Print($"Level check: {what}: no marker, the BSP leaf 4 units in front of it is sector {leaf}'s, not its sector {sw.FrontSector.Index}'s (a node artefact, T2.2a)");
+                    noFloor++;
+                }
+                else
+                    Fail($"{what}: no marker");
                 continue;
             }
             // The wall's normal into its sector, from its section's ends.
@@ -78,7 +91,7 @@ public partial class LevelCheck
             if (marker.Depth is < SwitchMarkers.MinDepth or > SwitchMarkers.MaxDepth && marker.Depth != m.Textures.TextureDefs[s.Texture].Height)
                 Fail($"{what}: its marker is {marker.Depth} deep");
         }
-        if (bySide.Count != sides.Count)
+        if (bySide.Count + noFloor != sides.Count)
             Fail($"{map}: {bySide.Count} switch markers for {sides.Count} switch sides");
         int triangles = m.Markers.Markers.Sum(k => k.Pieces.Sum(p => p.Length - 2));
         if (triangles != m.SwitchMarkerTriangleCount)

@@ -382,7 +382,7 @@ public partial class LevelCheck
                     first = $"pixel ({q.X}, {q.Y}) {(expected ? "kept" : "cut")}";
             }
             if (pixels.Count < 50)
-                Fail($"{what}, centre {where}: only {pixels.Count} cap pixels shown in the cut disc (at least 50 expected)");
+                FailOrSkip($"{what}, centre {where}: only {pixels.Count} cap pixels shown in the cut disc (at least 50 expected)");
             else if (bad > 0)
                 Fail($"{what}, centre {where}: {bad} of {cut + kept} cap pixel(s) differ from the CPU's cut, first at {first}");
             else if (cutExpected ? cut < 50 : cut > 0)

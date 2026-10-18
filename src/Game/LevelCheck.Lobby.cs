@@ -135,6 +135,13 @@ public partial class LevelCheck
             if (menu.StateName != "lobby" || s.Net.Server.Phase != NetServerPhase.Lobby)
                 Fail(Step("back on the lobby page after the refusal"));
             s.Net.CheckStart = check;
+            // P3: Doom II's own MAP29 (v1.666), reachable from MAP01, has no co-op start for player 2, so the
+            // host's check rightly refuses a co-op game there: the check's Start then goes without it
+            if (check?.Invoke(0b11) is string refusal)
+            {
+                GD.Print($"Level check: lobby (T11.9): the host's check refuses this WAD's co-op game ({refusal}): the lobby's Start checked without it");
+                s.Net.CheckStart = null;
+            }
 
             // the lobby's Start: the game begins on both machines, the lobby page closes
             s.MenuEvent(KeyEvent(Key.Enter));
@@ -241,7 +248,9 @@ public partial class LevelCheck
                 s.MenuEvent(KeyEvent(key));
             if (!await NetFrames(() => LanRow(menu, "CHECK") is not null, other, 5) || LanRow(menu, "CHECK") is not { grey: true } greyed)
                 Fail(Step($"the other IWAD's host listed greyed: {LanRow(menu, "CHECK")?.grey} (T11.9d)"));
-            else if (greyed.value?.Invoke() != "ANOTHER IWAD (OTHER.WAD)" || !CursorTo(menu, greyed))
+            // (the value cut at its IWAD's name when too wide for the page, as LanValue cuts it: the
+            // menu font's ANOTHER IWAD (OTHER.WAD) is; P3 found the check expecting it whole)
+            else if (greyed.value?.Invoke() is not ("ANOTHER IWAD (OTHER.WAD)" or "ANOTHER IWAD") || !CursorTo(menu, greyed))
                 Fail(Step($"the other IWAD's row: {greyed.value?.Invoke()} (T11.9d)"));
             else
             {
