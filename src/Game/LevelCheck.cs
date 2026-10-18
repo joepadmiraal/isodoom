@@ -125,6 +125,7 @@ public partial class LevelCheck : Godot.Node
             CheckMenus(); // T7.2: the menus through the input glue
             CheckAspectLayouts(); // T7.11: vanilla's screen at 4:3 (the rest of the check runs square)
             CheckAspectMouse();
+            CheckWideBarLayouts(); // T6.13y: the 400-wide bar (the rest of the check runs vanilla's 320)
             CheckSettings(); // T7.3: every setting applies at once and survives a restart (through a file of its own)
             CheckWipes(); // T7.1a: the screen wipes' timing and M_Random
             CheckEpisodes(); // T9.4: each episode from the menu, and their ends

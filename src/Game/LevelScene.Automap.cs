@@ -192,8 +192,11 @@ public partial class LevelScene : ICheatAutomap
     }
 
     /// <summary>The frame's size for the window: the HUD's scale (or one window pixel, high detail) above the status bar's rows, and its viewport rectangle.</summary>
-    private (int Width, int Height, int PixelScale, (int X, int Y, int W, int H) Rect) AutomapFrame() =>
-        AutomapFrameFor(Hud.LayoutFor(GetViewport().GetVisibleRect().Size), GetViewport().GetVisibleRect().Size, AutomapHighDetail);
+    private (int Width, int Height, int PixelScale, (int X, int Y, int W, int H) Rect) AutomapFrame()
+    {
+        Vector2 size = GetViewport().GetVisibleRect().Size;
+        return AutomapFrameFor(Hud.LayoutFor(size), size, AutomapHighDetail, Hud.BarRect(Hud.BarLayoutFor(size)).Y);
+    }
 
     /// <summary>
     /// T7.11: <see cref="AutomapFrame"/> for the HUD's <paramref name="hud"/>
@@ -202,18 +205,20 @@ public partial class LevelScene : ICheatAutomap
     /// under it: the map's lines stretched as vanilla's on a CRT), the frame
     /// as many as fit across and above the bar, centred across, its bottom on
     /// the bar's top; in high detail one window pixel each (true to the map),
-    /// the pan step and line widths at the HUD's scale across.
+    /// the pan step and line widths at the HUD's scale across. T6.13y: the
+    /// frame's bottom on <paramref name="barTop"/> (the wide bar's top; by
+    /// default the HUD's bar's), its pixels still the HUD's.
     /// </summary>
-    public static (int Width, int Height, int PixelScale, (int X, int Y, int W, int H) Rect) AutomapFrameFor(ScreenLayout hud, Vector2 size, bool highDetail)
+    public static (int Width, int Height, int PixelScale, (int X, int Y, int W, int H) Rect) AutomapFrameFor(ScreenLayout hud, Vector2 size, bool highDetail, int? barTop = null)
     {
         int k = (int)hud.ScaleX;
-        int barTop = hud.Rect(0, StStuff.ST_Y, HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT).Y;
-        int above = Math.Max(barTop, 1);
+        int top = barTop ?? hud.Rect(0, StStuff.ST_Y, HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT).Y;
+        int above = Math.Max(top, 1);
         if (highDetail)
-            return ((int)size.X, above, k, (0, barTop - above, (int)size.X, above));
+            return ((int)size.X, above, k, (0, top - above, (int)size.X, above));
         int width = Math.Max((int)size.X / k, 1), height = Math.Max((int)(above / hud.ScaleY), 1);
         int h = (int)MathF.Floor(height * hud.ScaleY + 0.5f);
-        return (width, height, 1, ((int)MathF.Floor((size.X - width * k) / 2), Math.Max(barTop - h, 0), width * k, h));
+        return (width, height, 1, ((int)MathF.Floor((size.X - width * k) / 2), Math.Max(top - h, 0), width * k, h));
     }
 
     /// <summary>

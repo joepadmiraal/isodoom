@@ -285,6 +285,8 @@ public partial class LevelCheck
                 driver = music.Driver?.Opl3Mode ?? opl3;
             Expect("sound/opl", music.Opl3 == opl3 && driver == opl3, $"the player's OPL3 {music.Opl3}, its driver's {driver}");
         }
+        // T6.13y: the option's width (the check itself draws vanilla's 320 but for its wide bar's checks)
+        Expect("hud/bar_width", s.HudBarWidth.ToString(CultureInfo.InvariantCulture) == changed["hud/bar_width"], $"the scene's {s.HudBarWidth}");
         Expect("hud/messages", (s.Menu.showMessages != 0 ? "on" : "off") == changed["hud/messages"], $"showMessages {s.Menu.showMessages}");
         // T6.13v: the flashes' style and strength reach the mesh at its next update
         if (s.Mesh is { } m)

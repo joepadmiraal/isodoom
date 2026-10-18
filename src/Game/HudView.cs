@@ -40,6 +40,12 @@ public partial class HudView : CanvasLayer
     /// <summary>T7.11: the layout in use (<see cref="ScreenLayout.ForHud"/>: vanilla's row 200 at the viewport's bottom).</summary>
     public ScreenLayout Layout { get; private set; } = new(1, 1, 0, 0);
 
+    /// <summary>T6.13y: the wide status bar, or null for vanilla's 320 (<c>hud/bar_width</c>).</summary>
+    public WideStatusBar? WideBar { get; set; }
+
+    /// <summary>T6.13y: the status bar's layout (<see cref="Layout"/>, or with <see cref="WideBar"/> <see cref="ScreenLayout.ForWideBar"/>'s).</summary>
+    public ScreenLayout BarLayout { get; private set; } = new(1, 1, 0, 0);
+
     /// <summary>
     /// T7.9: the automap shows: the status bar shows whatever the
     /// <see cref="Mode"/> (st_stuff.c's <c>st_statusbaron = !fullscreen || automapactive</c>),
@@ -50,8 +56,8 @@ public partial class HudView : CanvasLayer
     /// <summary>The viewport pixels the status bar covers at the bottom (0 unless <see cref="HudMode.Bar"/> shows).</summary>
     public float BottomInset => Visible && (Mode == HudMode.Bar || AutomapShown) ? BarHeight : 0;
 
-    /// <summary>The status bar's height in viewport pixels (154 at 1280×800 with <see cref="Aspect43"/>, 128 square).</summary>
-    public int BarHeight => Layout.Rect(0, StStuff.ST_Y, HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT).H;
+    /// <summary>The status bar's height in viewport pixels (154 at 1280×800 with <see cref="Aspect43"/>, 128 square; T6.13y: 123 and 102 at 400 wide).</summary>
+    public int BarHeight => BarLayout.Rect(0, StStuff.ST_Y, HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT).H;
 
     /// <summary>The viewport pixels the message line's rows take at the top (where the debug overlay starts below).</summary>
     public float TopInset => Visible ? HuStuff.ScreenRows * Layout.ScaleY / 2 + 8 : 0;
@@ -65,6 +71,15 @@ public partial class HudView : CanvasLayer
 
     /// <summary>T7.11: the HUD's layout for a viewport of <paramref name="size"/>.</summary>
     public ScreenLayout LayoutFor(Vector2 size) => ScreenLayout.ForHud(size.X, size.Y, FixedScale, Aspect43);
+
+    /// <summary>T6.13y: the status bar's layout for a viewport of <paramref name="size"/> (<see cref="LayoutFor"/>'s, or the wide bar's).</summary>
+    public ScreenLayout BarLayoutFor(Vector2 size) =>
+        WideBar is { } wide ? ScreenLayout.ForWideBar(size.X, size.Y, wide.Width, FixedScale, Aspect43) : LayoutFor(size);
+
+    /// <summary>T6.13y: the status bar's viewport rectangle in <paramref name="layout"/> (<see cref="BarLayoutFor"/>'s): vanilla's 320 columns, or the wide bar's whole width.</summary>
+    public (int X, int Y, int W, int H) BarRect(ScreenLayout layout) => WideBar is { } wide
+        ? layout.Rect(-wide.Side, StStuff.ST_Y, wide.Width, StStuff.ST_HEIGHT)
+        : layout.Rect(0, StStuff.ST_Y, HudScreen.SCREENWIDTH, StStuff.ST_HEIGHT);
 
     /// <summary>T7.11: the message line's layout for <paramref name="layout"/> (vanilla's row 0 at the viewport's top, never left of it).</summary>
     public static ScreenLayout MessageLayout(ScreenLayout layout) => layout with { OriginX = Math.Max(layout.OriginX, 0), OriginY = 0 };
@@ -98,10 +113,21 @@ public partial class HudView : CanvasLayer
         Vector2 size = GetViewport().GetVisibleRect().Size;
         ScreenLayout layout = Layout = LayoutFor(size);
         ScreenLayout top = MessageLayout(layout);
+        BarLayout = BarLayoutFor(size);
 
-        HudScreen? strip = st is null ? null : AutomapShown || Mode == HudMode.Bar ? weapon?.Bar ?? st.Screen : Mode == HudMode.Full ? st.FullScreen : null;
+        bool barShown = st is not null && (AutomapShown || Mode == HudMode.Bar);
+        HudScreen? strip = st is null ? null : barShown ? weapon?.Bar ?? st.Screen : Mode == HudMode.Full ? st.FullScreen : null;
         _bar.Visible = strip is not null;
-        if (strip is not null)
+        if (barShown && WideBar is { } wideBar && strip is not null)
+        {
+            // T6.13y: vanilla's bar in the middle of the wide one, the weapon's icon in its box
+            (IndexedImage? icon, bool dim) = weapon is null ? (null, false) : WideStatusBar.IconFor(weapon, st!.plyr);
+            wideBar.Draw(strip, icon, dim && weapon is not null ? weapon.DimMap : default);
+            HudScreen wide = wideBar.Screen;
+            Upload(wide, pal, ref _barImage, ref _barTexture, ref _barRgba, _bar);
+            ScreenRects.Place(_bar, BarRect(BarLayout), wide.Width, wide.Height);
+        }
+        else if (strip is not null)
         {
             Upload(strip, pal, ref _barImage, ref _barTexture, ref _barRgba, _bar);
             ScreenRects.Place(_bar, layout.Rect(0, strip.Top, strip.Width, strip.Height), strip.Width, strip.Height);
@@ -112,8 +138,8 @@ public partial class HudView : CanvasLayer
             Upload(hu.Screen, pal, ref _messageImage, ref _messageTexture, ref _messageRgba, _message);
             ScreenRects.Place(_message, top.Rect(0, hu.Screen.Top, hu.Screen.Width, hu.Screen.Height), hu.Screen.Width, hu.Screen.Height);
         }
-        // T6.13x: the ready weapon's icon above the bar or the fullscreen HUD's ammo (not over the automap)
-        _weapon.Visible = weapon is { Enabled: true } && !AutomapShown && Mode != HudMode.Off;
+        // T6.13x: the ready weapon's icon above the bar or the fullscreen HUD's ammo (not over the automap; T6.13y: the wide bar has it in its panel)
+        _weapon.Visible = weapon is { Enabled: true } && !AutomapShown && Mode != HudMode.Off && !(WideBar is not null && Mode == HudMode.Bar);
         if (_weapon.Visible && weapon is not null)
         {
             HudScreen icon = weapon.Screen;
@@ -123,10 +149,10 @@ public partial class HudView : CanvasLayer
         _title.Visible = AutomapShown && hu is not null;
         if (AutomapShown && hu is not null)
         {
-            // T7.9: vanilla's screen rows from the title's down, laid out as the bar's (row 168 at the bar's top)
+            // T7.9: vanilla's screen rows from the title's down, laid out as the bar's (row 168 at the bar's top; T6.13y: the wide bar's, at the message line's scale)
             HudScreen title = hu.TitleScreen;
             Upload(title, pal, ref _titleImage, ref _titleTexture, ref _titleRgba, _title);
-            ScreenRects.Place(_title, (top with { OriginY = layout.OriginY }).Rect(0, title.Top, title.Width, title.Height), title.Width, title.Height);
+            ScreenRects.Place(_title, (top with { OriginY = BarLayout.Rect(0, StStuff.ST_Y, 1, 1).Y - StStuff.ST_Y * top.ScaleY }).Rect(0, title.Top, title.Width, title.Height), title.Width, title.Height);
         }
     }
 
@@ -138,8 +164,13 @@ public partial class HudView : CanvasLayer
         if (rgba.Length != screen.Pixels.Length * 4)
             rgba = new byte[screen.Pixels.Length * 4];
         screen.ToRgba(pal, rgba);
-        if (image is null || texture is null)
+        if (image is null || texture is null || texture.GetWidth() != screen.Width || texture.GetHeight() != screen.Height)
         {
+            // T6.13y: the wide bar's strip and vanilla's differ in size: a new texture (the old one freed)
+            if (texture is not null)
+                rect.Texture = null;
+            texture?.Dispose();
+            image?.Dispose();
             image = Image.CreateFromData(screen.Width, screen.Height, false, Image.Format.Rgba8, rgba);
             texture = ImageTexture.CreateFromImage(image);
             rect.Texture = texture;

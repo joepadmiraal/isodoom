@@ -28,7 +28,7 @@ IFS=',' read -ra list <<< "$tics"
 for tic in "${list[@]}"; do
     (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
         godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$doom1" --level "$map" --level-tweaks=vanilla \
-        --level-monsters=$monsters --level-skill="$skill" --level-wipe=off --level-hud-aspect=square --level-hud-weapon-icon=off --level-hud-weapon-digit=off --level-palette-effects=screen \
+        --level-monsters=$monsters --level-skill="$skill" --level-wipe=off --level-hud-aspect=square --level-hud-bar-width=320 --level-hud-weapon-icon=off --level-hud-weapon-digit=off --level-palette-effects=screen \
         --level-script="route $route $tic; tics $tic; tap F3; shot $dir/o$tic.png" >/dev/null 2>&1)
 done
 python3 "$here/hud.py" "$dir" "${list[@]}" "$@"

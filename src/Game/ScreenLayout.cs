@@ -45,6 +45,24 @@ public readonly record struct ScreenLayout(float ScaleX, float ScaleY, float Ori
     }
 
     /// <summary>
+    /// T6.13y: the wide status bar's, <paramref name="barWidth"/> screen
+    /// pixels wide (vanilla's 320 in its middle): it fills the viewport's
+    /// width, so k = W / <paramref name="barWidth"/> across, not rounded
+    /// (sharp bilinear), but never above the HUD's (<see cref="ForHud"/>'s
+    /// whole scale, or <paramref name="fixedScale"/> when above 0), so it is
+    /// never taller than vanilla's bar (on a 21:9 window it is centred), and
+    /// k or 1.2 k (<paramref name="aspect43"/>) down, vanilla's row 200 at the
+    /// viewport's bottom, its column 0 where the middle starts: at 1280×800 a
+    /// 400-wide bar is 1280×123.
+    /// </summary>
+    public static ScreenLayout ForWideBar(float width, float height, int barWidth, int fixedScale, bool aspect43)
+    {
+        float k = Math.Min(width / barWidth, fixedScale > 0 ? fixedScale : WholeScale(width, height));
+        float sy = aspect43 ? k * PixelAspect : k;
+        return new ScreenLayout(k, sy, (width - barWidth * k) / 2 + (barWidth - HudScreen.SCREENWIDTH) / 2 * k, height - HudScreen.SCREENHEIGHT * sy);
+    }
+
+    /// <summary>
     /// The full screens' (the title loop, the intermission, the finale, the
     /// pause graphic, the menus): the whole screen fits, centred across and,
     /// with <paramref name="centre"/>, down (else at the top). <c>square</c>:

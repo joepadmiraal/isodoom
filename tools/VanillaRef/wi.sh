@@ -67,7 +67,7 @@ for tic in "${list[@]}"; do
     if [ "$tic" -gt "$last" ]; then cmds+="cmd 0 0 0 0 $((tic - last)); "; fi
     (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
         godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$iwad" --level "$map" "${scene_args[@]}" --level-tweaks=vanilla \
-        --level-monsters=$monsters --level-skill="$skill" --level-wipe=off --level-hud-aspect=square --level-hud-weapon-icon=off --level-hud-weapon-digit=off --level-palette-effects=screen \
+        --level-monsters=$monsters --level-skill="$skill" --level-wipe=off --level-hud-aspect=square --level-hud-bar-width=320 --level-hud-weapon-icon=off --level-hud-weapon-digit=off --level-palette-effects=screen \
         --level-script="route $route; gamestate intermission; ${cmds}gamestate intermission; tap F3; shot $dir/o$tic.png" >/dev/null 2>&1)
 done
 python3 "$here/wi.py" "$dir" "${list[@]}" "$@"

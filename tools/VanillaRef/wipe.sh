@@ -55,6 +55,6 @@ for s in "${list[@]}"; do shots+="wipe $s $wipe; shot $dir/o$s.png; "; done
 if [ "$wipe" -le 2 ]; then script="${tail}${shots}wipe; ${next}"; else script="${tail}${next}${shots}wipe"; fi
 (cd "$repo" && WAYLAND_DISPLAY='' VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" \
     godot --fixed-fps 35 --resolution 1280x800 -- -iwad "$doom1" --level-tweaks=vanilla \
-    --level-monsters=$monsters --level-skill="$skill" --level-wipe=melt --level-hud-aspect=square --level-hud-weapon-icon=off --level-hud-weapon-digit=off --level-palette-effects=screen \
+    --level-monsters=$monsters --level-skill="$skill" --level-wipe=melt --level-hud-aspect=square --level-hud-bar-width=320 --level-hud-weapon-icon=off --level-hud-weapon-digit=off --level-palette-effects=screen \
     --level-script="tap F3; newgame $skill 1 $mapnum; wipehold ${list[0]} $wipe; route $route; ${script}" >/dev/null 2>&1)
 python3 "$here/wipe.py" "$dir" "$name" "$wipe" "${list[@]}" "$@"

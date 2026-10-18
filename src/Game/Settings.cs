@@ -144,6 +144,8 @@ public static class Settings
         new("hud/scale", "SCALE", SettingPage.Hud, "auto", ["auto", "1", "2", "3", "4", "5", "6", "7", "8"], "--level-hud-scale"),
         // T7.11: vanilla's screen at 4:3 (its pixels 1.2 times taller than wide, as on a CRT) or square
         new("hud/aspect", "ASPECT", SettingPage.Hud, "4:3", ["4:3", "square"], "--level-hud-aspect"),
+        // T6.13y: the status bar 400 wide (vanilla's in its middle, the weapon's icon beside the ammo) or vanilla's 320
+        new("hud/bar_width", "BAR WIDTH", SettingPage.Hud, "400", ["400", "320"], "--level-hud-bar-width"),
         // T6.13x: the ready weapon's icon above the ammo, and its ARMS digit brighter
         new("hud/weapon_icon", "WEAPON ICON", SettingPage.Hud, "on", _onOff, "--level-hud-weapon-icon"),
         new("hud/weapon_digit", "WEAPON DIGIT", SettingPage.Hud, "on", _onOff, "--level-hud-weapon-digit"),

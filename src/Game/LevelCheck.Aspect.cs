@@ -189,6 +189,8 @@ public partial class LevelCheck
                 Press(Key.Tab);
                 _scene.AutomapScreen.Visible = false;
                 _scene.Hud.AutomapShown = false;
+                (long wideCompared, int wideWorst) = await CheckWideBarDrawn(st, hu, am, Filled(size, (byte)ur, (byte)ug, (byte)ub), pal); // T6.13y
+                (compared, worst) = (compared + wideCompared, Math.Max(worst, wideWorst));
                 _scene.Hud.Visible = false;
                 _scene.Hud.Mode = mode;
                 _scene.Environment.BackgroundColor = background;

@@ -25,6 +25,7 @@
     <Compile Include="../../src/Game/HudScreen.cs" Link="Game/HudScreen.cs" />
     <Compile Include="../../src/Game/HudMode.cs" Link="Game/HudMode.cs" />
     <Compile Include="../../src/Game/WeaponIcon.cs" Link="Game/WeaponIcon.cs" />
+    <Compile Include="../../src/Game/WideStatusBar.cs" Link="Game/WideStatusBar.cs" />
     <Compile Include="../../src/Game/ScreenLayout.cs" Link="Game/ScreenLayout.cs" />
     <Compile Include="../../src/Game/SharpBilinear.cs" Link="Game/SharpBilinear.cs" />
     <Compile Include="../../src/Game/GameFlow.cs" Link="Game/GameFlow.cs" />

@@ -134,6 +134,9 @@ namespace IsoDoom.Game;
 /// <c>--level-hud-aspect=4:3|square</c> (T7.11, <see cref="HudAspect43"/>:
 /// vanilla's screen at 4:3, its pixels 1.2 times taller than wide, or square;
 /// default 4:3);
+/// <c>--level-hud-bar-width=320|400</c> (T6.13y, <see cref="HudBarWidth"/>:
+/// the status bar vanilla's 320 wide, or 400 with vanilla's in its middle and
+/// the weapon's icon in its left panel, filling the width shorter; default 400);
 /// <c>--level-hud-weapon-icon=on|off</c> and <c>--level-hud-weapon-digit=on|off</c>
 /// (T6.13x, <see cref="WeaponIconShown"/>, <see cref="WeaponDigit"/>: the
 /// ready weapon's icon above the HUD's ammo, and its ARMS digit brighter;
@@ -498,6 +501,59 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>T6.13x: the ready weapon's icon above the status bar or the fullscreen HUD's ammo, and its ARMS digit brightened.</summary>
     public WeaponIcon? WeaponIcon { get; private set; }
+
+    /// <summary>
+    /// T6.13y: the status bar's width in screen pixels (<c>hud/bar_width</c>,
+    /// <c>--level-hud-bar-width=320|400</c>; default 400): vanilla's 320, or
+    /// 400 (<see cref="WideStatusBar"/>: vanilla's bar in the middle, the
+    /// weapon's icon in the left panel; not vanilla, SPEC §12 T6.13y). Under
+    /// the level check only <see cref="CheckBarWidth"/> counts.
+    /// </summary>
+    public int HudBarWidth
+    {
+        get => _hudBarWidth;
+        set
+        {
+            _hudBarWidth = value;
+            ApplyBarWidth();
+        }
+    }
+
+    private int _hudBarWidth = WideStatusBar.DefaultWidth;
+
+    /// <summary>T6.13y: the level check's bar width, vanilla's for its pixel comparisons (the option is ignored under the check).</summary>
+    public int CheckBarWidth
+    {
+        get => _checkBarWidth;
+        set
+        {
+            _checkBarWidth = value;
+            ApplyBarWidth();
+        }
+    }
+
+    private int _checkBarWidth = HudScreen.SCREENWIDTH;
+
+    /// <summary>T6.13y: the bar width in use.</summary>
+    public int BarWidth => IsCheckRun ? _checkBarWidth : _hudBarWidth;
+
+    private void ApplyBarWidth()
+    {
+        int width = BarWidth;
+        if (Wad is null || width <= HudScreen.SCREENWIDTH)
+            Hud.WideBar = null;
+        else if (Hud.WideBar?.Width != width)
+            Hud.WideBar = new WideStatusBar(Wad, width);
+        _automapShown = null; // the automap's frame ends on the bar's top
+    }
+
+    /// <summary>T6.13y: <c>--level-hud-bar-width</c>'s and the option's value: 320 or 400.</summary>
+    public static int ParseBarWidth(string value, string what) => value switch
+    {
+        "320" => HudScreen.SCREENWIDTH,
+        "400" => WideStatusBar.DefaultWidth,
+        _ => throw new ArgumentException($"{what}: \"{value}\" (320 or 400)"),
+    };
 
     // T6.13x: the options, kept here too for a WAD opened after they were set
     private bool _weaponIcon = true, _weaponDigit = true;
@@ -911,6 +967,8 @@ public partial class LevelScene : Node3D, IGameHost
                 MusicOpl3 = ParseOpl(opl, "--level-opl"); // T7.8g
             if (WadLocator.GetUserArg("--level-hud-aspect") is string hudAspect)
                 HudAspect43 = ParseAspect(hudAspect, "--level-hud-aspect"); // T7.11
+            if (WadLocator.GetUserArg("--level-hud-bar-width") is string barWidth)
+                HudBarWidth = ParseBarWidth(barWidth, "--level-hud-bar-width"); // T6.13y
             if (WadLocator.GetUserArg("--level-hud-weapon-icon") is string weaponIcon)
                 WeaponIconShown = ParseOnOff(weaponIcon, "--level-hud-weapon-icon"); // T6.13x
             if (WadLocator.GetUserArg("--level-hud-weapon-digit") is string weaponDigit)
@@ -2722,7 +2780,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (World is { netgame: true })
             text.Append(PlayersText()).Append('\n'); // T11.10
         if (StatusBar is { plyr: not null } st)
-            text.Append(CultureInfo.InvariantCulture, $"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", {(Hud.Aspect43 ? "4:3" : "square")}, scale {Hud.Layout.ScaleX:0.##}×{Hud.Layout.ScaleY:0.##}" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
+            text.Append(CultureInfo.InvariantCulture, $"hud: {Hud.Mode.ToString().ToLowerInvariant()} (=/-){(Hud.Visible ? $", {(Hud.Aspect43 ? "4:3" : "square")}, scale {Hud.Layout.ScaleX:0.##}×{Hud.Layout.ScaleY:0.##}, bar {BarWidth} wide" : ", hidden (game camera only)")}, face {StStuff.FaceName(st.st_faceindex)}"
                 + $" for {st.st_facecount + 1} tics, M_Random index {MRandom.rndindex}\n");
         if (HudMessage is not null)
             text.Append(CultureInfo.InvariantCulture, $"message: {HudMessage}\n");
@@ -2917,6 +2975,8 @@ public partial class LevelScene : Node3D, IGameHost
         WeaponIcon = new WeaponIcon(wad, Colormap, Playpal.GetPalette(0)) { Enabled = _weaponIcon, Digit = _weaponDigit }; // T6.13x
         MapNames = FindMaps(wad);
         Wad = wad;
+        Hud.WideBar = null;
+        ApplyBarWidth(); // T6.13y: the wide bar's panels from this WAD
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
         GD.Print($"Level: {found.Path}: {info}, {GameVersions.Description(GameVersion)}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms"
             + (SpriteAtlas is { } sa ? $" (sprite atlas: {sa.Lumps.Count} lumps in {sa.Atlas.Image.Width}x{sa.Atlas.Image.Height}, {sa.BuildMilliseconds:F0} ms)" : ""));
