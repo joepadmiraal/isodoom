@@ -1,0 +1,82 @@
+# PWAD validation
+
+Tasks that check IsoDoom against popular vanilla-era PWADs loaded with `-file`. As in `TASKS.md`, each task fits one session: start it with *"Do task P3 from PWAD-VALIDATION.md."* When a task finds a bug or a missing feature, add a task for it to `TASKS.md` under the right milestone, and record any decision in SPEC §12. SPEC §5.3 sets the scope: v1 plays **vanilla-format** PWADs. DeHackEd, UMAPINFO, Boom and MBF21 come after v1. A task that runs into one of them records the gap and moves on.
+
+Legend: `[ ]` todo, `[x]` done.
+
+## The WADs
+
+These live in `wads/pwads/NAME/` (gitignored, from the idgames archive). Never commit them, or anything derived from them: dumps, screenshots, checksums. Screenshots go in `screenshots/PWAD-topic/`. Tests that need a set skip without it, as the IWAD tests do.
+
+| Folder | WAD | IWAD | `-file` (in order) | Maps | Of note |
+|---|---|---|---|---|---|
+| `scythe` | Scythe | `doom2.wad` | `SCYTHE.WAD` | MAP01–MAP32 | 34 MUS songs, 1 MIDI; new `TITLEPIC`, `INTERPIC` |
+| `av` | Alien Vendetta | `doom2.wad` | `AV.WAD AVMOVFIX.WAD` | MAP01–MAP32 | Limit-removing. All 35 songs are **MIDI**; new `STBAR`, `TITLEPIC`, `INTERPIC`. MAP20 is the biggest map here (14,839 lines, 1,842 sectors, 960 things); `AVMOVFIX.WAD` replaces it. `AV.DEH` changes text only |
+| `mm` | Memento Mori | `doom2.wad` | `MM.WAD MMMUS.WAD` | MAP01–MAP32 | Maps stored **in reverse order**; lump names with **junk after the NUL** (`MAP32\0\0S`); new `INTERPIC` |
+| `d2twid` | Doom 2 the Way id Did | `doom2.wad` | `D2TWID.wad` | MAP01–**MAP33** | **`PLAYPAL` and `COLORMAP` replaced**; 63 sprites; 4 songs (`D_EVILF` MIDI). Its `DEHACKED` lump (and `.deh`) changes 3 things (Keen → Dopefish, Yorp; Garg), 52 frames, 15 codepointers and 37 texts. `MAPINFO`/`ZMAPINFO` lumps |
+| `requiem` | Requiem | `doom2.wad` | `REQUIEM.WAD REQMUS.WAD` | MAP01–MAP32 | MAP12 has 6,116 lines; new `STBAR` |
+| `hr` | Hell Revealed | `doom2.wad` | `HR.WAD HRMUS.WAD` | MAP01–MAP32 | Nightmare-hard; new `STBAR`; DEMO1–DEMO6 (DEMO5 is 793 KB) |
+| `dtwid` | Doom the Way id Did | `doom.wad` | `DTWID.wad` | E1M1–E3M9 | Vanilla; `TEXTURE2`; `DEHACKED` lump text only |
+| `neis` | No End in Sight | `doom.wad` | `NEIS.wad` | E1M1–E4M9, **E1M0, E4M0** | E1–E3 vanilla, **E4 limit-removing**; E3M7 has 10,795 lines and 1,980 things. Lines with **specials 271, 272, 307** (E3M6, E3M7, E4M6). `DEHACKED` (text only) and `MAPINFO` lumps; new `STBAR`, `TITLEPIC`, `INTERPIC` |
+
+All paths are relative to `wads/pwads/FOLDER/`, e.g. `godot -- -iwad wads/doom2.wad -file wads/pwads/av/AV.WAD wads/pwads/av/AVMOVFIX.WAD --level MAP01`. `wads/doom2.wad` is v1.666, while every PWAD demo here is v1.9 (version byte 109). `doom.wad` is the 2024 re-release (wide `STBAR`, `TITLEPIC`, `PFUB2`, …).
+
+**Already known** (SPEC §5.3's survey, 2026-10-14): MAP01–MAP03 of Scythe, AV, D2TWID and MM load and run. Their `.deh` patches are ignored, and some maps use `-` textures (T2.3a). Correction found while writing this file: SPEC §5.3 says "Alien Vendetta's patch changes 52 frames and 15 codepointers; D2TWID's changes 37 texts and 3 things". In fact `AV.DEH` changes 40 texts and nothing else, and D2TWID's patch changes the frames, codepointers, things *and* texts. Fix that sentence.
+
+**DeHackEd and demos.** The text-only patches (AV, DTWID, NEIS) don't change the sim, so their demos can sync without DeHackEd support. D2TWID's patch changes things and frames, so its demos are only meaningful once DeHackEd is supported. Until then, compare them only against a vanilla reference that also runs without the patch.
+
+## Tasks
+
+- [x] **P1 A PWAD set fixture and its inventory test.** Add a test helper (`tests/IsoDoom.Tests/Support/PwadSets.cs`) that knows the eight sets above (folder, IWAD, `-file` list) and finds them in `wads/pwads/` or `$ISODOOM_PWADS` (skipped when absent). Add `PwadInventoryTests` that opens each set over its IWAD through `WadArchive` and `ModifiedGame.D_CheckModifiedGame`, and checks the maps the game lists (the scene's `MapNames` and `GameFlow`'s order), each map lump's elements, and the lump kinds. The test must cover MM's reversed maps and NUL-junk names, D2TWID's MAP33, NEIS's E1M0 and E4M0, and AVMOVFIX's MAP20 replacing AV's.
+  *Done when:* the test passes with the sets present and skips without them, and the map lists match the table (or each difference is a `TASKS.md` task: e.g. MAP33 or ExM0 missing from `MapNames`).
+  *Done (2026-10-18):* `PwadSets` (`Support/PwadSets.cs`: folder, IWAD, `-file` list and the table's maps; `wads/pwads/` or `$ISODOOM_PWADS`) and `PwadInventoryTests` (36 tests; all skip without the sets). The scene's map list moved to `LumpDirectory.FindMaps` (plain C#) so the test checks the list the game builds; `GameFlow`'s order is `NetStarts.ReachableMaps` (`G_DoCompleted`'s). **The map lists match the table** for all eight sets, and every map has its ten elements in its own file, in whole records. `MapNames` lists the IWAD's maps in its order, then a set's new ones: MAP33 after MAP32, E1M0 and E4M0 after E4M9. MM's names read clean despite the NUL junk, and its reversed maps are listed in play order. AVMOVFIX's MAP20 overrides AV's map and all ten of its lumps, and keeps its place. **No exit reaches** D2TWID's MAP33 or NEIS's E1M0 and E4M0 (vanilla's `G_DoCompleted` neither): P7 decides how to get to them. The test also pins the lump kinds each set adds: songs and their MUS/MIDI format, sprites, demos, the palette, `TEXTURE2`, the replaced UI graphics, and the lumps vanilla ignores. Those are `DEHACKED`, `MAPINFO`/`ZMAPINFO`/`EMAPINFO`, `ANIMDEFS`, `GAMEINFO`, `ZDSPEC`/`EESPEC`, `CREDITS`, DTWID's `IN_EPI2` (a ZDoom intermission script), HR's `HRLOGO` (a PCX), Requiem's `TAGDESC`, DeuTex's `_DEUTEX_`, and AV's four flats repeated outside `F_START`/`F_END`. HR has a stray `FF_END` after its `F_END`. Found on the way: the 2024 `doom.wad` keeps E4M1 last in its directory, so `MapNames` lists it after E4M9 (T9.1a in `TASKS.md`).
+
+- [ ] **P2 Let the vanilla reference take PWADs.** `tools/VanillaRef` passes `-file` only for the synthetic IWAD and the test maps. Give `compare.sh`, `demos.sh`, `routes.sh` (a route header such as `pwad av`, naming a set from P1's table) and `music.sh`/`music_ref` (with the IWAD's `GENMIDI`: `mergewad.py`) a way to load a set, keeping their dumps in `$ISODOOM_VANILLA_ROUTES` as usual (WAD-derived, never committed). Doom II sets play their v1.9 demos with `-gameversion 1.9` on the v1.666 IWAD.
+  *Done when:* each script runs on one Doom II set and one Ultimate Doom set, and `CLAUDE.md`'s *Commands* section documents the new arguments. This unblocks P5, P6 and P8.
+
+- [ ] **P3 Level check on every map of every set.** Run `godot --headless -- --level-check -iwad IWAD -file …` for each set, then once more with a renderer (Xvfb + lavapipe) on its biggest map (`--level MAP20`, `E3M7`, …). Some checks assume IWAD content (DOOM1 E1M1's hidden imp, Doom II's MAP06 text, the IWAD's exit specials). Let those skip, or check what the set has, rather than fail on PWAD content.
+  *Done when:* every set passes, or every failure is either a `TASKS.md` task (likely T2.1a's broken map data, T2.3a's missing and unknown textures, the 1 s load budget on AV MAP20 or NEIS E3M7) or a check made PWAD-aware here.
+
+- [ ] **P4 Viewer check on every set.** Run `--viewer-check -iwad IWAD -file …` for each set (headless, then offscreen with a renderer). This covers every PWAD patch and flat, tall patches (T1.3a), D2TWID's 63 sprites with T1.5's per-frame replacement, the new `TITLEPIC`/`INTERPIC`/`STBAR`, the sounds, and every `D_*` song on the OPL player. That includes AV's 35 MIDI songs and the single MIDI songs in Scythe and D2TWID, which go through mus2mid.c's MIDI path.
+  *Done when:* each set passes, or each failure is a `TASKS.md` task.
+
+- [ ] **P5 A replaced palette and colormap (D2TWID).** Check that the palette shader, light diminishing, the palette flashes, the fuzz, the fog's dim, the HUD and the menus all use D2TWID's `PLAYPAL` and `COLORMAP` instead of Doom II's. The test: `compare.sh` (P2) on D2TWID MAP01 against vanilla, pixel by pixel, plus `--level-check`'s light-mapping comparisons with the set loaded.
+  *Done when:* MAP01's views match vanilla within T2.9's tolerances, and a damage flash and the invulnerability colormap are checked as T6.8's.
+
+- [ ] **P6 PWAD demos against vanilla.** Play each set's demo lumps (`RouteFile.FromDemo`, as `DemoSyncTests`) against the reference's dumps (P2's `demos.sh`), tic by tic to the end, in a new `PwadDemoTests`:
+  - **Scythe:** MAP05, MAP16, MAP21.
+  - **Requiem:** MAP04, MAP09, MAP15.
+  - **HR:** MAP13, MAP29, MAP25, MAP02, plus DEMO5 and DEMO6 (outside the attract loop; DEMO5 is three players).
+  - **AV:** MAP07 three-player co-op on nightmare, MAP20 (with AVMOVFIX), MAP22 two players.
+  - **MM:** MAP07 two players, MAP21 three, MAP19 two.
+  - **DTWID:** E1M4, E2M4, E3M2.
+  - **NEIS:** E1M7, E2M6, E3M2, E4M4.
+  - **D2TWID:** MAP05, MAP15, MAP23 only once DeHackEd is in (until then, against a reference that also runs without the patch, marked as such).
+
+  Vanilla itself may not finish a demo the way it was recorded: PWAD demos were often recorded on another version or with the patch loaded. What counts is that the sim and the reference match on every tic.
+  *Done when:* every demo matches the reference to its last tic, or each mismatch has a `TASKS.md` task with its first differing tic and field.
+
+- [ ] **P7 Content vanilla ignores.** Check that what vanilla doesn't know loads and is ignored as vanilla does, with one log line per map naming what was ignored:
+  - NEIS's MBF sky transfers (271, 272) and special 307 on E3M6, E3M7 and E4M6;
+  - D2TWID's and NEIS's `MAPINFO`/`ZMAPINFO` lumps;
+  - the `DEHACKED` lumps (until DeHackEd).
+
+  Also decide how the game reaches maps vanilla can't: D2TWID's MAP33 (`--level MAP33`, the Host Game list) and NEIS's E1M0 and E4M0 (`--level E1M0`?). Log the decision in SPEC §12.
+  *Done when:* those maps load, their specials do nothing, as vanilla, and a test pins it.
+
+- [ ] **P8 Vanilla's static limits on limit-removing maps.** The sim keeps vanilla's fixed tables: `MAXPLATS` (a 31st active lift is an error), `MAXCEILINGS`, the button and animation tables, `MAXLINEANIMS`, and the spechit and intercepts overruns Chocolate Doom emulates. AV and NEIS's E4 were built for ports without those limits. Scan every map of every set for a table a map can overflow: counted from the map data where possible, and played (P6's demos, routes, `wake` with every monster) where not. List which maps hit which limit, and what vanilla (the P2 reference) does there.
+  *Done when:* the list is in SPEC §12, and each limit a set hits has a `TASKS.md` task deciding between vanilla's error and a tweak flag lifting it (SPEC §6.3), with the checksums kept for vanilla.
+
+- [ ] **P9 UI graphics over the 2024 re-release.** NEIS (`STBAR`, `TITLEPIC`, `INTERPIC`) and DTWID (`TITLEPIC`) replace graphics that `doom.wad` has in widescreen versions. Check the title loop, the intermission, the finale (`PFUB1`/`PFUB2`, `VICTORY2`, `ENDPIC`: the IWAD's, wide) and the 400-wide status bar (T6.13y). The bar's side panels come from the re-release's side art only when the `STBAR` in use is wide. With a 320-wide PWAD `STBAR`, the panels must fall back to `FLAT5_4`, not show the re-release's art beside a different bar. The same goes for Requiem's and HR's `STBAR` over `doom2.wad`. Also check that the menu and status bar fonts and faces the PWADs replace (if any) are used.
+  *Done when:* screenshots in `screenshots/PWAD-ui/` were looked at, `--level-check`'s T6.13y layouts pass with NEIS loaded, and any fix has a test.
+
+- [ ] **P10 Play each set from its first map.** For each set: MAP01 (E1M1), its exit, the intermission with the set's `INTERPIC`, and the next map (a RouteGen `mapNN-walk-exit` route where one works, checked with `routes.sh` through P2). Then Doom II's text screens and MAP30's cast call through a set whose MAP30 has the Icon (`-warp`, cheats). Then a person's play of two or three maps per set, on desktop and the Deck, with the frame time measured on the biggest maps: AV MAP20, NEIS E3M7 and E4M6, Requiem MAP12, D2TWID MAP31. SPEC §9 asks for 60 fps.
+  *Done when:* every set reached its second map, the frame times are recorded in SPEC §12, and what was seen is a `TASKS.md` task or noted here.
+
+- [ ] **P11 A netgame with a PWAD.** `tools/NetLoopback/loopback.sh` with `-file` on both machines for one Doom II set (Scythe) and one Ultimate Doom set (DTWID): the exchange and a co-op `--play` route of P10's. A join with a different PWAD list, or the same list in another order, is refused, as T11.6's hello already is.
+  *Done when:* both pass in sync, and the refusal shows on the join page.
+
+- [ ] **P12 Summary.** Write the results into SPEC §5.3's survey paragraph: which sets play, which maps fail and why, and what each post-v1 format (DeHackEd, UMAPINFO, Boom) would add for these eight sets. Fix the misattribution noted under *Already known*.
+  *Done when:* SPEC §5.3 reflects P1–P11, and every open issue is a task in `TASKS.md`.
+
+*Order:* P1, then P2 (the tools), then P3 and P4 (the broad checks, which find most bugs), P7, P5, P6, P8, P9, P10, P11, P12. P3, P4 and P7 need no vanilla reference.

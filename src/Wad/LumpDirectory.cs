@@ -224,6 +224,27 @@ public static class LumpDirectory
         return $"digitized, {BinaryPrimitives.ReadUInt16LittleEndian(data[2..])} Hz, not playable: {error}";
     }
 
+    /// <summary>
+    /// The maps the game lists (the level scene's <c>MapNames</c>: PgDn/PgUp,
+    /// the level check): every <c>ExMy</c>/<c>MAPxx</c> header followed by
+    /// <c>THINGS</c>, in archive order, each name once, where it first
+    /// appears (so the IWAD's order, then a PWAD's new maps in its own order;
+    /// a PWAD replacing a map keeps its place). P1: moved here from the scene
+    /// so <c>PwadInventoryTests</c> checks the list the game builds.
+    /// </summary>
+    public static IReadOnlyList<string> FindMaps(WadArchive wad)
+    {
+        ArgumentNullException.ThrowIfNull(wad);
+        var maps = new List<string>();
+        for (int i = 0; i + 1 < wad.NumLumps; i++)
+        {
+            string name = wad.Lumps[i].Name;
+            if (IsMapName(name) && wad.Lumps[i + 1].Name == "THINGS" && !maps.Contains(name))
+                maps.Add(name);
+        }
+        return maps;
+    }
+
     /// <summary>Every lump of the archive, in load order, classified.</summary>
     public static IReadOnlyList<LumpEntry> Build(WadArchive wad)
     {

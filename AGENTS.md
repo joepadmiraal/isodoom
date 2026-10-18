@@ -72,6 +72,8 @@ Run from the repo root. Versions are pinned in `docs/SPEC.md` §12; the .NET SDK
 
 `wads/doom2.wad` (any Doom II version; set `ISODOOM_DOOM2_WAD=/path/to/DOOM2.WAD` to use one elsewhere) enables the Doom II tests, which skip themselves without it. Likewise `wads/tnt.wad` and `wads/plutonia.wad` (`ISODOOM_TNT_WAD`, `ISODOOM_PLUTONIA_WAD`) enable the Final Doom tests (T10.7, `FinalDoomTests`). `wads/doom.wad` (registered or Ultimate Doom, any version; set `ISODOOM_DOOM_WAD=/path/to/DOOM.WAD` to use one elsewhere) enables the registered/Ultimate Doom tests (M9: `DoomTextureTests`, `DoomSpriteTests`; with The Ultimate Doom, the `iwad doom` routes and demos), which skip themselves without it; release-specific counts are asserted only for the 2024 re-release (MD5 `3b37188f6337f15718b617c16e6e7a9c`). `--level-check -iwad wads/doom.wad` loads and checks every map of E1–E4 (T9.1).
 
+The PWAD sets of `docs/PWAD-VALIDATION.md` (P1, `tests/IsoDoom.Tests/Support/PwadSets.cs`) live in `wads/pwads/FOLDER/` (or set `ISODOOM_PWADS=/path/to/pwads`, the directory holding the folders) and enable `PwadInventoryTests`, which skip without a set or its IWAD. Never commit them or anything derived from them.
+
 ## References
 
 - Vanilla source: `id-Software/DOOM` on GitHub (`linuxdoom-1.10`). Chocolate Doom covers vanilla-accurate fixes and OPL music (`i_oplmusic.c`).

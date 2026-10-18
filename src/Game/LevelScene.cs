@@ -2973,7 +2973,7 @@ public partial class LevelScene : Node3D, IGameHost
         StatusBar = new StStuff(StStuff.Graphics.Load(wad), MRandom); // T6.11: st_stuff.c ST_Init
         MessageLine = new HuStuff(wad); // hu_stuff.c HU_Init
         WeaponIcon = new WeaponIcon(wad, Colormap, Playpal.GetPalette(0)) { Enabled = _weaponIcon, Digit = _weaponDigit }; // T6.13x
-        MapNames = FindMaps(wad);
+        MapNames = LumpDirectory.FindMaps(wad);
         Wad = wad;
         Hud.WideBar = null;
         ApplyBarWidth(); // T6.13y: the wide bar's panels from this WAD
@@ -2984,18 +2984,6 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>The first of <c>E1M1</c>/<c>MAP01</c> the WAD has (else <c>MAP01</c>, which then fails to load).</summary>
     public string DefaultMap() => Wad!.W_CheckNumForName("E1M1") >= 0 ? "E1M1" : "MAP01";
-
-    private static List<string> FindMaps(WadArchive wad)
-    {
-        var maps = new List<string>();
-        for (int i = 0; i + 1 < wad.NumLumps; i++)
-        {
-            string name = wad.Lumps[i].Name;
-            if (LumpDirectory.IsMapName(name) && wad.Lumps[i + 1].Name == "THINGS" && !maps.Contains(name))
-                maps.Add(name);
-        }
-        return maps;
-    }
 
     /// <summary>
     /// Shows map <paramref name="map"/> of the open WAD: frees the previous
