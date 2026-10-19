@@ -161,8 +161,8 @@ public partial class LevelCheck : Godot.Node
             }
             else if (move is { } mv)
                 MoveCheckData(m, mv.Sector);
-            if (CanCapture && _iwadPlaypal is not null)
-                GD.Print($"Level check: palette tables (P5): {_pwadTableShades} expected pixels in a colour the IWAD's PLAYPAL and COLORMAP would not give");
+            if (CanCapture)
+                ReportPwadTableShades(); // P5, P12c: per map, failing one whose pixels never reached the PWAD's entries
             GD.Print(CanCapture
                 ? $"Level check: {map}: {_views} views rendered, {_pixels} drawn pixels compared"
                 : "Level check: headless: no pixel readback (run with a real renderer for the drawn-pixel checks)");
