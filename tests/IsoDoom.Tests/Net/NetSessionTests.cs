@@ -99,11 +99,11 @@ public class NetSessionTests
     }
 
     [Theory]
-    [InlineData(0, 1)]
-    [InlineData(1_000, 2)]
-    [InlineData(28_571, 2)]
-    [InlineData(28_572, 3)]
-    [InlineData(100_000, 5)]
+    [InlineData(0, NetOptions.MinDefaultDelay)]
+    [InlineData(1_000, 3)]
+    [InlineData(23_809, 3)]
+    [InlineData(23_810, 4)]
+    [InlineData(100_000, 6)]
     [InlineData(10_000_000, NetOptions.MaxDefaultDelay)]
     public void The_default_delay_covers_the_round_trip(long rttUs, int delay)
     {
@@ -209,8 +209,9 @@ public class NetSessionTests
 
         m.Add(Parse("-connect", "127.0.0.1"), _identity, _ => m.Network.CreateEndpoint("late", new MemoryLinkOptions { LatencyUs = 45_000 }, 7));
         m.RunUntil(() => m.Sessions.TrueForAll(s => s.Client.State == NetClientState.InGame), 5_000_000);
-        // The slowest round trip is about 90 ms: 4 tics, plus one.
-        Assert.Equal(5, server.Delay);
+        // T11.12a: the slowest round trip is about 90 ms: with two frames' slack 5 tics, plus one
+        Assert.Equal(6, server.Delay);
+        Assert.Contains(m.Log, l => l.StartsWith("0: round trips: slowest player 3: ", StringComparison.Ordinal) && l.EndsWith("delay 6 tic(s)", StringComparison.Ordinal));
         Assert.Equal(0b111, m.Sessions[2].Client.Start!.PlayerMask);
         Assert.Equal([0, 1, 2], m.Sessions.ConvertAll(s => s.Client.Slot));
         Assert.True(m.Sessions[2].Client.Start!.Settings.Spawn.netgame);

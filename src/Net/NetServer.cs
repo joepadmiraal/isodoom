@@ -53,6 +53,12 @@ public sealed class NetServer
         public int RttUs { get; set; } = -1;
         public bool Gone { get; set; }
 
+        /// <summary>T11.12a: the last <see cref="RttSamples"/> round trips it reported (a ring), µs.</summary>
+        public int[] Rtts { get; } = new int[RttSamples];
+
+        /// <summary>T11.12a: how many round trips it reported (the ring holds the last <see cref="RttSamples"/>).</summary>
+        public int RttCount { get; set; }
+
         /// <summary>T11.9c: the player's name, cleaned (<see cref="NetProtocol.CleanName"/>).</summary>
         public string Name { get; set; } = "";
 
@@ -190,6 +196,28 @@ public sealed class NetServer
     /// <summary>The last round trip the client in <paramref name="slot"/> reported, in microseconds (−1 none yet).</summary>
     public int RttUsOf(int slot) => _slots[slot]?.RttUs ?? -1;
 
+    /// <summary>
+    /// T11.12a: how many of the clients' round trip reports the server keeps
+    /// per slot (a ping's every <see cref="NetClient.PingIntervalUs"/>: the
+    /// last 6.4 s), for the game's default delay (its <c>NetOptions.ChooseDelay</c>).
+    /// </summary>
+    public const int RttSamples = 64;
+
+    /// <summary>
+    /// T11.12a: the round trips the client in <paramref name="slot"/> reported
+    /// lately (the last <see cref="RttSamples"/> at most, oldest first), µs; empty for none.
+    /// </summary>
+    public int[] RttSamplesOf(int slot)
+    {
+        if (_slots[slot] is not { } p)
+            return [];
+        int n = Math.Min(p.RttCount, RttSamples);
+        var samples = new int[n];
+        for (int i = 0; i < n; i++)
+            samples[i] = p.Rtts[(p.RttCount - n + i) % RttSamples];
+        return samples;
+    }
+
     /// <summary>Accept connections on <paramref name="port"/>.</summary>
     public void Listen(int port) => _transport.Listen(port);
 
@@ -307,6 +335,8 @@ public sealed class NetServer
             int rtt = r.I32();
             r.End();
             peer.RttUs = rtt;
+            if (rtt >= 0)
+                peer.Rtts[peer.RttCount++ % RttSamples] = rtt;
             long clock = Phase == NetServerPhase.InGame ? _nowUs - _startUs : long.MinValue;
             for (int i = 0; i < NetProtocol.MaxPlayers; i++)
                 _rttMs[i] = _slots[i] is { RttUs: >= 0 } p ? (ushort)Math.Min(p.RttUs / 1000, NetProtocol.NoRtt - 1) : NetProtocol.NoRtt;

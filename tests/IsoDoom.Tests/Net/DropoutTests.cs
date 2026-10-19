@@ -357,7 +357,7 @@ public class DropoutTests
             while (c.TryTakeTic(cmds, out int tic, out _))
                 c.TicRan(tic, 0, consistancy);
         }
-        for (int i = 0; i < 6000 && join.Client.LastRanTic < 100; i++)
+        for (int i = 0; i < 9000 && join.Client.LastRanTic < 100; i++)
         {
             network.Advance(1000);
             if (i % 16 == 0)

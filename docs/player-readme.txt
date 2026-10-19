@@ -159,7 +159,8 @@ For the smoothest game, turn wifi power saving off on every computer
 "iw dev wlan0 set power_save off"), or plug one or all of them into the
 router with a cable. If the game still freezes now and then, host it from
 a command line with more input delay: add "-netdelay N" after "-host"
-(N in tics of 1/35 s, say 6; more is smoother but slower to respond).
+(N in tics of 1/35 s, say 8, the most the game picks by itself; more is
+smoother but slower to respond).
 
 
 Running it

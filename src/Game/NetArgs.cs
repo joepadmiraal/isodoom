@@ -29,7 +29,7 @@ public enum NetRole
 /// <item><c>-connect ADDR[:PORT]</c> join (an IPv6 address as <c>[ADDR]:PORT</c>).</item>
 /// <item><c>-players N</c> (1–4, default 2) the host starts once N players are in
 /// and ready; <c>-netdelay N</c> the input delay in tics (1–35; default
-/// measured from the round trips at the start, <see cref="DelayFromRtt"/>).</item>
+/// measured from the round trips at the start, <see cref="ChooseDelay"/>).</item>
 /// <item>The host's game modes (T11.4's, carried in the Start): <c>-deathmatch</c>,
 /// <c>-altdeath</c>, <c>-timer MINUTES</c>, <c>-avg</c> (20 minutes), <c>-respawn</c>, <c>-fast</c>,
 /// <c>-nomonsters</c>; T11.4: <see cref="Modes"/> reads them for a game alone too.</item>
@@ -209,16 +209,72 @@ public sealed record NetOptions
     }
 
     /// <summary>
-    /// The default input delay (SPEC §12 T11.6): the commands must reach the
-    /// host and their bundle come back before their tic, so a round trip of
-    /// <paramref name="maxRttUs"/> (the slowest player's) takes
-    /// ⌈RTT / tic⌉ tics, plus one for the frames' polling; clamped to 1–<see cref="MaxDefaultDelay"/>.
+    /// The default input delay (SPEC §12 T11.6, T11.12a): the commands must
+    /// reach the host and their bundle come back before their tic, so a round
+    /// trip of <paramref name="rttUs"/> (the slowest player's longest lately:
+    /// <see cref="ChooseDelay"/>) and <see cref="PollSlackUs"/> for the frames'
+    /// polling take ⌈(RTT + slack) / tic⌉ tics, plus one for the jitter;
+    /// clamped to <see cref="MinDefaultDelay"/>–<see cref="MaxDefaultDelay"/>.
     /// </summary>
-    public static int DelayFromRtt(long maxRttUs)
+    public static int DelayFromRtt(long rttUs)
     {
         const long TicUs = IsoDoom.Net.NetProtocol.MicrosecondsPerSecond / IsoDoom.Net.NetProtocol.TicRate;
-        long tics = (Math.Max(0, maxRttUs) + TicUs - 1) / TicUs + 1;
-        return (int)Math.Clamp(tics, 1, MaxDefaultDelay);
+        long tics = (Math.Max(0, rttUs) + PollSlackUs + TicUs - 1) / TicUs + 1;
+        return (int)Math.Clamp(tics, MinDefaultDelay, MaxDefaultDelay);
+    }
+
+    /// <summary>
+    /// T11.12a: the frames' polling the default delay allows for on top of the
+    /// round trip: two frames at 60 fps (the command built up to a frame
+    /// after its time, the host and the join each reading a packet up to a
+    /// frame after it came; a ping's round trip holds the last two).
+    /// </summary>
+    public const long PollSlackUs = 2 * IsoDoom.Net.NetProtocol.MicrosecondsPerSecond / 60;
+
+    /// <summary>T11.12a: the shortest default input delay, in tics (86 ms).</summary>
+    public const int MinDefaultDelay = 3;
+
+    /// <summary>
+    /// T11.12a: the round trips the host waits for from every player before it
+    /// picks the default delay (a ping every <see cref="IsoDoom.Net.NetClient.PingIntervalUs"/>:
+    /// 3 s, long enough to see a burst of wifi's spikes), unless
+    /// <see cref="NetSession.RttWaitUs"/> passed.
+    /// </summary>
+    public const int MinRttSamples = 30;
+
+    /// <summary>
+    /// T11.12a: the default delay for the players in <paramref name="server"/>'s
+    /// lobby: <see cref="DelayFromRtt"/> of the longest of the round trips
+    /// each player reported lately (<see cref="IsoDoom.Net.NetServer.RttSamplesOf"/>:
+    /// the last 6.4 s; the longest, not a percentile: a burst of wifi's spikes
+    /// lasts a few pings, and a percentile below the top missed it). Null while a
+    /// player has fewer than <see cref="MinRttSamples"/>, unless
+    /// <paramref name="waited"/> (the host waited long enough: it takes what it has).
+    /// </summary>
+    public static NetDelayChoice? ChooseDelay(IsoDoom.Net.NetServer server, bool waited)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        NetDelayChoice? slowest = null;
+        bool known = true;
+        for (int slot = 0; slot < IsoDoom.Net.NetProtocol.MaxPlayers; slot++)
+        {
+            if ((server.OccupiedMask & (1 << slot)) == 0)
+                continue;
+            int[] samples = server.RttSamplesOf(slot);
+            if (samples.Length < MinRttSamples && !waited)
+                return null;
+            if (samples.Length == 0)
+            {
+                known = false;
+                continue;
+            }
+            Array.Sort(samples);
+            int rtt = samples[^1];
+            if (slowest is null || rtt > slowest.RttUs)
+                slowest = new NetDelayChoice(DelayFromRtt(rtt), slot, rtt, samples.Length, samples[0], samples[samples.Length / 2], true);
+        }
+        slowest ??= new NetDelayChoice(DelayFromRtt(0), -1, 0, 0, 0, 0, true);
+        return slowest with { AllKnown = known };
     }
 
     private static string Value(IReadOnlyList<string> args, ref int i, string name)
@@ -256,5 +312,28 @@ public sealed record NetOptions
         if (colon == 0)
             throw new ArgumentException($"-connect: \"{s}\" (ADDR[:PORT])");
         return (s[..colon], Int(s[(colon + 1)..], "-connect", 1, 65535));
+    }
+}
+
+/// <summary>
+/// T11.12a: the default input delay the host picked and the round trips it
+/// came from: the slowest player's (<see cref="NetOptions.ChooseDelay"/>).
+/// </summary>
+/// <param name="Delay">The delay, in tics.</param>
+/// <param name="Slot">The slowest player's slot (−1: no round trip known).</param>
+/// <param name="RttUs">Its longest round trip lately, µs.</param>
+/// <param name="Samples">How many it reported lately.</param>
+/// <param name="MinUs">The shortest of them, µs.</param>
+/// <param name="MedianUs">Their median, µs.</param>
+/// <param name="AllKnown">Whether every player had a round trip.</param>
+public sealed record NetDelayChoice(int Delay, int Slot, int RttUs, int Samples, int MinUs, int MedianUs, bool AllKnown)
+{
+    /// <summary>The log line: <c>round trips: slowest player 2: 30 of 35.0–159.0 ms, median 71.0: delay 8 tic(s)</c>.</summary>
+    public override string ToString()
+    {
+        var ci = CultureInfo.InvariantCulture;
+        string rtts = Slot < 0 ? "none known"
+            : string.Create(ci, $"slowest player {Slot + 1}: {Samples} of {MinUs / 1000.0:F1}–{RttUs / 1000.0:F1} ms, median {MedianUs / 1000.0:F1}");
+        return string.Create(ci, $"round trips: {rtts}{(AllKnown ? "" : " (some unknown)")}: delay {Delay} tic(s)");
     }
 }

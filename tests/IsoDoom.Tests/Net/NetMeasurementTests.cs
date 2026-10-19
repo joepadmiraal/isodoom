@@ -12,9 +12,9 @@ namespace IsoDoom.Tests.Net;
 /// <summary>
 /// T11.12: the bandwidth a player uses and the input delay felt at 30, 80 and
 /// 150 ms of ping (round trip), measured on <see cref="MemoryTransport"/> with
-/// the game's default delay rule (<see cref="NetOptions.DelayFromRtt"/> of the
-/// slowest round trip the server measured, as <see cref="NetSession"/> starts
-/// the game). Protocol only (the commands' bytes do not depend on the world):
+/// the game's default delay rule (<see cref="NetOptions.ChooseDelay"/>, as
+/// <see cref="NetSession"/> starts the game; T11.12a: the longest of each
+/// player's round trips once each reported <see cref="NetOptions.MinRttSamples"/>). Protocol only (the commands' bytes do not depend on the world):
 /// a host and one or three remote players, each remote one at that ping with
 /// 5 ms of jitter each way, scripted commands that walk, turn, use and fire
 /// every tic, a minute of play. T11.12e: and on home wifi
@@ -39,7 +39,7 @@ public class NetMeasurementTests
 
     /// <summary>What one run measured.</summary>
     /// <param name="Delay">The input delay the rule gave, in tics.</param>
-    /// <param name="MeasuredRttMs">The slowest round trip the server measured.</param>
+    /// <param name="MeasuredRttMs">The round trip the rule took (T11.12a: the slowest player's longest lately).</param>
     /// <param name="LagMeanMs">The remote players' felt input delay, mean.</param>
     /// <param name="LagMaxMs">… and worst.</param>
     /// <param name="HostLagMeanMs">The host's felt input delay, mean.</param>
@@ -107,8 +107,12 @@ public class NetMeasurementTests
         var h = new LockstepHarness(_coop, setups, (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true), seed: seed);
         harness = h;
         h.JoinAndReady();
-        long maxRtt = Enumerable.Range(0, players).Max(h.Server.RttUsOf);
-        int playDelay = delay ?? Math.Max(1, NetOptions.DelayFromRtt(maxRtt) + delayOffset);
+        // T11.12a: the host's rule, as NetSession picks it: once every player reported enough round trips
+        NetDelayChoice? choice = null;
+        h.RunUntil(() => (choice = NetOptions.ChooseDelay(h.Server, waited: false)) is not null, NetSession.RttWaitUs, "the round trips");
+        h.ServerLog.Add(choice!.ToString());
+        TestContext.Current.TestOutputHelper?.WriteLine(choice.ToString());
+        int playDelay = delay ?? Math.Max(1, choice.Delay + delayOffset);
 
         long upBytes0 = Remote(h).Sum(p => p.Transport.ReliableBytesSent + p.Transport.UnreliableBytesSent);
         long upPackets0 = Remote(h).Sum(p => p.Transport.PacketsSent);
@@ -125,7 +129,7 @@ public class NetMeasurementTests
         double upPackets = remote.Sum(p => p.Transport.PacketsSent) - upPackets0;
         double downBytes = h.ServerTransport.ReliableBytesSent + h.ServerTransport.UnreliableBytesSent - downBytes0;
         double downPackets = h.ServerTransport.PacketsSent - downPackets0;
-        return new Measurement(playDelay, maxRtt / 1000.0, lags.Average() / 1000, lags.Max() / 1000.0, h.Players[0].InputLagUs.Average() / 1000,
+        return new Measurement(playDelay, choice.RttUs / 1000.0, lags.Average() / 1000, lags.Max() / 1000.0, h.Players[0].InputLagUs.Average() / 1000,
             remote.Sum(p => p.LateTics),
             upBytes / remote.Count / seconds, downBytes / players / seconds,
             upPackets / remote.Count / seconds, downPackets / players / seconds,
@@ -134,11 +138,15 @@ public class NetMeasurementTests
 
     private static IEnumerable<HarnessPlayer> Remote(LockstepHarness h) => h.Players.Skip(1);
 
-    /// <summary>The default delay rule's delays for SPEC §12's pings: round trip in tics rounded up, plus one.</summary>
+    /// <summary>
+    /// The default delay rule's delays for SPEC §12's pings (T11.12a): round
+    /// trip and two frames in tics rounded up, plus one (the measured round
+    /// trips, frame waits and jitter included, give a tic or so more).
+    /// </summary>
     [Theory]
-    [InlineData(30, 3)]
-    [InlineData(80, 4)]
-    [InlineData(150, 7)]
+    [InlineData(30, 4)]
+    [InlineData(80, 5)]
+    [InlineData(150, 8)]
     public void The_default_delay_for_each_ping(int pingMs, int delay)
         => Assert.Equal(delay, NetOptions.DelayFromRtt(pingMs * 1000L));
 
@@ -190,12 +198,13 @@ public class NetMeasurementTests
     }
 
     /// <summary>
-    /// T11.12e: home wifi (<see cref="NetLinks.Wifi"/>) under the rule's delay,
-    /// the baseline before T11.12a–d: the game's clocks and windows stay in
-    /// sync, but the delay (from a round trip measured between the bursts)
-    /// does not cover a spike, so the world holds a few times a second's
-    /// burst: the freezes of T11.12's LAN test. Logged in SPEC §12 ("T11.12
-    /// measurements"); T11.12a–d replace the bounds with their own.
+    /// T11.12e: home wifi (<see cref="NetLinks.Wifi"/>) under the rule's delay.
+    /// Before T11.12a (one ping, + 1 tic: delay 2–3) the world held 14–15 s a
+    /// minute; T11.12a's rule (the longest of 3 s of round trips, + 2 frames,
+    /// + 1: delay 6–8 here) holds it under a second a minute, and what is left
+    /// is the reliable channel's resends (150 ms each, T11.12c's): without
+    /// them nothing holds after the first second. Logged in SPEC §12
+    /// ("T11.12 measurements"); T11.12b–d tighten the bounds.
     /// </summary>
     [Theory]
     [InlineData(2, 1)]
@@ -211,27 +220,55 @@ public class NetMeasurementTests
         Assert.All(h.Players, p => Assert.True(p.TicsRun >= Tics));
         Assert.True(m.UpWireBps < 10_000, $"up {m.UpWireBps:F0} B/s");
         Assert.True(m.DownWireBps < 10_000, $"down {m.DownWireBps:F0} B/s");
-        // the baseline: held 14-15 s a minute by the player held longest (SPEC §12)
-        Assert.True(m.Stalls.HeldMsPerMinute > 5_000, $"held only {m.Stalls.HeldMsPerMinute:F0} ms a minute on wifi before T11.12a-d");
+        // T11.12a: under a second a minute (0.4-0.7 s logged), from 14-15 s before
+        Assert.True(m.Stalls.HeldMsPerMinute < 1_000, $"held {m.Stalls.HeldMsPerMinute:F0} ms a minute on wifi");
+
+        // the same wifi without the reliable resends: none after the first second
+        Measurement noResends = Measure(players, NetLinks.Wifi with { ReliableLoss = 0 }, seed, out LockstepHarness h2);
+        TestContext.Current.TestOutputHelper?.WriteLine($"  without resends: {noResends}");
+        StallStats after = StallStats.Worst(h2.Players, afterUs: 1_000_000);
+        Assert.True(after.Count == 0, $"without resends: {after}");
     }
 
     /// <summary>
     /// T11.12e: the manual fix the player readme gives, <c>-netdelay</c>, on
     /// the same wifi: each delay's stalls logged beside the rule's (SPEC §12),
-    /// fewer and shorter as the delay grows.
+    /// fewer and shorter as the delay grows (T11.12a: the rule's is 6 here).
     /// </summary>
     [Fact]
     public void A_longer_netdelay_on_home_wifi()
     {
         Measurement rule = Measure(2, NetLinks.Wifi, seed: 1);
         TestContext.Current.TestOutputHelper?.WriteLine($"rule: {rule}");
-        Measurement previous = rule;
-        foreach (int delay in new[] { 4, 6, 8 })
+        Measurement? previous = null;
+        foreach (int delay in new[] { 3, 4, 6, 8 })
         {
             Measurement m = Measure(2, NetLinks.Wifi, seed: 1, delay: delay);
             TestContext.Current.TestOutputHelper?.WriteLine($"-netdelay {delay}: {m}");
-            Assert.True(m.Stalls.TotalMs < previous.Stalls.TotalMs, $"-netdelay {delay}: held {m.Stalls.TotalMs:F0} ms, {previous.Stalls.TotalMs:F0} with less");
+            if (previous is not null)
+                Assert.True(m.Stalls.TotalMs < previous.Stalls.TotalMs, $"-netdelay {delay}: held {m.Stalls.TotalMs:F0} ms, {previous.Stalls.TotalMs:F0} with less");
             previous = m;
         }
+    }
+
+    /// <summary>
+    /// T11.12a's <i>Done when</i>: on a jittery link (<see cref="NetLinks.Jittery"/>:
+    /// 5–100 ms each way, bursts of spikes, no loss) the default delay, picked
+    /// from the lobby's round trips (logged), plays a minute with no stall
+    /// after the first second.
+    /// </summary>
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(2, 2)]
+    [InlineData(2, 3)]
+    [InlineData(4, 1)]
+    public void The_default_delay_covers_a_jittery_link(int players, int seed)
+    {
+        Measurement m = Measure(players, NetLinks.Jittery, seed, out LockstepHarness h);
+        TestContext.Current.TestOutputHelper?.WriteLine($"{players} players, jittery, seed {seed}: {m}");
+        Assert.Contains(h.ServerLog, l => l.StartsWith("round trips: slowest player ", StringComparison.Ordinal) && l.EndsWith($"delay {m.Delay} tic(s)", StringComparison.Ordinal));
+        StallStats after = StallStats.Worst(h.Players, afterUs: 1_000_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"after the first second: {after}");
+        Assert.Equal(0, after.Count);
     }
 }

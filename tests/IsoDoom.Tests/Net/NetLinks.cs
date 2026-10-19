@@ -46,6 +46,23 @@ public static class NetLinks
         ReliableLoss = 0.01,
         ResendUs = 150_000,
     };
+
+    /// <summary>
+    /// T11.12a: a jittery link without loss: 5–50 ms each way (5 ms and up to
+    /// 45 ms of uniform jitter), and bursts as <see cref="Wifi"/>'s (one every
+    /// 1–3 s lasting 0.2–0.6 s) in which every packet takes 40–50 ms more each
+    /// way: 5–100 ms each way in all. No loss: a reliable resend holds the
+    /// world whatever the delay (T11.12c's).
+    /// </summary>
+    public static MemoryLinkOptions Jittery { get; } = new()
+    {
+        LatencyUs = 5_000,
+        JitterUs = 45_000,
+        BurstEveryUs = 2_000_000,
+        BurstLengthUs = 400_000,
+        SpikeMinUs = 40_000,
+        SpikeMaxUs = 50_000,
+    };
 }
 
 /// <summary>

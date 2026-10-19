@@ -34,7 +34,7 @@ public enum NetTransportUse
 /// (T11.9), every client says it is ready as soon as it is in the lobby, and
 /// the host starts once <see cref="NetOptions.Players"/> players are in and
 /// ready, with <see cref="NetOptions.Delay"/> or the delay the round trips
-/// measured then give (<see cref="NetOptions.DelayFromRtt"/>). Plain C#:
+/// measured then give (<see cref="NetOptions.ChooseDelay"/>). Plain C#:
 /// the game passes ENet transports (<c>NetEnetTransport</c>), the tests
 /// <see cref="MemoryTransport"/>s. Driven by <see cref="Update"/>, from one thread.
 /// </summary>
@@ -50,10 +50,11 @@ public sealed class NetSession : IDisposable
     private long _allReadyUs = -1;
 
     /// <summary>
-    /// How long the host waits, once everyone is ready, for a round trip from
-    /// every client before it starts with the round trips it has (µs).
+    /// How long the host waits, once everyone is ready, for
+    /// <see cref="NetOptions.MinRttSamples"/> round trips from every client
+    /// (T11.12a) before it starts with the round trips it has (µs).
     /// </summary>
-    public const long RttWaitUs = 3_000_000;
+    public const long RttWaitUs = 5_000_000;
 
     /// <summary>A session for <paramref name="options"/> (host or join).</summary>
     /// <param name="options">The arguments (<see cref="NetRole.None"/> is refused).</param>
@@ -293,20 +294,11 @@ public sealed class NetSession : IDisposable
             delay = fixedDelay;
         else
         {
-            int maxRtt = 0;
-            bool known = true;
-            for (int slot = 0; slot < NetProtocol.MaxPlayers; slot++)
-            {
-                if ((server.OccupiedMask & (1 << slot)) == 0)
-                    continue;
-                int rtt = server.RttUsOf(slot);
-                known &= rtt >= 0;
-                maxRtt = Math.Max(maxRtt, rtt);
-            }
-            if (!known && nowUs - _allReadyUs < RttWaitUs)
+            // T11.12a: from every player's recent round trips (at least MinRttSamples each, or what came in RttWaitUs)
+            if (NetOptions.ChooseDelay(server, nowUs - _allReadyUs >= RttWaitUs) is not { } choice)
                 return;
-            delay = NetOptions.DelayFromRtt(maxRtt);
-            Log?.Invoke($"round trips: slowest {maxRtt / 1000.0:F1} ms{(known ? "" : " (some unknown)")}: delay {delay} tic(s)");
+            delay = choice.Delay;
+            Log?.Invoke(choice.ToString());
         }
         server.Start(delay);
         StartRequested = false;
