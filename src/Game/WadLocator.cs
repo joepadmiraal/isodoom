@@ -139,6 +139,9 @@ public static class WadLocator
     // for some every frame, and each OS.GetCmdlineUserArgs marshals the whole array anew).
     private static readonly Lazy<string[]> _userArgs = new(OS.GetCmdlineUserArgs);
 
+    /// <summary>The user arguments (those after <c>--</c>), read once.</summary>
+    public static System.Collections.Generic.IReadOnlyList<string> UserArgs => _userArgs.Value;
+
     /// <summary>The value of <c>name VALUE</c> or <c>name=VALUE</c> among the user arguments, or null.</summary>
     public static string? GetUserArg(string name)
     {

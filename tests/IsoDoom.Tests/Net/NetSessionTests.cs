@@ -98,6 +98,28 @@ public class NetSessionTests
         Assert.Throws<ArgumentException>(() => NetOptions.Parse(args));
     }
 
+    [Fact]
+    public void The_menus_sessions_take_the_command_lines_session_arguments()
+    {
+        // T11.9f: -netdelay, -nettimeout and -bind over a session the menus made
+        NetSessionArgs given = NetOptions.Overrides(["-iwad", "doom2.wad", "-netdelay", "8", "-nettimeout", "20", "-bind", "127.0.0.1", "-deathmatch"]);
+        Assert.Equal((8, 20, "127.0.0.1"), (given.Delay, given.TimeoutSeconds, given.BindAddress));
+        Assert.Equal("-netdelay 8 -nettimeout 20 -bind 127.0.0.1", given.ToString());
+
+        var menuHost = new NetOptions { Role = NetRole.Host, Players = 3, Deathmatch = 0 };
+        NetOptions host = given.Apply(menuHost);
+        Assert.Equal((8, 20, "127.0.0.1", 3, 0), (host.Delay, host.TimeoutSeconds, host.BindAddress, host.Players, host.Deathmatch));
+        NetOptions join = given.Apply(Parse("-connect", "10.0.0.2:6000"));
+        Assert.Equal((20, "*", "10.0.0.2", 6000), (join.TimeoutSeconds, join.BindAddress, join.ConnectAddress, join.Port)); // a join binds nothing
+
+        // none given: the menus' options as they are, the delay measured
+        NetSessionArgs none = NetOptions.Overrides(["-iwad", "doom2.wad"]);
+        Assert.Equal("", none.ToString());
+        Assert.Equal(menuHost, none.Apply(menuHost));
+        Assert.Throws<ArgumentException>(() => NetOptions.Overrides(["-netdelay", "0"]));
+        Assert.Throws<ArgumentException>(() => NetOptions.Overrides(["-nettimeout"]));
+    }
+
     [Theory]
     [InlineData(0, NetOptions.MinDefaultDelay)]
     [InlineData(1_000, 3)]

@@ -141,6 +141,45 @@ public class NetSessionStartTests
     }
 
     [Fact]
+    public void AGameHostedFromTheMenusWithNetdelayPlaysAtItPinned()
+    {
+        // T11.9f: Host Game's options (the net/* settings) with the command line's -netdelay 6 -nettimeout 20,
+        // Join Game's with its -nettimeout 20: the game starts at delay 6, fixed, and both time out after 20 s
+        var network = new MemoryNetwork();
+        var log = new List<string>();
+        NetSessionArgs given = NetOptions.Overrides(["-iwad", "doom2.wad", "-netdelay", "6", "-nettimeout", "20"]);
+        int n = 0;
+        var host = new NetSession(given.Apply(new NetOptions { Role = NetRole.Host, Players = 4 }), _identity, _settings,
+            use => network.CreateEndpoint(use == NetTransportUse.Server ? "127.0.0.1" : "host", seed: n++), log.Add)
+        { AutoStart = false };
+        var join = new NetSession(given.Apply(NetOptions.Parse(["-connect", "127.0.0.1"])!), _identity, _settings,
+            _ => network.CreateEndpoint("join", new MemoryLinkOptions { LatencyUs = 60_000 }, 5));
+        var sessions = new[] { host, join };
+        long end = 10_000_000;
+        while (!(host.Server!.PlayerCount == 2 && host.Server.CanStart))
+        {
+            Assert.True(network.NowUs < end, "not in");
+            network.Advance(1_000);
+            foreach (NetSession s in sessions)
+                s.Update(network.NowUs);
+        }
+        Assert.Equal((20_000_000L, 20_000_000L, 20_000_000L), (host.Server.TimeoutUs, host.Client.TimeoutUs, join.Client.TimeoutUs));
+        Assert.True(host.RequestStart());
+        while (!Array.TrueForAll(sessions, s => s.Client.State == NetClientState.InGame))
+        {
+            Assert.True(network.NowUs < end, "not started");
+            network.Advance(1_000);
+            foreach (NetSession s in sessions)
+                s.Update(network.NowUs);
+        }
+        // a 120 ms round trip would measure 7 tics: -netdelay's 6 is used, and pinned
+        Assert.Equal((6, false), (join.Client.Start!.Delay, join.Client.Start.Adaptive));
+        Assert.False(host.Server.AdaptiveDelay);
+        Assert.Contains("delay 6 tic(s) (-netdelay: fixed for the game)", log);
+        Assert.DoesNotContain(log, l => l.StartsWith("round trips:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void TheHostAndAJoinSeeEveryPlayersPing()
     {
         var m = new Machines(autoStart: false, players: 4, joins: 2);

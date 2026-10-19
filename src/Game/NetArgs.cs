@@ -126,6 +126,39 @@ public sealed record NetOptions
     public static NetOptions Modes(IReadOnlyList<string> args) => ParseAll(args, out _, out _, out _);
 
     /// <summary>
+    /// T11.9f: the session arguments in <paramref name="args"/> that are not
+    /// the game's settings (<c>-netdelay</c>, <c>-nettimeout</c>, <c>-bind</c>),
+    /// for a session the menus make (Host Game, Join Game), which builds its
+    /// options from the <c>net/*</c> settings and an address. Only these are
+    /// read (the rest of the command line is not checked here). A bad value is
+    /// an <see cref="ArgumentException"/> naming the argument.
+    /// </summary>
+    public static NetSessionArgs Overrides(IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        var o = new NetSessionArgs();
+        for (int i = 0; i < args.Count; i++)
+        {
+            string a = args[i];
+            switch (a)
+            {
+                case "-netdelay":
+                    o = o with { Delay = Int(Value(args, ref i, a), a, 1, IsoDoom.Net.NetProtocol.MaxDelay) };
+                    break;
+                case "-nettimeout":
+                    o = o with { TimeoutSeconds = Int(Value(args, ref i, a), a, 1, 600) };
+                    break;
+                case "-bind":
+                    o = o with { BindAddress = Value(args, ref i, a) };
+                    break;
+                default:
+                    break;
+            }
+        }
+        return o;
+    }
+
+    /// <summary>
     /// <paramref name="spawn"/> with these options' modes: their deathmatch
     /// and timer (<see cref="SpawnSettings.timelimit"/>) where they name one,
     /// <c>-nomonsters</c>, <c>-respawn</c> and <c>-fast</c> added.
@@ -307,6 +340,48 @@ public sealed record NetOptions
         if (colon == 0)
             throw new ArgumentException($"-connect: \"{s}\" (ADDR[:PORT])");
         return (s[..colon], Int(s[(colon + 1)..], "-connect", 1, 65535));
+    }
+}
+
+/// <summary>
+/// T11.9f: the command line's session arguments a session from the menus
+/// takes (<see cref="NetOptions.Overrides"/>); null: not given.
+/// </summary>
+public sealed record NetSessionArgs
+{
+    /// <summary><c>-netdelay</c>: the input delay, fixed for the game (T11.12b).</summary>
+    public int? Delay { get; init; }
+
+    /// <summary><c>-nettimeout</c>'s seconds.</summary>
+    public int? TimeoutSeconds { get; init; }
+
+    /// <summary><c>-bind</c>: the address a host listens on (a join ignores it).</summary>
+    public string? BindAddress { get; init; }
+
+    /// <summary><paramref name="options"/> with the arguments given: the delay and the timeout, and on a host the bind address.</summary>
+    public NetOptions Apply(NetOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return options with
+        {
+            Delay = Delay ?? options.Delay,
+            TimeoutSeconds = TimeoutSeconds ?? options.TimeoutSeconds,
+            BindAddress = options.Role == NetRole.Host && BindAddress is { } bind ? bind : options.BindAddress,
+        };
+    }
+
+    /// <summary>The arguments given, for the log (<c>-netdelay 6 -nettimeout 20</c>; empty: none).</summary>
+    public override string ToString()
+    {
+        var ci = CultureInfo.InvariantCulture;
+        var parts = new List<string>();
+        if (Delay is int d)
+            parts.Add(string.Create(ci, $"-netdelay {d}"));
+        if (TimeoutSeconds is int t)
+            parts.Add(string.Create(ci, $"-nettimeout {t}"));
+        if (BindAddress is { } b)
+            parts.Add($"-bind {b}");
+        return string.Join(' ', parts);
     }
 }
 

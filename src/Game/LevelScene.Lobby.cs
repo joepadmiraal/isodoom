@@ -8,7 +8,8 @@ using IsoDoom.Sim;
 namespace IsoDoom.Game;
 
 // T11.9: the multiplayer pages' host (MMenu.Net.cs): Host Game makes the
-// session from the net/* settings (no -players start: the lobby page's Start
+// session from the net/* settings (T11.9f: and the command line's -netdelay,
+// -nettimeout and -bind; Join Game its -nettimeout) (no -players start: the lobby page's Start
 // begins the game), Join Game from an address (kept in net/addresses once the
 // host let it in), the lobby page reads the session, Escape leaves it.
 public partial class LevelScene : INetMenuHost
@@ -80,7 +81,7 @@ public partial class LevelScene : INetMenuHost
         NetOptions options;
         try
         {
-            options = NetOptions.Parse(["-connect", address])!;
+            options = NetOptions.Parse(["-connect", address])!; // T11.9f: -nettimeout from the command line (OpenMenuSession)
         }
         catch (ArgumentException e)
         {
@@ -96,10 +97,15 @@ public partial class LevelScene : INetMenuHost
     {
         try
         {
+            // T11.9f: the command line's session arguments that are not the net/* settings: -netdelay, -nettimeout, -bind
+            NetSessionArgs overrides = NetOptions.Overrides(WadLocator.UserArgs);
+            options = overrides.Apply(options);
             NetSession session = OpenNetSession(options, spawn, map);
             session.AutoStart = false; // T11.9: the lobby page's Start
             _netFromMenus = true;
-            GD.Print($"Net: from the menus: {options.Role}{(options.Role == NetRole.Host ? $", {map}, {options.Players} players at most" : $" {options.ConnectAddress}:{options.Port}")}");
+            string given = overrides.ToString();
+            GD.Print($"Net: from the menus: {options.Role}{(options.Role == NetRole.Host ? $", {map}, {options.Players} players at most" : $" {options.ConnectAddress}:{options.Port}")}"
+                + (given.Length > 0 ? $"; the command line's {given}" : ""));
             return null;
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)

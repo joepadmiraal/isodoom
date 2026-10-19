@@ -159,9 +159,11 @@ For the smoothest game, turn wifi power saving off on every computer
 "iw dev wlan0 set power_save off"), or plug one or all of them into the
 router with a cable. The host raises the input delay by itself when the
 game freezes (and lowers it again once the link is calm), so a freeze
-should pass within a second. To fix the delay yourself, host from a
-command line with "-netdelay N" after "-host" (N in tics of 1/35 s, say 8;
-more is smoother but slower to respond); the game then keeps it.
+should pass within a second. To fix the delay yourself, start the host's
+game from a command line with "-netdelay N" (N in tics of 1/35 s, say 8;
+more is smoother but slower to respond), whether it hosts with "-host" or
+from the menus' Host Game; the game then keeps it. "-nettimeout SECONDS"
+(how long a silent player is waited for) works the same way, on joins too.
 
 
 Running it
