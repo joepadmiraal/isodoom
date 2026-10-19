@@ -64,6 +64,14 @@ public sealed partial class World
     /// </summary>
     public int interceptoverruns;
 
+    /// <summary>
+    /// The most intercepts one traversal collected (the deepest
+    /// <see cref="intercept_p"/>), over the world's life: above
+    /// <see cref="MAXINTERCEPTS"/> vanilla overran (P8's survey; like
+    /// <see cref="interceptoverruns"/>, outside the checksum and the saves).
+    /// </summary>
+    public int interceptpeak;
+
     /// <summary>p_maputl.c <c>trace</c>: the line <see cref="P_PathTraverse"/> traces.</summary>
     public divline_t trace;
 
@@ -442,6 +450,8 @@ public sealed partial class World
             Array.Copy(intercepts, grown, intercepts.Length);
             intercepts = grown;
         }
+        if (intercept_p >= interceptpeak)
+            interceptpeak = intercept_p + 1;
         return intercepts[intercept_p++];
     }
 

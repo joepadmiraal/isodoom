@@ -84,6 +84,14 @@ public sealed partial class World
     /// </summary>
     public int spechitoverruns;
 
+    /// <summary>
+    /// The most special lines one position check collected (the deepest
+    /// <see cref="numspechit"/>), over the world's life: above
+    /// <see cref="MAXSPECIALCROSS"/> vanilla overran (P8's survey; like
+    /// <see cref="spechitoverruns"/>, outside the checksum and the saves).
+    /// </summary>
+    public int spechitpeak;
+
     /// <summary>p_map.c <c>bestslidefrac</c>: the nearest blocking line's fraction along the slide traces.</summary>
     public int bestslidefrac;
 
@@ -176,6 +184,8 @@ public sealed partial class World
                 Array.Resize(ref _spechit, _spechit.Length * 2);
             _spechit[numspechit] = ld;
             numspechit++;
+            if (numspechit > spechitpeak)
+                spechitpeak = numspechit;
         }
 
         return true;
