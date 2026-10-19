@@ -15,7 +15,10 @@
 #    whose fights depend on every tic's randomness), the host in the route's map, skill,
 #    monsters and modes, through the intermission (skipped) into map NEXT;
 #    then the host's server must have compared every checksum window with no
-#    desync, and the client must have seen no consistency failure.
+#    desync, and the client must have seen no consistency failure. T11.12b:
+#    the host changes the input delay twice on the way (`netdelay 8` about
+#    35 tics into the route, `netdelay 4` 105 tics later), as the adaptive
+#    delay does on a link that slows and recovers.
 #  - --kill client|host ROUTE (T11.11): they play ROUTE as --play does, and
 #    after 210 game tics the client's (or the host's) process is killed
 #    (SIGKILL: no quit, no disconnect). Killing the client: the host must drop
@@ -203,8 +206,10 @@ client_level=(--level)
 doomed="tics 210; print; sleep 600"
 case $mode in
     play)
-        host_script="$start; until gamestate intermission 300; skip; until map $next 60; tics 70; netcheck; checksum; net"
-        client_script=$host_script
+        # T11.12b: the host moves the delay mid-route (up to 8, then down to 4: what the adaptive delay does on a
+        # slow link), and the game must stay in sync and the route's commands on their tics
+        client_script="$start; until gamestate intermission 300; skip; until map $next 60; tics 70; netcheck; checksum; net"
+        host_script="$start; tics 105; netdelay 8; tics 105; netdelay 4; until gamestate intermission 300; skip; until map $next 60; tics 70; netcheck; checksum; net"
         # the route (with its xcount lines, a longer run), the intermission and the start; at 35 Hz
         limit=$(( route_tics * 4 / 35 + 240 ))
         result_line='^Level script: netcheck:'

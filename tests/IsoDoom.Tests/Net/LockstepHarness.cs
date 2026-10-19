@@ -232,10 +232,13 @@ public sealed class LockstepHarness
         RunUntil(() => Network.NowUs >= t, 2_000_000, "pings");
     }
 
-    /// <summary>Start the game and run until every player still in it ran <paramref name="tics"/> tics.</summary>
-    public void Play(int delay, int tics, long maxUs)
+    /// <summary>
+    /// Start the game and run until every player still in it ran <paramref name="tics"/> tics;
+    /// T11.12b: the delay adapts in the game unless not <paramref name="adaptive"/> (<c>-netdelay</c>).
+    /// </summary>
+    public void Play(int delay, int tics, long maxUs, bool adaptive = true)
     {
-        Server.Start(delay);
+        Server.Start(delay, adaptive: adaptive);
         RunUntil(() => Players.TrueForAll(p => p.Client.State == NetClientState.InGame), 5_000_000, "everyone in the game");
         // T11.12e: a player who ran its tics waits for the others, so every world ends on the same tic
         _ticLimit = tics;

@@ -781,6 +781,7 @@ public partial class LevelScript : Node
                     case "until": exit |= await Until(w[1], w[2], w.Length > 3 ? Int(w[3]) : 120); break; // T11.8
                     case "kill": Kill(w.Length > 1 ? Int(w[1]) - 1 : null); break; // T11.8
                     case "netdesync": exit |= NetDesync(); break; // T11.11
+                    case "netdelay": exit |= NetDelay(Int(w[1])); break; // T11.12b
                     case "netuntil": exit |= await NetUntil(w); break; // T11.11
                     case "lan": exit |= await Lan(w.Length > 1 && w[1] != "join" ? Int(w[1]) : 1, w.Length > 2 && w[2] != "join" ? Int(w[2]) : 30, w[^1] == "join"); break; // T11.9d
                     case "lobby": exit |= await Lobby(w.Length > 1 ? Int(w[1]) : 0, w.Length > 2 ? Int(w[2]) : 60); break; // T11.9

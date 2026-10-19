@@ -50,7 +50,9 @@
 //   client -> Ready      ready (u8 0/1).
 //   server -> Start      consoleplayer (u8: the receiver's slot), players in
 //                        game (u8 mask), start tic (i32), input delay in tics
-//                        (u8), the game settings, whose players in game
+//                        (u8), (T11.12b, protocol 6) whether the host adapts
+//                        the delay in the game (u8 0/1: 0 when -netdelay
+//                        pins it), the game settings, whose players in game
 //                        must be the same mask (the server sets them to it:
 //                        one source of truth, checked on decoding).
 // Game settings: gamemode, gameskill (u8), flags (u8: 1 netgame, 2
@@ -101,6 +103,19 @@
 // behind than its ring would break that: the server drops it as a protocol
 // error (it leaves the game as on a quit), the client disconnects.
 //
+// DELAY (T11.12b, protocol 6). The input delay may change in the game: the
+// host's server watches what each player's tics needed (below, CLOCK's Ping) and
+// announces a new one, unless -netdelay pinned it (the Start's flag):
+//   server -> Delay      (reliable) the new delay in tics (u8, 1..MaxDelay),
+//                        and the server's CompleteTic when it decided (i32,
+//                        for the logs).
+// A client applies it at once: from then on it makes its commands up to its
+// clock tic + the new delay. A raise makes the commands for the tics between
+// at once (as after a slow frame: CommandsDue grows); a lowering makes none
+// until the clock has caught up. Nothing else changes: every tic still has
+// one command a player, so the bundles, the acknowledgements and the sim
+// see only commands, and no machine needs to know the tic another changed at.
+//
 // CHECKSUMS. Tics run in windows of 35 from the start tic (window w: start +
 // 35w .. start + 35w + 34). After a window's last tic each client sends
 //   client -> Checksum   window (i32), World.Checksum() after that tic (u64),
@@ -114,8 +129,15 @@
 // consistancy differ, it announces once:
 //   server -> Desync     window (i32), its first and last tic (i32 × 2).
 //
-// CLOCK. client -> Ping (unreliable): the client's time (i64 µs) and its
-// last round trip (i32 µs). server -> Pong: the ping's time echoed, the
+// CLOCK. client -> Ping (unreliable): the client's time (i64 µs), its
+// last round trip (i32 µs), and (T11.12b, protocol 6) the longest delay a
+// tic of the last second needed (i32 µs, -1 none: for each tic of its own
+// commands, the delay it was made at less how early its whole bundle was
+// there when the tic was due, negative when it held), its longest stall (i32
+// µs: the clock past the last whole bundle) and the longest gap between
+// two of its polls (i32 µs: about a frame; longer, a hitch of its own, a
+// level load, which no delay helps), each of the last second. Each covers a second, so a lost ping loses
+// nothing. server -> Pong: the ping's time echoed, the
 // server's game clock (i64 µs since the start, i64.MinValue before it), and
 // (T11.11, protocol 3) the slots whose command the next bundle still waits
 // for (u8 mask, 0 in the lobby) and each slot's last reported round trip
@@ -161,8 +183,8 @@ namespace IsoDoom.Net;
 /// <summary>The protocol's constants (see the comment block at the top of <c>NetMessages.cs</c>).</summary>
 public static class NetProtocol
 {
-    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c; 5: the commands and bundles go unreliable with acknowledgements, the quit carries the last commands, T11.12c).</summary>
-    public const ushort Version = 5;
+    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c; 5: the commands and bundles go unreliable with acknowledgements, the quit carries the last commands, T11.12c; 6: the delay adapts in the game: the Start's flag, the Delay message, the ping's needed delay, stall and gap, T11.12b).</summary>
+    public const ushort Version = 6;
 
     /// <summary>T11.9c: the longest player name, in characters (<see cref="CleanName"/>).</summary>
     public const int MaxNameLength = 15;
@@ -293,6 +315,7 @@ public enum NetMessageType : byte
     PlayerQuit = 13,
     Ping = 14,
     Pong = 15,
+    Delay = 16,
 }
 
 /// <summary>A message that breaks the protocol (malformed, unexpected or out of order).</summary>
@@ -372,7 +395,8 @@ public sealed record NetGameSettings(SpawnSettings Spawn, Tweaks Tweaks, int Epi
 /// <param name="StartTic">The game's first tic.</param>
 /// <param name="Delay">The input delay, in tics.</param>
 /// <param name="Settings">The game's settings.</param>
-public sealed record NetStart(int ConsolePlayer, byte PlayerMask, int StartTic, int Delay, NetGameSettings Settings);
+/// <param name="Adaptive">T11.12b: whether the host adapts the delay in the game (false: <c>-netdelay</c> pinned it).</param>
+public sealed record NetStart(int ConsolePlayer, byte PlayerMask, int StartTic, int Delay, NetGameSettings Settings, bool Adaptive = false);
 
 /// <summary>A server's desync announcement: the first checksum window that differs.</summary>
 /// <param name="Window">The window (from 0 at the start tic).</param>
@@ -516,6 +540,7 @@ public static class NetMessages
         w.U8(start.PlayerMask);
         w.I32(start.StartTic);
         w.U8((byte)start.Delay);
+        w.U8(start.Adaptive ? (byte)1 : (byte)0);
         w.Settings(start.Settings);
         return w.ToArray();
     }
@@ -527,15 +552,41 @@ public static class NetMessages
         byte mask = r.U8();
         int startTic = r.I32();
         int delay = r.U8();
+        int adaptive = r.U8();
         NetGameSettings settings = r.Settings();
         r.End();
+        if (adaptive > 1)
+            throw new NetProtocolException($"Start: adaptive {adaptive}.");
         if (consoleplayer >= NetProtocol.MaxPlayers || (mask & (1 << consoleplayer)) == 0 || mask >= 1 << NetProtocol.MaxPlayers)
             throw new NetProtocolException($"Start: player {consoleplayer} not in mask {mask}.");
-        if (delay > NetProtocol.MaxDelay)
+        if (delay is < 1 or > NetProtocol.MaxDelay)
             throw new NetProtocolException($"Start: delay {delay}.");
         if (settings.Spawn.playersingame != mask)
             throw new NetProtocolException($"Start: players in game {settings.Spawn.playersingame} differ from the mask {mask}.");
-        return new NetStart(consoleplayer, mask, startTic, delay, settings);
+        return new NetStart(consoleplayer, mask, startTic, delay, settings, adaptive != 0);
+    }
+
+    /// <summary>T11.12b: Delay: the new input delay <paramref name="delay"/> (tics), decided at the server's <paramref name="tic"/> (its <c>CompleteTic</c>).</summary>
+    public static byte[] EncodeDelay(int delay, int tic)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(delay, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(delay, NetProtocol.MaxDelay);
+        var w = new NetWriter(NetMessageType.Delay);
+        w.U8((byte)delay);
+        w.I32(tic);
+        return w.ToArray();
+    }
+
+    /// <summary>T11.12b: a Delay message's delay and tic.</summary>
+    public static (int Delay, int Tic) DecodeDelay(NetReader r)
+    {
+        ArgumentNullException.ThrowIfNull(r);
+        int delay = r.U8();
+        int tic = r.I32();
+        r.End();
+        if (delay is < 1 or > NetProtocol.MaxDelay)
+            throw new NetProtocolException($"Delay: {delay} tics.");
+        return (delay, tic);
     }
 
     // ---- tics ----
@@ -672,11 +723,20 @@ public static class NetMessages
         return w.ToArray();
     }
 
-    public static byte[] EncodePing(long clientTimeUs, int lastRttUs)
+    /// <summary>
+    /// Ping: the client's time and last round trip, and (T11.12b) the longest
+    /// delay a tic needed (<paramref name="needUs"/>, −1 none), its longest
+    /// stall (<paramref name="stallUs"/>) and its longest gap between two polls
+    /// (<paramref name="gapUs"/>) of the last second.
+    /// </summary>
+    public static byte[] EncodePing(long clientTimeUs, int lastRttUs, int needUs = -1, int stallUs = 0, int gapUs = 0)
     {
         var w = new NetWriter(NetMessageType.Ping);
         w.I64(clientTimeUs);
         w.I32(lastRttUs);
+        w.I32(needUs);
+        w.I32(stallUs);
+        w.I32(gapUs);
         return w.ToArray();
     }
 

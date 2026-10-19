@@ -306,7 +306,10 @@ public sealed class NetSession : IDisposable
             _allReadyUs = nowUs;
         int delay;
         if (Options.Delay is int fixedDelay)
+        {
             delay = fixedDelay;
+            Log?.Invoke($"delay {delay} tic(s) (-netdelay: fixed for the game)"); // T11.12b: -netdelay pins it
+        }
         else
         {
             // T11.12a: from every player's recent round trips (at least MinRttSamples each, or what came in RttWaitUs)
@@ -315,7 +318,7 @@ public sealed class NetSession : IDisposable
             delay = choice.Delay;
             Log?.Invoke(choice.ToString());
         }
-        server.Start(delay);
+        server.Start(delay, adaptive: Options.Delay is null); // T11.12b: the measured delay adapts in the game
         StartRequested = false;
     }
 
@@ -381,11 +384,29 @@ public sealed class NetSession : IDisposable
                 : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{rtt} ms");
             s.Append(System.Globalization.CultureInfo.InvariantCulture, $" {i + 1}: {ping}");
         }
-        s.Append(System.Globalization.CultureInfo.InvariantCulture, $", delay {start.Delay}, tics waiting {Math.Max(0, c.BundleTic - c.LastRanTic)}, stalls {c.StallsLastSecond} in the last second");
+        s.Append(System.Globalization.CultureInfo.InvariantCulture, $", {DelayText(c, start)}, tics waiting {Math.Max(0, c.BundleTic - c.LastRanTic)}, stalls {c.StallsLastSecond} in the last second");
         if (c.LateUs > 0)
             s.Append(System.Globalization.CultureInfo.InvariantCulture, $", late {c.LateUs / 1000} ms ({WaitingText(c.WaitingFor, c.Slot).TrimEnd('.')})");
         if ((Server?.Desync ?? c.Desync) is { } desync)
             s.Append(System.Globalization.CultureInfo.InvariantCulture, $", DESYNC in tics {desync.FirstTic}-{desync.LastTic}: stopped after tic {c.LastRanTic}");
+        return s.ToString();
+    }
+
+    /// <summary>
+    /// T11.12b: the overlay's delay: <c>delay 8 auto</c> (the host adapts it)
+    /// or <c>delay 6 fixed</c> (<c>-netdelay</c>), for 10 s after a change
+    /// <c>(3 -> 8 at tic 812)</c>, and the longest delay a tic of the last second needed (<see cref="NetClient.NeededDelayUs"/>).
+    /// </summary>
+    public static string DelayText(NetClient c, NetStart start)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        ArgumentNullException.ThrowIfNull(start);
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var s = new System.Text.StringBuilder(string.Create(ci, $"delay {c.Delay} {(start.Adaptive ? "auto" : "fixed")}"));
+        if (c.DelayChangedTic >= 0 && c.ClockTic - c.DelayChangedTic < 10 * NetProtocol.TicRate)
+            s.Append(ci, $" ({c.PreviousDelay} -> {c.Delay} at tic {c.DelayChangedTic})");
+        if (c.NeededDelayUs >= 0)
+            s.Append(ci, $", needed {c.NeededDelayUs / 1000} ms");
         return s.ToString();
     }
 

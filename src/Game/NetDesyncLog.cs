@@ -148,9 +148,10 @@ public sealed class NetDesyncLog
     /// game stopped with, field by field (<c>state.txt</c>: the last tic, its
     /// checksum, <see cref="World.DumpState"/>), for <c>tools/NetDesync/compare.py</c>.
     /// T11.9c: <paramref name="names"/>, each slot's player name (the lobby's), names the players in the summary.
+    /// T11.12b: <paramref name="delay"/> and <paramref name="delayChanges"/>, the input delay when the game stopped and how often it changed (0: the Start's, unchanged).
     /// </summary>
     public string Write(string root, NetDesync desync, int player, string build, int firstBadTic, DateTime now, World? world = null,
-        IReadOnlyList<string>? names = null)
+        IReadOnlyList<string>? names = null, int delay = 0, int delayChanges = 0)
     {
         ArgumentNullException.ThrowIfNull(root);
         string dir = Path.Combine(root, string.Create(CultureInfo.InvariantCulture, $"{now:yyyyMMdd-HHmmss}-player{player + 1}"));
@@ -207,6 +208,7 @@ public sealed class NetDesyncLog
             player: {player + 1} (slot {player})
             names: {string.Join(", ", named)}
             game: {NetSession.MapName(s)}, skill {(int)s.Spawn.gameskill + 1}, deathmatch {s.Spawn.deathmatch}, players {Start.PlayerMask:x}, start tic {Start.StartTic}, delay {Start.Delay}
+            delay: {(Start.Adaptive ? "adaptive" : "fixed")}, {(delay > 0 ? delay : Start.Delay)} tic(s) when the game stopped, {delayChanges} change(s) (only commands carry it: replay needs nothing more)
             desync: window {desync.Window}, tics {desync.FirstTic}-{desync.LastTic} (the first window whose checksums differed; every window before it agreed)
             first consistency failure seen here: {(firstBadTic < 0 ? "none" : firstBadTic.ToString(CultureInfo.InvariantCulture))}
             tics logged: {(_count == 0 ? "none" : $"{_tics[first]}-{LastTic}")} (the game stopped after tic {LastTic})

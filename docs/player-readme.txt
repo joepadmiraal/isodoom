@@ -157,10 +157,11 @@ Saving is off in a netgame, and the pause pauses everyone.
 For the smoothest game, turn wifi power saving off on every computer
 (Windows: the wifi adapter's Power Saving Mode in Device Manager; Linux:
 "iw dev wlan0 set power_save off"), or plug one or all of them into the
-router with a cable. If the game still freezes now and then, host it from
-a command line with more input delay: add "-netdelay N" after "-host"
-(N in tics of 1/35 s, say 8, the most the game picks by itself; more is
-smoother but slower to respond).
+router with a cable. The host raises the input delay by itself when the
+game freezes (and lowers it again once the link is calm), so a freeze
+should pass within a second. To fix the delay yourself, host from a
+command line with "-netdelay N" after "-host" (N in tics of 1/35 s, say 8;
+more is smoother but slower to respond); the game then keeps it.
 
 
 Running it

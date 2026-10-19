@@ -50,11 +50,26 @@ public class NetMessagesTests
         Assert.NotEqual(new Tweaks(), tweaks);
 
         var settings = new NetGameSettings(spawn, tweaks, Episode: 3, Map: 9);
-        var start = new NetStart(2, 0b1101, 12345, 7, settings);
+        var start = new NetStart(2, 0b1101, 12345, 7, settings, Adaptive: true);
         NetStart back = NetMessages.DecodeStart(Reader(NetMessages.EncodeStart(start), NetMessageType.Start));
         Assert.Equal(start, back);
+        Assert.False(NetMessages.DecodeStart(Reader(NetMessages.EncodeStart(start with { Adaptive = false }), NetMessageType.Start)).Adaptive);
         Assert.Equal(spawn, back.Settings.Spawn);
         Assert.Equal(tweaks, back.Settings.Tweaks);
+    }
+
+    /// <summary>T11.12b: the Delay message: a delay of 1 to <see cref="NetProtocol.MaxDelay"/> tics and the host's tic.</summary>
+    [Fact]
+    public void A_delay_travels_and_one_out_of_range_is_refused()
+    {
+        Assert.Equal((17, 4321), NetMessages.DecodeDelay(Reader(NetMessages.EncodeDelay(17, 4321), NetMessageType.Delay)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NetMessages.EncodeDelay(0, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NetMessages.EncodeDelay(NetProtocol.MaxDelay + 1, 1));
+        byte[] bad = NetMessages.EncodeDelay(5, 1);
+        bad[1] = NetProtocol.MaxDelay + 1;
+        Assert.Throws<NetProtocolException>(() => NetMessages.DecodeDelay(Reader(bad, NetMessageType.Delay)));
+        bad[1] = 0;
+        Assert.Throws<NetProtocolException>(() => NetMessages.DecodeDelay(Reader(bad, NetMessageType.Delay)));
     }
 
     [Fact]

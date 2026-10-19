@@ -63,7 +63,7 @@ public sealed record NetOptions
     /// <summary>The players the host waits for before it starts (1–4).</summary>
     public int Players { get; init; } = 2;
 
-    /// <summary>The input delay in tics, or null for the measured default.</summary>
+    /// <summary>The input delay in tics (T11.12b: fixed for the game), or null for the measured default (which adapts in the game).</summary>
     public int? Delay { get; init; }
 
     /// <summary>T11.11: <c>-nettimeout</c>'s seconds: how long a silent peer (or a late player's command) is waited for.</summary>
@@ -216,12 +216,7 @@ public sealed record NetOptions
     /// polling take ⌈(RTT + slack) / tic⌉ tics, plus one for the jitter;
     /// clamped to <see cref="MinDefaultDelay"/>–<see cref="MaxDefaultDelay"/>.
     /// </summary>
-    public static int DelayFromRtt(long rttUs)
-    {
-        const long TicUs = IsoDoom.Net.NetProtocol.MicrosecondsPerSecond / IsoDoom.Net.NetProtocol.TicRate;
-        long tics = (Math.Max(0, rttUs) + PollSlackUs + TicUs - 1) / TicUs + 1;
-        return (int)Math.Clamp(tics, MinDefaultDelay, MaxDefaultDelay);
-    }
+    public static int DelayFromRtt(long rttUs) => Math.Clamp(IsoDoom.Net.NetDelayControl.Rule(rttUs), MinDefaultDelay, MaxDefaultDelay); // T11.12b: the game's rule too
 
     /// <summary>
     /// T11.12a: the frames' polling the default delay allows for on top of the
@@ -229,10 +224,10 @@ public sealed record NetOptions
     /// after its time, the host and the join each reading a packet up to a
     /// frame after it came; a ping's round trip holds the last two).
     /// </summary>
-    public const long PollSlackUs = 2 * IsoDoom.Net.NetProtocol.MicrosecondsPerSecond / 60;
+    public const long PollSlackUs = IsoDoom.Net.NetDelayControl.SlackUs;
 
-    /// <summary>T11.12a: the shortest default input delay, in tics (86 ms).</summary>
-    public const int MinDefaultDelay = 3;
+    /// <summary>T11.12a: the shortest default input delay, in tics (86 ms; T11.12b: the least the game lowers it to).</summary>
+    public const int MinDefaultDelay = IsoDoom.Net.NetDelayControl.MinDelay;
 
     /// <summary>
     /// T11.12a: the round trips the host waits for from every player before it

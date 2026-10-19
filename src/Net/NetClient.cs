@@ -90,6 +90,28 @@ public sealed class NetClient
     private readonly Queue<long> _stalls = new();
     private readonly ushort[] _rttMs = [NetProtocol.NoRtt, NetProtocol.NoRtt, NetProtocol.NoRtt, NetProtocol.NoRtt];
 
+    // T11.12b: per own command (rings by tic) the delay it was made at (0: made late, in a raise's batch),
+    // when its tic's bundle was whole and when its tic was first due; the first tic of its own, the tics
+    // marked due, the end of a raise's batch; the last second's longest need, stall and gap between polls, in tenths of a second.
+    private readonly byte[] _madeDelay = new byte[RingTics];
+    private readonly long[] _wholeUs = new long[RingTics];
+    private readonly long[] _dueUs = new long[RingTics];
+    private int _firstOwnTic;
+    private int _dueThrough;
+    private int _batchEnd;
+    private const int Buckets = 10;
+    private const long BucketUs = NetProtocol.MicrosecondsPerSecond / Buckets;
+    private readonly (long Index, int Max)[] _needBuckets = NewBuckets();
+    private readonly (long Index, int Max)[] _stallBuckets = NewBuckets();
+    private readonly (long Index, int Max)[] _gapBuckets = NewBuckets();
+
+    private static (long Index, int Max)[] NewBuckets()
+    {
+        var buckets = new (long Index, int Max)[Buckets];
+        Array.Fill(buckets, (long.MinValue, 0));
+        return buckets;
+    }
+
     /// <summary>A client over <paramref name="transport"/> for a machine with <paramref name="identity"/>.</summary>
     /// <param name="transport">The transport.</param>
     /// <param name="identity">This machine's build and WADs, which must be the host's.</param>
@@ -194,6 +216,40 @@ public sealed class NetClient
     /// <summary>The tic the next local command is for.</summary>
     public int MakeTic { get; private set; }
 
+    /// <summary>
+    /// T11.12b: the input delay now, in tics: the Start's, then each
+    /// <c>Delay</c> message's from the host (it makes its commands up to its
+    /// clock tic + this).
+    /// </summary>
+    public int Delay { get; private set; }
+
+    /// <summary>T11.12b: the delay before the last change (the Start's when none).</summary>
+    public int PreviousDelay { get; private set; }
+
+    /// <summary>T11.12b: the tic the next command was for when the delay last changed (−1 none).</summary>
+    public int DelayChangedTic { get; private set; } = -1;
+
+    /// <summary>T11.12b: this client's clock (µs) when the delay last changed (<see cref="long.MinValue"/> none).</summary>
+    public long DelayChangedUs { get; private set; } = long.MinValue;
+
+    /// <summary>T11.12b: how many times the delay changed in this game.</summary>
+    public int DelayChanges { get; private set; }
+
+    /// <summary>
+    /// T11.12b: the longest delay a tic of the last second needed, µs (−1
+    /// none): for each tic of its own commands, the delay it was made at less
+    /// how early its whole bundle was there for it (the first poll its clock
+    /// had reached it; negative: it held), so the least delay at which it
+    /// would have run on time. The ping carries it to the host, whose delay follows it.
+    /// </summary>
+    public int NeededDelayUs => BucketMax(_needBuckets, -1);
+
+    /// <summary>T11.12b: the longest gap between two <see cref="Update"/>s of the last second, µs (about a frame; longer, a hitch of this machine's).</summary>
+    public int LongestGapUs => BucketMax(_gapBuckets, 0);
+
+    /// <summary>T11.12b: the longest stall of the last second (<see cref="LateUs"/>: one under way counts as far as it went), µs.</summary>
+    public int LongestStallUs => Math.Max(BucketMax(_stallBuckets, 0), (int)Math.Min(LateUs, int.MaxValue));
+
     /// <summary>The tic the game clock has reached: tics up to it are due.</summary>
     public int ClockTic => Start is null ? 0 : Start.StartTic + (int)Math.Floor(_clockUs * (double)NetProtocol.TicRate / NetProtocol.MicrosecondsPerSecond);
 
@@ -271,6 +327,7 @@ public sealed class NetClient
         long dt = _lastUpdateUs == long.MinValue ? 0 : Math.Max(0, nowUs - _lastUpdateUs);
         _lastUpdateUs = nowUs;
         _nowUs = nowUs;
+        Note(_gapBuckets, (int)Math.Min(dt, int.MaxValue)); // T11.12b: a hitch of this machine's
         if (State == NetClientState.InGame)
             _clockUs += (long)Math.Round(dt * ClockRate);
         Flush();
@@ -311,7 +368,7 @@ public sealed class NetClient
         if (State is NetClientState.Lobby or NetClientState.InGame && (_lastPingUs == long.MinValue || nowUs - _lastPingUs >= PingIntervalUs))
         {
             _lastPingUs = nowUs;
-            _transport.Send(_peer, NetMessages.EncodePing(nowUs, RttUs), NetChannel.Unreliable);
+            _transport.Send(_peer, NetMessages.EncodePing(nowUs, RttUs, State == NetClientState.InGame ? NeededDelayUs : -1, LongestStallUs, LongestGapUs), NetChannel.Unreliable);
         }
         if (State is NetClientState.Lobby or NetClientState.InGame && nowUs - _lastHeardUs > TimeoutUs)
         {
@@ -324,6 +381,7 @@ public sealed class NetClient
         if (State == NetClientState.InGame)
         {
             AdjustClock();
+            MarkDue();
             TrackStalls();
         }
         else
@@ -342,8 +400,11 @@ public sealed class NetClient
             _stallSinceUs = _nowUs;
             _stalls.Enqueue(_nowUs);
         }
-        else if (!stalled)
+        else if (!stalled && _stallSinceUs >= 0)
+        {
+            Note(_stallBuckets, (int)Math.Min(_nowUs - _stallSinceUs, int.MaxValue)); // T11.12b
             _stallSinceUs = -1;
+        }
         while (_stalls.Count > 0 && _nowUs - _stalls.Peek() > NetProtocol.MicrosecondsPerSecond)
             _stalls.Dequeue();
     }
@@ -418,6 +479,23 @@ public sealed class NetClient
                 r.End(); // T11.11: the game stops: no more commands (CommandsDue, Flush)
                 Log?.Invoke($"desync in window {Desync.Value.Window} (tics {Desync.Value.FirstTic}–{Desync.Value.LastTic}): stopped after tic {LastRanTic}");
                 break;
+            case NetMessageType.Delay:
+                Expect(NetClientState.InGame, r.Type);
+                {
+                    (int delay, int hostTic) = NetMessages.DecodeDelay(r);
+                    if (Stopped || delay == Delay)
+                        break;
+                    // T11.12b: at once; a raise makes the commands between due now, a lowering makes none until the clock catches up
+                    Log?.Invoke($"delay {Delay} -> {delay} tic(s) from tic {MakeTic} (the host's at tic {hostTic})");
+                    PreviousDelay = Delay;
+                    if (delay > Delay)
+                        _batchEnd = Math.Max(_batchEnd, MakeTic + delay - Delay); // T11.12b: made at once, late for their delay
+                    Delay = delay;
+                    DelayChangedTic = MakeTic;
+                    DelayChangedUs = _nowUs;
+                    DelayChanges++;
+                    break;
+                }
             case NetMessageType.PlayerQuit:
                 Expect(NetClientState.InGame, r.Type);
                 int slot = r.U8();
@@ -451,6 +529,13 @@ public sealed class NetClient
         _sampleCount = 0;
         ClockRate = 1;
         MakeTic = start.StartTic + start.Delay;
+        Delay = PreviousDelay = start.Delay;
+        DelayChangedTic = -1;
+        DelayChangedUs = long.MinValue;
+        DelayChanges = 0;
+        _firstOwnTic = _batchEnd = MakeTic;
+        _dueThrough = start.StartTic - 1;
+        Array.Fill(_needBuckets, (long.MinValue, 0));
         _ackedByServer = MakeTic - 1; // the server made the first delay tics' commands itself
         _sentUpTo = MakeTic - 1;
         _ackSent = int.MinValue;
@@ -506,7 +591,70 @@ public sealed class NetClient
         }
         r.End();
         while (_bundleTics[Ring(BundleTic + 1)] == BundleTic + 1)
+        {
             BundleTic++;
+            // T11.12b: a tic due already held: what it needed
+            _wholeUs[Ring(BundleTic)] = _nowUs;
+            if (BundleTic <= _dueThrough)
+                NoteNeed(BundleTic, _dueUs[Ring(BundleTic)] - _nowUs);
+        }
+    }
+
+    /// <summary>
+    /// T11.12b: the tics the clock reached at this poll (after the bundles
+    /// came: a tic whose bundle came in the same poll did not hold, as
+    /// <see cref="TrackStalls"/> counts) are due now; those whole already
+    /// note what they needed (they were early by the time since).
+    /// </summary>
+    private void MarkDue()
+    {
+        int to = ClockTic;
+        if (to - _dueThrough > RingTics)
+            _dueThrough = to - RingTics;
+        for (int t = _dueThrough + 1; t <= to; t++)
+        {
+            _dueUs[Ring(t)] = _nowUs;
+            if (t <= BundleTic)
+                NoteNeed(t, _nowUs - _wholeUs[Ring(t)]);
+        }
+        _dueThrough = Math.Max(_dueThrough, to);
+    }
+
+    /// <summary>
+    /// T11.12b: tic <paramref name="tic"/>'s bundle was whole
+    /// <paramref name="earlyUs"/> before the tic was due (negative: it held so
+    /// long): an own command made at a delay needed that delay less it.
+    /// </summary>
+    private void NoteNeed(int tic, long earlyUs)
+    {
+        if (tic < _firstOwnTic || tic >= MakeTic || _madeDelay[Ring(tic)] == 0)
+            return;
+        long need = _madeDelay[Ring(tic)] * (NetProtocol.MicrosecondsPerSecond / NetProtocol.TicRate) - earlyUs;
+        Note(_needBuckets, (int)Math.Clamp(need, 0, int.MaxValue));
+    }
+
+    /// <summary>T11.12b: <paramref name="value"/> into the last second's buckets (one a tenth of a second, by this client's clock).</summary>
+    private void Note((long Index, int Max)[] buckets, int value)
+    {
+        long index = _nowUs / BucketUs;
+        ref (long Index, int Max) b = ref buckets[(int)((ulong)index % Buckets)];
+        if (b.Index != index)
+            b = (index, value);
+        else if (value > b.Max)
+            b.Max = value;
+    }
+
+    /// <summary>T11.12b: the largest value of the buckets of the last second (<paramref name="none"/> without one).</summary>
+    private int BucketMax((long Index, int Max)[] buckets, int none)
+    {
+        long index = _nowUs / BucketUs;
+        int max = none;
+        foreach ((long i, int m) in buckets)
+        {
+            if (i > index - Buckets && i <= index && m > max)
+                max = m;
+        }
+        return max;
     }
 
     /// <summary>How many local commands are due now (built for <see cref="MakeTic"/> on, and passed to <see cref="SendCommand"/>).</summary>
@@ -517,7 +665,7 @@ public sealed class NetClient
             if (State != NetClientState.InGame || Stopped)
                 return 0;
             // T11.12c: and never one the ring of commands made would lose an unacknowledged one for
-            int target = Math.Min(Math.Min(ClockTic + Start!.Delay, LastRanTic + NetProtocol.BackupTics), _ackedByServer + RingTics);
+            int target = Math.Min(Math.Min(ClockTic + Delay, LastRanTic + NetProtocol.BackupTics), _ackedByServer + RingTics);
             return Math.Max(0, target - MakeTic + 1);
         }
     }
@@ -534,6 +682,7 @@ public sealed class NetClient
         int source = MakeTic - NetProtocol.ConsistancyLag;
         cmd.consistancy = source >= Start!.StartTic ? _consistancy[source % RingTics, Slot] : (short)0;
         _made[Ring(MakeTic)] = cmd;
+        _madeDelay[Ring(MakeTic)] = MakeTic < _batchEnd ? (byte)0 : (byte)Delay; // T11.12b: a raise's batch is made late: not a sample
         MakeTic++;
     }
 

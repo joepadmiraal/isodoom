@@ -216,6 +216,8 @@ public class NetSessionTests
         Assert.Equal(0b111, m.Sessions[2].Client.Start!.PlayerMask);
         Assert.Equal([0, 1, 2], m.Sessions.ConvertAll(s => s.Client.Slot));
         Assert.True(m.Sessions[2].Client.Start!.Settings.Spawn.netgame);
+        Assert.True(m.Sessions[2].Client.Start!.Adaptive); // T11.12b: the measured delay adapts in the game
+        Assert.True(server.AdaptiveDelay);
     }
 
     [Fact]
@@ -224,6 +226,11 @@ public class NetSessionTests
         var m = new Machines(Parse("-host", "-netdelay", "7"), MemoryLinkOptions.Perfect);
         m.RunUntil(() => m.Sessions.TrueForAll(s => s.Client.State == NetClientState.InGame), 5_000_000);
         Assert.Equal(7, m.Sessions[1].Client.Start!.Delay);
+        // T11.12b: -netdelay pins it, and says so
+        Assert.False(m.Sessions[1].Client.Start!.Adaptive);
+        Assert.False(m.Sessions[0].Server!.AdaptiveDelay);
+        Assert.Contains(m.Log, l => l.EndsWith("delay 7 tic(s) (-netdelay: fixed for the game)", StringComparison.Ordinal));
+        Assert.Contains("delay 7 fixed", m.Sessions[1].OverlayText(), StringComparison.Ordinal);
     }
 
     [Fact]

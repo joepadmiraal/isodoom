@@ -157,8 +157,20 @@ public sealed class NetServer
     /// <summary>The game's first tic (after <see cref="Start"/>).</summary>
     public int StartTic { get; private set; }
 
-    /// <summary>The input delay, in tics (after <see cref="Start"/>).</summary>
+    /// <summary>The input delay, in tics (after <see cref="Start"/>; T11.12b: as it moves, when <see cref="AdaptiveDelay"/>).</summary>
     public int Delay { get; private set; }
+
+    /// <summary>T11.12b: whether the delay adapts in the game (<see cref="Start"/>'s; false: <c>-netdelay</c> pinned it).</summary>
+    public bool AdaptiveDelay { get; private set; }
+
+    /// <summary>T11.12b: the delay's changes in the game, oldest first.</summary>
+    public IReadOnlyList<NetDelayChange> DelayChanges => _delayControl.Changes;
+
+    private readonly NetDelayControl _delayControl = new();
+    private readonly int[] _rttBound = new int[NetProtocol.MaxPlayers];
+
+    /// <summary>T11.12b: the round trip samples (the last ones each slot reported) a raise's bound looks at: two seconds.</summary>
+    private const int RttBoundSamples = 20;
 
     /// <summary>The last tic whose bundle went out (<see cref="StartTic"/> − 1 before any).</summary>
     public int CompleteTic { get; private set; } = -1;
@@ -237,8 +249,10 @@ public sealed class NetServer
     /// delay <paramref name="delay"/> and the first tic <paramref name="startTic"/>.
     /// Tics <paramref name="startTic"/> to <paramref name="startTic"/> +
     /// <paramref name="delay"/> − 1 are empty commands, bundled at once.
+    /// T11.12b: with <paramref name="adaptive"/> the delay then follows the
+    /// delays the players' tics needed (<see cref="NetDelayControl"/>); without, it stays (<c>-netdelay</c>).
     /// </summary>
-    public void Start(int delay, int startTic = 0)
+    public void Start(int delay, int startTic = 0, bool adaptive = true)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(delay, NetProtocol.MaxDelay);
@@ -247,6 +261,8 @@ public sealed class NetServer
         Phase = NetServerPhase.InGame;
         StartTic = startTic;
         Delay = delay;
+        AdaptiveDelay = adaptive;
+        _delayControl.Begin(delay, _nowUs);
         CompleteTic = startTic - 1;
         _startUs = _nowUs;
         _lastBundleUs = _nowUs;
@@ -274,9 +290,9 @@ public sealed class NetServer
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)
         {
             if (_slots[i] is Peer peer)
-                Send(peer, NetMessages.EncodeStart(new NetStart(i, _playerMask, startTic, delay, _settings)));
+                Send(peer, NetMessages.EncodeStart(new NetStart(i, _playerMask, startTic, delay, _settings, adaptive)));
         }
-        Log?.Invoke($"start: players {_playerMask:x}, tic {startTic}, delay {delay}");
+        Log?.Invoke($"start: players {_playerMask:x}, tic {startTic}, delay {delay}{(adaptive ? " (adaptive)" : " (fixed)")}");
         CompleteTics();
         SendTics();
     }
@@ -321,7 +337,55 @@ public sealed class NetServer
         {
             CompleteTics();
             SendTics();
+            AdaptDelay();
         }
+    }
+
+    /// <summary>
+    /// T11.12b: the delay follows what the players' tics needed
+    /// (<see cref="NetDelayControl.Decide"/>); a change goes to every player
+    /// still in the game on the reliable channel, which applies it at once.
+    /// </summary>
+    private void AdaptDelay()
+    {
+        if (!AdaptiveDelay || Desync is not null)
+            return;
+        byte playing = 0;
+        for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+        {
+            _rttBound[i] = -1;
+            if (_slots[i] is not Peer p || (_playerMask & (1 << i)) == 0 || _quitTic[i] != int.MaxValue)
+                continue;
+            playing |= (byte)(1 << i);
+            int n = Math.Min(p.RttCount, Math.Min(RttSamples, RttBoundSamples));
+            for (int k = 0; k < n; k++)
+                _rttBound[i] = Math.Max(_rttBound[i], p.Rtts[(p.RttCount - 1 - k) % RttSamples]);
+        }
+        if (_delayControl.Decide(_nowUs, playing, _rttBound, CompleteTic) is { } change)
+            Announce(change);
+    }
+
+    /// <summary>
+    /// T11.12b: the delay set to <paramref name="delay"/> now, whatever the
+    /// players need (the level script's <c>netdelay</c>: a change in a real
+    /// game, to check that it stays in sync); an adaptive delay goes on
+    /// adapting from it. False out of the game, after a desync or when it is <paramref name="delay"/> already.
+    /// </summary>
+    public bool SetDelay(int delay, string why)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(delay, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(delay, NetProtocol.MaxDelay);
+        if (Phase != NetServerPhase.InGame || Desync is not null || delay == Delay)
+            return false;
+        Announce(_delayControl.Set(_nowUs, CompleteTic, delay, why));
+        return true;
+    }
+
+    private void Announce(NetDelayChange change)
+    {
+        Delay = change.To;
+        Log?.Invoke($"delay {change.From} -> {change.To} tic(s) at tic {change.Tic}: {change.Why}");
+        Broadcast(NetMessages.EncodeDelay(change.To, change.Tic));
     }
 
     /// <summary>
@@ -361,10 +425,15 @@ public sealed class NetServer
         {
             long clientTime = r.I64();
             int rtt = r.I32();
+            int need = r.I32(); // T11.12b
+            int stall = r.I32();
+            int gap = r.I32();
             r.End();
             peer.RttUs = rtt;
             if (rtt >= 0)
                 peer.Rtts[peer.RttCount++ % RttSamples] = rtt;
+            if (Phase == NetServerPhase.InGame && peer.Slot >= 0 && (_playerMask & (1 << peer.Slot)) != 0)
+                _delayControl.Report(peer.Slot, _nowUs, need, stall, gap);
             long clock = Phase == NetServerPhase.InGame ? _nowUs - _startUs : long.MinValue;
             for (int i = 0; i < NetProtocol.MaxPlayers; i++)
                 _rttMs[i] = _slots[i] is { RttUs: >= 0 } p ? (ushort)Math.Min(p.RttUs / 1000, NetProtocol.NoRtt - 1) : NetProtocol.NoRtt;

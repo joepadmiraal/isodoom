@@ -214,7 +214,7 @@ public partial class LevelScene
         _ticTime = 0;
         string map = MapName(s);
         GD.Print($"Net: game: {map}, skill {(int)s.Spawn.gameskill + 1}, {(s.Spawn.deathmatch == 0 ? "co-op" : s.Spawn.deathmatch == 1 ? "deathmatch" : "altdeath")}"
-            + $"{(s.Spawn.nomonsters ? ", no monsters" : "")}, players {start.PlayerMask:x}, local player {start.ConsolePlayer + 1}, start tic {start.StartTic}, delay {start.Delay}");
+            + $"{(s.Spawn.nomonsters ? ", no monsters" : "")}, players {start.PlayerMask:x}, local player {start.ConsolePlayer + 1}, start tic {start.StartTic}, delay {start.Delay}{(start.Adaptive ? " (adaptive)" : " (fixed)")}");
         Flow.G_InitNewMap(s.Spawn.gameskill, map);
         if (World is null)
             GD.PrintErr($"Net: game: {map} did not load: {_status}");
@@ -392,7 +392,7 @@ public partial class LevelScene
         string root = NetDesyncRoot();
         try
         {
-            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now, World, c.LobbyNames);
+            NetDesyncDumps = _desyncLog?.Write(root, desync, c.Slot, NetSession.BuildStamp(Main.Version), c.FirstBadTic, DateTime.Now, World, c.LobbyNames, c.Delay, c.DelayChanges);
         }
         catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -606,7 +606,7 @@ public partial class LevelScene
         var s = new System.Text.StringBuilder();
         s.Append(CultureInfo.InvariantCulture, $"{net.Options.Role}, {c.State}, slot {c.Slot} as {net.Options.PlayerName}");
         if (c.Start is { } start)
-            s.Append(CultureInfo.InvariantCulture, $", players {start.PlayerMask:x}, delay {start.Delay}, start tic {start.StartTic}");
+            s.Append(CultureInfo.InvariantCulture, $", players {start.PlayerMask:x}, delay {c.Delay}{(start.Adaptive ? $" auto ({c.DelayChanges} changes)" : " fixed")}, start tic {start.StartTic}");
         else if (c.State == NetClientState.Lobby)
             s.Append(CultureInfo.InvariantCulture, $", lobby {c.LobbyOccupied:x}");
         // T11.9c: the players' names, as the lobby named them

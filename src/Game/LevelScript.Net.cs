@@ -124,6 +124,27 @@ public partial class LevelScript
     }
 
     /// <summary>
+    /// T11.12b: <c>netdelay N</c> (the host's): its server announces input
+    /// delay N now, as an adaptive change would (each machine makes its
+    /// commands up to its clock + N from then on), so a script can check that
+    /// a change in a real game stays in sync and keeps a route's commands on
+    /// their tics. Fails on a join or out of the game.
+    /// </summary>
+    private int NetDelay(int delay)
+    {
+        if (_scene.NetGame is null || _scene.Net?.Server is not { } server)
+        {
+            GD.PrintErr("Level script: netdelay: not the host of a netgame under way");
+            return 1;
+        }
+        if (delay is < 1 or > IsoDoom.Net.NetProtocol.MaxDelay)
+            throw new ArgumentException($"netdelay: {delay} (1-{IsoDoom.Net.NetProtocol.MaxDelay})");
+        bool changed = server.SetDelay(delay, "the level script's netdelay");
+        GD.Print($"Level script: netdelay {delay}: {(changed ? "announced" : "unchanged")} at tic {server.CompleteTic}");
+        return 0;
+    }
+
+    /// <summary>
     /// T11.11: <c>netuntil desync [SECONDS]</c> waits until this machine
     /// stopped for a desync and wrote its dumps; <c>netuntil left N
     /// [SECONDS]</c> until player N left the game (its <c>playeringame</c>

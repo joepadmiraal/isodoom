@@ -62,6 +62,9 @@ public class LockstepTests
         // round trip in tics, and slack for jitter, resends and frames.
         int roundTrip = (2 * (maxLatencyMs + jitterMs) * 35 + 999) / 1000;
         int resends = loss > 0 ? 6 : 0;
+        // T11.12b: the delay may have moved in the game; the longest it played at
+        foreach (NetDelayChange change in h.Server.DelayChanges)
+            delay = Math.Max(delay, change.To);
         foreach (HarnessPlayer p in h.Players)
         {
             Assert.Null(p.Client.Desync);
@@ -277,7 +280,7 @@ public class LockstepTests
         {
             NetStart start = h.Players[i].Client.Start!;
             // T11.5a: the Start sets the settings' players in game to its mask.
-            Assert.Equal(new NetStart(i, 0b111, 100, 2, settings with { Spawn = settings.Spawn with { playersingame = 0b111 } }), start);
+            Assert.Equal(new NetStart(i, 0b111, 100, 2, settings with { Spawn = settings.Spawn with { playersingame = 0b111 } }, Adaptive: true), start);
         }
         Assert.Throws<InvalidOperationException>(() => h.Server.Settings = _coop);
     }

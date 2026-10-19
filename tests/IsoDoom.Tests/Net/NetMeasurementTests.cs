@@ -61,9 +61,13 @@ public class NetMeasurementTests
     /// <param name="WaitMeanMs">T11.12d: the remote players' bundle wait (<see cref="HarnessPlayer.BundleWaitUs"/>: a command made to its tic's bundle in), mean.</param>
     /// <param name="WaitP99Ms">… its 99th percentile.</param>
     /// <param name="HostWaitMeanMs">T11.12d: the host's bundle wait, mean.</param>
+    /// <param name="FinalDelay">T11.12b: the delay at the end (<paramref name="Delay"/> is the start's).</param>
+    /// <param name="MaxDelay">T11.12b: the longest delay it played at.</param>
+    /// <param name="DelayChanges">T11.12b: how many times the host changed it.</param>
+    /// <param name="MinDelay">T11.12b: the shortest delay it played at.</param>
     public sealed record Measurement(int Delay, double MeasuredRttMs, double LagMeanMs, double LagMaxMs, double HostLagMeanMs, int LateTics,
         double UpBps, double DownBps, double UpPackets, double DownPackets, StallStats Stalls, double UpUnreliablePackets, double DownUnreliablePackets,
-        double WaitMeanMs = 0, double WaitP99Ms = 0, double HostWaitMeanMs = 0)
+        double WaitMeanMs = 0, double WaitP99Ms = 0, double HostWaitMeanMs = 0, int FinalDelay = 0, int MaxDelay = 0, int DelayChanges = 0, int MinDelay = 0)
     {
         /// <summary>Upload with the headers (<see cref="WireOverhead"/>, <see cref="UnreliableWireOverhead"/>).</summary>
         public double UpWireBps => UpBps + ((UpPackets - UpUnreliablePackets) * WireOverhead) + (UpUnreliablePackets * UnreliableWireOverhead);
@@ -72,7 +76,7 @@ public class NetMeasurementTests
         public double DownWireBps => DownBps + ((DownPackets - DownUnreliablePackets) * WireOverhead) + (DownUnreliablePackets * UnreliableWireOverhead);
 
         public override string ToString()
-            => $"rtt {MeasuredRttMs:F0} ms, delay {Delay} ({Delay * 1000.0 / NetProtocol.TicRate:F0} ms): felt {LagMeanMs:F0} ms mean, {LagMaxMs:F0} max (host {HostLagMeanMs:F0}), {LateTics} late tics; " +
+            => $"rtt {MeasuredRttMs:F0} ms, delay {Delay} ({Delay * 1000.0 / NetProtocol.TicRate:F0} ms){(DelayChanges > 0 ? $", then {DelayChanges} changes, up to {MaxDelay}, {FinalDelay} at the end" : "")}: felt {LagMeanMs:F0} ms mean, {LagMaxMs:F0} max (host {HostLagMeanMs:F0}), {LateTics} late tics; " +
                $"up {UpBps:F0} B/s ({UpPackets:F1} packets/s, {UpWireBps:F0} B/s on the wire), down {DownBps:F0} B/s ({DownPackets:F1} packets/s, {DownWireBps:F0} on the wire); " +
                $"bundle wait {WaitMeanMs:F0} ms mean, {WaitP99Ms:F0} p99 (host {HostWaitMeanMs:F0}); {Stalls}";
     }
@@ -98,10 +102,12 @@ public class NetMeasurementTests
     /// <param name="delay">The delay to play at instead of the rule's (a later task's own rule, or <c>-netdelay</c>).</param>
     /// <param name="frameUs">T11.12d: every machine's frame time (the remote players' a millisecond longer each, so the frames drift).</param>
     /// <param name="configure">T11.12d: sets the harness up before the players join (<see cref="LockstepHarness.PollAfterFlush"/>, <see cref="LockstepHarness.ServerEveryStep"/>).</param>
-    public static Measurement Measure(int players, MemoryLinkOptions link, int seed, int delayOffset = 0, int? delay = null, long frameUs = 16_667, Action<LockstepHarness>? configure = null)
-        => Measure(players, link, seed, out _, delayOffset, delay, frameUs, configure);
+    /// <param name="adaptive">T11.12b: whether the delay adapts in the game (false: as before T11.12b, or <c>-netdelay</c>).</param>
+    public static Measurement Measure(int players, MemoryLinkOptions link, int seed, int delayOffset = 0, int? delay = null, long frameUs = 16_667, Action<LockstepHarness>? configure = null,
+        bool adaptive = true)
+        => Measure(players, link, seed, out _, delayOffset, delay, frameUs, configure, adaptive);
 
-    /// <inheritdoc cref="Measure(int, MemoryLinkOptions, int, int, int?, long, Action{LockstepHarness}?)"/>
+    /// <inheritdoc cref="Measure(int, MemoryLinkOptions, int, int, int?, long, Action{LockstepHarness}?, bool)"/>
     /// <param name="players">The players, the host's own included.</param>
     /// <param name="link">Each remote player's link.</param>
     /// <param name="seed">Seeds the network's jitter, spikes and loss.</param>
@@ -110,8 +116,9 @@ public class NetMeasurementTests
     /// <param name="delay">The delay to play at instead of the rule's.</param>
     /// <param name="frameUs">T11.12d: every machine's frame time.</param>
     /// <param name="configure">T11.12d: sets the harness up.</param>
+    /// <param name="adaptive">T11.12b: whether the delay adapts in the game.</param>
     public static Measurement Measure(int players, MemoryLinkOptions link, int seed, out LockstepHarness harness, int delayOffset = 0, int? delay = null,
-        long frameUs = 16_667, Action<LockstepHarness>? configure = null)
+        long frameUs = 16_667, Action<LockstepHarness>? configure = null, bool adaptive = true)
     {
         var setups = new List<PlayerSetup> { new() { FrameUs = frameUs } };
         for (int i = 1; i < players; i++)
@@ -141,7 +148,7 @@ public class NetMeasurementTests
         long downBytes0 = h.ServerTransport.ReliableBytesSent + h.ServerTransport.UnreliableBytesSent;
         long downPackets0 = h.ServerTransport.PacketsSent;
         long start = h.Network.NowUs;
-        h.Play(playDelay, Tics, 120_000_000);
+        h.Play(playDelay, Tics, 120_000_000, adaptive);
         double seconds = (h.Network.NowUs - start) / 1e6;
 
         Assert.Null(h.Server.Desync);
@@ -159,7 +166,9 @@ public class NetMeasurementTests
             StallStats.Worst(h.Players),
             (remote.Sum(p => p.Transport.UnreliablePacketsSent) - upUnreliable0) / remote.Count / seconds,
             (h.ServerTransport.UnreliablePacketsSent - downUnreliable0) / players / seconds,
-            waits.Average() / 1000, waits[(int)(waits.Count * 0.99)] / 1000.0, h.Players[0].BundleWaitUs.Average() / 1000);
+            waits.Average() / 1000, waits[(int)(waits.Count * 0.99)] / 1000.0, h.Players[0].BundleWaitUs.Average() / 1000,
+            h.Server.Delay, h.Server.DelayChanges.Select(c => c.To).Append(playDelay).Max(), h.Server.DelayChanges.Count,
+            h.Server.DelayChanges.Select(c => c.To).Append(playDelay).Min());
     }
 
     private static IEnumerable<HarnessPlayer> Remote(LockstepHarness h) => h.Players.Skip(1);
@@ -179,7 +188,10 @@ public class NetMeasurementTests
     /// <summary>
     /// At each ping, with the rule's delay: the felt delay is the delay's tics
     /// (and up to a frame), hardly a tic runs late, and a player's traffic stays well
-    /// under the plan's 10 KB/s each way, headers included.
+    /// under the plan's 10 KB/s each way, headers included. T11.12b: the delay
+    /// then adapts (down a tic at 30 ms, where the rule's margin is more than
+    /// the waits need; up a tic at 150 ms with 4 players, past the rule's
+    /// cap of 8), so the felt delay is checked against the delays it played at.
     /// </summary>
     [Theory]
     [InlineData(2, 30)]
@@ -197,10 +209,11 @@ public class NetMeasurementTests
         // transport once a frame), about 20-30 ms more than the ping.
         Assert.InRange(m.MeasuredRttMs, pingMs, pingMs + 2 * 5 + 2 * 18);
         Assert.Equal(NetOptions.DelayFromRtt((long)(m.MeasuredRttMs * 1000)), m.Delay);
-        double delayMs = m.Delay * 1000.0 / NetProtocol.TicRate;
-        Assert.InRange(m.LagMeanMs, delayMs - 20, delayMs + 20);
-        Assert.InRange(m.HostLagMeanMs, delayMs - 20, delayMs + 20);
-        Assert.True(m.LagMaxMs <= delayMs + 40, $"felt up to {m.LagMaxMs:F0} ms with a delay of {delayMs:F0} ms");
+        double delayMs = m.MinDelay * 1000.0 / NetProtocol.TicRate, maxDelayMs = m.MaxDelay * 1000.0 / NetProtocol.TicRate;
+        Assert.InRange(m.LagMeanMs, delayMs - 20, maxDelayMs + 20);
+        Assert.InRange(m.HostLagMeanMs, delayMs - 20, maxDelayMs + 20);
+        Assert.True(m.LagMaxMs <= maxDelayMs + 40, $"felt up to {m.LagMaxMs:F0} ms with a delay of {delayMs:F0}-{maxDelayMs:F0} ms");
+        Assert.True(m.MaxDelay - m.MinDelay <= 2, $"the delay moved from {m.MinDelay} to {m.MaxDelay}");
         // a rare late bundle (jitter on top of a slow frame), under 1 % of the tics: a held frame, not a stall
         Assert.True(m.LateTics <= Tics / 100 * (players - 1), $"{m.LateTics} tics ran late");
         Assert.True(m.UpWireBps < 10_000, $"up {m.UpWireBps:F0} B/s");
