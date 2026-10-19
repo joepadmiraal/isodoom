@@ -29,13 +29,23 @@
 #    in the logs' directory), each with its checksums, commands and the save
 #    of the last agreed window; then each shows the stop's message, and a key
 #    takes it back to the title loop (the client first, the host 3 s later).
+#  - --refuse (P11): the host waits in its lobby; the client, on its own PWAD
+#    list (--client-file), joins it through the menus (Multiplayer, Join Game,
+#    the address typed) and must be refused for its PWADs, the refusal shown
+#    as a message over the join page and the join page back after a key.
 #  - --lan [TICS] (T11.9d): the exchange, but the client finds the host by LAN
 #    discovery instead of -connect: its Join Game browser (the level script's
 #    `lan 1 30 join`) queries 127.0.0.1 and the broadcast addresses on the
 #    discovery port (5028, which must be free here: the host answers on it,
 #    bound to 127.0.0.1) and joins the game it lists.
+# PWADs (P11): `--file PWAD` (repeated, in load order) loads them on both
+# machines as -file; `--client-file PWAD` (repeated; `-` for none) gives the
+# client its own list instead. --play and --kill and --desync without --file take the route's
+# `pwad SET` header's list (tools/VanillaRef/pwads.py). They go before the mode.
 # Usage:
+#   tools/NetLoopback/loopback.sh IWAD [--file PWAD...] [--client-file PWAD...] MODE...
 #   tools/NetLoopback/loopback.sh IWAD [TICS] [-- GAME... [-- CLIENT GAME...]]
+#   tools/NetLoopback/loopback.sh IWAD --refuse [-- GAME... [-- CLIENT GAME...]]
 #   tools/NetLoopback/loopback.sh IWAD --lan [TICS] [-- GAME... [-- CLIENT GAME...]]
 #   tools/NetLoopback/loopback.sh IWAD --play ROUTE NEXT [-- GAME... [-- CLIENT GAME...]]
 #   tools/NetLoopback/loopback.sh IWAD --kill client|host ROUTE [-- GAME...]
@@ -55,12 +65,28 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 if [ $# -lt 1 ] || [ "${1#-}" != "$1" ]; then
-    sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,63p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 iwad=$(realpath "$1"); shift
 tics=1000 route='' next='' mode=exchange victim=''
-if [ $# -gt 0 ] && [ "$1" = "--play" ]; then
+# (P11: the PWADs, both machines' and the client's own; bash 3.2 arrays)
+files=() client_files=() client_own=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --file) [ $# -ge 2 ] || { echo "loopback: --file PWAD" >&2; exit 2; }; files+=("$(realpath "$2")"); shift 2 ;;
+        --client-file)
+            [ $# -ge 2 ] || { echo "loopback: --client-file PWAD|-" >&2; exit 2; }
+            client_own=yes
+            [ "$2" = - ] || client_files+=("$(realpath "$2")")
+            shift 2 ;;
+        *) break ;;
+    esac
+done
+if [ $# -gt 0 ] && [ "$1" = "--refuse" ]; then
+    mode=refuse; shift
+    [ -n "$client_own" ] || { echo "loopback: --refuse needs the client's own list (--client-file)" >&2; exit 2; }
+elif [ $# -gt 0 ] && [ "$1" = "--play" ]; then
     [ $# -ge 3 ] || { echo "loopback: --play ROUTE NEXT" >&2; exit 2; }
     mode=play route=$(realpath "$2") next=$3; shift 3
 elif [ $# -gt 0 ] && [ "$1" = "--kill" ]; then
@@ -148,7 +174,31 @@ sys.exit(0 if idle and not head['events'] else 1)
 PY
     then from=" from=70"; fi
     start="net; netwait 2; nettic 70; route ROUTE$from"
+    # P11: a route on a PWAD set (its `pwad SET` header) loads the set on both machines, unless --file says otherwise
+    pwad=$(header pwad)
+    if [ -n "$pwad" ] && [ ${#files[@]} -eq 0 ] && [ -z "$client_own" ]; then
+        set_files=$(python3 -I "$repo/tools/VanillaRef/pwads.py" "$pwad") || { echo "loopback: the route's PWAD set $pwad is missing" >&2; exit 1; }
+        first=yes
+        while IFS= read -r f; do
+            if [ -n "$first" ]; then first=; continue; fi # (its IWAD: the one given)
+            files+=("$f")
+        done <<EOF2
+$set_files
+EOF2
+    fi
 fi
+[ -n "$client_own" ] || client_files=(${files[@]+"${files[@]}"})
+# each side's -file list, its paths as its build reads them
+host_files=() client_file_args=()
+if [ ${#files[@]} -gt 0 ]; then
+    host_files=(-file)
+    for f in "${files[@]}"; do host_files+=("$(native "$host_first" "$f")"); done
+fi
+if [ ${#client_files[@]} -gt 0 ]; then
+    client_file_args=(-file)
+    for f in "${client_files[@]}"; do client_file_args+=("$(native "$client_first" "$f")"); done
+fi
+client_level=(--level)
 # (the victim of --kill waits here to be killed; the marker is its own line)
 doomed="tics 210; print; sleep 600"
 case $mode in
@@ -179,6 +229,14 @@ case $mode in
         result_line='^(Level script: netuntil|Net: (forced desync|desync|the stopped netgame))'
         limit=150
         ;;
+    refuse)
+        # the host waits in its lobby (stopped once the client is done); the client joins through the menus
+        host_script="net; sleep 600"
+        client_script="tap Escape; tap M; tap Enter; tap J; tap Enter; menu join; tap Enter; type 127.0.0.1:PORT; tap Enter; sleep 4; menu message; tap Space; menu join; net"
+        client_level=()
+        limit=90
+        result_line='^(Level script: menu: (message|join)|Net: (server: peer .* refused|client: refused))'
+        ;;
     lan)
         host_script="net; netexchange $tics"
         client_script="lan 1 30 join; net; netexchange $tics"
@@ -199,7 +257,7 @@ if [ "$mode" = play ]; then host_script="$host_script; sleep 3"; fi
 host_script=${host_script//ROUTE/$(native "$host_first" "$route")}
 client_script=${client_script//ROUTE/$(native "$client_first" "$route")}
 cd "$repo"
-"${host_game[@]}" --headless -- -iwad "$(native "$host_first" "$iwad")" -host 0 -bind 127.0.0.1 -players 2 "${host_args[@]}" \
+"${host_game[@]}" --headless -- -iwad "$(native "$host_first" "$iwad")" ${host_files[@]+"${host_files[@]}"} -host 0 -bind 127.0.0.1 -players 2 "${host_args[@]}" \
     --level-script="$host_script" >"$host_log" 2>&1 &
 host_pid=$!
 watchdog "$host_pid" "$limit" >/dev/null &
@@ -221,13 +279,18 @@ case $mode in
     kill) what="playing $(basename "$route"), the $victim killed after 210 tics" ;;
     desync) what="playing $(basename "$route"), the client desyncing after 140 tics" ;;
     lan) what="$tics tics, the client finding the host on the LAN" ;;
+    refuse) what="the client joining on other PWADs" ;;
     *) what="$tics tics" ;;
 esac
 connect=(-connect "127.0.0.1:$port")
-[ "$mode" = lan ] && connect=()
+case $mode in lan|refuse) connect=() ;; esac
+client_script=${client_script//PORT/$port}
+[ ${#files[@]} -eq 0 ] || echo "loopback: host PWADs: ${files[*]}"
+[ -z "$client_own" ] || echo "loopback: client PWADs: ${client_files[*]:-none}"
 echo "loopback: host on 127.0.0.1:$port, $what"
 # (${a[@]+"${a[@]}"}: an empty array under `set -u` in bash 3.2)
-"${client_game[@]}" --headless -- -iwad "$(native "$client_first" "$iwad")" ${connect[@]+"${connect[@]}"} --level ${client_args[@]+"${client_args[@]}"} \
+"${client_game[@]}" --headless -- -iwad "$(native "$client_first" "$iwad")" ${client_file_args[@]+"${client_file_args[@]}"} ${connect[@]+"${connect[@]}"} \
+    ${client_level[@]+"${client_level[@]}"} ${client_args[@]+"${client_args[@]}"} \
     --level-script="$client_script" >"$client_log" 2>&1 &
 client_pid=$!
 watchdog "$client_pid" "$limit" >/dev/null &
@@ -251,8 +314,15 @@ if [ "$mode" = kill ]; then
         stop "$host_pid"; stop "$client_pid"
     fi
 fi
-wait "$host_pid" || host_status=$?
-wait "$client_pid" || client_status=$?
+if [ "$mode" = refuse ]; then
+    # the host waits for nothing more once the client is done
+    wait "$client_pid" || client_status=$?
+    stop "$host_pid" TERM
+    wait "$host_pid" 2>/dev/null || true
+    client_pid=
+fi
+wait "$host_pid" 2>/dev/null || host_status=$?
+[ -z "$client_pid" ] || wait "$client_pid" || client_status=$?
 ok=yes
 case $mode in
     play)
@@ -295,6 +365,16 @@ case $mode in
         done
         [ "$dumps" -eq 2 ] || ok=
         echo "loopback: $dumps dump directories in $logs/desync"
+        ;;
+    refuse)
+        # the host refused the hello for its PWADs, and the client's join page showed it
+        host_result=$(sed -n 's/^Net: server: peer [0-9]* refused: \(PwadMismatch\):.*/\1/p' "$host_log" | head -n 1)
+        client_result=$(sed -n 's/^Level script: menu: message "\(.*\)"$/\1/p' "$client_log" | head -n 1)
+        host_status=0 # (stopped by us)
+        [ "$client_status" -eq 0 ] && [ "$host_result" = PwadMismatch ] || ok=
+        case "$client_result" in *"other pwads"*) ;; *) ok= ;; esac
+        # back on the join page after the message's key, no session left
+        [ "$(grep -c '^Level script: menu: join' "$client_log")" -ge 2 ] || ok=
         ;;
     *)
         result() { sed -n 's/^Level script: netexchange: \([0-9]* of [0-9]* tics, hash [0-9a-f]*\).*/\1/p' "$1" | head -n 1; }

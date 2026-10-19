@@ -3404,10 +3404,10 @@ exit normal
         }
         if (args.Length is 1 or 2 && SpecialRoutes.IsExitName(args[0]))
         {
-            // T10.6: a map walked from its start to the exit (mapNN-walk-exit)
+            // T10.6: a map walked from its start to the exit (mapNN-walk-exit; P11: by player 2 in co-op, …-walk-exit-2p)
             (string exitHeader, Action<Steer, Action<string>> exitRun) = SpecialRoutes.MakeExit(args[0]);
             (string exitIwad, string exitMap) = SpecialRoutes.IwadAndMap(args[0]);
-            _scripts[args[0]] = new Script(WadOf(args[0], exitIwad), exitMap, exitHeader, exitRun);
+            _scripts[args[0]] = new Script(WadOf(args[0], exitIwad), exitMap, exitHeader, exitRun, Players: SpecialRoutes.IsCoopExitName(args[0]) ? 2 : 1);
         }
         if (args.Length is 1 or 2 && PwadSet.Of(args[0]) is { Iwad: "doom2" } brainSet
             && System.Text.RegularExpressions.Regex.Match(args[0], $"^{brainSet.Folder}-(?<map>map\\d\\d)-brain$") is { Success: true } brainName)

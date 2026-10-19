@@ -63,7 +63,11 @@ public static class SpecialRoutes
 
     private static readonly Regex _name = new($@"^{MapPart}-(?<kind>line|sector)(?<index>\d+)$", RegexOptions.CultureInvariant);
 
-    private static readonly Regex _exitName = new($@"^{MapPart}-walk-exit$", RegexOptions.CultureInvariant);
+    // (P11: -2p after it, the co-op walk of player 2 for loopback.sh --play)
+    private static readonly Regex _exitName = new($@"^{MapPart}-walk-exit(?<coop>-2p)?$", RegexOptions.CultureInvariant);
+
+    /// <summary>P11: whether a walked exit route's name is the co-op one (<c>…-walk-exit-2p</c>), two players.</summary>
+    public static bool IsCoopExitName(string name) => _exitName.Match(name) is { Success: true } m && m.Groups["coop"].Success;
 
     /// <summary>Whether <paramref name="name"/> is a walked exit route's name (<c>mapNN-walk-exit</c>; T10.7: <c>tnt-</c> or <c>plutonia-</c> before it on Final Doom's IWADs; M9: <c>doom-exmy-walk-exit</c> on The Ultimate Doom's).</summary>
     public static bool IsExitName(string name) => _exitName.IsMatch(name);
@@ -78,7 +82,20 @@ public static class SpecialRoutes
     public static (string Header, Action<Steer, Action<string>> Run) MakeExit(string name)
     {
         (string iwad, string map) = IwadAndMap(name);
-        string header = $"""
+        bool coop = IsCoopExitName(name);
+        string header = coop ? $"""
+# {Game(iwad, name)} {map} in co-op (P11: the lockstep game of loopback.sh --play), two
+# players, no monsters, no route events: both stand for 70 tics (the netgame's first 70,
+# before loopback.sh's nettic 70: it plays the route from=70, so the game is this one);
+# then player 2 (the client) walks from its own start to the exit, through the doors on
+# the way (and the keys they need), and leaves the level, the last tic; player 1 (the
+# host) stands at its start. Written by tools/RouteGen ({name}).
+iwad {iwad}{PwadHeader(name)}
+map {map}
+players 2
+exit normal
+
+""" : $"""
 # {Game(iwad, name)} {map} ({Task(iwad, name)}): from the map's start, no monsters: the player walks to the exit,
 # through the doors on the way (and the keys they need), and leaves the level, the last
 # tic. Written by tools/RouteGen ({name}).
@@ -107,6 +124,12 @@ exit normal
         void Walk(Steer g, Action<string> log)
         {
             g.TightCorners = true;
+            if (coop)
+            {
+                // P11: the netgame's first 70 tics, both standing; then the client walks
+                g.Player = 1;
+                g.Wait(70);
+            }
             g.Wait(1);
             var keysTried = new HashSet<mobj_t>();
             var switchesTried = new HashSet<int>();
@@ -356,7 +379,7 @@ exit normal
     /// <summary>Whether the player holds the key a locked switch (p_doors.c EV_DoLockedDoor: 99/133 blue, 134/135 red, 136/137 yellow) needs; true for the others.</summary>
     private static bool HasKeyFor(Steer g, int special)
     {
-        bool[] c = g.World.players[0].cards;
+        bool[] c = g.World.players[g.Player].cards;
         return special switch
         {
             99 or 133 => c[(int)card_t.it_bluecard] || c[(int)card_t.it_blueskull],

@@ -961,4 +961,6 @@ Each task's full text (cites, *Do:*, *Done when:*), the user's decisions, the in
   - [ ] Pull a cable or kill one game mid-play (the others go on, T11.11), and make the host leave (the others end at the title loop).
   - [ ] Log the outcome here (pings, delays chosen, any desync with its `user://netdesync` dumps attached to an issue), and tick T11.12.
   - [ ] (from T11.12) The CI parts run only on a push: `test-windows`' and `test-macos`' loopback steps (T11.6a) and `test-cross` (its Wine download on the runner, the Linux artifact's executable bits restored). Look at the first run and fix what fails.
+- [ ] **T11.6b The PWAD refusal and a PWAD netgame in CI (from P11).** `loopback.sh --file`, `--client-file` and `--refuse` run only locally, on the PWAD sets (never in CI: WAD-derived). Run them in CI's Linux export job without a WAD: the synthetic IWAD with a generated PWAD (`tools/SyntheticIwad` writing a second small PWAD, or a test map's WAD from `RouteTestMaps`) loaded on both machines for the exchange, and `--refuse` with the client on none and on the two in the other order; add the commands to `CONTRIBUTING.md`.
+  *Done when:* CI's Linux job runs the PWAD exchange and both refusals, and they pass.
 - [ ] **T11.13 Multiplayer acceptance** (last). People play co-op and deathmatch online; follow-ups filed; SPEC and CLAUDE.md updated.
