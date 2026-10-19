@@ -28,11 +28,18 @@ public class NetMeasurementTests
     private const int Tics = 35 * 60;
 
     /// <summary>
-    /// ENet's and UDP/IPv4's bytes on top of a payload, per packet: IPv4 20,
-    /// UDP 8, ENet's header 4 and a reliable send's command 6, and the 8-byte
-    /// acknowledgement the receiver sends back for it (protocol.h).
+    /// ENet's and UDP/IPv4's bytes on top of a payload, per reliable packet:
+    /// IPv4 20, UDP 8, ENet's header 4 and a reliable send's command 6, and
+    /// the 8-byte acknowledgement the receiver sends back for it (protocol.h).
     /// </summary>
     private const int WireOverhead = 20 + 8 + 4 + 6 + 8;
+
+    /// <summary>
+    /// T11.12c: the same per unreliable (unsequenced) packet: IPv4 20, UDP 8,
+    /// ENet's header 2 (no sent time without a reliable command) and an
+    /// unsequenced send's command 8; nothing comes back.
+    /// </summary>
+    private const int UnreliableWireOverhead = 20 + 8 + 2 + 8;
 
     private static readonly NetGameSettings _coop = new(
         new SpawnSettings(GameMode.shareware, skill_t.sk_medium, netgame: true), Tweaks.TopDown, Episode: 1, Map: 1);
@@ -49,14 +56,16 @@ public class NetMeasurementTests
     /// <param name="UpPackets">A remote player's packets a second.</param>
     /// <param name="DownPackets">The server's packets a second per player.</param>
     /// <param name="Stalls">T11.12e: the stalls of the player held longest (the host's included).</param>
+    /// <param name="UpUnreliablePackets">T11.12c: of <paramref name="UpPackets"/>, those on the unreliable channel.</param>
+    /// <param name="DownUnreliablePackets">T11.12c: of <paramref name="DownPackets"/>, those on the unreliable channel.</param>
     public sealed record Measurement(int Delay, double MeasuredRttMs, double LagMeanMs, double LagMaxMs, double HostLagMeanMs, int LateTics,
-        double UpBps, double DownBps, double UpPackets, double DownPackets, StallStats Stalls)
+        double UpBps, double DownBps, double UpPackets, double DownPackets, StallStats Stalls, double UpUnreliablePackets, double DownUnreliablePackets)
     {
-        /// <summary>Upload with the headers (<see cref="WireOverhead"/>).</summary>
-        public double UpWireBps => UpBps + (UpPackets * WireOverhead);
+        /// <summary>Upload with the headers (<see cref="WireOverhead"/>, <see cref="UnreliableWireOverhead"/>).</summary>
+        public double UpWireBps => UpBps + ((UpPackets - UpUnreliablePackets) * WireOverhead) + (UpUnreliablePackets * UnreliableWireOverhead);
 
         /// <summary>Download with the headers.</summary>
-        public double DownWireBps => DownBps + (DownPackets * WireOverhead);
+        public double DownWireBps => DownBps + ((DownPackets - DownUnreliablePackets) * WireOverhead) + (DownUnreliablePackets * UnreliableWireOverhead);
 
         public override string ToString()
             => $"rtt {MeasuredRttMs:F0} ms, delay {Delay} ({Delay * 1000.0 / NetProtocol.TicRate:F0} ms): felt {LagMeanMs:F0} ms mean, {LagMaxMs:F0} max (host {HostLagMeanMs:F0}), {LateTics} late tics; " +
@@ -116,6 +125,8 @@ public class NetMeasurementTests
 
         long upBytes0 = Remote(h).Sum(p => p.Transport.ReliableBytesSent + p.Transport.UnreliableBytesSent);
         long upPackets0 = Remote(h).Sum(p => p.Transport.PacketsSent);
+        long upUnreliable0 = Remote(h).Sum(p => p.Transport.UnreliablePacketsSent);
+        long downUnreliable0 = h.ServerTransport.UnreliablePacketsSent;
         long downBytes0 = h.ServerTransport.ReliableBytesSent + h.ServerTransport.UnreliableBytesSent;
         long downPackets0 = h.ServerTransport.PacketsSent;
         long start = h.Network.NowUs;
@@ -133,7 +144,9 @@ public class NetMeasurementTests
             remote.Sum(p => p.LateTics),
             upBytes / remote.Count / seconds, downBytes / players / seconds,
             upPackets / remote.Count / seconds, downPackets / players / seconds,
-            StallStats.Worst(h.Players));
+            StallStats.Worst(h.Players),
+            (remote.Sum(p => p.Transport.UnreliablePacketsSent) - upUnreliable0) / remote.Count / seconds,
+            (h.ServerTransport.UnreliablePacketsSent - downUnreliable0) / players / seconds);
     }
 
     private static IEnumerable<HarnessPlayer> Remote(LockstepHarness h) => h.Players.Skip(1);
@@ -201,10 +214,13 @@ public class NetMeasurementTests
     /// T11.12e: home wifi (<see cref="NetLinks.Wifi"/>) under the rule's delay.
     /// Before T11.12a (one ping, + 1 tic: delay 2–3) the world held 14–15 s a
     /// minute; T11.12a's rule (the longest of 3 s of round trips, + 2 frames,
-    /// + 1: delay 6–8 here) holds it under a second a minute, and what is left
-    /// is the reliable channel's resends (150 ms each, T11.12c's): without
-    /// them nothing holds after the first second. Logged in SPEC §12
-    /// ("T11.12 measurements"); T11.12b–d tighten the bounds.
+    /// + 1: delay 6–8 here) holds it under a second a minute, and what was left
+    /// was the reliable channel's resends (150 ms each) of the commands and
+    /// bundles: T11.12c sends those unreliable, and the world holds a stall or
+    /// two a minute, none longer than the round trip (the reliable resends now
+    /// delay only the checksums and the lobby). Without the reliable resends
+    /// nothing holds after the first second. Logged in SPEC §12
+    /// ("T11.12 measurements"); T11.12b and T11.12d tighten the bounds.
     /// </summary>
     [Theory]
     [InlineData(2, 1)]
@@ -220,8 +236,11 @@ public class NetMeasurementTests
         Assert.All(h.Players, p => Assert.True(p.TicsRun >= Tics));
         Assert.True(m.UpWireBps < 10_000, $"up {m.UpWireBps:F0} B/s");
         Assert.True(m.DownWireBps < 10_000, $"down {m.DownWireBps:F0} B/s");
-        // T11.12a: under a second a minute (0.4-0.7 s logged), from 14-15 s before
-        Assert.True(m.Stalls.HeldMsPerMinute < 1_000, $"held {m.Stalls.HeldMsPerMinute:F0} ms a minute on wifi");
+        // T11.12a: under a second a minute (0.4-0.7 s logged), from 14-15 s before; T11.12c: what
+        // was left were the reliable resends of the commands and bundles, now unreliable: 0-35 ms
+        // logged, and none longer than the round trip
+        Assert.True(m.Stalls.HeldMsPerMinute < 100, $"held {m.Stalls.HeldMsPerMinute:F0} ms a minute on wifi");
+        Assert.True(m.Stalls.LongestMs <= m.MeasuredRttMs, $"a stall of {m.Stalls.LongestMs:F0} ms on wifi, the round trip {m.MeasuredRttMs:F0} ms");
 
         // the same wifi without the reliable resends: none after the first second
         Measurement noResends = Measure(players, NetLinks.Wifi with { ReliableLoss = 0 }, seed, out LockstepHarness h2);
@@ -233,7 +252,8 @@ public class NetMeasurementTests
     /// <summary>
     /// T11.12e: the manual fix the player readme gives, <c>-netdelay</c>, on
     /// the same wifi: each delay's stalls logged beside the rule's (SPEC §12),
-    /// fewer and shorter as the delay grows (T11.12a: the rule's is 6 here).
+    /// fewer and shorter as the delay grows (T11.12a: the rule's is 6 here;
+    /// T11.12c: from 6 on none, so no fewer).
     /// </summary>
     [Fact]
     public void A_longer_netdelay_on_home_wifi()
@@ -246,9 +266,46 @@ public class NetMeasurementTests
             Measurement m = Measure(2, NetLinks.Wifi, seed: 1, delay: delay);
             TestContext.Current.TestOutputHelper?.WriteLine($"-netdelay {delay}: {m}");
             if (previous is not null)
-                Assert.True(m.Stalls.TotalMs < previous.Stalls.TotalMs, $"-netdelay {delay}: held {m.Stalls.TotalMs:F0} ms, {previous.Stalls.TotalMs:F0} with less");
+                Assert.True(m.Stalls.TotalMs < previous.Stalls.TotalMs || m.Stalls.Count <= 1, $"-netdelay {delay}: held {m.Stalls.TotalMs:F0} ms, {previous.Stalls.TotalMs:F0} with less");
             previous = m;
         }
+    }
+
+    /// <summary>
+    /// T11.12c's <i>Done when</i>: on a lossy link at a 30 ms round trip
+    /// (<see cref="NetLinks.Lossy"/>: 5 % of the unreliable packets lost) a
+    /// minute plays in sync (the harness compares every tic's checksum) with
+    /// no stall after the first second longer than a round trip (the one the
+    /// rule took, the frames' waits included): a lost command or bundle is
+    /// carried again by the next. With loss bursts on top
+    /// (<see cref="NetLinks.LossBursts"/>: every packet lost for 30–90 ms
+    /// every few seconds) a burst costs a round trip: no stall longer than the
+    /// longest burst and a round trip.
+    /// </summary>
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(2, 2)]
+    [InlineData(2, 3)]
+    [InlineData(4, 1)]
+    public void Lost_packets_hold_no_longer_than_a_round_trip(int players, int seed)
+    {
+        Measurement m = Measure(players, NetLinks.Lossy, seed, out LockstepHarness h);
+        TestContext.Current.TestOutputHelper?.WriteLine($"{players} players, lossy, seed {seed}: {m}");
+        StallStats after = StallStats.Worst(h.Players, afterUs: 1_000_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"  after the first second: {after}");
+        Assert.All(h.Players, p => Assert.True(p.TicsRun >= Tics));
+        Assert.All(h.Players, p => Assert.True(StallStats.Of(p, afterUs: 1_000_000).LongestMs <= m.MeasuredRttMs,
+            $"player {p.Index}: {StallStats.Of(p, afterUs: 1_000_000)}, the round trip {m.MeasuredRttMs:F0} ms"));
+        Assert.True(m.UpWireBps < 10_000, $"up {m.UpWireBps:F0} B/s");
+        Assert.True(m.DownWireBps < 10_000, $"down {m.DownWireBps:F0} B/s");
+
+        Measurement bursts = Measure(players, NetLinks.LossBursts, seed, out LockstepHarness h2);
+        TestContext.Current.TestOutputHelper?.WriteLine($"  with loss bursts: {bursts}");
+        foreach (HarnessPlayer p in h2.Players)
+            TestContext.Current.TestOutputHelper?.WriteLine($"    player {p.Index}: {StallStats.Of(p, afterUs: 1_000_000)}");
+        Assert.All(h2.Players, p => Assert.True(p.TicsRun >= Tics));
+        Assert.All(h2.Players, p => Assert.True(StallStats.Of(p, afterUs: 1_000_000).LongestMs <= NetLinks.LongestLossBurstMs + bursts.MeasuredRttMs,
+            $"player {p.Index} with loss bursts: {StallStats.Of(p, afterUs: 1_000_000)}, the round trip {bursts.MeasuredRttMs:F0} ms"));
     }
 
     /// <summary>

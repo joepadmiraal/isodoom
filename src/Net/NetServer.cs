@@ -34,10 +34,21 @@ public sealed class NetServer
     private long _startUs;
     private NetGameSettings _settings;
 
-    // The game: per slot, the commands received (a ring of RingTics) and up to which tic.
-    private const int RingTics = 4 * NetProtocol.BackupTics;
+    // The game: per slot, the commands received (a ring of RingTics, each
+    // entry's tic beside it: T11.12c, they may come out of order) and up to
+    // which tic all of them came.
+    private const int RingTics = NetProtocol.RingTics;
     private readonly ticcmd_t[,] _cmds = new ticcmd_t[NetProtocol.MaxPlayers, RingTics];
+    private readonly int[,] _cmdTic = new int[NetProtocol.MaxPlayers, RingTics];
     private readonly int[] _receivedUpTo = new int[NetProtocol.MaxPlayers];
+
+    // T11.12c: per slot, the last tic whose bundle the client acknowledged,
+    // the last command ack sent to it, the last tic sent to it and when.
+    private readonly int[] _bundleAck = new int[NetProtocol.MaxPlayers];
+    private readonly int[] _ackSent = new int[NetProtocol.MaxPlayers];
+    private readonly int[] _sentUpTo = new int[NetProtocol.MaxPlayers];
+    private readonly long[] _lastSentUs = new long[NetProtocol.MaxPlayers];
+    private readonly bool[] _heard = new bool[NetProtocol.MaxPlayers];
     private readonly int[] _quitTic = new int[NetProtocol.MaxPlayers];
     private readonly long[] _lastCommandUs = new long[NetProtocol.MaxPlayers];
     private readonly ushort[] _rttMs = new ushort[NetProtocol.MaxPlayers];
@@ -247,8 +258,18 @@ public sealed class NetServer
             _quitTic[i] = int.MaxValue;
             _lastCommandUs[i] = _nowUs;
             _receivedUpTo[i] = startTic + delay - 1;
+            _bundleAck[i] = startTic - 1;
+            _ackSent[i] = int.MinValue;
+            _sentUpTo[i] = startTic - 1;
+            _lastSentUs[i] = long.MinValue;
+            _heard[i] = false;
+            for (int t = 0; t < RingTics; t++)
+                _cmdTic[i, t] = int.MinValue;
             for (int t = startTic; t < startTic + delay; t++)
-                _cmds[i, t % RingTics] = default;
+            {
+                _cmds[i, Ring(t)] = default;
+                _cmdTic[i, Ring(t)] = t;
+            }
         }
         for (int i = 0; i < NetProtocol.MaxPlayers; i++)
         {
@@ -256,8 +277,12 @@ public sealed class NetServer
                 Send(peer, NetMessages.EncodeStart(new NetStart(i, _playerMask, startTic, delay, _settings)));
         }
         Log?.Invoke($"start: players {_playerMask:x}, tic {startTic}, delay {delay}");
-        SendBundles();
+        CompleteTics();
+        SendTics();
     }
+
+    /// <summary>A tic's place in the rings (negative tics too).</summary>
+    private static int Ring(int tic) => (int)((uint)tic % RingTics);
 
     /// <summary>Poll the transport and handle what came, at time <paramref name="nowUs"/> (µs, the host's clock).</summary>
     public void Update(long nowUs)
@@ -293,7 +318,10 @@ public sealed class NetServer
         }
         CheckTimeouts();
         if (Phase == NetServerPhase.InGame)
-            SendBundles();
+        {
+            CompleteTics();
+            SendTics();
+        }
     }
 
     /// <summary>
@@ -372,7 +400,13 @@ public sealed class NetServer
                 Checksum(peer, NetMessages.DecodeChecksum(r));
                 break;
             case NetMessageType.Quit:
-                r.End();
+                // T11.12c: its last commands come with it (the unreliable ones may be lost)
+                if (Phase == NetServerPhase.InGame && (_playerMask & (1 << peer.Slot)) != 0 && _quitTic[peer.Slot] == int.MaxValue)
+                {
+                    _received.Clear();
+                    int first = NetMessages.DecodeQuit(r, _received);
+                    Store(peer.Slot, first);
+                }
                 Drop(peer, "quit");
                 break;
             default:
@@ -433,17 +467,56 @@ public sealed class NetServer
         if ((_playerMask & (1 << slot)) == 0 || _quitTic[slot] != int.MaxValue)
             throw new NetProtocolException("Commands from a player not in the game.");
         _received.Clear();
-        int first = NetMessages.DecodeCommands(r, _received);
-        if (first != _receivedUpTo[slot] + 1)
-            throw new NetProtocolException($"Commands for tic {first}, expected {_receivedUpTo[slot] + 1}.");
-        int last = first + _received.Count - 1;
-        if (last - CompleteTic >= RingTics)
-            throw new NetProtocolException($"Commands for tic {last}, too far past tic {CompleteTic}.");
-        for (int i = 0; i < _received.Count; i++)
-            _cmds[slot, (first + i) % RingTics] = _received[i];
-        _receivedUpTo[slot] = last;
-        _lastCommandUs[slot] = _nowUs;
+        int first = NetMessages.DecodeCommands(r, _received, out int ack);
+        if (ack > CompleteTic)
+            throw new NetProtocolException($"Commands acknowledging tic {ack}, the bundles are at {CompleteTic}.");
+        if (!_heard[slot])
+        {
+            // its first word in the game: the bundles sent before may have
+            // overtaken its Start and been dropped, so they go again at once
+            _heard[slot] = true;
+            _sentUpTo[slot] = Math.Min(_sentUpTo[slot], ack);
+        }
+        _bundleAck[slot] = Math.Max(_bundleAck[slot], ack);
+        Store(slot, first);
     }
+
+    /// <summary>
+    /// T11.12c: keep the commands in <see cref="_received"/> (for tics
+    /// <paramref name="first"/> on) from <paramref name="slot"/>'s player:
+    /// those it had sent already are skipped, any that come before an earlier
+    /// one's gap is filled wait in the ring, and the contiguous run
+    /// (<see cref="_receivedUpTo"/>) moves on.
+    /// </summary>
+    private void Store(int slot, int first)
+    {
+        // a command's ring entry must not reach a tic a bundle may still be resent for (SendTics' FellBehindTics)
+        int limit = CompleteTic + RingTics - FellBehindTics;
+        for (int i = 0; i < _received.Count; i++)
+        {
+            int tic = first + i;
+            if (tic <= _receivedUpTo[slot])
+                continue;
+            if (tic >= limit)
+                throw new NetProtocolException($"Commands for tic {tic}, too far past tic {CompleteTic}.");
+            _cmds[slot, Ring(tic)] = _received[i];
+            _cmdTic[slot, Ring(tic)] = tic;
+        }
+        int before = _receivedUpTo[slot];
+        while (_cmdTic[slot, Ring(_receivedUpTo[slot] + 1)] == _receivedUpTo[slot] + 1)
+            _receivedUpTo[slot]++;
+        if (_receivedUpTo[slot] != before)
+            _lastCommandUs[slot] = _nowUs;
+    }
+
+    /// <summary>
+    /// T11.12c: how far a client's bundle acknowledgement may lag the last
+    /// complete tic before the server gives it up (its ring could no longer
+    /// hold the tics to resend): half the ring. The lead limit keeps it within
+    /// <see cref="NetProtocol.BackupTics"/> + 1 (NetMessages.cs, TICS), so only a
+    /// broken client gets there.
+    /// </summary>
+    private const int FellBehindTics = RingTics / 2;
 
     /// <summary>The players in game at <paramref name="tic"/>.</summary>
     private byte MaskAt(int tic)
@@ -460,37 +533,84 @@ public sealed class NetServer
     private readonly byte[] _bundleMasks = new byte[NetProtocol.MaxTicsPerMessage];
     private readonly ticcmd_t[] _bundleCmds = new ticcmd_t[NetProtocol.MaxTicsPerMessage * NetProtocol.MaxPlayers];
 
-    /// <summary>Bundle and send every tic whose commands are all in, in tic order.</summary>
-    private void SendBundles()
+    /// <summary>Move <see cref="CompleteTic"/> on over every tic whose commands are all in, in tic order.</summary>
+    private void CompleteTics()
     {
-        while (Desync is null) // T11.11: nothing after a desync: every machine stops
+        if (Desync is not null)
+            return; // T11.11: nothing after a desync: every machine stops
+        int before = CompleteTic;
+        while (true)
         {
-            int first = CompleteTic + 1;
-            int count = 0;
-            while (count < NetProtocol.MaxTicsPerMessage)
+            int tic = CompleteTic + 1;
+            byte mask = MaskAt(tic);
+            if (mask == 0)
+                break;
+            bool complete = true;
+            for (int i = 0; i < NetProtocol.MaxPlayers && complete; i++)
             {
-                int tic = first + count;
-                byte mask = MaskAt(tic);
-                if (mask == 0)
-                    break;
-                bool complete = true;
-                for (int i = 0; i < NetProtocol.MaxPlayers && complete; i++)
-                {
-                    if ((mask & (1 << i)) != 0 && _receivedUpTo[i] < tic)
-                        complete = false;
-                }
-                if (!complete)
-                    break;
-                _bundleMasks[count] = mask;
-                for (int i = 0; i < NetProtocol.MaxPlayers; i++)
-                    _bundleCmds[count * NetProtocol.MaxPlayers + i] = (mask & (1 << i)) != 0 ? _cmds[i, tic % RingTics] : default;
-                count++;
+                if ((mask & (1 << i)) != 0 && _receivedUpTo[i] < tic)
+                    complete = false;
             }
-            if (count == 0)
-                return;
-            CompleteTic = first + count - 1;
+            if (!complete)
+                break;
+            CompleteTic = tic;
+        }
+        if (CompleteTic != before)
             _lastBundleUs = _nowUs;
-            Broadcast(NetMessages.EncodeBundle(first, count, _bundleMasks.AsSpan(0, count), _bundleCmds.AsSpan(0, count * NetProtocol.MaxPlayers)));
+    }
+
+    /// <summary>
+    /// T11.12c: send each player still in the game the bundles of the
+    /// complete tics it has not acknowledged, with the ack of its commands:
+    /// when there are new tics, and again every <see cref="NetProtocol.ResendUs"/>
+    /// while it lacks some or the ack is news.
+    /// </summary>
+    private void SendTics()
+    {
+        if (Desync is not null)
+            return;
+        List<Peer>? behind = null;
+        for (int slot = 0; slot < NetProtocol.MaxPlayers; slot++)
+        {
+            if (_slots[slot] is not Peer peer || (_playerMask & (1 << slot)) == 0 || _quitTic[slot] != int.MaxValue)
+                continue;
+            bool fresh = CompleteTic > _sentUpTo[slot];
+            bool due = _nowUs - _lastSentUs[slot] >= NetProtocol.ResendUs
+                && (_bundleAck[slot] < CompleteTic || _ackSent[slot] != _receivedUpTo[slot]);
+            if (!fresh && !due)
+                continue;
+            if (CompleteTic - _bundleAck[slot] > FellBehindTics)
+            {
+                (behind ??= []).Add(peer);
+                continue;
+            }
+            int first = _bundleAck[slot] + 1;
+            do
+            {
+                int count = Math.Min(CompleteTic - first + 1, NetProtocol.MaxTicsPerMessage);
+                for (int t = 0; t < count; t++)
+                {
+                    int tic = first + t;
+                    byte mask = MaskAt(tic);
+                    _bundleMasks[t] = mask;
+                    for (int i = 0; i < NetProtocol.MaxPlayers; i++)
+                        _bundleCmds[t * NetProtocol.MaxPlayers + i] = (mask & (1 << i)) != 0 ? _cmds[i, Ring(tic)] : default;
+                }
+                _transport.Send(peer.Id, NetMessages.EncodeBundle(_receivedUpTo[slot], first, count, _bundleMasks.AsSpan(0, count),
+                    _bundleCmds.AsSpan(0, count * NetProtocol.MaxPlayers)), NetChannel.Unreliable);
+                first += count;
+            }
+            while (first <= CompleteTic);
+            _sentUpTo[slot] = CompleteTic;
+            _ackSent[slot] = _receivedUpTo[slot];
+            _lastSentUs[slot] = _nowUs;
+        }
+        if (behind is null)
+            return;
+        foreach (Peer peer in behind)
+        {
+            Log?.Invoke($"peer {peer.Id} (slot {peer.Slot}) dropped: its bundles fell {CompleteTic - _bundleAck[peer.Slot]} tics behind");
+            Drop(peer, "fell behind");
         }
     }
 
@@ -576,7 +696,7 @@ public sealed class NetServer
             _quitTic[slot] = Math.Max(_receivedUpTo[slot] + 1, CompleteTic + 1);
             Log?.Invoke($"slot {slot} left the game at tic {_quitTic[slot]} ({why})");
             Broadcast(NetMessages.EncodePlayerQuit(slot, _quitTic[slot]));
-            SendBundles();
+            CompleteTics();
             CompareWindows();
         }
     }

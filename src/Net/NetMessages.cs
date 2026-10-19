@@ -8,11 +8,19 @@
 // like the others (slot 0, by the host token). Clients send their commands to
 // the server; the server sends every tic's full bundle to everyone.
 //
-// CHANNELS. Everything but the pings goes on the transport's reliable,
-// ordered channel (ENet's resends until acknowledged), so the protocol has no
-// acknowledgements or resends of its own: lockstep needs every command anyway,
-// and a lost packet costs a resend's delay either way. Ping/Pong go on the
-// unreliable channel; a lost one is just a missing sample.
+// CHANNELS. The lobby, the Start, the checksum reports, the quits and the
+// desync go on the transport's reliable, ordered channel (ENet's resends
+// until acknowledged). T11.12c: the commands and the bundles go on the
+// unreliable one, as Chocolate Doom's (net_client.c, net_server.c): each
+// carries an acknowledgement and every tic the other side has not
+// acknowledged yet, so a lost packet costs nothing (the next one carries its
+// tics again) and a burst a round trip, where a reliable channel would hold
+// every later packet until the lost one's resend (RTT + 4 × its variance:
+// hundreds of ms on wifi). Ping/Pong go on the unreliable channel too; a
+// lost one is just a missing sample. An unreliable packet may overtake a
+// reliable one: a bundle before the Start is dropped (the server sends it
+// again), and nothing in the game depends on a quit's message arriving
+// before or after the bundles (the bundles' masks say who is in each tic).
 //
 // ENCODING. One message a packet: a type byte, then little-endian fields.
 // int8/16/32/64 as is; a string is a byte length and that many UTF-8 bytes; an
@@ -56,20 +64,42 @@
 // TICS. The server starts the game at its clock's zero = the start tic, and
 // fills tics start..start+delay-1 with empty commands for everyone. A
 // client's clock then runs at 35 Hz from the Start's arrival (plus half its
-// round trip); at clock tic c it has sent its commands up to tic c + delay.
-//   client -> Commands   first tic (i32), count (u8), count ticcmds: the
-//                        sender's commands for tics first..first+count-1,
-//                        in order, none skipped. Each carries in consistancy
-//                        the sender's own player's consistancy (below) after
-//                        tic t - ConsistancyLag (0 before the start tic + lag),
+// round trip); at clock tic c it has made its commands up to tic c + delay.
+//   client -> Commands   (unreliable) ack (i32: the last tic whose bundle the
+//                        client has, with every one before it), first tic
+//                        (i32), count (u8, 0..MaxTicsPerMessage), count
+//                        ticcmds: the sender's commands for tics
+//                        first..first+count-1, in order. T11.12c: they are
+//                        every command the server has not acknowledged (from
+//                        the last bundle's ack + 1 to the newest; more than
+//                        MaxTicsPerMessage go as several messages), sent as
+//                        new ones are made, and again every ResendUs while
+//                        some are unacknowledged or the ack is news (count 0:
+//                        the ack alone). Each carries in consistancy the
+//                        sender's own player's consistancy (below) after tic
+//                        t - ConsistancyLag (0 before the start tic + lag),
 //                        as vanilla's G_BuildTiccmd stamps maketic's.
-//   server -> Bundle     first tic (i32), count (u8), then per tic the
-//                        players in game (u8 mask) and a ticcmd for each, in
-//                        slot order. Sent once every player in game has sent
-//                        that tic's command, in tic order, none skipped.
-// A client runs tic t only from its bundle, and only once its clock has
-// reached t (so a bundle that comes early waits: the input delay holds). It
-// never sends commands more than BackupTics past the last tic it ran.
+//   server -> Bundle     (unreliable, one a client) ack (i32: the last tic of
+//                        the receiver's commands the server has, with every
+//                        one before it), first tic (i32), count (u8,
+//                        0..MaxTicsPerMessage), then per tic the players in
+//                        game (u8 mask) and a ticcmd for each, in slot order.
+//                        The tics are those whose every player's command came
+//                        (complete, in tic order, none skipped: the server's
+//                        CompleteTic) from the receiver's last ack + 1 on,
+//                        sent as tics complete and again every ResendUs
+//                        while the receiver has not acknowledged them all or
+//                        its commands' ack is news. A tic's bundle never
+//                        changes once complete, so a resend is the same.
+// Either side keeps what comes in a ring by tic (out of order too) and
+// acknowledges the contiguous run from the start. A client runs tic t only
+// from its bundle, and only once its clock has reached t (so a bundle that
+// comes early waits: the input delay holds). It never makes commands more
+// than BackupTics past the last tic it ran, so neither side's unacknowledged
+// tics outgrow BackupTics + 1 (a command for tic t leaves with an ack of at
+// least t − BackupTics): a quarter of the rings (RingTics). A peer further
+// behind than its ring would break that: the server drops it as a protocol
+// error (it leaves the game as on a quit), the client disconnects.
 //
 // CHECKSUMS. Tics run in windows of 35 from the start tic (window w: start +
 // 35w .. start + 35w + 34). After a window's last tic each client sends
@@ -96,9 +126,12 @@
 // faster or slower, within ±5 %, to close the difference: Chocolate Doom's
 // lag adjustment (net_client.c's offsetms), our way.
 //
-// LEAVING. client -> Quit, then it disconnects. On a quit or a disconnect in
-// game the server drops the player from the bundles after the last command
-// it sent, and tells everyone
+// LEAVING. client -> Quit (reliable; T11.12c: first tic (i32), count (u16,
+// at most RingTics), the sender's commands the server has not acknowledged,
+// as in Commands: so its last commands are not lost with the unreliable
+// channel), then it disconnects. On a quit or a disconnect in game the
+// server drops the player from the bundles after the last command it has
+// (a disconnect's unacknowledged commands are lost), and tells everyone
 //   server -> PlayerQuit slot (u8), the first tic without it (i32).
 // The bundles' masks are what the game applies (playeringame), as vanilla's
 // d_net.c does on NCMD_EXIT (T11.11: at the tic, Chocolate Doom's RunTic:
@@ -128,8 +161,8 @@ namespace IsoDoom.Net;
 /// <summary>The protocol's constants (see the comment block at the top of <c>NetMessages.cs</c>).</summary>
 public static class NetProtocol
 {
-    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c).</summary>
-    public const ushort Version = 4;
+    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c; 5: the commands and bundles go unreliable with acknowledgements, the quit carries the last commands, T11.12c).</summary>
+    public const ushort Version = 5;
 
     /// <summary>T11.9c: the longest player name, in characters (<see cref="CleanName"/>).</summary>
     public const int MaxNameLength = 15;
@@ -185,8 +218,30 @@ public static class NetProtocol
     /// <summary>A command for tic t carries its sender's consistancy after tic t − this (vanilla: <c>BACKUPTICS</c>).</summary>
     public const int ConsistancyLag = BackupTics;
 
-    /// <summary>The most tics one Commands or Bundle message carries.</summary>
-    public const int MaxTicsPerMessage = 64;
+    /// <summary>
+    /// The most tics one Commands or Bundle message carries (T11.12c: 32, so a
+    /// bundle of four players, 5 + 32 × 33 bytes, stays under ENet's MTU and
+    /// goes as one unfragmented UDP packet; more go as several messages).
+    /// </summary>
+    public const int MaxTicsPerMessage = 32;
+
+    /// <summary>
+    /// T11.12c: the rings either side keeps tics in (commands, bundles,
+    /// consistancy), in tics: four times <see cref="BackupTics"/>, so the
+    /// unacknowledged tics (at most <see cref="BackupTics"/> + 1) and those
+    /// that may come early fit.
+    /// </summary>
+    public const int RingTics = 4 * BackupTics;
+
+    /// <summary>
+    /// T11.12c: how long either side waits, when nothing new goes, before it
+    /// sends its unacknowledged tics (or an acknowledgement that is news)
+    /// again, in microseconds: two tics, past the gap between two new tics'
+    /// sends (a tic, or a 30 fps frame), so a game that plays sends no more
+    /// than one message a new tic, and one that holds (the lead's limit, a
+    /// player the bundles wait for) carries on resending.
+    /// </summary>
+    public const long ResendUs = 2 * MicrosecondsPerSecond / TicRate;
 
     /// <summary>The longest input delay, in tics.</summary>
     public const int MaxDelay = 35;
@@ -485,12 +540,17 @@ public static class NetMessages
 
     // ---- tics ----
 
-    /// <summary>Commands: the sender's <paramref name="cmds"/> for tics <paramref name="firstTic"/> on.</summary>
-    public static byte[] EncodeCommands(int firstTic, ReadOnlySpan<ticcmd_t> cmds)
+    /// <summary>
+    /// Commands: the sender's <paramref name="cmds"/> for tics
+    /// <paramref name="firstTic"/> on (none: the acknowledgement alone), and
+    /// <paramref name="ack"/>, the last tic whose bundle it has (T11.12c).
+    /// </summary>
+    public static byte[] EncodeCommands(int ack, int firstTic, ReadOnlySpan<ticcmd_t> cmds)
     {
-        if (cmds.Length is 0 or > NetProtocol.MaxTicsPerMessage)
+        if (cmds.Length > NetProtocol.MaxTicsPerMessage)
             throw new ArgumentOutOfRangeException(nameof(cmds));
         var w = new NetWriter(NetMessageType.Commands);
+        w.I32(ack);
         w.I32(firstTic);
         w.U8((byte)cmds.Length);
         foreach (ticcmd_t cmd in cmds)
@@ -498,14 +558,15 @@ public static class NetMessages
         return w.ToArray();
     }
 
-    /// <summary>A Commands message's first tic and commands.</summary>
-    public static int DecodeCommands(NetReader r, List<ticcmd_t> into)
+    /// <summary>A Commands message's first tic, its commands (into <paramref name="into"/>) and its <paramref name="ack"/>.</summary>
+    public static int DecodeCommands(NetReader r, List<ticcmd_t> into, out int ack)
     {
         ArgumentNullException.ThrowIfNull(r);
         ArgumentNullException.ThrowIfNull(into);
+        ack = r.I32();
         int first = r.I32();
         int count = r.U8();
-        if (count is 0 or > NetProtocol.MaxTicsPerMessage)
+        if (count > NetProtocol.MaxTicsPerMessage)
             throw new NetProtocolException($"Commands: {count} tics.");
         for (int i = 0; i < count; i++)
             into.Add(r.Ticcmd());
@@ -515,14 +576,16 @@ public static class NetMessages
 
     /// <summary>
     /// Bundle: tics <paramref name="firstTic"/> to <paramref name="firstTic"/> +
-    /// <paramref name="count"/> − 1, each the players in <paramref name="masks"/>
-    /// and their commands in <paramref name="cmds"/> (<see cref="NetProtocol.MaxPlayers"/> a tic, by slot).
+    /// <paramref name="count"/> − 1 (none: the acknowledgement alone), each the players in <paramref name="masks"/>
+    /// and their commands in <paramref name="cmds"/> (<see cref="NetProtocol.MaxPlayers"/> a tic, by slot),
+    /// and <paramref name="ack"/>, the last tic of the receiver's commands the server has (T11.12c).
     /// </summary>
-    public static byte[] EncodeBundle(int firstTic, int count, ReadOnlySpan<byte> masks, ReadOnlySpan<ticcmd_t> cmds)
+    public static byte[] EncodeBundle(int ack, int firstTic, int count, ReadOnlySpan<byte> masks, ReadOnlySpan<ticcmd_t> cmds)
     {
-        if (count is 0 or > NetProtocol.MaxTicsPerMessage)
+        if (count is < 0 or > NetProtocol.MaxTicsPerMessage)
             throw new ArgumentOutOfRangeException(nameof(count));
         var w = new NetWriter(NetMessageType.Bundle);
+        w.I32(ack);
         w.I32(firstTic);
         w.U8((byte)count);
         for (int t = 0; t < count; t++)
@@ -573,7 +636,33 @@ public static class NetMessages
         return w.ToArray();
     }
 
-    public static byte[] EncodeQuit() => new NetWriter(NetMessageType.Quit).ToArray();
+    /// <summary>T11.12c: Quit, with the sender's commands the server has not acknowledged (<paramref name="cmds"/>, for tics <paramref name="firstTic"/> on).</summary>
+    public static byte[] EncodeQuit(int firstTic, ReadOnlySpan<ticcmd_t> cmds)
+    {
+        if (cmds.Length > NetProtocol.RingTics)
+            throw new ArgumentOutOfRangeException(nameof(cmds));
+        var w = new NetWriter(NetMessageType.Quit);
+        w.I32(firstTic);
+        w.U16((ushort)cmds.Length);
+        foreach (ticcmd_t cmd in cmds)
+            w.Ticcmd(cmd);
+        return w.ToArray();
+    }
+
+    /// <summary>T11.12c: a Quit's first tic and its commands (into <paramref name="into"/>).</summary>
+    public static int DecodeQuit(NetReader r, List<ticcmd_t> into)
+    {
+        ArgumentNullException.ThrowIfNull(r);
+        ArgumentNullException.ThrowIfNull(into);
+        int first = r.I32();
+        int count = r.U16();
+        if (count > NetProtocol.RingTics)
+            throw new NetProtocolException($"Quit: {count} tics.");
+        for (int i = 0; i < count; i++)
+            into.Add(r.Ticcmd());
+        r.End();
+        return first;
+    }
 
     public static byte[] EncodePlayerQuit(int slot, int tic)
     {

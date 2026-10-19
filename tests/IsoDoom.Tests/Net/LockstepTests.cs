@@ -68,16 +68,21 @@ public class LockstepTests
             Assert.Equal(-1, p.Client.FirstBadTic);
             Assert.True(p.MaxLead <= delay + roundTrip + resends + 4,
                 $"player {p.Index}: lead {p.MaxLead} > delay {delay} + round trip {roundTrip} + {resends + 4}");
-            // Throughput: about 14 bytes of commands a tic up, and a bundle (6 + 9 a player) down, plus pings.
+            // Throughput (T11.12c): a Commands message a tic (10 bytes) with
+            // every command not acknowledged yet (8 bytes each: the round
+            // trip's tics, frames' waits, lost acknowledgements), plus pings.
+            int unacked = roundTrip + 4 + resends;
             double up = p.Transport.ReliableBytesSent + p.Transport.UnreliableBytesSent;
-            Assert.True(up / seconds < 1_200, $"player {p.Index} sent {up / seconds:F0} B/s");
+            Assert.True(up / seconds < 300 + 35 * (10 + 8 * unacked), $"player {p.Index} sent {up / seconds:F0} B/s");
             Assert.True(p.Transport.PacketsSent / (double)seconds < 2 * 35 + 12, $"player {p.Index} sent {p.Transport.PacketsSent / (double)seconds:F1} packets/s");
         }
-        double down = h.ServerTransport.ReliableBytesSent / (double)seconds / h.Players.Count;
+        double down = (h.ServerTransport.ReliableBytesSent + h.ServerTransport.UnreliableBytesSent) / (double)seconds / h.Players.Count;
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"{Tics} tics in {(h.Network.NowUs - startUs) / 1000} ms, delay {delay}, down {down:F0} B/s a player; " +
             string.Join("; ", h.Players.Select(p => $"player {p.Index}: lead {p.MaxLead}, {p.MaxTicsPerFrame} tics/frame max, up {p.Transport.ReliableBytesSent + p.Transport.UnreliableBytesSent} B, rtt {p.Client.RttUs / 1000} ms, rate {p.Client.ClockRate:F4}, clock error {p.Client.ClockErrorUs / 1000} ms")));
-        Assert.True(down < 300 + 35 * 9 * h.Players.Count, $"the server sent {down:F0} B/s a player");
+        // a Bundle message a tic to each player (10 bytes) with every tic it has not acknowledged (1 + 8 a player each)
+        int roundTrips = (2 * (maxLatencyMs + jitterMs) * 35 + 999) / 1000 + 4 + (loss > 0 ? 6 : 0);
+        Assert.True(down < 300 + 35 * (10 + (1 + 8 * h.Players.Count) * roundTrips), $"the server sent {down:F0} B/s a player");
     }
 
     [Theory]

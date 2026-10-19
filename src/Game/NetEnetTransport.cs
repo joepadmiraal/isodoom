@@ -9,8 +9,8 @@ namespace IsoDoom.Game;
 /// T11.6: <see cref="INetTransport"/> over Godot's ENet
 /// (<see cref="ENetConnection"/>, <see cref="ENetPacketPeer"/>; UDP), two
 /// channels: <see cref="NetChannel.Reliable"/> (ENet's reliable, ordered
-/// channel 0) and <see cref="NetChannel.Unreliable"/> (channel 1, unreliable
-/// sequenced). Polled from the main thread, once a frame through the
+/// channel 0) and <see cref="NetChannel.Unreliable"/> (channel 1, unreliable;
+/// T11.12c: unsequenced). Polled from the main thread, once a frame through the
 /// <see cref="NetServer"/>'s and <see cref="NetClient"/>'s <c>Update</c>
 /// (SPEC §12 T11.6: no thread of its own). A send is flushed at once, so a
 /// command goes out in the frame it is made, not at the next poll.
@@ -107,7 +107,12 @@ public sealed class NetEnetTransport : INetTransport, INetPortTransport
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_peers.TryGetValue(peer, out ENetPacketPeer? p))
             return;
-        int flags = channel == NetChannel.Reliable ? (int)ENetPacketPeer.FlagReliable : 0;
+        // T11.12c: the unreliable channel's packets unsequenced (ENet's sequenced
+        // ones drop a packet that comes after a later one: the commands and
+        // bundles keep every tic that comes, out of order too), and never
+        // turned into reliable fragments when long (they stay under the MTU anyway)
+        int flags = channel == NetChannel.Reliable ? (int)ENetPacketPeer.FlagReliable
+            : (int)(ENetPacketPeer.FlagUnsequenced | ENetPacketPeer.FlagUnreliableFragment);
         Error error = p.Send((int)channel, data, flags);
         if (error != Error.Ok)
             Log?.Invoke($"ENet: send to peer {peer} failed ({error})");

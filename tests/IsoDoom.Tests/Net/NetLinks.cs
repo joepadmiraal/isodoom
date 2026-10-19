@@ -48,6 +48,28 @@ public static class NetLinks
     };
 
     /// <summary>
+    /// T11.12c: a lossy link at a 30 ms round trip: 15 ms each way and 0–5 ms
+    /// of jitter, 5 % of the unreliable packets lost either way (half as many
+    /// reliable ones resent, 50 ms late).
+    /// </summary>
+    public static MemoryLinkOptions Lossy { get; } = Internet(30, jitterMs: 5, loss: 0.05);
+
+    /// <summary>
+    /// T11.12c: <see cref="Lossy"/> with loss bursts: one every 2.5–7.5 s in
+    /// which every packet either way is lost for 30–90 ms (a few packets in a
+    /// row: the unreliable ones gone, the reliable ones resent until one goes after it).
+    /// </summary>
+    public static MemoryLinkOptions LossBursts { get; } = Lossy with
+    {
+        BurstEveryUs = 5_000_000,
+        BurstLengthUs = 60_000,
+        BurstLoss = 1,
+    };
+
+    /// <summary>T11.12c: the longest loss burst of <see cref="LossBursts"/>, in ms.</summary>
+    public const int LongestLossBurstMs = 90;
+
+    /// <summary>
     /// T11.12a: a jittery link without loss: 5–50 ms each way (5 ms and up to
     /// 45 ms of uniform jitter), and bursts as <see cref="Wifi"/>'s (one every
     /// 1–3 s lasting 0.2–0.6 s) in which every packet takes 40–50 ms more each

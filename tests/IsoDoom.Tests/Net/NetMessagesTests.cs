@@ -92,10 +92,19 @@ public class NetMessagesTests
             new() { forwardmove = -128, sidemove = 127, angleturn = short.MinValue, consistancy = short.MaxValue, chatchar = 255, buttons = 0x81 },
             new() { forwardmove = 50, sidemove = -40, angleturn = 1234, consistancy = -2, chatchar = 0, buttons = buttoncode_t.BT_ATTACK },
         ];
-        byte[] message = NetMessages.EncodeCommands(1_000_000, cmds);
-        Assert.Equal(1 + 4 + 1 + 2 * NetProtocol.TiccmdSize, message.Length);
+        byte[] message = NetMessages.EncodeCommands(999_990, 1_000_000, cmds);
+        Assert.Equal(1 + 4 + 4 + 1 + 2 * NetProtocol.TiccmdSize, message.Length);
         var into = new List<ticcmd_t>();
-        Assert.Equal(1_000_000, NetMessages.DecodeCommands(Reader(message, NetMessageType.Commands), into));
+        Assert.Equal(1_000_000, NetMessages.DecodeCommands(Reader(message, NetMessageType.Commands), into, out int ack));
+        Assert.Equal(999_990, ack);
+        Assert.Equal(cmds, into);
+        // T11.12c: the acknowledgement alone
+        into.Clear();
+        Assert.Equal(7, NetMessages.DecodeCommands(Reader(NetMessages.EncodeCommands(5, 7, []), NetMessageType.Commands), into, out ack));
+        Assert.Equal(5, ack);
+        Assert.Empty(into);
+        // T11.12c: the quit carries the last commands
+        Assert.Equal(1_000_000, NetMessages.DecodeQuit(Reader(NetMessages.EncodeQuit(1_000_000, cmds), NetMessageType.Quit), into));
         Assert.Equal(cmds, into);
 
         // A bundle of two tics: players 0 and 3, then 1 alone.
@@ -103,9 +112,10 @@ public class NetMessagesTests
         all[0] = cmds[0];
         all[3] = cmds[1];
         all[NetProtocol.MaxPlayers + 1] = cmds[1];
-        byte[] bundle = NetMessages.EncodeBundle(77, 2, [0b1001, 0b0010], all);
-        Assert.Equal(1 + 4 + 1 + 2 + 3 * NetProtocol.TiccmdSize, bundle.Length);
+        byte[] bundle = NetMessages.EncodeBundle(80, 77, 2, [0b1001, 0b0010], all);
+        Assert.Equal(1 + 4 + 4 + 1 + 2 + 3 * NetProtocol.TiccmdSize, bundle.Length);
         var r = Reader(bundle, NetMessageType.Bundle);
+        Assert.Equal(80, r.I32());
         Assert.Equal(77, r.I32());
         Assert.Equal(2, r.U8());
         Assert.Equal(0b1001, r.U8());
@@ -114,6 +124,13 @@ public class NetMessagesTests
         Assert.Equal(0b0010, r.U8());
         Assert.Equal(cmds[1], r.Ticcmd());
         r.End();
+
+        // T11.12c: the longest bundle, four players' MaxTicsPerMessage tics, fits one
+        // unfragmented UDP packet (ENet's default MTU 1400, less its headers)
+        var masks = new byte[NetProtocol.MaxTicsPerMessage];
+        Array.Fill(masks, (byte)0b1111);
+        byte[] longest = NetMessages.EncodeBundle(0, 0, NetProtocol.MaxTicsPerMessage, masks, new ticcmd_t[NetProtocol.MaxTicsPerMessage * NetProtocol.MaxPlayers]);
+        Assert.InRange(longest.Length, 1_000, 1_200);
     }
 
     [Fact]
@@ -163,6 +180,7 @@ public class NetMessagesTests
     [InlineData(new byte[0])]
     [InlineData(new byte[] { (byte)NetMessageType.Commands, 0, 0, 0 })]
     [InlineData(new byte[] { (byte)NetMessageType.Commands, 0, 0, 0, 0, 0 })]
+    [InlineData(new byte[] { (byte)NetMessageType.Commands, 0, 0, 0, 0, 0, 0, 0, 0, NetProtocol.MaxTicsPerMessage + 1 })]
     [InlineData(new byte[] { (byte)NetMessageType.Settings, 9, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0 })]
     public void Malformed_messages_throw(byte[] message)
     {
@@ -170,7 +188,7 @@ public class NetMessagesTests
         {
             var r = new NetReader(message);
             if (r.Type == NetMessageType.Commands)
-                NetMessages.DecodeCommands(r, []);
+                NetMessages.DecodeCommands(r, [], out _);
             else
                 r.Settings();
         });

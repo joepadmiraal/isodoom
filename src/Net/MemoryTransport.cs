@@ -54,6 +54,15 @@ public sealed record MemoryLinkOptions
 
     /// <summary>T11.12e: the most extra one-way delay of a packet sent during a burst, in microseconds.</summary>
     public long SpikeMaxUs { get; init; }
+
+    /// <summary>
+    /// T11.12c: chance (0–1) that a packet sent to or from this endpoint
+    /// during one of its bursts is lost: a loss burst (with no spikes, or on
+    /// top of them). An unreliable one is gone; a reliable one is resent every
+    /// <see cref="ResendUs"/> until a resend goes after the burst, and arrives
+    /// its latency after that, holding back those behind it.
+    /// </summary>
+    public double BurstLoss { get; init; }
 }
 
 /// <summary>
@@ -148,6 +157,9 @@ public sealed class MemoryTransport : INetTransport
     /// <summary>Packets sent on either channel.</summary>
     public long PacketsSent { get; private set; }
 
+    /// <summary>T11.12c: packets sent on the unreliable channel (lost ones included).</summary>
+    public long UnreliablePacketsSent { get; private set; }
+
     /// <summary>Bytes received on either channel.</summary>
     public long BytesReceived { get; private set; }
 
@@ -218,10 +230,13 @@ public sealed class MemoryTransport : INetTransport
         PacketsSent++;
         long due = _network.NowUs + Delay(link.Remote);
         long blocked = Math.Max(BlockedUntilUs, link.Remote.BlockedUntilUs);
+        // T11.12c: a loss burst at either end (drawn only when an end has one, so other links' runs are unchanged)
+        long burstLost = Math.Max(BurstLost(this), BurstLost(link.Remote));
         if (channel == NetChannel.Unreliable)
         {
             UnreliableBytesSent += data.Length;
-            if (blocked > _network.NowUs)
+            UnreliablePacketsSent++;
+            if (blocked > _network.NowUs || burstLost > 0)
                 return;
             if (_random.NextDouble() < Options.UnreliableLoss || link.Remote._random.NextDouble() < link.Remote.Options.UnreliableLoss)
                 return;
@@ -231,6 +246,12 @@ public sealed class MemoryTransport : INetTransport
             ReliableBytesSent += data.Length;
             if (blocked > _network.NowUs)
                 due = Math.Max(due, blocked + Delay(link.Remote));
+            if (burstLost > 0)
+            {
+                // resent every ResendUs (ENet's retransmit timeout; ENet doubles it, so this is the kind case) until one goes after the burst
+                long resends = (burstLost - _network.NowUs + Options.ResendUs - 1) / Options.ResendUs;
+                due = Math.Max(due, _network.NowUs + (resends * Options.ResendUs) + Delay(link.Remote));
+            }
             // T11.12e: either end's link loses it (as the unreliable channel), each loss a resend later
             while (_random.NextDouble() < Options.ReliableLoss)
                 due += Options.ResendUs;
@@ -314,6 +335,18 @@ public sealed class MemoryTransport : INetTransport
             }
             return now >= _burstStartUs;
         }
+    }
+
+    /// <summary>
+    /// T11.12c: when <paramref name="endpoint"/>'s burst ends if a packet sent
+    /// now is lost in it (<see cref="MemoryLinkOptions.BurstLoss"/>), else 0.
+    /// </summary>
+    private static long BurstLost(MemoryTransport endpoint)
+    {
+        double loss = endpoint.Options.BurstLoss;
+        if (loss <= 0 || !endpoint.InBurst || endpoint._random.NextDouble() >= loss)
+            return 0;
+        return endpoint._burstEndUs;
     }
 
     /// <summary>Uniform in half to one and a half of <paramref name="meanUs"/>.</summary>

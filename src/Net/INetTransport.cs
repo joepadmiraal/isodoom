@@ -8,11 +8,15 @@ public enum NetChannel : byte
     /// <summary>
     /// Reliable and ordered: every packet arrives, once, in the order sent
     /// (ENet's reliable channel resends until acknowledged). The lobby, the
-    /// commands, the bundles, the checksum reports and the quits use it.
+    /// Start, the checksum reports, the quits and the desync use it.
     /// </summary>
     Reliable = 0,
 
-    /// <summary>Unreliable: a packet may be lost, or arrive out of order. The pings use it.</summary>
+    /// <summary>
+    /// Unreliable: a packet may be lost, or arrive out of order. The pings,
+    /// and (T11.12c) the commands and bundles, which carry every tic not
+    /// acknowledged yet, use it.
+    /// </summary>
     Unreliable = 1,
 }
 

@@ -48,7 +48,7 @@ public sealed class NetClient
     /// <summary>The lag adjustment's gain: the rate changes by this per second of clock error.</summary>
     public const double ClockGain = 1.0;
 
-    private const int RingTics = 4 * NetProtocol.BackupTics;
+    private const int RingTics = NetProtocol.RingTics;
     private const int ClockSamples = 8;
 
     private readonly INetTransport _transport;
@@ -67,13 +67,19 @@ public sealed class NetClient
     private int _sampleCount;
     private int _sampleNext;
 
-    // The commands queued by SendCommand, from _pendingFirst.
-    private readonly List<ticcmd_t> _pending = [];
-    private int _pendingFirst;
+    // T11.12c: the commands made (a ring by tic), those the server acknowledged
+    // (up to _ackedByServer), the last tic sent, and what the last packet said and when.
+    private readonly ticcmd_t[] _made = new ticcmd_t[RingTics];
+    private int _ackedByServer;
+    private int _sentUpTo;
+    private int _ackSent;
+    private long _lastSentUs = long.MinValue;
 
-    // The bundles received, by tic (ring), and the consistancy of every player after each tic run.
+    // The bundles received, by tic (ring, each entry's tic beside it: T11.12c,
+    // they may come out of order), and the consistancy of every player after each tic run.
     private readonly ticcmd_t[,] _bundles = new ticcmd_t[RingTics, NetProtocol.MaxPlayers];
     private readonly byte[] _bundleMasks = new byte[RingTics];
+    private readonly int[] _bundleTics = new int[RingTics];
     private readonly short[,] _consistancy = new short[RingTics, NetProtocol.MaxPlayers];
     private bool _awaitingTicRan;
     private int _badTicToReport = -1;
@@ -232,17 +238,32 @@ public sealed class NetClient
         Send(NetMessages.EncodeReady(ready));
     }
 
-    /// <summary>Leave: the server drops this player from the bundles after its last command.</summary>
+    /// <summary>
+    /// Leave: the server drops this player from the bundles after its last
+    /// command (T11.12c: the Quit carries the commands it has not acknowledged).
+    /// </summary>
     public void Quit()
     {
         if (State is NetClientState.Lobby or NetClientState.InGame or NetClientState.Connecting)
         {
-            Flush();
-            Send(NetMessages.EncodeQuit());
+            int first = 0, count = 0;
+            if (State == NetClientState.InGame && !Stopped)
+            {
+                first = _ackedByServer + 1;
+                count = Math.Max(0, MakeTic - first);
+                for (int i = 0; i < count; i++)
+                    _quitCmds[i] = _made[Ring(first + i)];
+            }
+            Send(NetMessages.EncodeQuit(first, _quitCmds.AsSpan(0, count)));
             _transport.Disconnect(_peer);
         }
         State = NetClientState.Disconnected;
     }
+
+    private readonly ticcmd_t[] _quitCmds = new ticcmd_t[RingTics];
+
+    /// <summary>A tic's place in the rings (negative tics too).</summary>
+    private static int Ring(int tic) => (int)((uint)tic % RingTics);
 
     /// <summary>Poll the transport, handle what came and move the clock on, at local time <paramref name="nowUs"/> (µs).</summary>
     public void Update(long nowUs)
@@ -379,14 +400,22 @@ public sealed class NetClient
                 BeginGame(NetMessages.DecodeStart(r));
                 break;
             case NetMessageType.Bundle:
-                Expect(NetClientState.InGame, r.Type);
-                Bundle(r);
+                // T11.12c: an unreliable bundle may overtake the Start (the server sends it again); none after a desync
+                if (State == NetClientState.InGame && !Stopped)
+                    Bundle(r);
+                else if (State == NetClientState.Lobby)
+                {
+                    // T11.12c: an unreliable bundle that overtook the Start waits for it (the first tics are due at once)
+                    if (_early.Count < EarlyBundles)
+                        _early.Add(data);
+                }
+                else if (State != NetClientState.InGame)
+                    throw new NetProtocolException($"{r.Type} when {State}.");
                 break;
             case NetMessageType.Desync:
                 Expect(NetClientState.InGame, r.Type);
                 Desync = new NetDesync(r.I32(), r.I32(), r.I32());
-                r.End();
-                _pending.Clear(); // T11.11: the game stops: no more commands
+                r.End(); // T11.11: the game stops: no more commands (CommandsDue, Flush)
                 Log?.Invoke($"desync in window {Desync.Value.Window} (tics {Desync.Value.FirstTic}–{Desync.Value.LastTic}): stopped after tic {LastRanTic}");
                 break;
             case NetMessageType.PlayerQuit:
@@ -422,32 +451,62 @@ public sealed class NetClient
         _sampleCount = 0;
         ClockRate = 1;
         MakeTic = start.StartTic + start.Delay;
+        _ackedByServer = MakeTic - 1; // the server made the first delay tics' commands itself
+        _sentUpTo = MakeTic - 1;
+        _ackSent = int.MinValue;
+        _lastSentUs = long.MinValue;
+        Array.Fill(_bundleTics, int.MinValue);
         BundleTic = start.StartTic - 1;
         NextTic = start.StartTic;
         LastRanTic = start.StartTic - 1;
         Log?.Invoke($"start: player {Slot + 1}, players {start.PlayerMask:x}, tic {start.StartTic}, delay {start.Delay}");
+        foreach (ReadOnlyMemory<byte> early in _early)
+        {
+            var r = new NetReader(early);
+            Bundle(r);
+        }
+        _early.Clear();
     }
+
+    // T11.12c: the bundles that came before the Start (a few: the server sends them again).
+    private const int EarlyBundles = 8;
+    private readonly List<ReadOnlyMemory<byte>> _early = [];
 
     private void Bundle(NetReader r)
     {
+        int ack = r.I32();
         int first = r.I32();
         int count = r.U8();
-        if (first != BundleTic + 1 || count is 0 or > NetProtocol.MaxTicsPerMessage)
-            throw new NetProtocolException($"Bundle of {count} tics from {first}, expected tic {BundleTic + 1}.");
+        if (count > NetProtocol.MaxTicsPerMessage)
+            throw new NetProtocolException($"Bundle of {count} tics.");
+        if (ack >= MakeTic)
+            throw new NetProtocolException($"Bundle acknowledging command {ack}, the last made is {MakeTic - 1}.");
+        _ackedByServer = Math.Max(_ackedByServer, ack);
         for (int t = first; t < first + count; t++)
         {
-            if (t - NextTic >= RingTics)
-                throw new NetProtocolException($"Bundle for tic {t}, too far past tic {NextTic}.");
             byte mask = r.U8();
             if ((mask & ~Start!.PlayerMask) != 0)
                 throw new NetProtocolException($"Bundle for tic {t} with players {mask:x} not in the game.");
-            int slot = t % RingTics;
-            _bundleMasks[slot] = mask;
+            bool keep = t > BundleTic;
+            if (keep && t - NextTic >= RingTics)
+                throw new NetProtocolException($"Bundle for tic {t}, too far past tic {NextTic}.");
+            int slot = Ring(t);
             for (int i = 0; i < NetProtocol.MaxPlayers; i++)
-                _bundles[slot, i] = (mask & (1 << i)) != 0 ? r.Ticcmd() : default;
+            {
+                ticcmd_t cmd = (mask & (1 << i)) != 0 ? r.Ticcmd() : default;
+                if (keep)
+                    _bundles[slot, i] = cmd;
+            }
+            if (keep)
+            {
+                // T11.12c: a tic sent again is the same; one before an earlier gap is filled waits here
+                _bundleMasks[slot] = mask;
+                _bundleTics[slot] = t;
+            }
         }
         r.End();
-        BundleTic = first + count - 1;
+        while (_bundleTics[Ring(BundleTic + 1)] == BundleTic + 1)
+            BundleTic++;
     }
 
     /// <summary>How many local commands are due now (built for <see cref="MakeTic"/> on, and passed to <see cref="SendCommand"/>).</summary>
@@ -457,7 +516,8 @@ public sealed class NetClient
         {
             if (State != NetClientState.InGame || Stopped)
                 return 0;
-            int target = Math.Min(ClockTic + Start!.Delay, LastRanTic + NetProtocol.BackupTics);
+            // T11.12c: and never one the ring of commands made would lose an unacknowledged one for
+            int target = Math.Min(Math.Min(ClockTic + Start!.Delay, LastRanTic + NetProtocol.BackupTics), _ackedByServer + RingTics);
             return Math.Max(0, target - MakeTic + 1);
         }
     }
@@ -473,27 +533,40 @@ public sealed class NetClient
             throw new InvalidOperationException($"No command is due (tic {MakeTic}, clock {ClockTic}, ran {LastRanTic}).");
         int source = MakeTic - NetProtocol.ConsistancyLag;
         cmd.consistancy = source >= Start!.StartTic ? _consistancy[source % RingTics, Slot] : (short)0;
-        if (_pending.Count == 0)
-            _pendingFirst = MakeTic;
-        _pending.Add(cmd);
+        _made[Ring(MakeTic)] = cmd;
         MakeTic++;
-        if (_pending.Count == NetProtocol.MaxTicsPerMessage)
-            Flush();
     }
 
-    /// <summary>Send the queued commands as one message.</summary>
+    /// <summary>
+    /// T11.12c: send the commands the server has not acknowledged, with the
+    /// ack of the bundles: when there are new ones, and again every
+    /// <see cref="NetProtocol.ResendUs"/> while some are unacknowledged or the
+    /// ack is news (several messages when they are more than
+    /// <see cref="NetProtocol.MaxTicsPerMessage"/>).
+    /// </summary>
     public void Flush()
     {
-        if (_pending.Count == 0)
+        if (State != NetClientState.InGame || Stopped)
             return;
-        if (Stopped)
+        bool fresh = MakeTic - 1 > _sentUpTo;
+        bool due = (_lastSentUs == long.MinValue || _nowUs - _lastSentUs >= NetProtocol.ResendUs)
+            && (_ackedByServer < MakeTic - 1 || _ackSent != BundleTic);
+        if (!fresh && !due)
+            return;
+        int first = _ackedByServer + 1;
+        Span<ticcmd_t> chunk = stackalloc ticcmd_t[NetProtocol.MaxTicsPerMessage];
+        do
         {
-            _pending.Clear();
-            return;
+            int count = Math.Min(MakeTic - first, NetProtocol.MaxTicsPerMessage);
+            for (int i = 0; i < count; i++)
+                chunk[i] = _made[Ring(first + i)];
+            _transport.Send(_peer, NetMessages.EncodeCommands(BundleTic, first, chunk[..count]), NetChannel.Unreliable);
+            first += count;
         }
-        if (State == NetClientState.InGame)
-            Send(NetMessages.EncodeCommands(_pendingFirst, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pending)));
-        _pending.Clear();
+        while (first < MakeTic);
+        _sentUpTo = MakeTic - 1;
+        _ackSent = BundleTic;
+        _lastSentUs = _nowUs;
     }
 
     /// <summary>
