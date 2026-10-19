@@ -367,6 +367,9 @@ public partial class LevelScene : Node3D, IGameHost
 
     private ScreenGraphics? _graphics;
 
+    /// <summary>The full screens' graphics (P5: the level check checks the greyed text's map).</summary>
+    public ScreenGraphics? Graphics => _graphics;
+
     /// <summary>T7.1a: draws the melt (f_wipe.c) over the window while one is under way (<see cref="GameFlow.Wipe"/>).</summary>
     public WipeView WipeLayer { get; } = new() { Name = StringNames.Get("Wipe") };
 

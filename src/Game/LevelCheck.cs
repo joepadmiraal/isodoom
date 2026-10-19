@@ -161,6 +161,8 @@ public partial class LevelCheck : Godot.Node
             }
             else if (move is { } mv)
                 MoveCheckData(m, mv.Sector);
+            if (CanCapture && _iwadPlaypal is not null)
+                GD.Print($"Level check: palette tables (P5): {_pwadTableShades} expected pixels in a colour the IWAD's PLAYPAL and COLORMAP would not give");
             GD.Print(CanCapture
                 ? $"Level check: {map}: {_views} views rendered, {_pixels} drawn pixels compared"
                 : "Level check: headless: no pixel readback (run with a real renderer for the drawn-pixel checks)");
@@ -213,6 +215,7 @@ public partial class LevelCheck : Godot.Node
             }
             LevelMesh m = _scene.Mesh!;
             int failures = _failures;
+            CheckPaletteTables(m, map); // P5: once, on the first map
             CheckMapMusic(map); // T7.8c: S_Start's song
             CheckSectorData(m, map);
             CheckLidData(m, map);
@@ -2117,7 +2120,9 @@ public partial class LevelCheck : Godot.Node
     private (int R, int G, int B) Shade(byte index, int colormap, bool own = false)
     {
         byte mapped = Colormap.GetMap(colormap)[index];
-        (byte r, byte g, byte b) = _scene.Mesh is { } m ? m.DrawnColor(own ? m.OwnRow : m.ScreenRow, mapped) : Playpal.GetColor(0, mapped);
+        int row = _scene.Mesh is { } m ? own ? m.OwnRow : m.ScreenRow : 0;
+        (byte r, byte g, byte b) = _scene.Mesh is { } mesh ? mesh.DrawnColor(row, mapped) : Playpal.GetColor(0, mapped);
+        CountPwadTableShade(index, colormap, row, (r, g, b)); // P5
         return (r, g, b);
     }
 

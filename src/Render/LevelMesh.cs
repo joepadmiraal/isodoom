@@ -847,6 +847,12 @@ public sealed class LevelMesh : IDisposable
     private Image? _playpalImage;
     private ImageTexture? _playpalTexture;
     private ImageTexture? _colormapTexture;
+
+    /// <summary>The <c>playpal</c> texture every material samples: PLAYPAL's palettes, then the <see cref="BlendRow"/> (P5: the level check reads it back).</summary>
+    public ImageTexture? PlaypalTexture => _playpalTexture;
+
+    /// <summary>The <c>colormap</c> texture every material samples: COLORMAP (P5: the level check reads it back).</summary>
+    public ImageTexture? ColormapTexture => _colormapTexture;
     private readonly byte[] _blend = new byte[Playpal.PaletteSize];
     private int _blendRow = -1, _blendStrength;
     private bool _blendWhite;
