@@ -807,7 +807,7 @@ public partial class LevelCheck
                 compared += await CompareSprite(m, things, atlas, i, basis, $"{map}: thing {i}");
         }
         if (allRotations.Count > 0 && rotations.Count != allRotations.Count)
-            FailOrSkip($"{map}: sprite rotations compared {string.Join(" ", rotations)}, the map shows {string.Join(" ", allRotations)}");
+            FailOrSkip(map, $"{map}: sprite rotations compared {string.Join(" ", rotations)}, the map shows {string.Join(" ", allRotations)}");
         if (anyFlip && !flipCompared)
             Fail($"{map}: no mirrored rotation compared");
 
@@ -1330,7 +1330,7 @@ public partial class LevelCheck
         }
         if (thing < 0)
         {
-            FailOrSkip($"{map}: no thing on a floor for the tilt depth view");
+            FailOrSkip(map, $"{map}: no thing on a floor for the tilt depth view");
             return;
         }
         ThingSprites.Entry original = things.Entries[thing];
@@ -1341,7 +1341,7 @@ public partial class LevelCheck
         // far enough that no column of the upright billboard reaches the wall.
         if (FacingWall(m, ground, right, halfSpan, normal => 8 + halfSpan * MathF.Abs(right.Dot(normal))) is not { } wall)
         {
-            FailOrSkip($"{map}: no one-sided wall facing the game camera with open floor in front for the tilt depth view");
+            FailOrSkip(map, $"{map}: no one-sided wall facing the game camera with open floor in front for the tilt depth view");
             return;
         }
         Vector2 where = wall.Spot;
@@ -1351,7 +1351,7 @@ public partial class LevelCheck
         double hiddenAbove = along / Math.Sin(pitch);
         if (patch.TopOffset < hiddenAbove + 4)
         {
-            FailOrSkip($"{map}: the tallest thing ({SpriteName(original)}, {patch.TopOffset} rows above its origin) is too short for the tilt depth view (hidden above {hiddenAbove:F0})");
+            FailOrSkip(map, $"{map}: the tallest thing ({SpriteName(original)}, {patch.TopOffset} rows above its origin) is too short for the tilt depth view (hidden above {hiddenAbove:F0})");
             return;
         }
 
@@ -1625,7 +1625,7 @@ public partial class LevelCheck
         }
         things.Isolate(null);
         if (!tested)
-            FailOrSkip($"{map}: no thing and wall for the upright hiding view (a one-sided wall facing the game camera, taller than the thing, that hides its upright billboard but not its tilted one)");
+            FailOrSkip(map, $"{map}: no thing and wall for the upright hiding view (a one-sided wall facing the game camera, taller than the thing, that hides its upright billboard but not its tilted one)");
     }
 
     /// <summary>

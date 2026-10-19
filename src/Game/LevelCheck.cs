@@ -2185,16 +2185,21 @@ public partial class LevelCheck : Godot.Node
 
     /// <summary>
     /// P3: a view's setup the map can't give (no such wall or thing on it):
-    /// a failure on the IWADs, whose maps the views were written for, logged
-    /// as not checked on a PWAD's map, which may simply have none.
+    /// a failure on the IWADs' maps, which the views were written for, logged
+    /// as not checked on a PWAD's map, which may simply have none (P12a: decided
+    /// by the map's own lumps, so an IWAD map under a PWAD that replaces other
+    /// maps still fails).
     /// </summary>
-    private void FailOrSkip(string message)
+    private void FailOrSkip(string map, string message)
     {
-        if (_scene.Wad is { Files.Count: > 1 })
+        if (IsPwadMap(map))
             GD.Print($"Level check: {message}: not checked (a PWAD's map)");
         else
             Fail(message);
     }
+
+    /// <summary>P12a: whether <paramref name="map"/>'s lumps come from a PWAD (<see cref="WadArchive.IsPwadMap"/>).</summary>
+    private bool IsPwadMap(string map) => _scene.Wad?.IsPwadMap(map) == true;
 
     private void Fail(string message)
     {

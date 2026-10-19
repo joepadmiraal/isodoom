@@ -81,6 +81,18 @@ public sealed class WadArchive
     /// <summary>w_wad.c.</summary>
     public ReadOnlyMemory<byte> W_CacheLumpName(string name) => W_CacheLumpNum(W_GetNumForName(name));
 
+    /// <summary>
+    /// P12a: whether map <paramref name="mapName"/> as the game loads it (the
+    /// last header of that name, its data lumps after it in the same file) comes
+    /// from a file after the first, the IWAD: a PWAD's map rather than one a PWAD
+    /// merely loads alongside. False for a map the archive lacks.
+    /// </summary>
+    public bool IsPwadMap(string mapName)
+    {
+        int index = W_CheckNumForName(mapName);
+        return index >= 0 && _lumps[index].File != _files[0];
+    }
+
     /// <summary>The last lump called <paramref name="name"/> in any namespace, or null.</summary>
     public WadLump? Find(string name)
     {

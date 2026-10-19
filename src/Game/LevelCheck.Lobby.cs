@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using IsoDoom.Map;
 using IsoDoom.Net;
 using IsoDoom.Sim;
 
@@ -136,11 +138,20 @@ public partial class LevelCheck
                 Fail(Step("back on the lobby page after the refusal"));
             s.Net.CheckStart = check;
             // P3: Doom II's own MAP29 (v1.666), reachable from MAP01, has no co-op start for player 2, so the
-            // host's check rightly refuses a co-op game there: the check's Start then goes without it
+            // host's check rightly refuses a co-op game there: the check's Start then goes without it. P12a: only
+            // that case, a later map the exits reach whose THINGS really lack the start; any other refusal fails
             if (check?.Invoke(0b11) is string refusal)
             {
-                GD.Print($"Level check: lobby (T11.9): the host's check refuses this WAD's co-op game ({refusal}): the lobby's Start checked without it");
-                s.Net.CheckStart = null;
+                if (KnownCoopRefusal(s) is string maps)
+                {
+                    GD.Print($"Level check: lobby (T11.9): the host's check refuses this WAD's co-op game ({refusal}; {maps} without it in its things): the lobby's Start checked without it");
+                    s.Net.CheckStart = null;
+                }
+                else
+                {
+                    Fail(Step($"the host's check refuses a 2-player co-op game on {s.DefaultMap()}: {refusal}"));
+                    s.Net.CheckStart = null; // the rest checked without it
+                }
             }
 
             // the lobby's Start: the game begins on both machines, the lobby page closes
@@ -355,5 +366,37 @@ public partial class LevelCheck
             s.Overlay.Visible = overlay;
         }
         GD.Print($"Level check: lobby (T11.9): the multiplayer, host, lobby and (T11.9d) join pages drawn over the window dimmed (T11.9b), {pixels} pixels compared");
+    }
+
+    /// <summary>
+    /// P12a: the one refusal the lobby's Start may go without (P3): every map
+    /// <see cref="NetStarts"/> finds lacking a start for a player of a 2-player
+    /// co-op game from the check's map is another map its exits reach, and that
+    /// map's things (read here by <see cref="Level.Load"/>, not by
+    /// <see cref="NetStarts"/>) really have no start for it (Doom II v1.666's
+    /// MAP29, player 2). Returns those maps, or null when the refusal is not
+    /// that case (the check's own map lacking a start, or a start that is there).
+    /// </summary>
+    private static string? KnownCoopRefusal(LevelScene s)
+    {
+        if (s.Wad is not { } wad)
+            return null;
+        string first = s.DefaultMap();
+        int map = first.StartsWith("MAP", StringComparison.Ordinal) ? int.Parse(first[3..], System.Globalization.CultureInfo.InvariantCulture) : first[3] - '0';
+        int episode = first.StartsWith("MAP", StringComparison.Ordinal) ? 1 : first[1] - '0';
+        var lacking = new List<string>();
+        foreach (string name in NetStarts.ReachableMaps(wad, s.GameMode, episode, map))
+        {
+            IReadOnlyList<int> missing = NetStarts.MissingStarts(wad, s.GameMode, name, 0b11);
+            if (missing.Count == 0)
+                continue;
+            if (name == first)
+                return null;
+            Level level = Level.Load(wad, name);
+            if (missing.Any(player => level.Things.Any(t => t.Type == player)))
+                return null; // NetStarts misses a start the map has
+            lacking.Add(name);
+        }
+        return lacking.Count > 0 ? string.Join(", ", lacking) : null;
     }
 }
