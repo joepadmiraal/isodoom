@@ -81,6 +81,7 @@ public partial class LevelCheck
     {
         int ends = 0, shown = 0, facing = 0, badFacing = 0, nodeArtefacts = 0;
         string firstFacing = "", firstArtefact = "";
+        bool pwad = IsPwadMap(map);
         float Ceiling(int s) => m.Level.Sectors[s].CeilingHeight / 65536f;
         // The shader's span of a lid end: (bottom, top), top == bottom when it collapses.
         (float Bottom, float Top) Span(int sector)
@@ -115,11 +116,14 @@ public partial class LevelCheck
                         inside = half;
                 }
                 facing++;
-                // P3: where the map's BSP leaves themselves put another sector just inside the line, or
-                // the line's own sector just outside it (a node artefact, T2.2a, or a one-sided line
-                // within its sector), the floor drawn there follows the leaves: the map's data, not the
-                // end's facing (PWADs: Scythe MAP17 line 985, MAP22 line 109, MAP24 line 729; AV).
-                if (inside != sector || outside == sector)
+                // P3, P12b: on a PWAD's map only, where the map's BSP leaves themselves put another sector
+                // just inside the line, or the line's own sector just outside it (a node artefact, T2.2a, or a
+                // one-sided line within its sector), the floor drawn there follows the leaves: the map's data,
+                // not the end's facing (Scythe MAP17 line 985, MAP24 line 729; AV; Requiem). The drawn floor's
+                // sector is its leaf's (CursorGround.DrawnSectorAt), so the leaves alone cannot tell an
+                // artefact from an end built facing into its sector: a piece on its line's span running
+                // against its side (TurnedOnItsLine) is never let through.
+                if ((inside != sector || outside == sector) && pwad && !TurnedOnItsLine(s, pc))
                 {
                     int leafInside = m.Level.R_PointInSubsector((int)Math.Round((mx + nx) * 65536), (int)Math.Round((my + ny) * 65536)).Sector.Index;
                     int leafOutside = m.Level.R_PointInSubsector((int)Math.Round((mx - nx) * 65536), (int)Math.Round((my - ny) * 65536)).Sector.Index;
@@ -167,6 +171,35 @@ public partial class LevelCheck
         }
         _lidEnds += ends;
         _lidEndsShown += shown;
+    }
+
+    /// <summary>
+    /// P12b: whether <paramref name="pc"/> lies on <paramref name="s"/>'s
+    /// line within its span (within a unit of the line, and of its ends
+    /// along it) but runs against the side, its sector on its left: the end
+    /// of a wall built facing into its sector. The section runs from its first
+    /// vertex to its second (the line's v1 to v2 on the front, v2 to v1 on the
+    /// back), the side vanilla draws the wall on, so the line's own data puts
+    /// its sector on its right whatever the BSP leaves say. A piece off its
+    /// line's span (a connector between two segs' floor edges, drawn both
+    /// ways, or a floor edge 2 units past a tiny line's end: Requiem MAP03 lines
+    /// 739–744, 2 units long) is the map data's, not the end's.
+    /// </summary>
+    private static bool TurnedOnItsLine(WallSection s, WallPiece pc)
+    {
+        const double Tolerance = 65536.0; // a unit: rounded split vertices move a corner by up to about 0.7
+        double sx = s.V2.X - (double)s.V1.X, sy = s.V2.Y - (double)s.V1.Y;
+        double len = Math.Sqrt(sx * sx + sy * sy);
+        if (len == 0)
+            return false;
+        bool OnSpan(PolygonVertex v)
+        {
+            double vx = v.X - (double)s.V1.X, vy = v.Y - (double)s.V1.Y;
+            double along = (vx * sx + vy * sy) / len, off = Math.Abs(vx * sy - vy * sx) / len;
+            return off <= Tolerance && along >= -Tolerance && along <= len + Tolerance;
+        }
+        double px = pc.B.X - (double)pc.A.X, py = pc.B.Y - (double)pc.A.Y;
+        return OnSpan(pc.A) && OnSpan(pc.B) && px * sx + py * sy < 0;
     }
 
     /// <summary>The drawn lid views (real renderer only); the lids are off for the other render checks.</summary>
