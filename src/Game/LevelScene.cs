@@ -1803,7 +1803,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (!paused)
             WorldTic(netcmds);
         // T6.11: g_game.c G_Ticker's order: P_Ticker, ST_Ticker, HU_Ticker (TakeEvents); the HUD is drawn by D_Display (T7.1a)
-        StartHud();
+        StartHud(reborn: true); // (a new mobj here is a netgame's reborn: a level's start is LoadLevel's, P6)
         StatusBar?.ST_Ticker();
         AutomapTicker(); // T7.9: AM_Ticker
         TakeEvents();
@@ -1868,9 +1868,10 @@ public partial class LevelScene : Node3D, IGameHost
     /// <summary>
     /// T6.11: st_stuff.c <c>ST_Start</c> and hu_stuff.c <c>HU_Start</c> when
     /// the console player has a new mobj (vanilla's <c>P_SpawnPlayer</c>
-    /// calls them: each level start, and a reborn player).
+    /// calls them: each level start, and a reborn player). P6: <paramref name="reborn"/>
+    /// after a tic, for a netgame's reborn console player (<see cref="StStuff.ST_Start"/>'s).
     /// </summary>
-    private void StartHud()
+    private void StartHud(bool reborn = false)
     {
         mobj_t? mo = PlayerMobj;
         if (mo == _hudMobj)
@@ -1880,7 +1881,7 @@ public partial class LevelScene : Node3D, IGameHost
             return;
         HudStarts++;
         StatusBar?.ConsolePlayer = world.consoleplayer; // (T11.10: before ST_Start, which draws with it)
-        StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch);
+        StatusBar?.ST_Start(world.players[world.consoleplayer], world.settings.netgame, world.settings.deathmatch, reborn);
         MessageLine?.HU_Start(Flow.gamemission, world.gameepisode, world.gamemap, Flow.gamevariant, Flow.gameversion); // T7.9: the map's title too
         _menuMessage = null; // G_PlayerReborn clears players[].message
     }

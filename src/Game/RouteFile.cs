@@ -48,10 +48,22 @@ public sealed class RouteFile
         return copy;
     }
 
+    /// <summary>
+    /// P6: this route (or demo) loaded with the PWAD set <paramref name="pwad"/>
+    /// over its IWAD (<see cref="Pwad"/>): a demo lump names no set, so a
+    /// PWAD's demo read by <see cref="FromDemo"/> takes the set it came from.
+    /// </summary>
+    public RouteFile WithPwad(string pwad)
+    {
+        var copy = (RouteFile)MemberwiseClone();
+        copy.Pwad = pwad;
+        return copy;
+    }
+
     /// <summary><c>synthetic</c>, <c>doom1</c>, <c>doom</c> (M9), <c>doom2</c>, <c>tnt</c>, <c>plutonia</c> or <c>testmap</c> (not checked here).</summary>
     public string? Iwad { get; private init; }
     /// <summary>P2: the <c>pwad</c> header, a PWAD set's folder (<c>av</c>, <c>dtwid</c>, …; not checked here), or null.</summary>
-    public string? Pwad { get; private init; }
+    public string? Pwad { get; private set; }
     /// <summary>The <c>map</c> header as written, or null.</summary>
     public string? Map { get; private init; }
     /// <summary>The <c>skill</c> header, 1-5 (default 3).</summary>

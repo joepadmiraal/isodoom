@@ -213,7 +213,16 @@ public sealed class StStuff
     /// player, at each level start (and, T6.12, reborn). The palette is the
     /// caller's (<see cref="ST_doPaletteStuff"/>).
     /// </summary>
-    public void ST_Start(player_t player, bool netgame = false, int deathmatch = 0)
+    /// <remarks>
+    /// P6: with <paramref name="reborn"/>, for a netgame's reborn console
+    /// player seen after the tic that spawned it (<c>World.G_Ticker</c> runs
+    /// <c>G_DoReborn</c> and the players' thinking in one call). Vanilla's
+    /// <c>P_SpawnPlayer</c> starts the status bar before the player thinks in
+    /// that tic, so its <c>oldweaponsowned</c> are <c>G_PlayerReborn</c>'s
+    /// fist and pistol, and a weapon picked up on the spawn spot in that tic
+    /// grins at the next <c>ST_Ticker</c> (AV's and HR's deathmatch demos).
+    /// </remarks>
+    public void ST_Start(player_t player, bool netgame = false, int deathmatch = 0, bool reborn = false)
     {
         plyr = player;
         st_netgame = netgame;
@@ -223,7 +232,7 @@ public sealed class StStuff
         st_faceindex = 0;
         st_oldhealth = -1;
         for (int i = 0; i < oldweaponsowned.Length; i++)
-            oldweaponsowned[i] = player.weaponowned[i];
+            oldweaponsowned[i] = reborn ? i is (int)weapontype_t.wp_fist or (int)weapontype_t.wp_pistol : player.weaponowned[i];
         for (int i = 0; i < 3; i++)
             keyboxes[i] = -1;
         st_firsttime = true;

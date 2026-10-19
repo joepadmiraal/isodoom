@@ -241,6 +241,35 @@ public sealed class VanillaRoute
     }
 
     /// <summary>
+    /// P6: the demo lump <paramref name="lump"/> of the PWAD set <paramref name="set"/>
+    /// (the last lump of that name across its IWAD and its files, as vanilla's
+    /// <c>-playdemo</c> finds it), played over the set's IWAD with the set
+    /// loaded as <c>-file</c>, as the IWAD's default executable (<c>1.9</c> for
+    /// Doom II's sets, whose demos are all v1.9's; <c>ultimate</c> for The
+    /// Ultimate Doom's); its dump is <c>SET-demoN.vanilla</c>
+    /// (<c>tools/VanillaRef/demos.sh --pwad SET</c>). Skips without the set or its IWAD.
+    /// </summary>
+    public static VanillaRoute Demo(string lump, PwadSet set)
+    {
+        (string iwadPath, string[] pwads) = set.Require();
+        var wad = WadArchive.Open(iwadPath, pwads);
+        string iwad = set.Iwad == PwadIwad.Doom2 ? "doom2" : "doom";
+        var route = RouteFile.FromDemo(wad.W_CacheLumpName(lump).Span, lump, commercial: iwad == "doom2").WithPwad(set.Folder);
+        return new VanillaRoute(set.Folder + "-" + lump.ToLowerInvariant(), iwad, route.Map!, (skill_t)(route.Skill - 1), null, 0, route.Cmds, route)
+        {
+            IsDemo = true,
+        };
+    }
+
+    /// <summary>
+    /// P6: whether the route is a demo lump's (<see cref="Demo(string, PwadSet)"/>),
+    /// which may go on past its level's exit into the intermission: vanilla's
+    /// dump holds only the level's tics (dump.c writes them from <c>P_Ticker</c>),
+    /// so <see cref="Check"/> compares those and ends at the exit.
+    /// </summary>
+    public bool IsDemo { get; private init; }
+
+    /// <summary>
     /// T11.2: <paramref name="route"/> played from <paramref name="demo"/>, its
     /// commands read back from a demo lump (<see cref="RouteFile.FromDemo"/>),
     /// against the route's own dump.
@@ -704,8 +733,9 @@ public sealed class VanillaRoute
             world.G_Ticker(NetCmds[tic]); // T11.2: every player's
             if (world.players[world.consoleplayer].mo is { } mo && mo != consoleMo)
             {
-                // T11.4: a netgame's reborn console player (P_SpawnPlayer's ST_Start and HU_Start, as the level scene's StartHud)
-                st.ST_Start(world.players[world.consoleplayer], world.netgame, world.deathmatch);
+                // T11.4: a netgame's reborn console player (P_SpawnPlayer's ST_Start and HU_Start, as the level scene's StartHud;
+                // P6: started before the tic in vanilla, so with the reborn's weapons)
+                st.ST_Start(world.players[world.consoleplayer], world.netgame, world.deathmatch, reborn: true);
                 hu.HU_Start(GameMission, world.gameepisode, world.gamemap, GameVariant.vanilla, world.gameversion);
             }
             st.ST_Ticker();
@@ -728,10 +758,14 @@ public sealed class VanillaRoute
     {
         string[] expected = Reference();
         WadArchive? graphics = HudGraphics();
-        Assert.True(expected.Length == Cmds.Count,
+        // P6: a demo recorded on past its level's exit into the intermission: the dump ends at the exit (its last line's).
+        bool intermission = IsDemo && expected.Length > 0 && expected.Length < Cmds.Count && expected[^1].Split(' ')[ExitColumn] != "0";
+        Assert.True(expected.Length == Cmds.Count || intermission,
             $"{Name}: the dump has {expected.Length} tics, the route {Cmds.Count}: rerun tools/VanillaRef/routes.sh.");
         foreach ((int tic, World world, StStuff st, HuStuff hu, string actual0) in Play(graphics))
         {
+            if (tic >= expected.Length)
+                break; // P6: the demo's intermission (not dumped)
             string actual = actual0;
             if (graphics is not null)
                 WriteHud(Name, graphics, world, st, hu);
@@ -764,7 +798,7 @@ public sealed class VanillaRoute
         }
         // T5.9: the exit column is checked on every tic above; the header says the last tic leaves the level.
         string last = expected.Length > 0 ? expected[^1].Split(' ')[ExitColumn] : "0";
-        Assert.True(last == Exit.ToString(CultureInfo.InvariantCulture),
+        Assert.True(last == Exit.ToString(CultureInfo.InvariantCulture) || intermission,
             $"{Name}: the last tic's exit is {last} in vanilla, the route's header says {Exit} (0 none, 1 normal, 2 secret)");
     }
 }

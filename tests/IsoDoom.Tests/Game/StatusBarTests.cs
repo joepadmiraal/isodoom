@@ -333,6 +333,28 @@ public class StatusBarTests
         Assert.False(st.st_fragson); // co-op: the arms instead
     }
 
+    /// <summary>
+    /// P6: a netgame's reborn console player started after the tic that
+    /// spawned it and picked up a weapon on its spawn spot grins, as vanilla's,
+    /// whose <c>P_SpawnPlayer</c> started the bar before that pickup (AV's and HR's deathmatch demos).
+    /// </summary>
+    [Fact]
+    public void ARebornPlayersPickupOnItsSpawnSpotGrins()
+    {
+        World world = NewWorld();
+        player_t p = world.players[0];
+        p.weaponowned[(int)weapontype_t.wp_missile] = true; // picked up in the reborn's tic
+        p.bonuscount = 6;
+        var st = new StStuff(new StStuff.Graphics(), new DoomRandom());
+        st.ST_Start(p, netgame: true, deathmatch: 1);
+        st.ST_Ticker();
+        Assert.NotEqual(StStuff.ST_EVILGRINOFFSET, st.st_faceindex % StStuff.ST_FACESTRIDE); // started after it: no grin
+        st.ST_Start(p, netgame: true, deathmatch: 1, reborn: true);
+        Assert.Equal([true, true, false, false, false, false, false, false, false], st.oldweaponsowned);
+        st.ST_Ticker();
+        Assert.Equal(StStuff.ST_EVILGRINOFFSET, st.st_faceindex % StStuff.ST_FACESTRIDE);
+    }
+
     private static bool Covers(HudScreen screen, IndexedImage patch, int x, int y)
     {
         for (int py = 0; py < patch.Height; py++)
