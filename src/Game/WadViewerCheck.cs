@@ -343,44 +343,82 @@ public partial class WadViewerCheck : Node
         if (!gpu)
             return 0;
 
-        // Drawn pixels against the CPU conversion.
-        await NextFrame();
-        await NextFrame();
-        Image frame = _viewer.GetViewport().GetTexture().GetImage();
-        using var keepFrame = GodotRefs.Keep(frame); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
-        Rect2 rect = _viewer.MainView.ImageRect.GetGlobalRect();
-        int ox = (int)rect.Position.X, oy = (int)rect.Position.Y;
-        if (ox < 0 || oy < 0 || ox + img.Width > frame.GetWidth() || oy + img.Height > frame.GetHeight()
-            || (int)rect.Size.X != img.Width || (int)rect.Size.Y != img.Height)
-        {
-            Fail($"{what}: drawn at {rect}, not fully inside the {frame.GetWidth()}x{frame.GetHeight()} viewport at zoom 1");
-            return 0;
-        }
-
+        // Drawn pixels against the CPU conversion. P4: a graphic wider (or taller) than the
+        // scroll area (the 2024 re-release's 576-wide STBAR in the lump list's narrower pane)
+        // is compared a scroll position at a time, each pixel where the area shows it.
         GraphicsCatalog catalog = _viewer.Catalog!;
         byte[] rgba = img.ToRgba(catalog.Playpal.GetPalette(_viewer.CurrentPalette), catalog.Colormap.GetMap(_viewer.CurrentColormap));
         int bgR = (int)Math.Round(background.R * 255), bgG = (int)Math.Round(background.G * 255), bgB = (int)Math.Round(background.B * 255);
-        int bad = 0;
+        ScrollContainer scroll = _viewer.MainScroll;
+        bool[] seen = new bool[img.Width * img.Height];
+        int bad = 0, positions = 0;
         string firstBad = "";
-        for (int y = 0; y < img.Height; y++)
+        for (int sy = 0; ; sy++)
         {
-            for (int x = 0; x < img.Width; x++)
+            int clipH = 0;
+            for (int sx = 0; ; sx++)
             {
-                int sx = view.Flip ? img.Width - 1 - x : x;
-                int s = (y * img.Width + sx) * 4;
-                (int r, int g, int b) = rgba[s + 3] != 0 ? (rgba[s], rgba[s + 1], rgba[s + 2]) : (bgR, bgG, bgB);
-                Color c = frame.GetPixel(ox + x, oy + y);
-                if (c.R8 != r || c.G8 != g || c.B8 != b)
+                await NextFrame();
+                await NextFrame();
+                Image frame = _viewer.GetViewport().GetTexture().GetImage();
+                using var keepFrame = GodotRefs.Keep(frame); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
+                Rect2 rect = _viewer.MainView.ImageRect.GetGlobalRect();
+                if ((int)rect.Size.X != img.Width || (int)rect.Size.Y != img.Height)
                 {
-                    if (bad++ == 0)
-                        firstBad = $"({x},{y}) drew {c.R8},{c.G8},{c.B8}, expected {r},{g},{b}";
+                    Fail($"{what}: drawn at {rect}, not its size at zoom 1");
+                    return 0;
                 }
+                // what the scroll area shows of it: its rectangle less its scroll bars, inside the viewport
+                Rect2 area = scroll.GetGlobalRect();
+                if (scroll.GetHScrollBar() is { Visible: true } h)
+                    area.Size -= new Vector2(0, h.Size.Y);
+                if (scroll.GetVScrollBar() is { Visible: true } v)
+                    area.Size -= new Vector2(v.Size.X, 0);
+                area = area.Intersection(new Rect2(0, 0, frame.GetWidth(), frame.GetHeight()));
+                int ox = (int)rect.Position.X, oy = (int)rect.Position.Y;
+                int x0 = Math.Max(0, (int)area.Position.X - ox), x1 = Math.Min(img.Width, (int)area.End.X - ox);
+                int y0 = Math.Max(0, (int)area.Position.Y - oy), y1 = Math.Min(img.Height, (int)area.End.Y - oy);
+                positions++;
+                for (int y = y0; y < y1; y++)
+                {
+                    for (int x = x0; x < x1; x++)
+                    {
+                        seen[y * img.Width + x] = true;
+                        int sxi = view.Flip ? img.Width - 1 - x : x;
+                        int s = (y * img.Width + sxi) * 4;
+                        (int r, int g, int b) = rgba[s + 3] != 0 ? (rgba[s], rgba[s + 1], rgba[s + 2]) : (bgR, bgG, bgB);
+                        Color c = frame.GetPixel(ox + x, oy + y);
+                        if (c.R8 != r || c.G8 != g || c.B8 != b)
+                        {
+                            if (bad++ == 0)
+                                firstBad = $"({x},{y}) drew {c.R8},{c.G8},{c.B8}, expected {r},{g},{b}";
+                        }
+                    }
+                }
+                int clipW = (int)area.Size.X;
+                clipH = (int)area.Size.Y;
+                if (x1 >= img.Width || clipW <= 0 || scroll.ScrollHorizontal >= MaxScroll(scroll.GetHScrollBar()))
+                    break;
+                scroll.ScrollHorizontal += clipW;
             }
+            scroll.ScrollHorizontal = 0;
+            bool lastRow = Array.IndexOf(seen, false) < 0 || clipH <= 0 || scroll.ScrollVertical >= MaxScroll(scroll.GetVScrollBar());
+            if (lastRow)
+                break;
+            scroll.ScrollVertical += clipH;
         }
+        scroll.ScrollHorizontal = 0;
+        scroll.ScrollVertical = 0;
+        int unseen = Array.FindAll(seen, v => !v).Length;
+        if (unseen > 0)
+            Fail($"{what}: {unseen} pixel(s) never shown by the scroll area ({positions} scroll positions)");
         if (bad > 0)
             Fail($"{what}: {bad} pixel(s) differ, first at {firstBad}");
         return img.Width * img.Height;
     }
+
+    /// <summary>A scroll bar's furthest scroll position (its range less its page).</summary>
+    private static int MaxScroll(ScrollBar bar) => (int)Math.Max(0, bar.MaxValue - bar.Page);
 
     private async Task Screenshots(string dir)
     {

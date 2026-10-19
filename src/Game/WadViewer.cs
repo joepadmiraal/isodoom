@@ -107,6 +107,9 @@ public partial class WadViewer : Control
     /// <summary>The main view (for checks and captures).</summary>
     public IndexedGraphicRect MainView => _main;
 
+    /// <summary>P4: the scroll area around the main view (for checks of a graphic wider than it).</summary>
+    public ScrollContainer MainScroll => _scroll;
+
     /// <summary>Every lump of the loaded archive, classified (the lump list's rows when unfiltered).</summary>
     public IReadOnlyList<LumpEntry>? Lumps => _lumps;
 
@@ -397,8 +400,11 @@ public partial class WadViewer : Control
         var right = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         split.AddChild(right);
 
-        var controls = new HBoxContainer();
-        controls.AddThemeConstantOverride(StringNames.Get("separation"), 12);
+        // P4: a flow, wrapping when the lump list's wider pane leaves less room: in one row its
+        // minimum width pushed the view's right edge past a 1280-wide window, cutting wide graphics
+        var controls = new HFlowContainer();
+        controls.AddThemeConstantOverride(StringNames.Get("h_separation"), 12);
+        controls.AddThemeConstantOverride(StringNames.Get("v_separation"), 4);
         right.AddChild(controls);
         controls.AddChild(new Label { Text = "Light" });
         _light = new HSlider { MinValue = 0, MaxValue = 255, Step = 1, Value = 255, CustomMinimumSize = new Vector2(200, 0), SizeFlagsVertical = SizeFlags.ShrinkCenter };

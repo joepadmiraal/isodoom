@@ -243,7 +243,8 @@ public class OplMusicTests
     public static TheoryData<string, string> WadSongs()
     {
         var data = new TheoryData<string, string>();
-        foreach (string game in new[] { "doom1", "doom2" })
+        // P4: and each PWAD set's own songs (music.sh --pwad SET), MIDI files included
+        foreach (string game in new[] { "doom1", "doom2" }.Concat(PwadSets.All.Select(s => s.Folder)))
         {
             string dir = Path.Combine(MusicRefDir, game);
             if (Directory.Exists(dir))
@@ -257,12 +258,21 @@ public class OplMusicTests
         return data;
     }
 
-    private static WadArchive? GameWad(string game) =>
-        (game == "doom1" ? TestWads.Doom1Path : TestWads.Doom2Path) is { } path ? WadArchive.Open(path) : null;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<WadArchive>> _pwadWads = new();
+
+    /// <summary>The game's WAD: DOOM1.WAD, doom2.wad, or (P4) a PWAD set over its IWAD, as <c>-file</c> merges them (skips without the set).</summary>
+    private static WadArchive? GameWad(string game)
+    {
+        if (game is "doom1" or "doom2")
+            return (game == "doom1" ? TestWads.Doom1Path : TestWads.Doom2Path) is { } path ? WadArchive.Open(path) : null;
+        (string iwad, string[] pwads) = PwadSets.Get(game).Require();
+        return _pwadWads.GetOrAdd(game, _ => new Lazy<WadArchive>(() => WadArchive.Open(iwad, pwads))).Value;
+    }
 
     /// <summary>
-    /// Every song of DOOM1.WAD and doom2.wad against Chocolate Doom
-    /// (<c>tools/OplRef/music.sh WAD</c>): the whole song looped once more
+    /// Every song of DOOM1.WAD and doom2.wad, and (P4) every song a PWAD set
+    /// adds (MUS through mus2mid.c, MIDI files as they are), against Chocolate
+    /// Doom (<c>tools/OplRef/music.sh WAD</c>, <c>music.sh --pwad SET</c>): the whole song looped once more
     /// (the chip not clocked: the writes only, at the same samples), and for
     /// a few songs a minute with the samples (<c>NAME.48k</c>). Skipped
     /// without the WAD or the logs.
