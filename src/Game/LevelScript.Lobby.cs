@@ -32,7 +32,7 @@ public partial class LevelScript
             $"{p.Slot + 1} {p.Name} {MMenu.PlayerColours[p.Slot].ToLowerInvariant()}{(p.Local ? " (local)" : "")} {(p.RttUs < 0 ? "-" : (p.RttUs / 1000.0).ToString("F1", CultureInfo.InvariantCulture) + " ms")}{(p.Ready ? "" : " not ready")}"));
         GD.Print($"Level script: lobby: {(lobby.Host ? "host" : "join")} {lobby.Address}:{lobby.Port}{(lobby.FromMenus ? " (menus)" : "")}, {lobby.State}, "
             + $"{lobby.Players.Count} of {lobby.MaxPlayers} [{list}], {lobby.MapName ?? "-"} {lobby.Wad}{(lobby.Starting ? ", starting" : "")}{(lobby.InGame ? ", in game" : "")}"
-            + $"{(lobby.StartRefusal is { } r ? $", cannot start: {r}" : "")}{(lobby.Failure is { } f ? $", ended: {f}" : "")}");
+            + $"{(lobby.StartRefusal is { } r ? $", cannot start: {r}" : "")}{(lobby.StartWarning is { } w ? $", warning: {w}" : "")}{(lobby.Failure is { } f ? $", ended: {f}" : "")}");
         bool ok = lobby.Failure is null && lobby.Players.Count >= players;
         if (!ok)
             GD.PrintErr($"Level script: lobby: {(lobby.Failure is null ? $"fewer than {players} player(s)" : "the session ended")}");

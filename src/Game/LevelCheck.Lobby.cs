@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
@@ -137,22 +136,18 @@ public partial class LevelCheck
             if (menu.StateName != "lobby" || s.Net.Server.Phase != NetServerPhase.Lobby)
                 Fail(Step("back on the lobby page after the refusal"));
             s.Net.CheckStart = check;
-            // P3: Doom II's own MAP29 (v1.666), reachable from MAP01, has no co-op start for player 2, so the
-            // host's check rightly refuses a co-op game there: the check's Start then goes without it. P12a: only
-            // that case, a later map the exits reach whose THINGS really lack the start; any other refusal fails
+            // T11.1b: the host's check refuses only a first map lacking a start (the check's own has them all); a later
+            // map lacking one, as Doom II v1.666's MAP29 (player 2), is the lobby's warning, and the game starts
             if (check?.Invoke(0b11) is string refusal)
             {
-                if (KnownCoopRefusal(s) is string maps)
-                {
-                    GD.Print($"Level check: lobby (T11.9): the host's check refuses this WAD's co-op game ({refusal}; {maps} without it in its things): the lobby's Start checked without it");
-                    s.Net.CheckStart = null;
-                }
-                else
-                {
-                    Fail(Step($"the host's check refuses a 2-player co-op game on {s.DefaultMap()}: {refusal}"));
-                    s.Net.CheckStart = null; // the rest checked without it
-                }
+                Fail(Step($"the host's check refuses a 2-player co-op game on {s.DefaultMap()}: {refusal} (T11.1b)"));
+                s.Net.CheckStart = null; // the rest checked without it
             }
+            (string? warning, string? lackingMap) = CoopWarning(s);
+            if (host.Lobby?.StartWarning != warning)
+                Fail(Step($"the lobby's warning \"{host.Lobby?.StartWarning}\", expected \"{warning}\" (T11.1b)"));
+            else if (warning is not null)
+                GD.Print($"Level check: lobby (T11.1b): the host's lobby warns: {warning}");
 
             // the lobby's Start: the game begins on both machines, the lobby page closes
             s.MenuEvent(KeyEvent(Key.Enter));
@@ -162,6 +157,8 @@ public partial class LevelCheck
                 Fail(Step($"the game begun: {s.World?.consoleplayer}, {s.Mesh?.Level.Name}"));
             else if (s.LocalPlayerKey() || w.consoleplayer != 0 || s.PlayerMobj != w.players[0].mo)
                 Fail(Step($"F12 in the netgame (refused: no spy view, the user's decision): local player {w.consoleplayer + 1}"));
+            else if (lackingMap is not null)
+                await CheckCoopMapWithoutStart(join, w, lackingMap, Step);
         }
         finally
         {
@@ -369,34 +366,68 @@ public partial class LevelCheck
     }
 
     /// <summary>
-    /// P12a: the one refusal the lobby's Start may go without (P3): every map
-    /// <see cref="NetStarts"/> finds lacking a start for a player of a 2-player
-    /// co-op game from the check's map is another map its exits reach, and that
-    /// map's things (read here by <see cref="Level.Load"/>, not by
-    /// <see cref="NetStarts"/>) really have no start for it (Doom II v1.666's
-    /// MAP29, player 2). Returns those maps, or null when the refusal is not
-    /// that case (the check's own map lacking a start, or a start that is there).
+    /// T11.1b: the lobby's warning for a 2-player co-op game from the check's
+    /// map (<see cref="NetStarts.Warning"/>) and the first later map it names,
+    /// whose things (read here by <see cref="Level.Load"/>, not by
+    /// <see cref="NetStarts"/>) really lack player 2's start (Doom II v1.666's
+    /// MAP29); (null, null) without one.
     /// </summary>
-    private static string? KnownCoopRefusal(LevelScene s)
+    private (string? Warning, string? Map) CoopWarning(LevelScene s)
     {
         if (s.Wad is not { } wad)
-            return null;
+            return (null, null);
         string first = s.DefaultMap();
         int map = first.StartsWith("MAP", StringComparison.Ordinal) ? int.Parse(first[3..], System.Globalization.CultureInfo.InvariantCulture) : first[3] - '0';
         int episode = first.StartsWith("MAP", StringComparison.Ordinal) ? 1 : first[1] - '0';
-        var lacking = new List<string>();
-        foreach (string name in NetStarts.ReachableMaps(wad, s.GameMode, episode, map))
+        string? warning = NetStarts.Warning(wad, s.GameMode, episode, map, 0b11);
+        string? lacking = NetStarts.ReachableMaps(wad, s.GameMode, episode, map).FirstOrDefault(name => name != first && NetStarts.MissingStarts(wad, s.GameMode, name, 0b11).Count > 0);
+        if (lacking is not null && Level.Load(wad, lacking).Things.Any(t => t.Type == 2))
         {
-            IReadOnlyList<int> missing = NetStarts.MissingStarts(wad, s.GameMode, name, 0b11);
-            if (missing.Count == 0)
-                continue;
-            if (name == first)
-                return null;
-            Level level = Level.Load(wad, name);
-            if (missing.Any(player => level.Things.Any(t => t.Type == player)))
-                return null; // NetStarts misses a start the map has
-            lacking.Add(name);
+            Fail($"lobby (T11.1b): NetStarts misses player 2's start on {lacking}");
+            lacking = null;
         }
-        return lacking.Count > 0 ? string.Join(", ", lacking) : null;
+        return (warning, lacking);
+    }
+
+    /// <summary>
+    /// T11.1b: the netgame begun (the check's machine joined as player 2) goes
+    /// on to <paramref name="map"/>, which lacks player 2's start: the
+    /// level's world is not built and the netgame ends there with a menu
+    /// message (<c>the netgame ended: MAP29: no co-op start for player 2</c>),
+    /// then closes at the title loop once the other machine left. The host's
+    /// world is sent there by its next tic's <c>G_DoWorldDone</c>
+    /// (<c>wminfo.next</c> and the game action set, as an exit and the
+    /// intermission leave them); the check's machine sends empty commands.
+    /// </summary>
+    private async Task CheckCoopMapWithoutStart(NetSession join, World w, string map, Func<string, string> step)
+    {
+        LevelScene s = _scene;
+        MMenu menu = s.Flow.Menu;
+        string expected = $"{map}: no co-op start for player 2";
+        w.wminfo.next = (map.StartsWith("MAP", StringComparison.Ordinal) ? int.Parse(map[3..], System.Globalization.CultureInfo.InvariantCulture) : map[3] - '0') - 1;
+        w.gameaction = gameaction_t.ga_worlddone;
+        bool ended = await NetFrames(() =>
+        {
+            while (join.Client.State == NetClientState.InGame && join.Client.CommandsDue > 0)
+                join.Client.SendCommand(new ticcmd_t());
+            join.Client.Flush();
+            s.NetTicsForCheck();
+            return menu.StateName == "message";
+        }, join);
+        if (!ended || !menu.messageString.Replace('\n', ' ').Contains("the netgame ended: " + expected, StringComparison.Ordinal) || s.World is not null)
+        {
+            Fail(step($"the netgame at {map}, without player 2's start: \"{menu.messageString}\", world {s.World?.level.Name} (T11.1b)"));
+            return;
+        }
+        join.Client.Quit(); // the other machine goes: the host closes the netgame
+        if (!await NetFrames(() =>
+        {
+            s.NetTicsForCheck(); // the host closes once the other machine left
+            return s.NetGame is null;
+        }, join, 10) || s.NetEnded != expected || s.Flow.gamestate != gamestate_t.GS_DEMOSCREEN)
+            Fail(step($"the netgame closed after {map}: ended \"{s.NetEnded}\", {s.Flow.gamestate} (T11.1b)"));
+        else
+            GD.Print($"Level check: lobby (T11.1b): the netgame went on to {map} without player 2's start and ended there: \"the netgame ended: {expected}\"");
+        s.MenuEvent(KeyEvent(Key.Space));
     }
 }

@@ -61,10 +61,11 @@ public interface INetMenuHost
 /// <param name="InGame">The game began.</param>
 /// <param name="HostAddresses">T11.9d: the host's: where the others reach it (<see cref="NetSession.HostAddresses"/>), or null.</param>
 /// <param name="LanError">T11.9d: the host's: why it is not visible on the LAN (its discovery port taken), or null.</param>
+/// <param name="StartWarning">T11.1b: the host's: a later map lacking a player's start, where the game will end (<see cref="NetSession.StartWarning"/>), or null.</param>
 public sealed record NetLobbyView(bool Host, bool FromMenus, string Address, int Port, NetClientState State, int MaxPlayers,
     IReadOnlyList<NetLobbyPlayer> Players, NetGameSettings? Settings, string? MapName, string Wad,
     string? Failure, NetRefusal? Refusal, string? StartRefusal, int StartRefusals, bool Starting, bool InGame,
-    IReadOnlyList<string>? HostAddresses = null, string? LanError = null);
+    IReadOnlyList<string>? HostAddresses = null, string? LanError = null, string? StartWarning = null);
 
 // T11.9: the multiplayer pages (not vanilla's: its netgames came from the
 // command line, or the setup program): Multiplayer (from the main menu) →
@@ -708,10 +709,14 @@ public sealed partial class MMenu
             : lobby.Starting ? "STARTING..."
             : lobby.Players.Count < NetSession.MinPlayers ? "WAITING FOR PLAYERS TO JOIN"
             : "START WHEN EVERYONE IS IN";
-        M_WriteText(x, LobbyItemsY - 14, status);
-        if (_lobbyNote is { } note)
+        // T11.1b: the host's warning (a later map lacking a player's start: the game will end there) in place of the
+        // status, wrapped up from its line over the note's (the page has no other room under four slots)
+        string[] lines = lobby.Host && !lobby.Starting && lobby.StartWarning is { } warning ? Wrap(warning.ToUpperInvariant()).Split('\n') : [status];
+        for (int i = 0; i < lines.Length; i++)
+            M_WriteText(x, LobbyItemsY - 14 - 12 * (lines.Length - 1 - i), lines[i]);
+        if (lines.Length == 1 && _lobbyNote is { } note)
             M_WriteText(x, LobbyItemsY - 26, note);
-        else if (lobby.Host && lobby.LanError is not null)
+        else if (lines.Length == 1 && lobby.Host && lobby.LanError is not null)
             M_WriteText(x, LobbyItemsY - 26, "NOT VISIBLE ON THE LAN"); // T11.9d: its discovery port taken
         const string Hint = "ESCAPE: LEAVE THE LOBBY";
         M_WriteText(HudScreen.SCREENWIDTH / 2 - M_StringWidth(Hint) / 2, TEXTHINTY, Hint);

@@ -154,6 +154,15 @@ that many players are in):
 
 Saving is off in a netgame, and the pause pauses everyone.
 
+A few maps lack a start for some players (Doom II 1.666's MAP29 has
+player 1's only; a deathmatch map needs 4 deathmatch starts). The host
+can't start a game on such a map ("the game can't start: no co-op start
+for player 2 on MAP29"). When a later map of the game lacks one, the lobby
+warns of it ("MAP29 LACKS PLAYER 2'S START: THE GAME WILL END THERE") but
+the game starts; it plays up to that map and ends there for everyone ("the
+netgame ended: MAP29: no co-op start for player 2"), as the original game
+could not go on there either.
+
 For the smoothest game, turn wifi power saving off on every computer
 (Windows: the wifi adapter's Power Saving Mode in Device Manager; Linux:
 "iw dev wlan0 set power_save off"), or plug one or all of them into the

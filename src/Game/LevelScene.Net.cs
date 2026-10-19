@@ -158,8 +158,10 @@ public partial class LevelScene
         AddNetBanner(); // T11.11
         if (Net.Server is not null && Wad is { } wad)
         {
-            // T11.1a: the host refuses a game whose maps lack a start for a player in it (SPEC §12 T11.8)
+            // T11.1a: the host refuses a game whose first map lacks a start for a player in it (SPEC §12 T11.8);
+            // T11.1b: and warns of a later map lacking one, where the game will end (NetStarts.LevelRefusal)
             Net.CheckStart = mask => NetStarts.Refusal(wad, GameMode, settings.Episode, settings.Map, mask, settings.Spawn.deathmatch != 0);
+            Net.CheckWarning = mask => NetStarts.Warning(wad, GameMode, settings.Episode, settings.Map, mask, settings.Spawn.deathmatch != 0);
         }
         return Net;
     }
@@ -630,6 +632,8 @@ public partial class LevelScene
             s.Append(CultureInfo.InvariantCulture, $", DESYNC at window {desync.Window} (tics {desync.FirstTic}-{desync.LastTic})");
         if (net.StartRefusal is { } refusal)
             s.Append(CultureInfo.InvariantCulture, $"; cannot start: {refusal}");
+        else if (net.StartWarning is { } warning)
+            s.Append(CultureInfo.InvariantCulture, $"; warning: {warning}");
         if (NetExchange is { } x)
             s.Append(CultureInfo.InvariantCulture, $"; exchange {x.TicsTaken}/{x.Tics} tics, hash {x.Hash:x16}");
         if (net.Failure is { } failure)

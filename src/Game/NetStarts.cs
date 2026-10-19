@@ -10,13 +10,17 @@ namespace IsoDoom.Game;
 
 /// <summary>
 /// T11.1a, checked where the host starts a co-op game (T11.8): every player in
-/// the game needs a co-op start (thing type <c>player + 1</c>) on every map
-/// the game can reach, or <c>P_SpawnPlayer</c> never gives it a mobj and its
-/// first <c>P_PlayerThink</c> dereferences a null <c>mo</c> (vanilla crashes
-/// too). Such a game is refused before the Start with a message naming the
-/// maps and the missing starts (the user's decision; SPEC §12 T11.8:
-/// the start map and every map its exits lead to, secret maps included, as
-/// far as the WAD has them). A deathmatch game spawns at the deathmatch starts
+/// the game needs a co-op start (thing type <c>player + 1</c>) on its map, or
+/// <c>P_SpawnPlayer</c> never gives it a mobj and its first
+/// <c>P_PlayerThink</c> dereferences a null <c>mo</c> (vanilla crashes too).
+/// A game whose first map lacks one is refused before the Start with a
+/// message naming the map and the missing starts (the user's decision).
+/// T11.1b (the user's decision, SPEC §12): a later map the exits reach
+/// (secret maps included, as far as the WAD has them) lacking one is not
+/// refused: the lobby warns of it (<see cref="Warning"/>) and the netgame
+/// ends on every machine when the game gets there (<see cref="LevelRefusal"/>;
+/// Doom II v1.666's MAP29 has player 1's start only, which refused every
+/// co-op game before MAP30). A deathmatch game spawns at the deathmatch starts
 /// (T11.4) instead, and vanilla <c>I_Error</c>s on a map with fewer than 4 of
 /// them: only the start map is checked (the user's decision, SPEC §12
 /// "A deathmatch checks its start map only": Doom II's MAP28 has 2, and a
@@ -111,42 +115,88 @@ public static class NetStarts
 
     /// <summary>
     /// Why a co-op game of <paramref name="playerMask"/> started on
-    /// <paramref name="episode"/>, <paramref name="map"/> is refused (the maps
-    /// it can reach lacking starts for some of its players), or null when every
-    /// such map has them; in <paramref name="deathmatch"/>, the start map
-    /// with fewer than 4 deathmatch starts (a later one is not refused: the
-    /// game ends there, <c>LevelScene</c>'s netgame over).
+    /// <paramref name="episode"/>, <paramref name="map"/> is refused (its
+    /// first map lacking starts for some of its players), or null; in
+    /// <paramref name="deathmatch"/>, the first map with fewer than 4
+    /// deathmatch starts. T11.1b: only the first map, in both: a later map
+    /// lacking a player's start is not refused (<see cref="Warning"/> names
+    /// it), the game ends there (<see cref="LevelRefusal"/>, <c>LevelScene</c>'s
+    /// netgame over).
     /// </summary>
     public static string? Refusal(WadArchive wad, GameMode mode, int episode, int map, int playerMask, bool deathmatch = false)
     {
+        ArgumentNullException.ThrowIfNull(wad);
+        string first = MapName(mode, episode, map);
+        if (wad.W_CheckNumForName(first) < 0)
+            return null;
         if (deathmatch)
         {
             // T11.4: G_DeathMatchSpawnPlayer's "Only %i deathmatch spots, 4 required"
-            string first = mode == GameMode.commercial ? $"MAP{map:00}" : $"E{episode}M{map}";
-            if (wad.W_CheckNumForName(first) < 0)
-                return null;
             int count = DeathmatchStarts(wad, mode, first);
             return count < 4 ? $"fewer than 4 deathmatch starts on {first} ({count})" : null;
         }
+        IReadOnlyList<int> missing = MissingStarts(wad, mode, first, playerMask);
+        return missing.Count == 0 ? null : $"no co-op start for {Players(missing)} on {first}";
+    }
+
+    /// <summary>
+    /// T11.1b (the user's decision): what the host's lobby warns of in a co-op
+    /// game of <paramref name="playerMask"/> started on <paramref name="episode"/>,
+    /// <paramref name="map"/>: the later maps its exits reach
+    /// (<see cref="ReachableMaps"/>) lacking a start for one of its players,
+    /// where the game will end (<c>MAP29 lacks player 2's start: the game will
+    /// end there</c>, Doom II v1.666's); null when there are none, or in
+    /// <paramref name="deathmatch"/>.
+    /// </summary>
+    public static string? Warning(WadArchive wad, GameMode mode, int episode, int map, int playerMask, bool deathmatch = false)
+    {
+        if (deathmatch)
+            return null;
+        string first = MapName(mode, episode, map);
         var lacking = new List<(string Map, IReadOnlyList<int> Players)>();
         foreach (string name in ReachableMaps(wad, mode, episode, map))
         {
-            IReadOnlyList<int> missing = MissingStarts(wad, mode, name, playerMask);
+            IReadOnlyList<int> missing = name == first ? [] : MissingStarts(wad, mode, name, playerMask);
             if (missing.Count > 0)
                 lacking.Add((name, missing));
         }
         if (lacking.Count == 0)
             return null;
-        var text = new StringBuilder("no co-op start for ");
+        var text = new StringBuilder();
         for (int i = 0; i < lacking.Count; i++)
         {
             (string name, IReadOnlyList<int> players) = lacking[i];
             if (i > 0)
                 text.Append(i == lacking.Count - 1 ? " and " : ", ");
-            text.Append(players.Count == 1 ? "player " : "players ").Append(PlayerList(players)).Append(" on ").Append(name);
+            text.Append(name).Append(" lacks ").Append(Players(players)).Append(players.Count == 1 ? "'s start" : "'s starts");
         }
-        return text.ToString();
+        return text.Append(lacking.Count == 1 ? ": the game will end there" : ": the game will end at the first of them").ToString();
     }
+
+    /// <summary>
+    /// T11.1b: why a co-op netgame cannot go on to map <paramref name="map"/>
+    /// with the players in <paramref name="playeringame"/> (one of them without
+    /// a co-op start there: vanilla's <c>P_PlayerThink</c> would crash on its
+    /// null <c>mo</c>), or null: the netgame ends there instead, on every
+    /// machine (<c>LevelScene</c>'s netgame over, as a deathmatch's map with
+    /// fewer than 4 deathmatch starts).
+    /// </summary>
+    public static string? LevelRefusal(WadArchive wad, GameMode mode, string map, IReadOnlyList<bool> playeringame)
+    {
+        ArgumentNullException.ThrowIfNull(playeringame);
+        int mask = 0;
+        for (int p = 0; p < playeringame.Count && p < World.MAXPLAYERS; p++)
+        {
+            if (playeringame[p])
+                mask |= 1 << p;
+        }
+        IReadOnlyList<int> missing = MissingStarts(wad, mode, map, mask);
+        return missing.Count == 0 ? null : $"no co-op start for {Players(missing)}";
+    }
+
+    private static string MapName(GameMode mode, int episode, int map) => mode == GameMode.commercial ? $"MAP{map:00}" : $"E{episode}M{map}";
+
+    private static string Players(IReadOnlyList<int> players) => (players.Count == 1 ? "player " : "players ") + PlayerList(players);
 
     private static string PlayerList(IReadOnlyList<int> players) =>
         players.Count == 1 ? players[0].ToString(System.Globalization.CultureInfo.InvariantCulture)

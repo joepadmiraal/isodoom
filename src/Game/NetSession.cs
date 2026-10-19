@@ -123,6 +123,19 @@ public sealed class NetSession : IDisposable
 
     private byte _checkedMask;
 
+    /// <summary>
+    /// T11.1b: the host's warning of the game it would start, given the
+    /// players' mask (bit i: slot i): a later map lacking a player's start,
+    /// where the game will end (<see cref="NetStarts.Warning"/>), or null. It
+    /// does not refuse the start. Null: no warning.
+    /// </summary>
+    public Func<byte, string?>? CheckWarning { get; set; }
+
+    /// <summary>T11.1b: the host's warning for the players in the lobby (<see cref="CheckWarning"/>, logged when it changes), or null.</summary>
+    public string? StartWarning { get; private set; }
+
+    private int _warnedMask = -1;
+
     /// <summary>T11.9: the players a game started from the lobby page needs (the host and one more).</summary>
     public const int MinPlayers = 2;
 
@@ -272,7 +285,22 @@ public sealed class NetSession : IDisposable
             _readied = true;
         }
         if (Server is { Phase: NetServerPhase.Lobby } server)
+        {
+            WarnFor(server);
             StartWhenReady(server, nowUs);
+        }
+    }
+
+    // T11.1b: the lobby's warning for the players in it, worked out again (and logged) when they change
+    private void WarnFor(NetServer server)
+    {
+        if (CheckWarning is not { } warn || server.OccupiedMask == _warnedMask)
+            return;
+        _warnedMask = server.OccupiedMask;
+        string? warning = warn(server.OccupiedMask);
+        if (warning is not null && warning != StartWarning)
+            Log?.Invoke($"warning: {warning}");
+        StartWarning = warning;
     }
 
     /// <summary>The host's start: <see cref="NetOptions.Players"/> in and ready, and their round trips known (or waited for long enough).</summary>
@@ -318,6 +346,8 @@ public sealed class NetSession : IDisposable
             delay = choice.Delay;
             Log?.Invoke(choice.ToString());
         }
+        if (StartWarning is { } warning)
+            Log?.Invoke($"the game starts, but {warning}"); // T11.1b: not refused
         server.Start(delay, adaptive: Options.Delay is null); // T11.12b: the measured delay adapts in the game
         StartRequested = false;
     }

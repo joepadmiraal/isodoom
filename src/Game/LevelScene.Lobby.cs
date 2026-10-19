@@ -156,7 +156,7 @@ public partial class LevelScene : INetMenuHost
             return new NetLobbyView(net.Server is not null, _netFromMenus, net.Address, net.Port, c.State, maxPlayers, net.LobbyPlayers(),
                 settings, settings is null ? null : MapName(settings), wad, net.Failure, c.Refusal, net.StartRefusal, net.StartRefusals,
                 net.StartRequested, NetGame is not null || c.State == NetClientState.InGame,
-                net.Server is not null ? NetSession.HostAddresses(net.Options.BindAddress, net.Port) : null, net.DiscoveryError);
+                net.Server is not null ? NetSession.HostAddresses(net.Options.BindAddress, net.Port) : null, net.DiscoveryError, net.StartWarning);
         }
     }
 
@@ -196,6 +196,13 @@ public partial class LevelScene : INetMenuHost
     }
 
     /// <summary>T11.9 (the level check): the netgame the scene began is dropped (its session closed) and the title loop shows.</summary>
+    /// <summary>T11.1b (the level check, whose frames run no tics): one frame of the netgame's game loop (<see cref="RunNetTics"/>).</summary>
+    internal void NetTicsForCheck()
+    {
+        if (NetPlaying)
+            RunNetTics(TicSeconds);
+    }
+
     internal void EndNetGameForCheck()
     {
         StopNet();

@@ -13,8 +13,9 @@ namespace IsoDoom.Tests.Net;
 
 /// <summary>
 /// T11.1a, checked by T11.8 where the host starts the game: a co-op game is
-/// refused when a map it can reach lacks a start for a player in it, a
-/// deathmatch game when its start map has fewer than 4 deathmatch starts
+/// refused when its first map lacks a start for a player in it (T11.1b: a
+/// later map's is a warning, and the netgame ends there), a deathmatch game
+/// when its start map has fewer than 4 deathmatch starts
 /// (<see cref="NetStarts"/>), and the refused game never starts (<see cref="NetSession.CheckStart"/>).
 /// </summary>
 public sealed class NetStartsTests
@@ -62,14 +63,55 @@ public sealed class NetStartsTests
     }
 
     [Fact]
-    public void A_co_op_game_is_refused_with_the_maps_and_players_lacking_starts()
+    public void A_co_op_game_is_refused_when_its_first_map_lacks_a_players_start()
     {
         WadArchive wad = Maps(("E1M1", [1, 2, 3, 4]), ("E1M2", [1, 2]), ("E1M3", [1, 3]));
         Assert.Null(NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b1));
-        Assert.Equal("no co-op start for player 2 on E1M3", NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b11));
-        Assert.Equal("no co-op start for players 3 and 4 on E1M2 and players 2 and 4 on E1M3", NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b1111));
+        Assert.Null(NetStarts.Refusal(wad, GameMode.registered, 1, 1, 0b1111)); // T11.1b: a later map's are not refused
+        Assert.Equal("no co-op start for players 2 and 4 on E1M3", NetStarts.Refusal(wad, GameMode.registered, 1, 3, 0b1111));
+        Assert.Equal("no co-op start for player 2 on E1M3", NetStarts.Refusal(wad, GameMode.registered, 1, 3, 0b11));
         Assert.Equal([2, 4], NetStarts.MissingStarts(wad, GameMode.registered, "E1M3", 0b1111));
-        Assert.Equal("no co-op start for player 2 on E1M3", NetStarts.Refusal(wad, GameMode.registered, 1, 2, 0b11)); // a later map's too
+    }
+
+    [Fact]
+    public void The_lobby_warns_of_a_later_map_lacking_a_players_start()
+    {
+        WadArchive wad = Maps(("E1M1", [1, 2, 3, 4]), ("E1M2", [1, 2]), ("E1M3", [1, 3]));
+        Assert.Null(NetStarts.Warning(wad, GameMode.registered, 1, 1, 0b1));
+        Assert.Equal("E1M3 lacks player 2's start: the game will end there", NetStarts.Warning(wad, GameMode.registered, 1, 1, 0b11));
+        Assert.Equal("E1M2 lacks players 3 and 4's starts and E1M3 lacks players 2 and 4's starts: the game will end at the first of them",
+            NetStarts.Warning(wad, GameMode.registered, 1, 1, 0b1111));
+        Assert.Equal("E1M3 lacks player 2's start: the game will end there", NetStarts.Warning(wad, GameMode.registered, 1, 2, 0b11));
+        Assert.Null(NetStarts.Warning(wad, GameMode.registered, 1, 3, 0b11)); // the first map's is a refusal, not a warning
+        Assert.Null(NetStarts.Warning(wad, GameMode.registered, 1, 1, 0b11, deathmatch: true));
+    }
+
+    [Fact]
+    public void A_map_lacking_a_start_for_a_player_in_the_game_is_where_the_netgame_ends()
+    {
+        WadArchive wad = Maps(("E1M1", [1, 2, 3, 4]), ("E1M3", [1, 3]));
+        Assert.Null(NetStarts.LevelRefusal(wad, GameMode.registered, "E1M1", [true, true, true, true]));
+        Assert.Equal("no co-op start for player 2", NetStarts.LevelRefusal(wad, GameMode.registered, "E1M3", [true, true, false, false]));
+        Assert.Equal("no co-op start for players 2 and 4", NetStarts.LevelRefusal(wad, GameMode.registered, "E1M3", [true, true, true, true]));
+        Assert.Null(NetStarts.LevelRefusal(wad, GameMode.registered, "E1M3", [true, false, true, false])); // player 2 left the game (T11.11)
+    }
+
+    [Fact]
+    public void A_Doom_II_co_op_game_starts_on_map01_and_is_warned_of_a_map_lacking_a_start()
+    {
+        var wad = WadArchive.Open(TestWads.RequireDoom2());
+        Assert.Null(NetStarts.Refusal(wad, GameMode.commercial, 1, 1, 0b11)); // T11.1b: v1.666's MAP29 refused every first map before
+        // v1.666's MAP29 has player 1's start only (only what this release lacks is asserted)
+        IReadOnlyList<int> missing = NetStarts.MissingStarts(wad, GameMode.commercial, "MAP29", 0b11);
+        if (missing.Count > 0)
+        {
+            Assert.Equal("MAP29 lacks player 2's start: the game will end there", NetStarts.Warning(wad, GameMode.commercial, 1, 1, 0b11));
+            Assert.Equal("no co-op start for player 2 on MAP29", NetStarts.Refusal(wad, GameMode.commercial, 1, 29, 0b11));
+            Assert.Equal("no co-op start for player 2", NetStarts.LevelRefusal(wad, GameMode.commercial, "MAP29", [true, true, false, false]));
+            Assert.Null(NetStarts.Warning(wad, GameMode.commercial, 1, 30, 0b11)); // MAP30 ends the game
+        }
+        else
+            Assert.Null(NetStarts.Warning(wad, GameMode.commercial, 1, 1, 0b11));
     }
 
     [Fact]
@@ -114,6 +156,34 @@ public sealed class NetStartsTests
         Assert.Null(NetStarts.Refusal(wad, GameMode.commercial, 1, 1, 0b11, deathmatch: true));
         if (count < 4)
             Assert.Equal($"fewer than 4 deathmatch starts on MAP28 ({count})", NetStarts.Refusal(wad, GameMode.commercial, 1, 28, 0b11, deathmatch: true));
+    }
+
+    [Fact]
+    public void A_warned_game_starts_and_the_host_logs_the_warning()
+    {
+        var network = new MemoryNetwork();
+        var identity = new NetIdentity("test", "f0cefca49926d00903cf57551d901abe", []);
+        var settings = new NetGameSettings(new SpawnSettings(GameMode.commercial, skill_t.sk_medium, netgame: true), Tweaks.TopDown, 1, 1);
+        var log = new List<string>();
+        int n = 0;
+        var host = new NetSession(NetOptions.Parse(["-host", "-players", "2"])!, identity, settings,
+            use => network.CreateEndpoint(use == NetTransportUse.Server ? "127.0.0.1" : "host", seed: n++), log.Add);
+        host.CheckStart = _ => null;
+        host.CheckWarning = mask => mask == 0b11 ? "MAP29 lacks player 2's start: the game will end there" : null;
+        var join = new NetSession(NetOptions.Parse(["-connect", $"127.0.0.1:{host.Port}"])!, identity, settings, _ => network.CreateEndpoint("join", seed: 7));
+        for (int t = 0; t < 5000 && join.Client.State != NetClientState.InGame; t++)
+        {
+            network.Advance(1_000);
+            host.Update(network.NowUs);
+            join.Update(network.NowUs);
+        }
+        Assert.Equal(NetClientState.InGame, join.Client.State);
+        Assert.Null(host.StartRefusal);
+        Assert.Equal("MAP29 lacks player 2's start: the game will end there", host.StartWarning);
+        Assert.Single(log, l => l == "warning: MAP29 lacks player 2's start: the game will end there");
+        Assert.Contains("the game starts, but MAP29 lacks player 2's start: the game will end there", log);
+        host.Dispose();
+        join.Dispose();
     }
 
     [Fact]

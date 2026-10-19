@@ -3203,7 +3203,10 @@ public partial class LevelScene : Node3D, IGameHost
                 if (world.gameaction == gameaction_t.ga_loadlevel)
                     world.G_DoLoadLevel(level); // T6.12: a reborn, the same level afresh
                 else
+                {
+                    CheckCoopStarts(world, level);
                     world.G_DoWorldDone(level); // T5.8: the next level of the same game
+                }
             }
             else
             {
@@ -3218,6 +3221,7 @@ public partial class LevelScene : Node3D, IGameHost
                 world.textures = Textures;
                 world.map31exists = Wad!.W_CheckNumForName("MAP31") >= 0; // G_SecretExitLevel's check (T5.8)
                 world.P_InitPicAnims(Textures, FlatNames(Wad!)); // P_Init's (T5.7)
+                CheckCoopStarts(world, level);
                 world.G_DoLoadLevel(level);
             }
             World = world;
@@ -3228,8 +3232,23 @@ public partial class LevelScene : Node3D, IGameHost
             GD.PushWarning($"Level: {level.Name}: no things: {e.Message}");
             World = null;
             if (NetGame is not null)
-                NetGameOver($"{level.Name}: {e.Message}"); // a netgame can't go on without a world (a deathmatch map with fewer than 4 deathmatch starts)
+                NetGameOver($"{level.Name}: {e.Message}"); // a netgame can't go on without a world (a deathmatch map with fewer than 4 deathmatch starts, T11.1b: a co-op map without a player's start)
         }
+    }
+
+    /// <summary>
+    /// T11.1b (the user's decision, SPEC §12): a co-op netgame's map without a
+    /// co-op start for a player in the game (Doom II v1.666's MAP29, player 2)
+    /// is a map the game cannot go on to: vanilla's <c>P_PlayerThink</c> would
+    /// crash on the player's null <c>mo</c>, so the level is left without a
+    /// world and the netgame ends there on every machine (<see cref="NetGameOver"/>,
+    /// as a deathmatch's map with fewer than 4 deathmatch starts). The host
+    /// refused a first map so (T11.1a) and its lobby warned of a later one.
+    /// </summary>
+    private void CheckCoopStarts(World world, Level level)
+    {
+        if (world.netgame && world.deathmatch == 0 && Wad is { } wad && NetStarts.LevelRefusal(wad, GameMode, level.Name, world.playeringame) is { } why)
+            throw new WadFormatException(why);
     }
 
     /// <summary>
