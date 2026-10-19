@@ -58,8 +58,12 @@ public class NetMeasurementTests
     /// <param name="Stalls">T11.12e: the stalls of the player held longest (the host's included).</param>
     /// <param name="UpUnreliablePackets">T11.12c: of <paramref name="UpPackets"/>, those on the unreliable channel.</param>
     /// <param name="DownUnreliablePackets">T11.12c: of <paramref name="DownPackets"/>, those on the unreliable channel.</param>
+    /// <param name="WaitMeanMs">T11.12d: the remote players' bundle wait (<see cref="HarnessPlayer.BundleWaitUs"/>: a command made to its tic's bundle in), mean.</param>
+    /// <param name="WaitP99Ms">… its 99th percentile.</param>
+    /// <param name="HostWaitMeanMs">T11.12d: the host's bundle wait, mean.</param>
     public sealed record Measurement(int Delay, double MeasuredRttMs, double LagMeanMs, double LagMaxMs, double HostLagMeanMs, int LateTics,
-        double UpBps, double DownBps, double UpPackets, double DownPackets, StallStats Stalls, double UpUnreliablePackets, double DownUnreliablePackets)
+        double UpBps, double DownBps, double UpPackets, double DownPackets, StallStats Stalls, double UpUnreliablePackets, double DownUnreliablePackets,
+        double WaitMeanMs = 0, double WaitP99Ms = 0, double HostWaitMeanMs = 0)
     {
         /// <summary>Upload with the headers (<see cref="WireOverhead"/>, <see cref="UnreliableWireOverhead"/>).</summary>
         public double UpWireBps => UpBps + ((UpPackets - UpUnreliablePackets) * WireOverhead) + (UpUnreliablePackets * UnreliableWireOverhead);
@@ -70,7 +74,7 @@ public class NetMeasurementTests
         public override string ToString()
             => $"rtt {MeasuredRttMs:F0} ms, delay {Delay} ({Delay * 1000.0 / NetProtocol.TicRate:F0} ms): felt {LagMeanMs:F0} ms mean, {LagMaxMs:F0} max (host {HostLagMeanMs:F0}), {LateTics} late tics; " +
                $"up {UpBps:F0} B/s ({UpPackets:F1} packets/s, {UpWireBps:F0} B/s on the wire), down {DownBps:F0} B/s ({DownPackets:F1} packets/s, {DownWireBps:F0} on the wire); " +
-               $"{Stalls}";
+               $"bundle wait {WaitMeanMs:F0} ms mean, {WaitP99Ms:F0} p99 (host {HostWaitMeanMs:F0}); {Stalls}";
     }
 
     /// <summary>Play a minute: a host and <paramref name="players"/> − 1 remote players at <paramref name="pingMs"/> round trip.</summary>
@@ -92,28 +96,35 @@ public class NetMeasurementTests
     /// <param name="seed">Seeds the network's jitter, spikes and loss.</param>
     /// <param name="delayOffset">Added to the rule's delay.</param>
     /// <param name="delay">The delay to play at instead of the rule's (a later task's own rule, or <c>-netdelay</c>).</param>
-    public static Measurement Measure(int players, MemoryLinkOptions link, int seed, int delayOffset = 0, int? delay = null) => Measure(players, link, seed, out _, delayOffset, delay);
+    /// <param name="frameUs">T11.12d: every machine's frame time (the remote players' a millisecond longer each, so the frames drift).</param>
+    /// <param name="configure">T11.12d: sets the harness up before the players join (<see cref="LockstepHarness.PollAfterFlush"/>, <see cref="LockstepHarness.ServerEveryStep"/>).</param>
+    public static Measurement Measure(int players, MemoryLinkOptions link, int seed, int delayOffset = 0, int? delay = null, long frameUs = 16_667, Action<LockstepHarness>? configure = null)
+        => Measure(players, link, seed, out _, delayOffset, delay, frameUs, configure);
 
-    /// <inheritdoc cref="Measure(int, MemoryLinkOptions, int, int, int?)"/>
+    /// <inheritdoc cref="Measure(int, MemoryLinkOptions, int, int, int?, long, Action{LockstepHarness}?)"/>
     /// <param name="players">The players, the host's own included.</param>
     /// <param name="link">Each remote player's link.</param>
     /// <param name="seed">Seeds the network's jitter, spikes and loss.</param>
     /// <param name="harness">The harness, after the minute (its players' stalls and logs).</param>
     /// <param name="delayOffset">Added to the rule's delay.</param>
     /// <param name="delay">The delay to play at instead of the rule's.</param>
-    public static Measurement Measure(int players, MemoryLinkOptions link, int seed, out LockstepHarness harness, int delayOffset = 0, int? delay = null)
+    /// <param name="frameUs">T11.12d: every machine's frame time.</param>
+    /// <param name="configure">T11.12d: sets the harness up.</param>
+    public static Measurement Measure(int players, MemoryLinkOptions link, int seed, out LockstepHarness harness, int delayOffset = 0, int? delay = null,
+        long frameUs = 16_667, Action<LockstepHarness>? configure = null)
     {
-        var setups = new List<PlayerSetup> { new() };
+        var setups = new List<PlayerSetup> { new() { FrameUs = frameUs } };
         for (int i = 1; i < players; i++)
         {
             setups.Add(new PlayerSetup
             {
                 Link = link,
-                FrameUs = 16_667 + (1_000 * i),
+                FrameUs = frameUs + (1_000 * i),
                 PhaseUs = 3_000 * i,
             });
         }
         var h = new LockstepHarness(_coop, setups, (slot, tic) => LockstepHarness.Wander(slot, tic, fire: true), seed: seed);
+        configure?.Invoke(h);
         harness = h;
         h.JoinAndReady();
         // T11.12a: the host's rule, as NetSession picks it: once every player reported enough round trips
@@ -136,6 +147,7 @@ public class NetMeasurementTests
         Assert.Null(h.Server.Desync);
         var remote = Remote(h).ToList();
         var lags = remote.SelectMany(p => p.InputLagUs).ToList();
+        var waits = remote.SelectMany(p => p.BundleWaitUs).Order().ToList();
         double upBytes = remote.Sum(p => p.Transport.ReliableBytesSent + p.Transport.UnreliableBytesSent) - upBytes0;
         double upPackets = remote.Sum(p => p.Transport.PacketsSent) - upPackets0;
         double downBytes = h.ServerTransport.ReliableBytesSent + h.ServerTransport.UnreliableBytesSent - downBytes0;
@@ -146,7 +158,8 @@ public class NetMeasurementTests
             upPackets / remote.Count / seconds, downPackets / players / seconds,
             StallStats.Worst(h.Players),
             (remote.Sum(p => p.Transport.UnreliablePacketsSent) - upUnreliable0) / remote.Count / seconds,
-            (h.ServerTransport.UnreliablePacketsSent - downUnreliable0) / players / seconds);
+            (h.ServerTransport.UnreliablePacketsSent - downUnreliable0) / players / seconds,
+            waits.Average() / 1000, waits[(int)(waits.Count * 0.99)] / 1000.0, h.Players[0].BundleWaitUs.Average() / 1000);
     }
 
     private static IEnumerable<HarnessPlayer> Remote(LockstepHarness h) => h.Players.Skip(1);
@@ -220,7 +233,7 @@ public class NetMeasurementTests
     /// two a minute, none longer than the round trip (the reliable resends now
     /// delay only the checksums and the lobby). Without the reliable resends
     /// nothing holds after the first second. Logged in SPEC §12
-    /// ("T11.12 measurements"); T11.12b and T11.12d tighten the bounds.
+    /// ("T11.12 measurements"); T11.12d: none after the first second.
     /// </summary>
     [Theory]
     [InlineData(2, 1)]
@@ -241,6 +254,8 @@ public class NetMeasurementTests
         // logged, and none longer than the round trip
         Assert.True(m.Stalls.HeldMsPerMinute < 100, $"held {m.Stalls.HeldMsPerMinute:F0} ms a minute on wifi");
         Assert.True(m.Stalls.LongestMs <= m.MeasuredRttMs, $"a stall of {m.Stalls.LongestMs:F0} ms on wifi, the round trip {m.MeasuredRttMs:F0} ms");
+        // T11.12d: the host's own command bundled in its frame: none after the first second (0-1 of 35 ms before)
+        Assert.Equal(0, StallStats.Worst(h.Players, afterUs: 1_000_000).Count);
 
         // the same wifi without the reliable resends: none after the first second
         Measurement noResends = Measure(players, NetLinks.Wifi with { ReliableLoss = 0 }, seed, out LockstepHarness h2);
@@ -327,5 +342,52 @@ public class NetMeasurementTests
         StallStats after = StallStats.Worst(h.Players, afterUs: 1_000_000);
         TestContext.Current.TestOutputHelper?.WriteLine($"after the first second: {after}");
         Assert.Equal(0, after.Count);
+    }
+
+    /// <summary>
+    /// T11.12d's <i>Done when</i>, with every machine's frames at 60 and at 30
+    /// fps on an internet link (5 ms of jitter each way) at 2 (a LAN), 30 and
+    /// 80 ms of ping, two players at the rule's delay. The input delay a tic
+    /// needs is its bundle wait (<see cref="HarnessPlayer.BundleWaitUs"/>: a
+    /// command made to its tic's bundle in, every command for it at the
+    /// server and back: the felt delay at the least delay that does not
+    /// hold). Polled once a frame (before T11.12d) the host's own command
+    /// reached its server (over loopback) only at the host's next frame;
+    /// polled again after the commands are flushed it is bundled in the frame
+    /// it is made: the host's wait is down by about a frame (half to two
+    /// thirds of one on average, the wait being a frame's phase), the remote
+    /// player's no worse (a little better on a LAN, where the host's command
+    /// came last). The rule's delay is the same: the pings never saw that hop.
+    /// A network thread (<see cref="LockstepHarness.ServerEveryStep"/>: the
+    /// server serviced every millisecond) is measured beside: the remote
+    /// player's command no longer waits for the host's frame, so its wait is
+    /// down too and its pings measure a frame less (the rule a tic less at
+    /// 30 fps); SPEC §12 T11.12d says why it is not built.
+    /// </summary>
+    [Theory]
+    [InlineData(16_667, 2)]
+    [InlineData(16_667, 30)]
+    [InlineData(16_667, 80)]
+    [InlineData(33_333, 2)]
+    [InlineData(33_333, 30)]
+    [InlineData(33_333, 80)]
+    public void Polling_again_after_the_commands_saves_the_hosts_frame(long frameUs, int pingMs)
+    {
+        MemoryLinkOptions link = NetLinks.Internet(pingMs, pingMs < 10 ? 1 : 5);
+        Measurement before = Measure(2, link, seed: 1, frameUs: frameUs, configure: h => h.PollAfterFlush = false);
+        Measurement after = Measure(2, link, seed: 1, frameUs: frameUs);
+        Measurement thread = Measure(2, link, seed: 1, frameUs: frameUs, configure: h => h.ServerEveryStep = true);
+        double frameMs = frameUs / 1000.0;
+        TestContext.Current.TestOutputHelper?.WriteLine($"{1000 / frameMs:F0} fps, ping {pingMs} ms: before T11.12d: {before}");
+        TestContext.Current.TestOutputHelper?.WriteLine($"  polled again: {after}");
+        TestContext.Current.TestOutputHelper?.WriteLine($"  a network thread: {thread}");
+        Assert.True(before.HostWaitMeanMs - after.HostWaitMeanMs >= 0.4 * frameMs,
+            $"the host's wait {before.HostWaitMeanMs:F1} -> {after.HostWaitMeanMs:F1} ms at a frame of {frameMs:F1} ms");
+        Assert.True(after.WaitMeanMs <= before.WaitMeanMs + 0.5, $"the remote wait {before.WaitMeanMs:F1} -> {after.WaitMeanMs:F1} ms");
+        Assert.True(after.WaitP99Ms <= before.WaitP99Ms + 1, $"the remote wait's p99 {before.WaitP99Ms:F1} -> {after.WaitP99Ms:F1} ms");
+        Assert.Equal(before.Delay, after.Delay);
+        Assert.Equal(0, after.Stalls.Count);
+        Assert.True(thread.WaitMeanMs < after.WaitMeanMs, $"the remote wait with a thread {thread.WaitMeanMs:F1} ms, polled again {after.WaitMeanMs:F1}");
+        Assert.True(thread.Delay <= after.Delay);
     }
 }

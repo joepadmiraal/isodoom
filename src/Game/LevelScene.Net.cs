@@ -11,8 +11,9 @@ namespace IsoDoom.Game;
 /// T11.6: the netgame's session from the command line (<see cref="NetOptions"/>:
 /// <c>-host</c>/<c>-server</c>, <c>-connect</c>, <c>-players</c>,
 /// <c>-netdelay</c>, …) over ENet (<see cref="NetEnetTransport"/>), polled
-/// once a frame on the main thread at the start of <see cref="_Process"/>
-/// (<see cref="PollNet"/>) and ended with the scene (<see cref="StopNet"/>).
+/// on the main thread at the start of <see cref="_Process"/>
+/// (<see cref="PollNet"/>) and, T11.12d, again once the frame's commands are
+/// sent (<see cref="ServiceNet"/>), and ended with the scene (<see cref="StopNet"/>).
 /// T11.8, the lockstep game loop: until the Start the scene shows the title
 /// loop; at the Start it begins the game the Start describes
 /// (<see cref="StartNetGame"/>: its settings and tweaks, its first map, the
@@ -171,9 +172,14 @@ public partial class LevelScene
         net.Update((long)Time.GetTicksUsec());
         if (NetGame is null && !NetExchangeOnly && NetExchange is null && net.Client is { State: NetClientState.InGame, Start: { } start })
             StartNetGame(start);
-        NetExchange?.Frame();
+        NetExchange?.Frame(_serviceNet ??= ServiceNet); // T11.12d: polled again after the commands
         UpdateNetBanner(); // T11.11
     }
+
+    private Action? _serviceNet;
+
+    /// <summary>T11.12d: the session's transport polled again within the frame (<see cref="NetSession.Service"/>).</summary>
+    private void ServiceNet() => Net?.Service((long)Time.GetTicksUsec());
 
     /// <summary>The map a netgame's settings start on (<c>ExMy</c>, or <c>MAPxx</c> in Doom II).</summary>
     public static string MapName(NetGameSettings settings) => NetSession.MapName(settings);
@@ -255,6 +261,9 @@ public partial class LevelScene
         while (c.CommandsDue > 0)
             c.SendCommand(NextNetCommand(c.MakeTic));
         c.Flush();
+        // T11.12d: the transport polled again before the tics are taken: the host bundles its own command
+        // (and any that came during the frame) in this frame, and a bundle that came runs now
+        ServiceNet();
         if (flow.Wipe.go)
         {
             // T7.1a: d_main.c's wipe loop, a melt step every tic's time

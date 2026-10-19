@@ -53,6 +53,18 @@ public sealed class HarnessPlayer
     /// </summary>
     public List<long> InputLagUs { get; } = [];
 
+    /// <summary>
+    /// T11.12d: per command of its own, from the frame it made the command to
+    /// the frame its tic's bundle was in (every player's command for it at the
+    /// server and the bundle back), in µs of its clock: the delay the game
+    /// needs, below which the tic would wait (<see cref="InputLagUs"/> is the
+    /// delay it plays at).
+    /// </summary>
+    public List<long> BundleWaitUs { get; } = [];
+
+    /// <summary>T11.12d: the last tic whose bundle wait was noted.</summary>
+    internal int BundleNoted { get; set; } = int.MinValue;
+
     /// <summary>T11.12: the tics it ran after their time (the clock already past them: a bundle came late).</summary>
     public int LateTics { get; internal set; }
 
@@ -179,6 +191,21 @@ public sealed class LockstepHarness
     /// <summary>The host's machine is gone: neither its server nor its client runs frames.</summary>
     public bool HostDown { get; set; }
 
+    /// <summary>
+    /// T11.12d: each machine's frame polls its transport again after its
+    /// commands are flushed and before it takes its tics (the host's server
+    /// first), as the game's frame does (<c>NetSession.Service</c>); false is
+    /// the frame before T11.12d, polled once at its start.
+    /// </summary>
+    public bool PollAfterFlush { get; set; } = true;
+
+    /// <summary>
+    /// T11.12d's measurement of a network thread: the server polled and its
+    /// bundles sent every <see cref="StepUs"/> (a thread of its own servicing
+    /// ENet every millisecond), not only in the host's frames.
+    /// </summary>
+    public bool ServerEveryStep { get; set; }
+
     /// <summary>Every frame's step of the network, in microseconds.</summary>
     public long StepUs { get; set; } = 1_000;
 
@@ -229,24 +256,27 @@ public sealed class LockstepHarness
     {
         Network.Advance(StepUs);
         long now = Network.NowUs;
+        if (ServerEveryStep && !HostDown)
+            Server.Update(now);
         foreach (HarnessPlayer p in Players)
         {
             if (_nextFrame[p] > now || (HostDown && p.Index == 0) || p.Down)
                 continue;
             _nextFrame[p] += p.Setup.FrameUs;
-            if (p.Index == 0)
+            if (p.Index == 0 && !ServerEveryStep)
                 Server.Update(now);
-            Frame(p, (long)(now * p.Setup.ClockSkew) + p.Setup.PhaseUs);
+            Frame(p, (long)(now * p.Setup.ClockSkew) + p.Setup.PhaseUs, now);
         }
     }
 
-    private void Frame(HarnessPlayer p, long localUs)
+    private void Frame(HarnessPlayer p, long localUs, long now)
     {
         NetClient c = p.Client;
         if (c.State is NetClientState.Disconnected or NetClientState.Refused)
             return;
         NetClientState before = c.State;
         c.Update(localUs);
+        NoteBundles(p, localUs);
         if (c.State != NetClientState.InGame)
             return;
         if (before != NetClientState.InGame)
@@ -268,6 +298,16 @@ public sealed class LockstepHarness
         }
         c.Flush();
         p.MaxLead = Math.Max(p.MaxLead, c.MakeTic - 1 - c.LastRanTic);
+        if (PollAfterFlush)
+        {
+            // T11.12d: as the game's frame (NetSession.Service): the server, then the client, again
+            if (p.Index == 0 && !ServerEveryStep)
+                Server.Update(now);
+            c.Update(localUs);
+            if (c.State != NetClientState.InGame)
+                return;
+            NoteBundles(p, localUs);
+        }
 
         int ran = 0;
         while (p.TicsRun < _ticLimit && c.TryTakeTic(_cmds, out int tic, out byte mask))
@@ -299,6 +339,21 @@ public sealed class LockstepHarness
             ran++;
         }
         p.MaxTicsPerFrame = Math.Max(p.MaxTicsPerFrame, ran);
+    }
+
+    /// <summary>T11.12d: the bundle waits of the player's own commands whose bundles came since the last frame.</summary>
+    private static void NoteBundles(HarnessPlayer p, long localUs)
+    {
+        NetClient c = p.Client;
+        if (c.State != NetClientState.InGame)
+            return;
+        int from = Math.Max(p.BundleNoted + 1, c.Start!.StartTic);
+        for (int t = from; t <= c.BundleTic; t++)
+        {
+            if (p.SentAtUs.TryGetValue(t, out long madeUs))
+                p.BundleWaitUs.Add(localUs - madeUs);
+        }
+        p.BundleNoted = Math.Max(p.BundleNoted, c.BundleTic);
     }
 
     /// <summary>T11.12e: a stall begins where the client's began and ends at the frame its <see cref="NetClient.LateUs"/> is back to 0.</summary>

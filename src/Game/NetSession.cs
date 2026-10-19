@@ -236,6 +236,21 @@ public sealed class NetSession : IDisposable
         return list;
     }
 
+    /// <summary>
+    /// T11.12d: the transport serviced again within the frame, after the
+    /// local commands were built and flushed and before the tics are taken:
+    /// the host's server takes its own client's command (over ENet loopback)
+    /// and every command that came during the frame and sends the bundles
+    /// they complete, and the client takes the bundles that came, so a tic
+    /// completed in this frame runs in it. Only the protocol's polls (no
+    /// lobby logic: <see cref="Update"/> follows next frame).
+    /// </summary>
+    public void Service(long nowUs)
+    {
+        Server?.Update(nowUs);
+        Client.Update(nowUs);
+    }
+
     /// <summary>Poll the server and the client at <paramref name="nowUs"/> (µs, this machine's clock); start the game when it is time.</summary>
     public void Update(long nowUs)
     {
@@ -544,14 +559,19 @@ public sealed class NetExchange
         };
     }
 
-    /// <summary>One frame: the commands due sent, the bundles due taken (after <see cref="NetClient.Update"/>).</summary>
-    public void Frame()
+    /// <summary>
+    /// One frame: the commands due sent, the bundles due taken (after
+    /// <see cref="NetClient.Update"/>); T11.12d: <paramref name="service"/>
+    /// (<see cref="NetSession.Service"/>) runs between, as the game's frame does.
+    /// </summary>
+    public void Frame(Action? service = null)
     {
         if (_client.State != NetClientState.InGame)
             return;
         while (_client.CommandsDue > 0)
             _client.SendCommand(Script(_client.Slot, _client.MakeTic));
         _client.Flush();
+        service?.Invoke();
         while (!Done && _client.TryTakeTic(_cmds, out int tic, out byte mask))
         {
             ulong h = Hash;

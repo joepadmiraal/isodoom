@@ -183,8 +183,9 @@ public class NetSessionTests
                 Network.Advance(1_000);
                 for (int i = 0; i < Sessions.Count; i++)
                 {
-                    Sessions[i].Update(Network.NowUs);
-                    Exchanges[i]?.Frame();
+                    NetSession session = Sessions[i];
+                    session.Update(Network.NowUs);
+                    Exchanges[i]?.Frame(() => session.Service(Network.NowUs)); // T11.12d: as the game's frame
                 }
             }
         }
