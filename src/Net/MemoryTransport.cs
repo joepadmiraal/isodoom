@@ -6,7 +6,9 @@ namespace IsoDoom.Net;
 /// <summary>
 /// How a <see cref="MemoryTransport"/> endpoint's link to the network behaves.
 /// A packet between two endpoints takes both endpoints' <see cref="LatencyUs"/>
-/// plus a random 0–<see cref="JitterUs"/> of each.
+/// plus a random 0–<see cref="JitterUs"/> of each, plus, while the endpoint
+/// is in a burst (T11.12e: wifi power saving, another device on the air), a
+/// random <see cref="SpikeMinUs"/>–<see cref="SpikeMaxUs"/> of each.
 /// </summary>
 public sealed record MemoryLinkOptions
 {
@@ -19,18 +21,39 @@ public sealed record MemoryLinkOptions
     /// <summary>Extra random one-way delay, uniform in 0–this, in microseconds.</summary>
     public long JitterUs { get; init; }
 
-    /// <summary>Chance (0–1) that this endpoint loses an unreliable packet.</summary>
+    /// <summary>Chance (0–1) that this endpoint loses an unreliable packet (sent or received).</summary>
     public double UnreliableLoss { get; init; }
 
     /// <summary>
-    /// Chance (0–1) that a reliable packet is lost on the wire and resent:
+    /// Chance (0–1) that a reliable packet to or from this endpoint is lost on the wire and resent:
     /// it then arrives <see cref="ResendUs"/> later, and so does every reliable
     /// packet behind it (ENet's head-of-line blocking).
     /// </summary>
     public double ReliableLoss { get; init; }
 
-    /// <summary>How much later a resent reliable packet arrives, in microseconds (ENet: about a round trip).</summary>
+    /// <summary>
+    /// How much later a resent reliable packet arrives, in microseconds (ENet:
+    /// its retransmit timeout, the smoothed round trip + 4 × its variance).
+    /// </summary>
     public long ResendUs { get; init; } = 50_000;
+
+    /// <summary>
+    /// T11.12e: the mean time between the starts of two bursts of latency
+    /// spikes, in microseconds (each gap uniform in half to one and a half of
+    /// it); 0 for none. The bursts come on the endpoint's own schedule, drawn
+    /// from its seed apart from the packets' randomness, so they fall at the
+    /// same network times whatever the traffic.
+    /// </summary>
+    public long BurstEveryUs { get; init; }
+
+    /// <summary>T11.12e: a burst's mean length, in microseconds (each uniform in half to one and a half of it).</summary>
+    public long BurstLengthUs { get; init; }
+
+    /// <summary>T11.12e: the least extra one-way delay of a packet sent during a burst, in microseconds.</summary>
+    public long SpikeMinUs { get; init; }
+
+    /// <summary>T11.12e: the most extra one-way delay of a packet sent during a burst, in microseconds.</summary>
+    public long SpikeMaxUs { get; init; }
 }
 
 /// <summary>
@@ -88,8 +111,10 @@ public sealed class MemoryNetwork
 public sealed class MemoryTransport : INetTransport
 {
     private readonly MemoryNetwork _network;
-    private readonly MemoryLinkOptions _options;
     private readonly Random _random;
+    private readonly Random _bursts;
+    private long _burstStartUs = -1;
+    private long _burstEndUs = -1;
     private readonly Dictionary<int, Link> _links = [];
     private readonly PriorityQueue<NetEvent, (long DueUs, long Sequence)> _inbox = new();
     private int _nextPeer = 1;
@@ -99,9 +124,17 @@ public sealed class MemoryTransport : INetTransport
     {
         _network = network;
         Address = address;
-        _options = options;
+        Options = options;
         _random = new Random(seed);
+        _bursts = new Random(unchecked((seed * 0x2C1B3C6D) ^ 0x5bd1e995));
     }
+
+    /// <summary>
+    /// How this endpoint's link behaves; a test may change it mid-game
+    /// (T11.12e: a link that gets worse), and the packets sent from then on
+    /// follow it (a burst schedule already drawn keeps its current burst).
+    /// </summary>
+    public MemoryLinkOptions Options { get; set; }
 
     /// <summary>This endpoint's address.</summary>
     public string Address { get; }
@@ -190,7 +223,7 @@ public sealed class MemoryTransport : INetTransport
             UnreliableBytesSent += data.Length;
             if (blocked > _network.NowUs)
                 return;
-            if (_random.NextDouble() < _options.UnreliableLoss || link.Remote._random.NextDouble() < link.Remote._options.UnreliableLoss)
+            if (_random.NextDouble() < Options.UnreliableLoss || link.Remote._random.NextDouble() < link.Remote.Options.UnreliableLoss)
                 return;
         }
         else
@@ -198,8 +231,15 @@ public sealed class MemoryTransport : INetTransport
             ReliableBytesSent += data.Length;
             if (blocked > _network.NowUs)
                 due = Math.Max(due, blocked + Delay(link.Remote));
-            while (_random.NextDouble() < _options.ReliableLoss)
-                due += _options.ResendUs;
+            // T11.12e: either end's link loses it (as the unreliable channel), each loss a resend later
+            while (_random.NextDouble() < Options.ReliableLoss)
+                due += Options.ResendUs;
+            MemoryLinkOptions there = link.Remote.Options;
+            if (there.ReliableLoss > 0)
+            {
+                while (link.Remote._random.NextDouble() < there.ReliableLoss)
+                    due += there.ResendUs;
+            }
             due = Math.Max(due, link.LastReliableDueUs);
             link.LastReliableDueUs = due;
         }
@@ -251,14 +291,44 @@ public sealed class MemoryTransport : INetTransport
 
     private long Delay(MemoryTransport? remote)
     {
-        long delay = _options.LatencyUs + Jitter(this);
+        long delay = Options.LatencyUs + Jitter(this) + Spike(this);
         if (remote is not null)
-            delay += remote._options.LatencyUs + Jitter(remote);
+            delay += remote.Options.LatencyUs + Jitter(remote) + Spike(remote);
         return delay;
     }
 
+    /// <summary>T11.12e: whether this endpoint is in a burst of spikes now (its schedule drawn up to now).</summary>
+    public bool InBurst
+    {
+        get
+        {
+            MemoryLinkOptions o = Options;
+            if (o.BurstEveryUs <= 0 || o.BurstLengthUs <= 0)
+                return false;
+            long now = _network.NowUs;
+            while (_burstEndUs <= now)
+            {
+                long from = Math.Max(_burstEndUs, 0);
+                _burstStartUs = from + Spread(_bursts, o.BurstEveryUs);
+                _burstEndUs = _burstStartUs + Math.Max(1, Spread(_bursts, o.BurstLengthUs));
+            }
+            return now >= _burstStartUs;
+        }
+    }
+
+    /// <summary>Uniform in half to one and a half of <paramref name="meanUs"/>.</summary>
+    private static long Spread(Random random, long meanUs) => (meanUs / 2) + random.NextInt64(meanUs + 1);
+
+    private static long Spike(MemoryTransport endpoint)
+    {
+        if (!endpoint.InBurst)
+            return 0;
+        MemoryLinkOptions o = endpoint.Options;
+        return o.SpikeMinUs + (o.SpikeMaxUs > o.SpikeMinUs ? endpoint._random.NextInt64(o.SpikeMaxUs - o.SpikeMinUs + 1) : 0);
+    }
+
     private static long Jitter(MemoryTransport endpoint)
-        => endpoint._options.JitterUs > 0 ? endpoint._random.NextInt64(endpoint._options.JitterUs + 1) : 0;
+        => endpoint.Options.JitterUs > 0 ? endpoint._random.NextInt64(endpoint.Options.JitterUs + 1) : 0;
 
     private void Deliver(MemoryTransport to, NetEvent netEvent, long dueUs)
         => to._inbox.Enqueue(netEvent, (dueUs, _network.NextSequence()));

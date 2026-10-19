@@ -56,6 +56,23 @@ public sealed class HarnessPlayer
     /// <summary>T11.12: the tics it ran after their time (the clock already past them: a bundle came late).</summary>
     public int LateTics { get; internal set; }
 
+    /// <summary>
+    /// T11.12e: the stalls it saw (its game clock past the last bundle, the
+    /// world held: <see cref="NetClient.LateUs"/>), each from when it began, in
+    /// its clock's µs after its first frame in the game, and how long it held,
+    /// to the frame the bundle came (a frame's resolution).
+    /// </summary>
+    public List<(long AtUs, long LengthUs)> Stalls { get; } = [];
+
+    /// <summary>T11.12e: its clock at its first frame in the game (−1 before).</summary>
+    public long GameStartUs { get; internal set; } = -1;
+
+    /// <summary>T11.12e: its clock at its last frame.</summary>
+    public long LastFrameUs { get; internal set; }
+
+    /// <summary>T11.12e: when the stall under way began (its clock), −1 for none.</summary>
+    public long StallStartUs { get; internal set; } = -1;
+
     /// <summary>T11.11: its machine is gone without a word (killed): it runs no frames, sends nothing, quits nothing.</summary>
     public bool Down { get; set; }
 
@@ -193,8 +210,19 @@ public sealed class LockstepHarness
     {
         Server.Start(delay);
         RunUntil(() => Players.TrueForAll(p => p.Client.State == NetClientState.InGame), 5_000_000, "everyone in the game");
-        RunUntil(() => Players.TrueForAll(p => p.Client.State != NetClientState.InGame || p.TicsRun >= tics), maxUs, $"{tics} tics");
+        // T11.12e: a player who ran its tics waits for the others, so every world ends on the same tic
+        _ticLimit = tics;
+        try
+        {
+            RunUntil(() => Players.TrueForAll(p => p.Client.State != NetClientState.InGame || p.TicsRun >= tics), maxUs, $"{tics} tics");
+        }
+        finally
+        {
+            _ticLimit = int.MaxValue;
+        }
     }
+
+    private int _ticLimit = int.MaxValue;
 
     /// <summary>One step of network time; each machine whose frame is due runs it.</summary>
     public void Step()
@@ -221,8 +249,14 @@ public sealed class LockstepHarness
         c.Update(localUs);
         if (c.State != NetClientState.InGame)
             return;
-        if (before != NetClientState.InGame && _makeWorld is not null)
-            p.World = _makeWorld(c.Start!);
+        if (before != NetClientState.InGame)
+        {
+            p.GameStartUs = localUs;
+            if (_makeWorld is not null)
+                p.World = _makeWorld(c.Start!);
+        }
+        p.LastFrameUs = localUs;
+        TrackStall(p, localUs);
         if (p.Mute)
             return;
         while (c.CommandsDue > 0)
@@ -236,7 +270,7 @@ public sealed class LockstepHarness
         p.MaxLead = Math.Max(p.MaxLead, c.MakeTic - 1 - c.LastRanTic);
 
         int ran = 0;
-        while (c.TryTakeTic(_cmds, out int tic, out byte mask))
+        while (p.TicsRun < _ticLimit && c.TryTakeTic(_cmds, out int tic, out byte mask))
         {
             Assert.Equal(c.Start!.StartTic + p.TicsRun, tic);
             Assert.True(tic <= Server.CompleteTic, $"player {p.Index} ran tic {tic} before its bundle went out (server at {Server.CompleteTic})");
@@ -265,6 +299,22 @@ public sealed class LockstepHarness
             ran++;
         }
         p.MaxTicsPerFrame = Math.Max(p.MaxTicsPerFrame, ran);
+    }
+
+    /// <summary>T11.12e: a stall begins where the client's began and ends at the frame its <see cref="NetClient.LateUs"/> is back to 0.</summary>
+    private static void TrackStall(HarnessPlayer p, long localUs)
+    {
+        long late = p.Client.LateUs;
+        if (late > 0)
+        {
+            if (p.StallStartUs < 0)
+                p.StallStartUs = localUs - late;
+        }
+        else if (p.StallStartUs >= 0)
+        {
+            p.Stalls.Add((p.StallStartUs - p.GameStartUs, localUs - p.StallStartUs));
+            p.StallStartUs = -1;
+        }
     }
 
     private int SlotOwner(int slot) => Players.FindIndex(q => q.Client.Slot == slot);
