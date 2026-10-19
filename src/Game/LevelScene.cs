@@ -2980,6 +2980,9 @@ public partial class LevelScene : Node3D, IGameHost
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
         GD.Print($"Level: {found.Path}: {info}, {GameVersions.Description(GameVersion)}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms"
             + (SpriteAtlas is { } sa ? $" (sprite atlas: {sa.Lumps.Count} lumps in {sa.Atlas.Image.Width}x{sa.Atlas.Image.Height}, {sa.BuildMilliseconds:F0} ms)" : ""));
+        IReadOnlyList<(string Name, string File)> lumps = VanillaIgnores.IgnoredLumps(wad);
+        if (lumps.Count > 0) // P7: DEHACKED (until DeHackEd), MAPINFO, …
+            GD.Print($"Level: vanilla ignores {lumps.Count} lump(s) of the PWADs: {string.Join(", ", lumps.Select(l => $"{l.Name} ({l.File})"))}");
     }
 
     /// <summary>The first of <c>E1M1</c>/<c>MAP01</c> the WAD has (else <c>MAP01</c>, which then fails to load).</summary>
@@ -3034,6 +3037,8 @@ public partial class LevelScene : Node3D, IGameHost
 
         var clock = Stopwatch.StartNew();
         var level = Level.Load(wad, map);
+        if (VanillaIgnores.Of(level).Describe() is { } ignored)
+            GD.Print($"Level: {map}: vanilla ignores {ignored}"); // P7: as the sim does
         (List<string[]> animTextures, List<string[]> animFlats) = AnimGroups(wad);
         var mesh = LevelMesh.Build(wad, level, Textures!, Playpal!, Colormap!,
             textureGroups: System.Linq.Enumerable.Concat(SwitchGroups(GameMode), animTextures), flatGroups: animFlats, switchPairs: SwitchPairs(GameMode));

@@ -210,6 +210,31 @@ public class CheatPageTests
         Assert.Equal([("01", "MAP01"), ("32", "MAP32"), ("40", "MAP40")], flow2.CheatMaps());
     }
 
+    /// <summary>
+    /// P7 (SPEC §12 "P7"): a PWAD's MAP33 is idclev33's, the warp picker's and
+    /// the Host Game list's, as vanilla's idclev takes it; ExM0 is none of
+    /// them (vanilla's idclev refuses map 0) and a new game on map 0 starts
+    /// on map 1 (G_InitNew's clamp, -warp's): only --level loads it.
+    /// </summary>
+    [Fact]
+    public void AMap33IsIdclevsAndExM0IsNot()
+    {
+        (GameFlow doom2, GameFlowTests.Host host2, _) = Level(mode: GameMode.commercial);
+        host2.Extra.Add("MAP33");
+        Assert.Contains(("33", "MAP33"), doom2.CheatMaps());
+        Assert.Contains("MAP33", doom2.HostMaps());
+        Assert.Equal((1, 33), doom2.ST_ClevMap(33));
+
+        (GameFlow doom, GameFlowTests.Host host, _) = Level(mode: GameMode.retail);
+        host.Extra.UnionWith(["E1M0", "E4M0"]);
+        Assert.DoesNotContain(doom.CheatMaps(), m => m.Name.EndsWith("M0", StringComparison.Ordinal));
+        Assert.DoesNotContain(doom.HostMaps(), m => m.EndsWith("M0", StringComparison.Ordinal));
+        Assert.Null(doom.ST_ClevMap(10));
+        Assert.Null(doom.ST_ClevMap(40));
+        doom.G_InitNew(skill_t.sk_medium, 1, 0);
+        Assert.Equal("new E1M1", host.Loads[^1]);
+    }
+
     [Fact]
     public void TheMusicPickerOffersTheSongsTheWadHasAndPlaysOne()
     {

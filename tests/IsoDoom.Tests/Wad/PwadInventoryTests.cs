@@ -93,7 +93,7 @@ public sealed class PwadInventoryTests(ITestOutputHelper output)
         Assert.Equal([.. iwadMaps, .. set.Maps.Except(iwadMaps)], listed);
 
         // GameFlow's order: the exits from each episode's first map (Doom II: MAP01) reach every
-        // listed map but those vanilla has no way to (P7 decides how the game reaches them).
+        // listed map but those vanilla has no way to (P7: --level reaches them, SPEC §12 "P7").
         var reached = new List<string>();
         if (info.GameMode == GameMode.commercial)
         {
@@ -178,6 +178,8 @@ public sealed class PwadInventoryTests(ITestOutputHelper output)
 
         // What vanilla doesn't read (DEHACKED, MAPINFO, tool lumps, …): exactly these, so a new kind shows.
         Assert.Equal(expected.Ignored.Order(StringComparer.Ordinal), Of(LumpKind.Other).Select(e => e.Lump.Name).Order(StringComparer.Ordinal));
+        // P7: the WAD's log line names the same (VanillaIgnores.IgnoredLumps)
+        Assert.Equal(expected.Ignored.Order(StringComparer.Ordinal), IsoDoom.Map.VanillaIgnores.IgnoredLumps(wad).Select(l => l.Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
