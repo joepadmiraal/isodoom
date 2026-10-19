@@ -1128,6 +1128,9 @@ public partial class LevelScript : Node
         // T10.7: the header's version, or the IWAD's default (Final Doom's for iwad tnt|plutonia), as the tests play it
         if (route.ImpliedGameVersion is { } version && _scene.World is { } world && world.gameversion != version)
             wrong.Add($"needs -gameversion {GameVersions.Cmdline(version)} (T10.7)");
+        // P10 (T4.8b): a PWAD set's route needs a PWAD loaded (which one is the arguments': the scene does not know the sets)
+        if (route.Pwad is string pwad && (_scene.Wad?.Files.Count ?? 0) < 2)
+            wrong.Add($"needs the PWAD set {pwad} (-file wads/pwads/{pwad}/…)");
         if (_scene.PlayerMobj is null)
             wrong.Add("no player");
         // T11.8: a multi-player route with its players in the game (--level-players=N, or a netgame's Start);

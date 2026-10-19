@@ -1,0 +1,12 @@
+# Scythe over Doom II MAP20 with monsters (P10): the Icon of Sin's brain killed by a
+# route event on the first tic (the way to it is the set's: not walked); its death
+# (A_BrainScream, A_BrainExplode) and A_BrainDie end the level, the last tic. Written by
+# tools/RouteGen (scythe-map20-brain).
+iwad doom2
+pwad scythe
+map MAP20
+monsters
+exit normal
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -1632 576 250
+0 0 0 0 x118

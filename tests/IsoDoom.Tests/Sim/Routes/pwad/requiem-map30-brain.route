@@ -1,0 +1,12 @@
+# Requiem over Doom II MAP30 with monsters (P10): the Icon of Sin's brain killed by a
+# route event on the first tic (the way to it is the set's: not walked); its death
+# (A_BrainScream, A_BrainExplode) and A_BrainDie end the level, the last tic. Written by
+# tools/RouteGen (requiem-map30-brain).
+iwad doom2
+pwad requiem
+map MAP30
+monsters
+exit normal
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+damage -64 -704 250
+0 0 0 0 x117

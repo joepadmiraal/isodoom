@@ -43,7 +43,8 @@ public class FinaleTests
     public static TheoryData<string, string> Routes()
     {
         var data = new TheoryData<string, string>();
-        foreach (VanillaRoute r in EndRoutes())
+        // P10: and a PWAD set's text screens and cast call (Requiem's: VanillaRoute.PwadDir)
+        foreach (VanillaRoute r in EndRoutes().Concat(VanillaRoute.PwadNames().Select(VanillaRoute.Load).Where(IntermissionTests.TextScreenAfter)))
         {
             data.Add(r.Name, "fi");
             if (r.Commercial) // (T10.7: Final Doom's too)

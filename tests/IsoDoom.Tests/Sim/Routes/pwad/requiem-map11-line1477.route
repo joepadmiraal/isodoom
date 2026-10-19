@@ -1,0 +1,12 @@
+# Requiem over Doom II MAP11 (P10): started beside line 1477 (special 52, tag 0), on its
+# front, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (requiem-map11-line1477).
+iwad doom2
+pwad requiem
+map MAP11
+exit normal
+start -384 1664 90
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x10

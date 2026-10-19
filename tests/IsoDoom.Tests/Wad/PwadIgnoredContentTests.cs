@@ -102,6 +102,60 @@ public sealed class PwadIgnoredContentTests(ITestOutputHelper output)
         Assert.Equal(35, world.leveltime);
     }
 
+    /// <summary>
+    /// P10, P7's question: NEIS's E4M6 can be finished as vanilla plays it. Its special 307
+    /// (line 9819, tag 92) lowers only sectors 2022 and 2050, shut blocks (floor = ceiling) that
+    /// no vanilla special moves, so they stay shut; without them the start's sector still joins
+    /// the normal exit's (line 9074, sector 1627) through two-sided lines and teleports, and only
+    /// the ring of special 124 lines (sector 2019: ZDoom's and Eternity's way to E4M0, as
+    /// NEIS.txt says) and the sectors behind the blocks are cut off. A topological check (heights,
+    /// keys and movers aside): the walked route is P10's, which the planner could not find on a map
+    /// this size.
+    /// </summary>
+    [Fact]
+    public void Neis4m6sExitNeedsNotItsSpecial307()
+    {
+        (_, WadArchive wad, _) = Open("neis");
+        Level level = Level.Load(wad, "E4M6");
+        Line line307 = Assert.Single(level.Lines, l => l.Special == 307);
+        Assert.Equal(9819, line307.Index);
+        int[] tagged = [.. level.Sectors.Where(s => s.Tag == line307.Tag).Select(s => s.Index)];
+        Assert.Equal([2022, 2050], tagged);
+        Assert.All(tagged, i => Assert.Equal(level.Sectors[i].FloorHeight, level.Sectors[i].CeilingHeight));
+        Assert.DoesNotContain(level.Lines, l => l.Tag == line307.Tag && l != line307); // nothing vanilla runs moves them
+        Line exit = Assert.Single(level.Lines, l => l.Special == 11);
+        Assert.Equal(9074, exit.Index);
+
+        HashSet<int> Reach(ISet<int> shut)
+        {
+            MapThing p1 = level.Things.First(t => t.Type == 1);
+            int start = level.R_PointInSubsector(p1.X << 16, p1.Y << 16).Sector.Index;
+            var seen = new HashSet<int> { start };
+            var queue = new Queue<int>([start]);
+            while (queue.Count > 0)
+            {
+                int at = queue.Dequeue();
+                foreach (Line l in level.Lines)
+                {
+                    IEnumerable<int> to = l.Special is 39 or 97 or 125 or 126 && l.FrontSector?.Index == at
+                        ? level.Sectors.Where(s => s.Tag == l.Tag).Select(s => s.Index)
+                        : l.FrontSector is { } f && l.BackSector is { } b && (f.Index == at || b.Index == at) ? [f.Index == at ? b.Index : f.Index] : [];
+                    foreach (int next in to)
+                    {
+                        if (!shut.Contains(next) && seen.Add(next))
+                            queue.Enqueue(next);
+                    }
+                }
+            }
+            return seen;
+        }
+        HashSet<int> all = Reach(new HashSet<int>()), vanilla = Reach(new HashSet<int>(tagged));
+        Assert.Contains(exit.FrontSector!.Index, vanilla);
+        Assert.Contains(2019, all);
+        Assert.DoesNotContain(2019, vanilla);
+        output.WriteLine($"E4M6: {vanilla.Count} of {level.Sectors.Length} sectors joined to the start with sectors 2022 and 2050 shut, {all.Count} without");
+    }
+
     // The par: none past Doom II's table (MAP33), pars[1][0] (E1M0), and episode 4's overflow into cpars, cpars[0] (E4M0).
     public static TheoryData<string, string, string, int, int> UnreachedMaps =>
         [("d2twid", "MAP33", "MAP34", 32, 0), ("neis", "E1M0", "E1M1", -1, 0), ("neis", "E4M0", "E4M1", -1, 30)];

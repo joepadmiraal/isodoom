@@ -57,7 +57,9 @@ public static class SpecialRoutes
     private static readonly HashSet<int> _teleports = [39, 97, 125, 126];
 
     // (M9: doom-exmy-… on The Ultimate Doom's IWAD)
-    private const string MapPart = @"(?:(?:(?<iwad>tnt|plutonia)-)?map(?<map>\d\d)|(?<iwad>doom)-(?<map>e[1-4]m[1-9]))";
+    // (P10: SET-mapNN-… or SET-exmy-… on a PWAD set of docs/PWAD-VALIDATION.md over its IWAD, PwadSet)
+    private const string MapPart = @"(?:(?:(?<iwad>tnt|plutonia)-)?map(?<map>\d\d)|(?<iwad>doom)-(?<map>e[1-4]m[1-9])"
+        + @"|(?<pwad>scythe|av|mm|d2twid|requiem|hr)-map(?<map>\d\d)|(?<pwad>dtwid|neis)-(?<map>e[1-4]m[0-9]))";
 
     private static readonly Regex _name = new($@"^{MapPart}-(?<kind>line|sector)(?<index>\d+)$", RegexOptions.CultureInvariant);
 
@@ -77,10 +79,10 @@ public static class SpecialRoutes
     {
         (string iwad, string map) = IwadAndMap(name);
         string header = $"""
-# {Game(iwad)} {map} ({Task(iwad)}): from the map's start, no monsters: the player walks to the exit,
+# {Game(iwad, name)} {map} ({Task(iwad, name)}): from the map's start, no monsters: the player walks to the exit,
 # through the doors on the way (and the keys they need), and leaves the level, the last
 # tic. Written by tools/RouteGen ({name}).
-iwad {iwad}
+iwad {iwad}{PwadHeader(name)}
 map {map}
 exit normal
 
@@ -117,6 +119,33 @@ exit normal
                     g.GoToDoors(k.x / (double)FU, k.y / (double)FU, 4);
                     keysTried.Add(k);
                     log($"hint: key {k.type}");
+                }
+                else if (hint.StartsWith("walk:", StringComparison.Ordinal))
+                {
+                    // P10: walk:X,Y,TICS,SPEED walks straight towards X,Y (no planning: e.g. running across a gap)
+                    double[] w = [.. hint[5..].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture))];
+                    g.Walk(w[0], w[1], (int)w[2], (int)w[3]);
+                    log($"hint: walked to ({g.X:F0}, {g.Y:F0}, {g.Z:F0})");
+                }
+                else if (hint.StartsWith("exit:", StringComparison.Ordinal))
+                {
+                    // P10: exit:X,Y turns to X,Y and uses: the exit switch there, the route's last tic
+                    double[] at = [.. hint[5..].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture))];
+                    g.Exit(at[0], at[1]);
+                    return;
+                }
+                else if (hint.StartsWith("wait:", StringComparison.Ordinal))
+                {
+                    // P10: wait:TICS stands still
+                    g.Wait(int.Parse(hint[5..], CultureInfo.InvariantCulture));
+                    log("hint: waited");
+                }
+                else if (hint.StartsWith("goto:", StringComparison.Ordinal))
+                {
+                    // P10: goto:X,Y walks there through the manual doors (Steer.GoToDoors)
+                    double[] at = [.. hint[5..].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture))];
+                    g.GoToDoors(at[0], at[1], 8);
+                    log($"hint: went to ({g.X:F0}, {g.Y:F0}, {g.Z:F0})");
                 }
                 else if (hint.StartsWith("tele:", StringComparison.Ordinal))
                 {
@@ -213,18 +242,28 @@ exit normal
     /// T10.7: the walked exit routes' hints: line indices to press or cross
     /// (<see cref="PressASwitch"/>), <c>key:MT_…</c> keys to pick up and
     /// <c>tele:X,Y</c> teleport pads to walk into (<see cref="Steer.Teleport"/>), in
-    /// order, before the walker's own search.
+    /// order, before the walker's own search. P10: <c>walk:X,Y,TICS,SPEED</c> walks straight
+    /// towards a point (<see cref="Steer.Walk"/>), <c>goto:X,Y</c> plans there through the manual
+    /// doors (<see cref="Steer.GoToDoors"/>) and <c>wait:TICS</c> stands, and <c>exit:X,Y</c> uses the exit switch there (the route's end).
     /// </summary>
     private static readonly Dictionary<string, string[]> _exitHints = new(StringComparer.Ordinal)
     {
         // the red skull (east, past the lifts and the doors these open), the red door to the
         // north room, the switch that lowers the blue skull's pillar, the blue door, the lift up and
         // the teleporter beside it to the exit's ledge
+        // P10: Requiem's MAP01 starts on a pillar in a pit: run north across it
+        ["requiem-map01-walk-exit"] = ["walk:-480,200,8,50"],
+        // AV's MAP01: line 300 lowers the narrow lift 53 (24 deep, under the player's box): stand at its edge while it is down, up
+        // with it; the yellow skull, the doors and lowered floors on the way east to line 715, which opens door 85 to the south;
+        // down through it to line 607, which lowers the gate (sector 100) before the exit
+        ["av-map01-walk-exit"] = ["300", "goto:604,-280", "wait:150", "key:MT_MISC8", "109", "293", "436", "708", "700", "705", "715", "goto:1028,-410", "goto:900,-420", "goto:604,-530", "607"],
+        // D2TWID's MAP01: the planner finds no way to the exit room's turned walls; go to its middle, then step to the switch
+        ["d2twid-map01-walk-exit"] = ["goto:-1150,-1720", "walk:-1195,-1795,14,10", "exit:-1201,-1803"],
         ["plutonia-map01-walk-exit"] = ["294", "379", "821", "981", "910", "key:MT_MISC8", "1099", "1114", "key:MT_MISC9", "659", "613", "tele:1696,-1184"],
     };
 
     // the manual doors (Steer.GoToDoors opens them) and the exits: not switches to try
-    private static readonly HashSet<int> _notSwitches = [1, 26, 27, 28, 31, 32, 33, 34, 117, 118, 11, 51];
+    private static readonly HashSet<int> _notSwitches = [1, 26, 27, 28, 31, 32, 33, 34, 117, 118, 11, 51, 48, 85]; // (P10: and the scrolling walls, no switches)
 
     // the specials that close, lower ceilings or crush (p_spec.c, p_switch.c): never tried
     private static readonly HashSet<int> _closing = [3, 6, 16, 25, 41, 42, 43, 44, 49, 50, 73, 75, 76, 77, 107, 110, 113, 116, 141];
@@ -331,7 +370,7 @@ exit normal
     public static bool IsName(string name) => _name.IsMatch(name);
 
     /// <summary>The game an <c>iwad</c> header names, for a route's comment.</summary>
-    private static string Game(string iwad) => iwad switch
+    private static string Game(string iwad, string name = "") => PwadSet.Of(name) is { } set ? $"{set.Title} over {Game(iwad)}" : iwad switch
     {
         "tnt" => "TNT: Evilution",
         "plutonia" => "The Plutonia Experiment",
@@ -340,7 +379,7 @@ exit normal
     };
 
     /// <summary>The task that brought a route kind to an IWAD, for a route's comment.</summary>
-    private static string Task(string iwad) => iwad switch
+    private static string Task(string iwad, string name = "") => PwadSet.Of(name) is not null ? "P10" : iwad switch
     {
         "doom2" => "T10.6",
         "doom" => "M9",
@@ -351,9 +390,13 @@ exit normal
     public static (string Iwad, string Map) IwadAndMap(string name)
     {
         Match mt = _name.Match(name) is { Success: true } m ? m : _exitName.Match(name);
-        string iwad = mt.Groups["iwad"].Value is { Length: > 0 } i ? i : "doom2";
-        return (iwad, iwad == "doom" ? mt.Groups["map"].Value.ToUpperInvariant() : "MAP" + mt.Groups["map"].Value);
+        string iwad = PwadSet.Of(name) is { } set ? set.Iwad : mt.Groups["iwad"].Value is { Length: > 0 } i ? i : "doom2";
+        string map = mt.Groups["map"].Value;
+        return (iwad, map.StartsWith('e') ? map.ToUpperInvariant() : "MAP" + map);
     }
+
+    /// <summary>P10: the <c>pwad SET</c> header line of a route on a PWAD set (empty on an IWAD alone).</summary>
+    private static string PwadHeader(string name) => PwadSet.Of(name) is { } set ? $"\npwad {set.Folder}" : "";
 
     /// <summary>The route <paramref name="name"/>: its header, start and steering, or an exception when it cannot be made.</summary>
     public static (string Header, (int X, int Y, int Angle) Start, Action<Steer, Action<string>> Run) Make(Func<WadArchive> wad, string name)
@@ -401,10 +444,10 @@ exit normal
                     // (T10.7: the switch exits too, 11 and 51: the use leaves the level, the route's last tic)
                     string exit = special is 52 or 124 or 11 or 51 ? $"exit {(special is 124 or 51 ? "secret" : "normal")}\n" : "";
                     string header = $"""
-# {Game(iwad)} {map} ({Task(iwad)}): started beside line {index} (special {special}, tag {l.tag}), on its
+# {Game(iwad, name)} {map} ({Task(iwad, name)}): started beside line {index} (special {special}, tag {l.tag}), on its
 # {(side > 0 ? "front" : "back")}, the player {kind} it, then waits for the movers it set going
 # (at most {MaxWait} tics). Written by tools/RouteGen ({name}).
-iwad {iwad}
+iwad {iwad}{PwadHeader(name)}
 map {map}
 {exit}
 """;
@@ -500,9 +543,9 @@ map {map}
             throw new InvalidOperationException($"{map} sector {index}: no place to stand in it");
         int wait = special == 10 ? SectorDoorWait : SectorWait;
         string header = $"""
-# {Game(iwad)} {map} ({Task(iwad)}): started {(outside ? "beside" : "in")} sector {index} (special {special}), the player stands
+# {Game(iwad, name)} {map} ({Task(iwad, name)}): started {(outside ? "beside" : "in")} sector {index} (special {special}), the player stands
 # there for {wait} tics. Written by tools/RouteGen ({name}).
-iwad {iwad}
+iwad {iwad}{PwadHeader(name)}
 map {map}
 
 """;

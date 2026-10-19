@@ -69,6 +69,10 @@ public static class Program
         _ => () => FinalDoom(iwad),
     };
 
+    /// <summary>P10: the IWAD of a generated route's name, with its PWAD set over it when the name starts with one (<see cref="PwadSet.Of"/>).</summary>
+    private static Func<WadArchive> WadOf(string name, string iwad) =>
+        PwadSet.Of(name) is { } set ? () => set.Over(IwadNamed(iwad)(), RepoRoot()) : IwadNamed(iwad);
+
     private static WadArchive Tnt() => FinalDoom("tnt");
 
     private static WadArchive Plutonia() => FinalDoom("plutonia");
@@ -81,10 +85,41 @@ public static class Program
     /// E2-E4 maps get without it (DOOM1.WAD has only E1).
     /// </summary>
     private static WadArchive IwadOf(string map) =>
-        Steer.ModeOf(map) != GameMode.commercial
+        Environment.GetEnvironmentVariable("ROUTEGEN_PWAD") is { Length: > 0 } pwad ? PwadNamed(pwad)
+        : Steer.ModeOf(map) != GameMode.commercial
             ? Environment.GetEnvironmentVariable("ROUTEGEN_IWAD") == "doom" || !map.StartsWith("E1", StringComparison.OrdinalIgnoreCase) ? Doom() : Doom1()
             : Environment.GetEnvironmentVariable("ROUTEGEN_IWAD") is "tnt" or "plutonia" ? FinalDoom(Environment.GetEnvironmentVariable("ROUTEGEN_IWAD")!)
             : Doom2();
+
+    /// <summary>
+    /// P10: <c>SET-mapNN-brain</c>, a map of a Doom II PWAD set with an Icon of Sin, with monsters,
+    /// its brain killed by a route event on the first tic (a <c>damage</c> line: the set's own way to
+    /// it aside), until A_BrainDie ends the level, the last tic: on MAP30 its text and the cast call
+    /// follow (Scythe's MAP20 has no exit but its Icon: MAP20's text and MAP21 follow).
+    /// </summary>
+    private static Script BrainDeath(PwadSet set, string map, string name) => new(WadOf(name, set.Iwad), map, $"""
+# {set.Title} over Doom II {map} with monsters (P10): the Icon of Sin's brain killed by a
+# route event on the first tic (the way to it is the set's: not walked); its death
+# (A_BrainScream, A_BrainExplode) and A_BrainDie end the level, the last tic. Written by
+# tools/RouteGen ({name}).
+iwad doom2
+pwad {set.Folder}
+map {map}
+monsters
+exit normal
+
+""", (g, log) =>
+    {
+        mobj_t brain = g.World.Mobjs().FirstOrDefault(m => m.type == mobjtype_t.MT_BOSSBRAIN) ?? throw new InvalidOperationException($"{map} has no Icon of Sin brain");
+        g.Damage(brain.spawnpoint.X, brain.spawnpoint.Y, brain.health);
+        g.WaitExit(1000);
+        log($"the brain died; health {g.Mo.health}");
+    }, Monsters: true);
+
+    /// <summary>P10: <c>ROUTEGEN_PWAD=SET</c> gives <c>--info</c>, <c>--probe</c>, … the PWAD set SET over its IWAD.</summary>
+    private static WadArchive PwadNamed(string folder) =>
+        PwadSet.All.FirstOrDefault(s => s.Folder == folder) is { } set ? set.Over(IwadNamed(set.Iwad)(), RepoRoot())
+        : throw new ArgumentException($"ROUTEGEN_PWAD={folder}: one of {string.Join("|", PwadSet.All.Select(s => s.Folder))}");
 
     private static WadArchive Synthetic() =>
         new([WadFile.FromBytes(IsoDoom.Tools.SyntheticIwad.SyntheticIwad.Build(), IsoDoom.Tools.SyntheticIwad.SyntheticIwad.DefaultFileName)]);
@@ -3363,7 +3398,7 @@ exit normal
             // T10.6: a special's route (mapNN-lineK, mapNN-sectorK), started beside it
             // (T10.7: tnt-mapNN-lineK, plutonia-mapNN-lineK on Final Doom's IWADs)
             (string specialIwad, string specialMap) = SpecialRoutes.IwadAndMap(args[0]);
-            Func<WadArchive> specialWad = IwadNamed(specialIwad);
+            Func<WadArchive> specialWad = WadOf(args[0], specialIwad);
             (string specialHeader, (int X, int Y, int Angle) specialStart, Action<Steer, Action<string>> specialRun) = SpecialRoutes.Make(specialWad, args[0]);
             _scripts[args[0]] = new Script(specialWad, specialMap, specialHeader, specialRun, specialStart);
         }
@@ -3372,8 +3407,11 @@ exit normal
             // T10.6: a map walked from its start to the exit (mapNN-walk-exit)
             (string exitHeader, Action<Steer, Action<string>> exitRun) = SpecialRoutes.MakeExit(args[0]);
             (string exitIwad, string exitMap) = SpecialRoutes.IwadAndMap(args[0]);
-            _scripts[args[0]] = new Script(IwadNamed(exitIwad), exitMap, exitHeader, exitRun);
+            _scripts[args[0]] = new Script(WadOf(args[0], exitIwad), exitMap, exitHeader, exitRun);
         }
+        if (args.Length is 1 or 2 && PwadSet.Of(args[0]) is { Iwad: "doom2" } brainSet
+            && System.Text.RegularExpressions.Regex.Match(args[0], $"^{brainSet.Folder}-(?<map>map\\d\\d)-brain$") is { Success: true } brainName)
+            _scripts[args[0]] = BrainDeath(brainSet, brainName.Groups["map"].Value.ToUpperInvariant(), args[0]);
         if (args.Length is < 1 or > 2 || !_scripts.TryGetValue(args[0], out Script? script))
         {
             Console.Error.WriteLine($"usage: IsoDoom.RouteGen NAME [OUT.route]; NAME one of {string.Join(", ", _scripts.Keys)}");

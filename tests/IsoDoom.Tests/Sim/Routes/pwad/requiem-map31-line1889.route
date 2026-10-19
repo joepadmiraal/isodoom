@@ -1,0 +1,12 @@
+# Requiem over Doom II MAP31 (P10): started beside line 1889 (special 124, tag 0), on its
+# front, the player walks across it, then waits for the movers it set going
+# (at most 450 tics). Written by tools/RouteGen (requiem-map31-line1889).
+iwad doom2
+pwad requiem
+map MAP31
+exit secret
+start -2176 816 270
+
+# forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
+0 0 0 0
+25 0 0 0 x10

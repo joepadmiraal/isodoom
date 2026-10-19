@@ -197,7 +197,21 @@ public sealed class VanillaRoute
     public static IEnumerable<string> Names() =>
         Directory.GetFiles(Dir, "*.route").Select(p => System.IO.Path.GetFileNameWithoutExtension(p)).Order(StringComparer.Ordinal);
 
-    public static VanillaRoute Load(string name) => Parse(System.IO.Path.Combine(Dir, name + ".route"));
+    public static VanillaRoute Load(string name) =>
+        Parse(System.IO.Path.Combine(Dir, name + ".route") is var top && System.IO.File.Exists(top) ? top : System.IO.Path.Combine(PwadDir, name + ".route"));
+
+    /// <summary>
+    /// P10 (T4.8b): the PWAD sets' routes' directory, <see cref="Dir"/>/<c>pwad</c>.
+    /// Their ticcmds are no WAD data, so they are committed, but not their dumps
+    /// nor checksums: they are not among <see cref="Names"/> (so not in
+    /// <c>RouteChecksumTests</c>); <c>PwadRouteTests</c> plays them against
+    /// their vanilla dumps (<c>routes.sh</c>), skipping without the set.
+    /// </summary>
+    public static string PwadDir => System.IO.Path.Combine(Dir, "pwad");
+
+    /// <summary>P10: the names of every route in <see cref="PwadDir"/>, sorted (each with a <c>pwad SET</c> header).</summary>
+    public static IEnumerable<string> PwadNames() =>
+        Directory.GetFiles(PwadDir, "*.route").Select(p => System.IO.Path.GetFileNameWithoutExtension(p)).Order(StringComparer.Ordinal);
 
     /// <summary>
     /// T6.13: DOOM1.WAD's demo lump <paramref name="lump"/> (<c>DEMO1</c>-<c>DEMO3</c>) as a

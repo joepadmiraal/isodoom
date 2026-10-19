@@ -36,6 +36,8 @@ public class MusicTests
         var data = new TheoryData<string>();
         foreach (string r in WipeTests.Routes)
             data.Add(r);
+        foreach (string r in VanillaRoute.PwadNames()) // P10: each PWAD set's first map to its second (wipes.sh on Routes/pwad)
+            data.Add(r);
         return data;
     }
 

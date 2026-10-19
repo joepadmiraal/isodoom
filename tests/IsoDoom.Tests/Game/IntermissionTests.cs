@@ -83,7 +83,8 @@ public class IntermissionTests
     public static TheoryData<string, string> Dumps()
     {
         var data = new TheoryData<string, string>();
-        foreach (VanillaRoute r in ExitRoutes())
+        // P10: and the PWAD sets' (VanillaRoute.PwadDir: each set's first map to its second, its own INTERPIC and level names)
+        foreach (VanillaRoute r in ExitRoutes().Concat(VanillaRoute.PwadNames().Select(VanillaRoute.Load).Where(r => r.Exit != 0)))
         {
             data.Add(r.Name, "wi");
             data.Add(r.Name, "wiskip");
