@@ -1,6 +1,7 @@
 using System.Linq;
 using IsoDoom.Map;
 using IsoDoom.Render;
+using IsoDoom.Sim;
 using IsoDoom.Tests.Support;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
@@ -141,22 +142,16 @@ public class DoorLidsTests
     [Fact]
     public void CeilingMoversKeepTheirUpperWalls()
     {
-        (Level level, FloorTriangles floors, _) = Build(Synthetic(), "E1M1");
-        foreach (Line l in level.Lines)
+        // Three rooms, no specials; then a W1 crusher (line 0) tagged to room 2. The specials as loaded (P12f).
+        static (Level, DoorLids) Lids(TestMap map)
         {
-            l.Special = 0;
-            l.Tag = 0;
+            var level = Level.Load(new WadArchive([WadFile.FromBytes(map.Build(), "testmap.wad")]), "E1M1");
+            return (level, DoorLids.Build(level, FloorTriangles.Build(level, SubsectorPolygons.Build(level))));
         }
-        foreach (Sector s in level.Sectors)
-        {
-            s.Special = 0;
-            s.Tag = 0;
-        }
-        Assert.DoesNotContain(Enumerable.Range(0, level.Sectors.Length), DoorLids.Build(level, floors).MovesCeiling);
-        level.Lines[0].Special = 25; // W1 crusher
-        level.Lines[0].Tag = 7;
-        level.Sectors[2].Tag = 7;
-        DoorLids lids = DoorLids.Build(level, floors);
+        static TestMap Map() => TestMap.Strip(0, 0, 128, new(128, 0, 128), new(128, 0, 96), new(128, 0, 128));
+        (Level plain, DoorLids none) = Lids(Map());
+        Assert.DoesNotContain(Enumerable.Range(0, plain.Sectors.Length), none.MovesCeiling);
+        (Level level, DoorLids lids) = Lids(Map().Special(0, 25, 7).SectorTag(2, 7));
         Assert.Equal([2], Enumerable.Range(0, level.Sectors.Length).Where(lids.MovesCeiling));
         Assert.True(lids.KeepsUppers(2, s => Ceiling(level, s)));
     }
@@ -165,31 +160,82 @@ public class DoorLidsTests
     public void DoorsAreTheSectorsDoorSpecialsMove()
     {
         // T6.13d: a manual door line's back sector, a tagged door line's sectors (not tag 0), and the door sector specials.
-        (Level level, _, _) = Build(Synthetic(), "E1M1");
-        foreach (Line l in level.Lines)
+        // Rooms A (0), door D (1, closed), B (2); Boundaries[2] has B in front and D behind.
+        static TestMap Map() => TestMap.Strip(0, 0, 128, new(128, 0, 128), new(16, 0, 0), new(128, 0, 128));
+        static int[] Doors(TestMap map)
         {
-            l.Special = 0;
-            l.Tag = 0;
+            bool[] doors = DoorLids.FindDoors(Level.Load(new WadArchive([WadFile.FromBytes(map.Build(), "testmap.wad")]), "E1M1"));
+            return [.. Enumerable.Range(0, doors.Length).Where(i => doors[i])];
         }
-        foreach (Sector s in level.Sectors)
-        {
-            s.Special = 0;
-            s.Tag = 0;
-        }
-        Line twoSided = level.Lines.First(l => l.BackSector is not null && l.FrontSector != l.BackSector);
-        Assert.DoesNotContain(true, DoorLids.FindDoors(level));
-        twoSided.Special = 1; // DR door
-        Assert.Equal([twoSided.BackSector!.Index], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
-        twoSided.Special = 0;
-        level.Lines[0].Special = 29; // S1 door, tag 0: nothing (P_FindSectorFromLineTag would take every tag-0 sector)
-        Assert.DoesNotContain(true, DoorLids.FindDoors(level));
+
+        Assert.Empty(Doors(Map()));
+        TestMap dr = Map();
+        Assert.Equal([1], Doors(dr.Special(dr.Boundaries[2], 1))); // DR door
+        Assert.Empty(Doors(Map().Special(0, 29))); // S1 door, tag 0: nothing (P_FindSectorFromLineTag would take every tag-0 sector)
+        Assert.Equal([2], Doors(Map().Special(0, 29, 7).SectorTag(2, 7)));
+        Assert.Equal([1], Doors(Map().SectorSpecial(1, 14))); // (cleared at spawn: DoorSectorSpecialsClearedAtSpawnStayDoors)
+
+        // As loaded (P12d, P12f): a sector special (a floor's change-type) or line special set after load makes no door.
+        var level = Level.Load(new WadArchive([WadFile.FromBytes(Map().Build(), "testmap.wad")]), "E1M1");
+        level.Sectors[1].Special = 10;
+        level.Lines[0].Special = 29;
         level.Lines[0].Tag = 7;
         level.Sectors[2].Tag = 7;
-        Assert.Equal([2], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
-        level.Lines[0].Special = 0;
-        level.Sectors[5].Special = 10; // P12d: a special set after load (a floor's change-type) spawns no door
         Assert.DoesNotContain(true, DoorLids.FindDoors(level));
-        // (a door sector special as loaded: DoorSectorSpecialsClearedAtSpawnStayDoors)
+    }
+
+    /// <summary>
+    /// P12f: the sim clears a one-time line's special once triggered (a D1 door used, a W1 line crossed) and a
+    /// loaded game restores it so; the doors and the lids stay those of the map as loaded, whenever they are built.
+    /// </summary>
+    [Fact]
+    public void OneTimeDoorLinesTriggeredStayDoors()
+    {
+        // Door D0 (0, closed), rooms A (1) and B (2), door D3 (3, closed, tag 5), the ceiling crusher C (4, tag 6), room E (5).
+        TestMap map = TestMap.Strip(0, 0, 128, new(16, 0, 0), new(128, 0, 128), new(128, 0, 128), new(16, 0, 0), new(16, 0, 128), new(128, 0, 128));
+        int d1 = map.Boundaries[1], w1 = map.Boundaries[2], crusher = map.Boundaries[5];
+        map.Special(d1, 31).Special(w1, 2, 5).SectorTag(3, 5).Special(crusher, 44, 6).SectorTag(4, 6).Player(40, 64, 180);
+        var wad = new WadArchive([WadFile.FromBytes(map.Build(), "testmap.wad")]);
+        var fresh = Level.Load(wad, "E1M1");
+
+        var world = new World(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.Vanilla);
+        world.P_InitPicAnims(null, PicAnims.FlatNames(wad)); // as SaveGameTests.Load's
+        world.G_DoLoadLevel(Level.Load(wad, "E1M1"));
+        world.P_UseLines(world.players[0]); // EV_VerticalDoor: a D1 door clears its special
+        world.P_CrossSpecialLine(w1, 0, world.players[0].mo!); // W1: cleared
+        world.P_CrossSpecialLine(crusher, 0, world.players[0].mo!);
+        Level live = world.level;
+        Assert.All([d1, w1, crusher], l => Assert.Equal(0, live.Lines[l].Special));
+        Assert.Equal([31, 2, 44], [live.Lines[d1].LoadedSpecial, live.Lines[w1].LoadedSpecial, live.Lines[crusher].LoadedSpecial]);
+        Assert.NotNull(world.sectors[0].specialdata);
+
+        int[] Doors(Level level)
+        {
+            bool[] doors = DoorLids.FindDoors(level);
+            return [.. Enumerable.Range(0, doors.Length).Where(i => doors[i])];
+        }
+        Assert.Equal([0, 3], Doors(fresh));
+        Assert.Equal(Doors(fresh), Doors(live));
+        AssertSameLids(fresh, live);
+
+        // A loaded game: its lines' specials as saved (cleared), on a fresh copy of the map (LevelScene's StartFog after StartWorld).
+        World loaded = Sim.SaveGameTests.Load(Sim.SaveGameTests.Save(world), wad);
+        Assert.Equal(0, loaded.level.Lines[d1].Special);
+        Assert.Equal(Doors(fresh), Doors(loaded.level));
+        AssertSameLids(fresh, loaded.level);
+    }
+
+    private static void AssertSameLids(Level expected, Level actual)
+    {
+        DoorLids Lids(Level level) => DoorLids.Build(level, FloorTriangles.Build(level, SubsectorPolygons.Build(level)));
+        DoorLids a = Lids(expected), b = Lids(actual);
+        Assert.Equal(a.Sectors, b.Sectors);
+        for (int s = 0; s < expected.Sectors.Length; s++)
+        {
+            Assert.Equal(a.IsDoor(s), b.IsDoor(s));
+            Assert.Equal(a.MovesCeiling(s), b.MovesCeiling(s));
+            Assert.Equal(a.Neighbours(s), b.Neighbours(s));
+        }
     }
 
     /// <summary>P3: a door sector special the sim cleared at spawn (NEIS E1M9's 14) still makes a door, as the mesh built before the spawn says.</summary>

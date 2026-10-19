@@ -270,6 +270,7 @@ public sealed class Level
             {
                 Flags = S16(mld, 4),
                 Special = S16(mld, 6),
+                LoadedSpecial = S16(mld, 6),
                 Tag = S16(mld, 8),
                 Dx = v2.X - v1.X,
                 Dy = v2.Y - v1.Y,

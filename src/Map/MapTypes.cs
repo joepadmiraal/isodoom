@@ -198,8 +198,20 @@ public sealed class Line
     /// <summary>The <c>ML_*</c> flags; the sim sets <see cref="ML_MAPPED"/>.</summary>
     public short Flags { get; set; }
 
-    /// <summary>Line special; the sim clears it when a one-shot special fires.</summary>
+    /// <summary>Line special: the sim's <c>line_t.special</c>, which it changes (see <see cref="LoadedSpecial"/>).</summary>
     public short Special { get; set; }
+
+    /// <summary>
+    /// The special as the map lump has it, which the sim never changes, while
+    /// <see cref="Special"/> is the sim's <c>line_t.special</c> (P12f): it clears it
+    /// when a one-time special fires: a W1 line crossed (<c>P_CrossSpecialLine</c>),
+    /// an S1 switch used or a G1 line shot (<c>P_ChangeSwitchTexture</c> with
+    /// <c>useAgain</c> 0, from <c>P_UseSpecialLine</c> and <c>P_ShootSpecialLine</c>),
+    /// and a D1 door opened (<c>EV_VerticalDoor</c>: 31–34, 118); a loaded game
+    /// restores it as saved (<c>P_UnArchiveWorld</c>). Presentation that classifies
+    /// lines by their special (the doors of <c>DoorLids</c>, the fog of war) reads this.
+    /// </summary>
+    public short LoadedSpecial { get; init; }
 
     public short Tag { get; set; }
 

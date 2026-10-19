@@ -57,14 +57,14 @@ public sealed class VanillaIgnores
         ThingFlags = things;
     }
 
-    /// <summary>What <paramref name="level"/> holds that vanilla ignores (its lines' specials as they are now: read it at load, before the sim clears any).</summary>
+    /// <summary>What <paramref name="level"/> holds that vanilla ignores (the lines' and sectors' specials as loaded, whatever the sim has done to them since).</summary>
     public static VanillaIgnores Of(Level level)
     {
         System.ArgumentNullException.ThrowIfNull(level);
         var lines = new SortedDictionary<int, List<int>>();
         foreach (Line line in level.Lines)
         {
-            int special = (ushort)line.Special;
+            int special = (ushort)line.LoadedSpecial;
             if (!IsVanillaLineSpecial(special))
                 Add(lines, special, line.Index);
         }

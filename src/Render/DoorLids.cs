@@ -148,7 +148,8 @@ public sealed class DoorLids
         bool[] doors = Tagged(level, _taggedDoorSpecials);
         foreach (Line line in level.Lines)
         {
-            if (Array.IndexOf(_manualDoorSpecials, (int)line.Special) >= 0 && line.BackSector is Sector back)
+            // As loaded (P12f): the sim clears a D1 door's special once opened, and every one-time line's once triggered.
+            if (Array.IndexOf(_manualDoorSpecials, (int)line.LoadedSpecial) >= 0 && line.BackSector is Sector back)
                 doors[back.Index] = true;
         }
         foreach (Sector s in level.Sectors)
@@ -161,14 +162,14 @@ public sealed class DoorLids
         return doors;
     }
 
-    // The sectors tagged (tag 0 not counted) by a line with one of the specials.
+    // The sectors tagged (tag 0 not counted) by a line with one of the specials as loaded (P12f).
     private static bool[] Tagged(Level level, int[] specials)
     {
         bool[] tagged = new bool[level.Sectors.Length];
         var tags = new HashSet<int>();
         foreach (Line line in level.Lines)
         {
-            if (Array.IndexOf(specials, (int)line.Special) >= 0 && line.Tag != 0)
+            if (Array.IndexOf(specials, (int)line.LoadedSpecial) >= 0 && line.Tag != 0)
                 tags.Add(line.Tag);
         }
         foreach (Sector s in level.Sectors)
