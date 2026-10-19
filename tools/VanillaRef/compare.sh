@@ -48,6 +48,10 @@ if [ -n "$set" ]; then
     mapfile -t pwads <<< "$wads"
     if [ "$iwad" = - ]; then iwad=${pwads[0]}; fi
     pwads=("${pwads[@]:1}")
+elif [ "$iwad" = - ]; then
+    echo "IWAD - (the set's) needs --pwad SET" >&2
+    echo "usage: $0 DIR IWAD MAP \"X Y ANGLE;...\" [--images] [--tic N] [--pwad SET [--tables]] [-- LEVEL-ARGS...]" >&2
+    exit 2
 fi
 iwad=$(realpath "$iwad")
 files=()

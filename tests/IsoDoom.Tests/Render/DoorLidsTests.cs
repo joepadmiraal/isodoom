@@ -187,8 +187,9 @@ public class DoorLidsTests
         level.Sectors[2].Tag = 7;
         Assert.Equal([2], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
         level.Lines[0].Special = 0;
-        level.Sectors[5].Special = 10; // door close in 30 s
-        Assert.Equal([5], Enumerable.Range(0, level.Sectors.Length).Where(i => DoorLids.FindDoors(level)[i]));
+        level.Sectors[5].Special = 10; // P12d: a special set after load (a floor's change-type) spawns no door
+        Assert.DoesNotContain(true, DoorLids.FindDoors(level));
+        // (a door sector special as loaded: DoorSectorSpecialsClearedAtSpawnStayDoors)
     }
 
     /// <summary>P3: a door sector special the sim cleared at spawn (NEIS E1M9's 14) still makes a door, as the mesh built before the spawn says.</summary>

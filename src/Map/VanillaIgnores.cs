@@ -157,12 +157,24 @@ public sealed class VanillaIgnores
     /// that vanilla never reads, by name, each with its file: those the lump
     /// directory classifies as <see cref="LumpKind.Other"/> (<c>DEHACKED</c>,
     /// <c>MAPINFO</c>, <c>ZMAPINFO</c>, tool lumps, …; P1 pins each set's).
+    /// P12d: only the PWADs' lumps are classified (<see cref="LumpDirectory.Classify"/>
+    /// reads the lump, its namespace and the next lump of its own file, never
+    /// the IWAD's), and nothing without a PWAD.
     /// </summary>
     public static IReadOnlyList<(string Name, string File)> IgnoredLumps(WadArchive wad)
     {
         System.ArgumentNullException.ThrowIfNull(wad);
-        return [.. LumpDirectory.Build(wad)
-            .Where(e => e.Kind == LumpKind.Other && e.Lump.File != wad.Files[0])
-            .Select(e => (e.Lump.Name, e.Lump.File.Name))];
+        var ignored = new List<(string Name, string File)>();
+        for (int f = 1; f < wad.Files.Count; f++)
+        {
+            WadFile file = wad.Files[f];
+            for (int i = 0; i < file.Lumps.Count; i++)
+            {
+                WadLump lump = file.Lumps[i];
+                if (LumpDirectory.Classify(lump, i + 1 < file.Lumps.Count ? file.Lumps[i + 1].Name : null).Kind == LumpKind.Other)
+                    ignored.Add((lump.Name, file.Name));
+            }
+        }
+        return ignored;
     }
 }

@@ -73,8 +73,13 @@ public sealed class Sector
     public short Special { get; set; }
 
     /// <summary>
-    /// The special as the map lump has it, which the sim never changes (P3: it
-    /// clears <see cref="Special"/> 10 and 14 at spawn, and 9 once found).
+    /// The special as the map lump has it, which the sim never changes, while
+    /// <see cref="Special"/> is the sim's <c>sector_t.special</c> (P3, P12d): <c>P_SpawnSpecials</c>
+    /// clears the light specials (1, 2, 3, 8, 12, 13, 17; 4 stays) and the doors (10, 14) at
+    /// spawn, a strobe a line starts (<c>EV_StartLightStrobing</c>) clears it too,
+    /// <c>P_PlayerInSpecialSector</c> clears 9 once found, a raise-to-nearest-and-change
+    /// plat clears it, and the floors' change-types (donuts, lower-and-change,
+    /// raise-24-and-change) give it their model's special.
     /// </summary>
     public short LoadedSpecial { get; init; }
 
