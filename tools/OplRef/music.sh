@@ -94,21 +94,22 @@ out=${1:-${ISODOOM_OPL_MUSIC:-$HOME/.cache/isodoom/opl-music}/${base,,}}
 mkdir -p "$out"
 # The song lumps and their lengths in seconds (MUS: the delays at 140 Hz;
 # anything else: 5 minutes); with --pwad, only those the set's PWADs have.
-python3 -I - "$wad" "${only[@]}" > "$tmp/songs" <<'EOF'
+# (P12e: the WAD directories read by ../VanillaRef/mergewad.py's lumps().)
+python3 -I -B - "$here/../VanillaRef" "$wad" "${only[@]}" > "$tmp/songs" <<'EOF'
 import struct, sys
+
+sys.path.insert(0, sys.argv[1])
+from mergewad import lumps, lump_name  # noqa: E402
 
 
 def directory(path):
-    d = open(path, 'rb').read()
-    n, ofs = struct.unpack_from('<ii', d, 4)
-    for i in range(n):
-        pos, size, name = struct.unpack_from('<ii8s', d, ofs + 16 * i)
-        yield name.split(b'\0')[0].decode('ascii', 'replace').upper(), d[pos:pos + size]
+    for raw, lump in lumps(path):
+        yield lump_name(raw), lump
 
 
-songs = {name: lump for name, lump in directory(sys.argv[1]) if name.startswith('D_')}
-if len(sys.argv) > 2:
-    own = {name for path in sys.argv[2:] for name, _ in directory(path)}
+songs = {name: lump for name, lump in directory(sys.argv[2]) if name.startswith('D_')}
+if len(sys.argv) > 3:
+    own = {name for path in sys.argv[3:] for name, _ in directory(path)}
     songs = {name: lump for name, lump in songs.items() if name in own}
 for name, lump in sorted(songs.items()):
     secs = 300

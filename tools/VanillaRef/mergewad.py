@@ -10,6 +10,10 @@ lump. wi.sh and fi.sh give it to the game scene for the synthetic IWAD's
 routes, which the vanilla reference plays as -file over DOOM1.WAD and the
 game cannot (the shareware IWAD refuses -file, as vanilla's d_main.c).
 OUT.wad is WAD-derived: keep it out of the repo.
+
+P12e: demos.sh and ../OplRef/music.sh read WAD directories with lumps() and
+lump_name(), importing this file by its path (`python3 -I -B` with its folder
+put first on sys.path), so the directory is parsed in one place.
 """
 import struct
 import sys
@@ -23,6 +27,11 @@ def lumps(path):
     for i in range(count):
         pos, size, name = struct.unpack_from('<ii8s', data, offset + 16 * i)
         yield name, data[pos:pos + size]
+
+
+def lump_name(raw):
+    """A directory entry's 8-byte name as W_CheckNumForName compares it: to its NUL, upper case."""
+    return raw.split(b'\0')[0].decode('ascii', 'replace').upper()
 
 
 def main():

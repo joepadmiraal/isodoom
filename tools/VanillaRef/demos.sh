@@ -84,18 +84,18 @@ out=$(realpath -m "${ISODOOM_VANILLA_ROUTES:-$HOME/.cache/isodoom/vanilla-routes
 mkdir -p "$out"
 if [ $# -eq 0 ] && [ ${#pwads[@]} -gt 0 ]; then
     # P2: the set's own demo lumps (DEMO1, DEMO2, ...), in name order.
-    demos=$(python3 -I -c '
-import re, struct, sys
+    demos=$(python3 -I -B -c '
+import re, sys
+sys.path.insert(0, sys.argv[1])
+from mergewad import lumps, lump_name
 names = set()
-for path in sys.argv[1:]:
-    d = open(path, "rb").read()
-    n, off = struct.unpack("<ii", d[4:12])
-    for i in range(n):
-        name = d[off + 16 * i + 8:off + 16 * i + 16].split(b"\0")[0].decode("ascii", "replace").upper()
+for path in sys.argv[2:]:
+    for raw, _ in lumps(path):
+        name = lump_name(raw)
         if re.fullmatch(r"DEMO[0-9]+", name):
             names.add(name)
 print(" ".join(sorted(names, key=lambda s: int(s[4:]))))
-' "${pwads[@]}")
+' "$here" "${pwads[@]}")
     read -ra list <<< "$demos"
     [ ${#list[@]} -gt 0 ] || { echo "PWAD set $set has no demo lumps" >&2; exit 1; }
     set -- "${list[@]}"
@@ -112,20 +112,19 @@ for demo in "$@"; do
     rm -f "$dump"
     # The demo's version byte picks the reference's -gameversion (T10.6).
     # P2: the last lump of that name across the IWAD and the set's PWADs.
-    version=$(python3 -I -c '
-import struct, sys
+    version=$(python3 -I -B -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from mergewad import lumps, lump_name
 found = None
-for path in sys.argv[2:]:
-    d = open(path, "rb").read()
-    n, off = struct.unpack("<ii", d[4:12])
-    for i in range(n):
-        o, s, name = struct.unpack("<ii8s", d[off + 16 * i:off + 16 * i + 16])
-        if name.split(b"\0")[0].decode("ascii", "replace").upper() == sys.argv[1].upper():
-            found = d[o]
-if found is None:
-    sys.exit("no demo lump " + sys.argv[1])
-print({106: "1.666", 107: "1.7", 108: "1.8", 109: "1.9"}.get(found, "1.9"))
-' "$demo" "$iwad" "${pwads[@]}")
+for path in sys.argv[3:]:
+    for raw, data in lumps(path):
+        if lump_name(raw) == sys.argv[2].upper():
+            found = data
+if not found:
+    sys.exit("no demo lump " + sys.argv[2])
+print({106: "1.666", 107: "1.7", 108: "1.8", 109: "1.9"}.get(found[0], "1.9"))
+' "$here" "$demo" "$iwad" "${pwads[@]}")
     # The lump by name (no NAME.lmp in the working directory); dump.c's
     # patched G_ReadDemoTiccmd exits at the demo's marker.
     if [ -n "${final:-}" ]; then version=final; fi

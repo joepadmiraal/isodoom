@@ -57,14 +57,18 @@ public static class SpecialRoutes
     private static readonly HashSet<int> _teleports = [39, 97, 125, 126];
 
     // (M9: doom-exmy-… on The Ultimate Doom's IWAD)
-    // (P10: SET-mapNN-… or SET-exmy-… on a PWAD set of docs/PWAD-VALIDATION.md over its IWAD, PwadSet)
-    private const string MapPart = @"(?:(?:(?<iwad>tnt|plutonia)-)?map(?<map>\d\d)|(?<iwad>doom)-(?<map>e[1-4]m[1-9])"
-        + @"|(?<pwad>scythe|av|mm|d2twid|requiem|hr)-map(?<map>\d\d)|(?<pwad>dtwid|neis)-(?<map>e[1-4]m[0-9]))";
+    // (P10: SET-mapNN-… or SET-exmy-… on a PWAD set of docs/PWAD-VALIDATION.md over its IWAD, PwadSet;
+    // P12e: the sets' folders from PwadSet.All, split by IWAD, not a copy of the table)
+    private static readonly string _mapPart = @"(?:(?:(?<iwad>tnt|plutonia)-)?map(?<map>\d\d)|(?<iwad>doom)-(?<map>e[1-4]m[1-9])"
+        + $@"|(?<pwad>{PwadFolders("doom2")})-map(?<map>\d\d)|(?<pwad>{PwadFolders("doom")})-(?<map>e[1-4]m[0-9]))";
 
-    private static readonly Regex _name = new($@"^{MapPart}-(?<kind>line|sector)(?<index>\d+)$", RegexOptions.CultureInvariant);
+    private static string PwadFolders(string iwad) =>
+        string.Join("|", PwadSet.All.Where(s => s.Iwad == iwad).Select(s => Regex.Escape(s.Folder)));
+
+    private static readonly Regex _name = new($@"^{_mapPart}-(?<kind>line|sector)(?<index>\d+)$", RegexOptions.CultureInvariant);
 
     // (P11: -2p after it, the co-op walk of player 2 for loopback.sh --play)
-    private static readonly Regex _exitName = new($@"^{MapPart}-walk-exit(?<coop>-2p)?$", RegexOptions.CultureInvariant);
+    private static readonly Regex _exitName = new($@"^{_mapPart}-walk-exit(?<coop>-2p)?$", RegexOptions.CultureInvariant);
 
     /// <summary>P11: whether a walked exit route's name is the co-op one (<c>…-walk-exit-2p</c>), two players.</summary>
     public static bool IsCoopExitName(string name) => _exitName.Match(name) is { Success: true } m && m.Groups["coop"].Success;
