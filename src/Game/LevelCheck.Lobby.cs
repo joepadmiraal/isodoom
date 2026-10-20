@@ -217,10 +217,13 @@ public partial class LevelCheck
             {
                 s.DiscoveryTargets = [new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, other.Discovery.Port)];
                 menu.M_ClearMenus();
+                await NextFrame(); // the join page's browser closed, so the page opens a new one on these targets
                 foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.J, Key.Enter })
                     s.MenuEvent(KeyEvent(key));
-                if (!await NetFrames(() => LanRow(menu, "LANHOST") is not null, other, 5))
-                    Fail(Step("Join Game listing the check's host (T11.9d)"));
+                // (the row as soon as the host is in its own lobby: a reply from before its client joined says 0/2,
+                // which a slower machine (macOS CI) lists first)
+                if (!await NetFrames(() => LanRow(menu, "LANHOST")?.value?.Invoke() == $"{s.DefaultMap()} COOP 1/2", other, 5))
+                    Fail(Step($"Join Game listing the check's host in its lobby: {LanRow(menu, "LANHOST")?.value?.Invoke() ?? "not listed"} (T11.9d)"));
                 else if (LanRow(menu, "LANHOST") is not { grey: false } row || row.value?.Invoke() != $"{s.DefaultMap()} COOP 1/2")
                     Fail(Step($"the check's host's row: {LanRow(menu, "LANHOST")?.value?.Invoke()}, grey {LanRow(menu, "LANHOST")?.grey} (T11.9d)"));
                 else if (!CursorTo(menu, row))
@@ -252,6 +255,7 @@ public partial class LevelCheck
             string recent = $"127.0.0.1:{other.Port}";
             s.SetSetting("net/addresses", $"{recent} {s.GetSetting("net/addresses")}");
             menu.M_ClearMenus();
+            await NextFrame(); // a new browser on these targets: the last one may still query the host above
             foreach (Key key in new[] { Key.Escape, Key.M, Key.Enter, Key.J, Key.Enter })
                 s.MenuEvent(KeyEvent(key));
             if (!await NetFrames(() => LanRow(menu, "CHECK") is not null, other, 5) || LanRow(menu, "CHECK") is not { grey: true } greyed)
