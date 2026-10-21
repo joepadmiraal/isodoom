@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using IsoDoom.Sim;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
 
@@ -16,15 +17,34 @@ namespace IsoDoom.Render;
 /// <see cref="LevelMesh.DataWidth"/> texels per row) has two texels per slot:
 /// <c>2·slot</c> = atlas x, y, width, height; <c>2·slot + 1</c> = the patch's
 /// <c>leftoffset</c>, <c>topoffset</c>.
+/// <para>
+/// T6.14d (SPEC §12 "T6.14 Player weapons"): after the WAD's lumps, the
+/// composites of a <see cref="HeldWeaponSet"/> (the players holding each
+/// weapon): one synthetic sprite per weapon slot that has composites
+/// (<c>#PW0</c>–<c>#PW8</c>, never a lump name), appended to
+/// <see cref="Sprites"/> after the WAD's sprites so their indices don't move,
+/// with frames A–G laid out as <c>PLAY</c>'s (its rotations and mirrors): each
+/// rotation slot shows the composite of <c>PLAY</c>'s lump there, or that stock
+/// lump itself where it has none (a lump without a pose).
+/// <see cref="SpriteFrame.Select"/> and the shader's mirroring work on them
+/// untouched. A composite's slot has no WAD lump: its <see cref="Lumps"/> id is
+/// past the WAD's lumps and <see cref="HeldSource"/> names it.
+/// </para>
 /// </summary>
 public sealed class SpriteAtlas
 {
     private readonly Dictionary<int, int> _slotOfLump = [];
     private readonly Image _info;
 
-    private SpriteAtlas(Sprites sprites, List<int> lumps, List<IndexedImage> images, TextureAtlas atlas)
+    private readonly (weapontype_t Weapon, string Lump)?[] _heldSources;
+    private readonly int[] _heldSprite;
+
+    private SpriteAtlas(Sprites sprites, List<int> lumps, List<IndexedImage> images, TextureAtlas atlas, HeldWeaponSet? held, int[] heldSprite, (weapontype_t, string)?[] heldSources)
     {
         Sprites = sprites;
+        Held = held;
+        _heldSprite = heldSprite;
+        _heldSources = heldSources;
         Lumps = lumps;
         Images = images;
         Atlas = atlas;
@@ -45,7 +65,27 @@ public sealed class SpriteAtlas
     /// <summary>The sprite index this atlas was built from (r_things.c <c>sprites[]</c>).</summary>
     public Sprites Sprites { get; }
 
-    /// <summary>The <c>WadArchive.Lumps</c> index of each slot's lump.</summary>
+    /// <summary>T6.14d: the composites the synthetic sprites show, or null (none: the players drawn stock).</summary>
+    public HeldWeaponSet? Held { get; }
+
+    /// <summary>T6.14d: the synthetic sprite of the players holding <paramref name="weapon"/> (an index of <see cref="Sprites"/>), or −1 (none: drawn stock).</summary>
+    public int HeldSprite(weapontype_t weapon) => (uint)weapon < (uint)_heldSprite.Length ? _heldSprite[(int)weapon] : -1;
+
+    /// <summary>T6.14d: the weapon whose synthetic sprite <paramref name="sprite"/> is, or null (a WAD's sprite).</summary>
+    public weapontype_t? HeldWeaponOf(int sprite)
+    {
+        for (int w = 0; w < _heldSprite.Length; w++)
+        {
+            if (_heldSprite[w] == sprite && sprite >= 0)
+                return (weapontype_t)w;
+        }
+        return null;
+    }
+
+    /// <summary>T6.14d: the weapon and <c>PLAY</c> lump of slot <paramref name="slot"/>'s composite, or null (a WAD lump's slot).</summary>
+    public (weapontype_t Weapon, string Lump)? HeldSource(int slot) => (uint)slot < (uint)_heldSources.Length ? _heldSources[slot] : null;
+
+    /// <summary>The <c>WadArchive.Lumps</c> index of each slot's lump (T6.14d: past the WAD's lumps for a composite, <see cref="HeldSource"/>).</summary>
     public IReadOnlyList<int> Lumps { get; }
 
     /// <summary>Each slot's decoded patch (with its offsets).</summary>
@@ -69,12 +109,16 @@ public sealed class SpriteAtlas
 
     private void SetTexel(int i, Color c) => _info.SetPixel(i % LevelMesh.DataWidth, i / LevelMesh.DataWidth, c);
 
+    /// <summary>T6.14d: the synthetic sprites' frames, A–G (<c>PLAY</c>'s standing, walking, firing and pain frames).</summary>
+    public const int HeldFrames = 7;
+
     /// <summary>
     /// Decodes and packs every lump a frame slot of <paramref name="sprites"/>
     /// uses (in sprite, frame and rotation order, each lump once). Patches
-    /// with no pixels (0 wide or high) get no slot.
+    /// with no pixels (0 wide or high) get no slot. T6.14d: then
+    /// <paramref name="held"/>'s composites, as the synthetic sprites.
     /// </summary>
-    public static SpriteAtlas Build(WadArchive wad, Sprites sprites)
+    public static SpriteAtlas Build(WadArchive wad, Sprites sprites, HeldWeaponSet? held = null)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var lumps = new List<int>();
@@ -97,13 +141,58 @@ public sealed class SpriteAtlas
                 }
             }
         }
+        int[] heldSprite = new int[(int)weapontype_t.NUMWEAPONS];
+        Array.Fill(heldSprite, -1);
+        var sources = new List<(weapontype_t, string)?>();
+        for (int i = 0; i < lumps.Count; i++)
+            sources.Add(null);
+        SpriteDef? play = sprites.Find("PLAY");
+        if (held is not null && play is not null && play.NumFrames >= HeldFrames)
+        {
+            var defs = new List<SpriteDef>();
+            var slotOf = new Dictionary<(weapontype_t, string), int>();
+            for (int w = 0; w < heldSprite.Length; w++)
+            {
+                if (!held.Has((weapontype_t)w))
+                    continue;
+                var frames = new SpriteFrame[HeldFrames];
+                for (int f = 0; f < HeldFrames; f++)
+                {
+                    SpriteFrame stock = play.Frames[f];
+                    int[] frameLumps = new int[8];
+                    bool[] flips = new bool[8];
+                    for (int r = 0; r < 8; r++)
+                    {
+                        int lump = stock.Lump[r];
+                        flips[r] = stock.Flip[r];
+                        frameLumps[r] = lump;
+                        string name = wad.Lumps[lump].Name;
+                        if (held.Get((weapontype_t)w, name) is not { } composite || composite.Image.Width == 0 || composite.Image.Height == 0)
+                            continue; // (no pose: the stock lump)
+                        if (!slotOf.TryGetValue(((weapontype_t)w, name), out int id))
+                        {
+                            slotOf[((weapontype_t)w, name)] = id = lumps.Count;
+                            lumps.Add(wad.NumLumps + id);
+                            images.Add(composite.Image);
+                            sources.Add(((weapontype_t)w, name));
+                        }
+                        frameLumps[r] = lumps[id];
+                    }
+                    frames[f] = new SpriteFrame(stock.Rotate, frameLumps, flips);
+                }
+                heldSprite[w] = sprites.NumSprites + defs.Count;
+                defs.Add(new SpriteDef("#PW" + w.ToString(System.Globalization.CultureInfo.InvariantCulture), frames));
+            }
+            sprites = sprites.Append(defs);
+        }
         if (images.Count == 0)
         {
             // Keep the textures valid: one transparent texel.
             images.Add(new IndexedImage(1, 1, 0, 0, new byte[1], new byte[1]));
             lumps.Add(-1);
+            sources.Add(null);
         }
-        var atlas = new SpriteAtlas(sprites, lumps, images, TextureAtlas.Build(images))
+        var atlas = new SpriteAtlas(sprites, lumps, images, TextureAtlas.Build(images), held, heldSprite, [.. sources])
         {
             BuildMilliseconds = clock.Elapsed.TotalMilliseconds
         };

@@ -15,7 +15,8 @@ namespace IsoDoom.Wad.Graphics;
 /// </summary>
 public sealed class SpriteFrame
 {
-    internal SpriteFrame(bool rotate, int[] lump, bool[] flip)
+    /// <summary>A frame of <paramref name="lump"/>s and <paramref name="flip"/>s per rotation slot (eight each; T6.14d: synthetic sprites, which are no lumps of the WAD, are made so too).</summary>
+    public SpriteFrame(bool rotate, int[] lump, bool[] flip)
     {
         Rotate = rotate;
         Lump = lump;
@@ -51,7 +52,8 @@ public sealed class SpriteFrame
 /// <summary>A sprite and its frames A, B, … (r_defs.h <c>spritedef_t</c>).</summary>
 public sealed class SpriteDef
 {
-    internal SpriteDef(string name, SpriteFrame[] frames)
+    /// <summary>A sprite called <paramref name="name"/> (T6.14d: also a synthetic one, never a lump name) with <paramref name="frames"/>.</summary>
+    public SpriteDef(string name, SpriteFrame[] frames)
     {
         Name = name;
         Frames = frames;
@@ -113,6 +115,20 @@ public sealed class Sprites
     /// </summary>
     public static int R_ProjectSpriteRotation(uint ang, uint thingAngle) =>
         (int)(unchecked(ang - thingAngle + (ANG45 / 2) * 9) >> 29);
+
+    /// <summary>
+    /// T6.14d: this index with <paramref name="extra"/> appended after its sprites (synthetic
+    /// sprites, which the renderer draws as any: the existing sprites keep their indices).
+    /// </summary>
+    public Sprites Append(IReadOnlyList<SpriteDef> extra)
+    {
+        ArgumentNullException.ThrowIfNull(extra);
+        var all = new SpriteDef[_sprites.Length + extra.Count];
+        _sprites.CopyTo(all, 0);
+        for (int i = 0; i < extra.Count; i++)
+            all[_sprites.Length + i] = extra[i];
+        return new Sprites(all);
+    }
 
     /// <summary>r_things.c <c>sprites[]</c>, in the order of the name list.</summary>
     public IReadOnlyList<SpriteDef> SpriteDefs => _sprites;

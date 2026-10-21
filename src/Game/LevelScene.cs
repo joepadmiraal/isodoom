@@ -750,7 +750,7 @@ public partial class LevelScene : Node3D, IGameHost
 
     /// <summary>Controls shown by F1.</summary>
     public const string ControlsHelp =
-        "` (backquote) game camera/overview/free-fly   Home player start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay   F12 local player (--level-players)\n"
+        "` (backquote) game camera/overview/free-fly   Home player start   PgDn/PgUp next/previous map   L light mode   X cutaway   T sprite tilt   G shadows   P sprite wall pull   H sprite upright hiding   B player minimum light   M masked backs   K cutaway cap   V cutaway things   J door lids   U wall caps   R switch markers   Z height cues   F item beams   Y sight dim   C monster markers   Q player weapon   I upper walls   N fog of war   =/- HUD (bar, fullscreen, none)   Pause pause   F1 controls   F3 overlay   F12 local player (--level-players)\n"
         + "Menus: Escape (pad Start) opens and closes, arrows (D-pad, left stick, wheel) move, Enter (A, left click) selects, Backspace (B, right click) goes back, Y/N (A/B, left/right click) answer; any key on the title opens them; Options > More options: settings and controls (Enter binds, Delete / pad X clears)   Intermission: fire or use go on\n"
         + "Game camera: W/A/S/D walk (Shift runs), the mouse aims, left button fires, E/Space use, 1-8 / wheel weapons, Ctrl+wheel zoom, O orthographic/perspective\n"
         + "Automap: Tab (pad Y) opens and closes, =/- (D-pad up/down) zoom, 0 (D-pad right) whole map, F (D-pad left) follow, arrows (right stick) pan when not following, G (stick click) grid, M (X) mark, C (B) clear marks, iddt cheat\n"
@@ -923,6 +923,8 @@ public partial class LevelScene : Node3D, IGameHost
                 BrainMarking = ParseBrainMarker(brainMarker, "--level-brain-marker");
             if (WadLocator.GetUserArg("--level-teammate-rings") is string rings)
                 TeammateRinging = ParseBrainMarker(rings, "--level-teammate-rings"); // (on or off, T11.10a)
+            if (WadLocator.GetUserArg("--level-player-weapon") is string playerWeapon)
+                PlayerWeapon = ParsePlayerWeapon(playerWeapon, "--level-player-weapon"); // T6.14d
             if (WadLocator.GetUserArg("--level-upper-walls") is string uppers)
                 UpperWalls = ParseUpperWalls(uppers, "--level-upper-walls");
             if (WadLocator.GetUserArg("--level-weapon-light") is string weaponLight)
@@ -1444,6 +1446,9 @@ public partial class LevelScene : Node3D, IGameHost
             case Key.C:
                 // T6.13u: beam, chevron, off
                 MonsterMarking = MonsterMarking switch { MonsterMarkerMode.Beam => MonsterMarkerMode.Chevron, MonsterMarkerMode.Chevron => MonsterMarkerMode.Off, _ => MonsterMarkerMode.Beam };
+                break;
+            case Key.Q when !FreeFlyActive: // (free-fly's down)
+                PlayerWeapon = !PlayerWeapon; // T6.14d
                 break;
             case Key.I:
                 ToggleUpperWalls();
@@ -2455,7 +2460,7 @@ public partial class LevelScene : Node3D, IGameHost
         Mesh?.UpdateSectors(_interpolatedHeights ??= InterpolatedHeights);
         mobj_t? me = PlayerMobj;
         if (Player is not null && me is not null)
-            Player.Set(ThingEntry(me, Interpolated(me)));
+            Player.Set(WithHeldWeapon(me, ThingEntry(me, Interpolated(me))));
         if (Things is null)
             return;
         _scratch.Clear();
@@ -2484,7 +2489,8 @@ public partial class LevelScene : Node3D, IGameHost
     private readonly List<ThingSprites.Entry> _entryScratch = []; // (T8.3: refilled, not made anew)
 
     // A drawn mobj's billboard this frame: where it is interpolated to, dimmed out of the player's sight (T6.13t).
-    private ThingSprites.Entry DrawnEntry(mobj_t mo) => ThingEntry(mo, Interpolated(mo)) with { SightDim = SightDimOf(mo) };
+    // T6.14d: a player's mobj holding its ready weapon.
+    private ThingSprites.Entry DrawnEntry(mobj_t mo) => WithHeldWeapon(mo, ThingEntry(mo, Interpolated(mo))) with { SightDim = SightDimOf(mo) };
 
     /// <summary>
     /// T6.6: the level's <c>extralight</c> (<see cref="LevelMesh.SetExtraLight"/>)
@@ -2774,7 +2780,7 @@ public partial class LevelScene : Node3D, IGameHost
         if (Player is { } p && PlayerMobj is { } mo && Mesh is not null && !FreeFlyActive)
         {
             Vector2 at = p.MapPosition;
-            text.Append(CultureInfo.InvariantCulture, $"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}");
+            text.Append(CultureInfo.InvariantCulture, $"player x {at.X:F0}  y {at.Y:F0}  z {p.Z:F0}   angle {p.Angle:F0}°  rotation {p.Rotation + 1}  {mo.state}  {HeldText(p.Entry)}");
             Sector ps = mo.subsector.sector.map;
             text.Append(CultureInfo.InvariantCulture, $"   sector {ps.Index} (floor {ps.FloorHeight >> Fixed.FRACBITS} {ps.FloorPic}, light {ps.LightLevel}"
                 + $"{(SpriteOptions.PlayerLight > ps.LightLevel ? $", sprite lit at {SpriteOptions.PlayerLight}" : "")}{(ps.Special != 0 ? $", special {ps.Special}" : "")})\n");
@@ -2965,7 +2971,9 @@ public partial class LevelScene : Node3D, IGameHost
         try
         {
             Sprites = Sprites.R_InitSprites(wad);
-            SpriteAtlas = SpriteAtlas.Build(wad, Sprites);
+            // T6.14d: the players holding their weapons, composited once per WAD (a PWAD's PLAY lumps drawn stock, logged)
+            HeldWeaponSet held = HeldWeaponSet.Build(wad, line => GD.Print($"Level: {line}"));
+            SpriteAtlas = SpriteAtlas.Build(wad, Sprites, held);
         }
         catch (WadFormatException e)
         {
@@ -2983,7 +2991,8 @@ public partial class LevelScene : Node3D, IGameHost
         ApplyBarWidth(); // T6.13y: the wide bar's panels from this WAD
         OpenWadMilliseconds = clock.Elapsed.TotalMilliseconds;
         GD.Print($"Level: {found.Path}: {info}, {GameVersions.Description(GameVersion)}, {MapNames.Count} maps; opened in {OpenWadMilliseconds:F0} ms"
-            + (SpriteAtlas is { } sa ? $" (sprite atlas: {sa.Lumps.Count} lumps in {sa.Atlas.Image.Width}x{sa.Atlas.Image.Height}, {sa.BuildMilliseconds:F0} ms)" : ""));
+            + (SpriteAtlas is { } sa ? $" (sprite atlas: {sa.Lumps.Count} lumps in {sa.Atlas.Image.Width}x{sa.Atlas.Image.Height}, {sa.BuildMilliseconds:F0} ms"
+                + (sa.Held is { } h ? $"; player weapons: {h.Count} composites in {h.BuildMilliseconds:F0} ms)" : ")") : ""));
         IReadOnlyList<(string Name, string File)> lumps = VanillaIgnores.IgnoredLumps(wad);
         if (lumps.Count > 0) // P7: DEHACKED (until DeHackEd), MAPINFO, …
             GD.Print($"Level: vanilla ignores {lumps.Count} lump(s) of the PWADs: {string.Join(", ", lumps.Select(l => $"{l.Name} ({l.File})"))}");

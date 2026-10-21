@@ -1,4 +1,5 @@
 using System;
+using IsoDoom.Render;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
 using IsoDoom.Wad.Graphics;
@@ -43,9 +44,6 @@ public sealed class WeaponIcon
     /// <summary>How far each colour of the highlighted ARMS digit goes towards white (then the palette's nearest), in percent.</summary>
     public const int BrightenPercent = 60;
 
-    /// <summary>The pickup sprites, in <see cref="weapontype_t"/> order (null for the fist and the pistol).</summary>
-    private static readonly string?[] _pickupSprites = [null, null, "SHOTA0", "MGUNA0", "LAUNA0", "PLASA0", "BFUGA0", "CSAWA0", "SGN2A0"];
-
     /// <summary>The first-person ready frames of the fist and the pistol.</summary>
     private static readonly string[] _handSprites = ["PUNGA0", "PISGA0"];
 
@@ -65,7 +63,7 @@ public sealed class WeaponIcon
         _dim = colormap is { Count: > DimRow } ? colormap.GetMap(DimRow).ToArray() : null;
         _bright = palette.Length >= 768 ? Brighten(palette) : null;
         for (int i = 0; i < _icons.Length; i++)
-            _icons[i] = _pickupSprites[i] is string name ? Get(wad, name) : HandIcon(wad, _handSprites[i]);
+            _icons[i] = HeldWeapons.PickupSprites[i] is string name ? Get(wad, name) : HandIcon(wad, _handSprites[i]);
     }
 
     /// <summary>Whether the icon shows (<c>hud/weapon_icon</c>).</summary>

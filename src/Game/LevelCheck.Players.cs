@@ -186,6 +186,7 @@ public partial class LevelCheck
                 int flags = (int)Math.Round(things.CustomData(at).G);
                 if (e.Translation != i || !e.Actor || (flags >> ThingSprites.FlagTranslationShift & 3) != i || (flags & ThingSprites.FlagOwn) != 0)
                     Fail($"{what}: player {i + 1}'s billboard: translation {e.Translation}, actor {e.Actor}, flags {flags}");
+                CheckTeammateWeapon(world, what, i, k); // T6.14d
             }
         }
         // the status bar and its face background

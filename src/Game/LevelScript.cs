@@ -107,6 +107,10 @@ namespace IsoDoom.Game;
 /// T6.13r: <c>beams</c> waits for the queued tics and a frame and prints the
 /// item beams' mode and each beamed item (type, kind, position, sector);
 /// whether a beam shows is the GPU's (only while its item is hidden).
+/// T6.14d: <c>playerweapon</c> waits for the queued tics and a frame and
+/// prints each player's drawn sprite, frame, rotation and atlas slot and what
+/// it holds; it fails when a live player in frames A–G is drawn stock while
+/// the option is on and its lump has a composite of its ready weapon.
 /// T6.13u: <c>markers</c> waits for the queued tics and a frame and prints
 /// the monster markers' state and each marked monster (type, position,
 /// sector); whether a marker shows is the GPU's (only while its monster is
@@ -591,6 +595,21 @@ public partial class LevelScript : Node
                         await Frames(1);
                         foreach (string line in _scene.BeamsText())
                             GD.Print($"Level script: {line}");
+                        break;
+                    case "playerweapon":
+                        // T6.14d: waits for the queued tics and a frame; prints each player's drawn sprite, fails on one drawn stock that should hold its weapon
+                        await Drain();
+                        await Frames(1);
+                        foreach ((string line, bool fails) in _scene.PlayerWeaponLines())
+                        {
+                            if (fails)
+                            {
+                                GD.PrintErr($"Level script: {line}");
+                                exit = 1;
+                            }
+                            else
+                                GD.Print($"Level script: {line}");
+                        }
                         break;
                     case "players":
                         // T11.10: waits for the queued tics; prints the players in the game and the local one

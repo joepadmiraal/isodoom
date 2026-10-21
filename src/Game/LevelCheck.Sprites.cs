@@ -71,14 +71,14 @@ public partial class LevelCheck
                 foreach (int lump in frame.Lump)
                 {
                     if (lump >= 0 && atlas.SlotOf(lump) < 0)
-                        Fail($"sprite {def.Name}: lump {_scene.Wad!.Lumps[lump].Name} has no atlas slot");
+                        Fail($"sprite {def.Name}: lump {(lump < _scene.Wad!.NumLumps ? _scene.Wad.Lumps[lump].Name : lump)} has no atlas slot");
                 }
             }
         }
         for (int slot = 0; slot < atlas.Lumps.Count; slot++)
         {
-            if (atlas.Lumps[slot] < 0)
-                continue;
+            if (atlas.Lumps[slot] < 0 || atlas.HeldSource(slot) is not null)
+                continue; // (T6.14d: a composite, CheckHeldAtlas)
             lumps++;
             WadLump l = _scene.Wad!.Lumps[atlas.Lumps[slot]];
             IndexedImage expected = Patch.Decode(l.Data.Span, l.Name);
@@ -124,6 +124,7 @@ public partial class LevelCheck
             if (info is null)
                 Fail("sprite_info can't be read back");
         }
+        CheckHeldAtlas(); // T6.14d
         GD.Print($"Level check: sprite atlas: {lumps} sprite lumps of {atlas.Sprites.NumSprites} sprites in {atlas.Atlas.Image.Width}x{atlas.Atlas.Image.Height}, "
             + $"each against its patch and offsets{(CanCapture ? ", uploads read back" : "")}");
     }
@@ -159,8 +160,9 @@ public partial class LevelCheck
         }
         foreach (int i in dolls)
         {
-            if (things.Entries[i] != LevelScene.ThingEntry(mobjs[i]))
-                Fail($"{map}: voodoo doll {i}: entry {things.Entries[i]}, expected {LevelScene.ThingEntry(mobjs[i])}");
+            ThingSprites.Entry doll = _scene.WithHeldWeapon(mobjs[i], LevelScene.ThingEntry(mobjs[i])); // (T6.14d: holding its player's weapon)
+            if (things.Entries[i] != doll)
+                Fail($"{map}: voodoo doll {i}: entry {things.Entries[i]}, expected {doll}");
         }
         if (things.MissingFrames > 0)
             Fail($"{map}: {things.MissingFrames} thing(s) whose spawn frame the WAD lacks");
@@ -733,7 +735,7 @@ public partial class LevelCheck
         }
         for (int i = 0; i < mobjs.Count; i++)
         {
-            ThingSprites.Entry e = LevelScene.ThingEntry(mobjs[i], _scene.Interpolated(mobjs[i]));
+            ThingSprites.Entry e = _scene.WithHeldWeapon(mobjs[i], LevelScene.ThingEntry(mobjs[i], _scene.Interpolated(mobjs[i])));
             if (things.Entries[i] != e || !Near(things.InstancePosition(i), new Vector3(e.MapPosition.X, e.MapPosition.Z, -e.MapPosition.Y) / LevelMesh.MapUnitsPerMetre))
             {
                 Fail($"{map}, {when}: billboard {i} ({mobjs[i]}): {things.Entries[i]}, expected {e}");
@@ -846,6 +848,7 @@ public partial class LevelCheck
         // T6.9: the fuzz of MF_SHADOW things.
         compared += await CheckFuzz(m, things, atlas, lit, picked, basis);
         compared += await CheckTranslations(m, things, atlas, lit, basis); // T11.10
+        compared += await CheckPlayerWeaponPixels(m, things, atlas, lit, picked, basis); // T6.14d
 
         // T3.6: vanilla's look (no outline) side-on, and the full tilt from the game camera's pitch, where the
         // billboard faces the camera: the patch again at 1 unit per pixel (an upright one would be squashed).

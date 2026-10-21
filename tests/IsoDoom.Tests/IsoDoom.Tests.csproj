@@ -66,6 +66,14 @@
     <Compile Include="../../src/Render/ItemKinds.cs" Link="Render/ItemKinds.cs" />
     <Compile Include="../../src/Render/SightDim.cs" Link="Render/SightDim.cs" />
     <Compile Include="../../src/Render/PaletteFlash.cs" Link="Render/PaletteFlash.cs" />
+    <Compile Include="../../src/Render/HoldPose.cs" Link="Render/HoldPose.cs" />
+    <Compile Include="../../src/Render/HoldPoses.cs" Link="Render/HoldPoses.cs" />
+    <Compile Include="../../src/Render/HoldPoses.Data.cs" Link="Render/HoldPoses.Data.cs" />
+    <Compile Include="../../src/Render/HeldWeapon.cs" Link="Render/HeldWeapon.cs" />
+    <Compile Include="../../src/Render/HeldWeapons.cs" Link="Render/HeldWeapons.cs" />
+    <Compile Include="../../src/Render/PixelArt.cs" Link="Render/PixelArt.cs" />
+    <Compile Include="../../src/Render/HeldWeaponComposer.cs" Link="Render/HeldWeaponComposer.cs" />
+    <Compile Include="../../src/Render/HeldWeaponSet.cs" Link="Render/HeldWeaponSet.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Wad/IsoDoom.Wad.csproj" />

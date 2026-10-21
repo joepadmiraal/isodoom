@@ -138,6 +138,7 @@ public static class Settings
         new("sprites/sight_dim", "SIGHT DIM", SettingPage.Sprites, "6", ["off", "6", "10", "14"], "--level-sight-dim"), // T6.13t
         new("sprites/brain_marker", "ICON OF SIN MARKER", SettingPage.Sprites, "on", _onOff, "--level-brain-marker"), // T10.4
         new("sprites/teammate_rings", "TEAMMATE RINGS", SettingPage.Sprites, "on", _onOff, "--level-teammate-rings"), // T11.10a: co-op only
+        new("sprites/player_weapon", "PLAYER WEAPON", SettingPage.Sprites, "on", _onOff, "--level-player-weapon"), // T6.14d
 
         // HUD (vanilla's screen size, messages and detail too)
         new("hud/mode", "SCREEN", SettingPage.Hud, "bar", ["bar", "full", "off"], "--level-hud"),

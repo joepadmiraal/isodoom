@@ -240,6 +240,7 @@ public partial class LevelCheck : Godot.Node
             CheckFuzzState(map);
             CheckHudState(map);
             CheckWeaponIconState(map); // T6.13x
+            CheckPlayerWeaponState(map); // T6.14d
             CheckTeleport(map); // last but the animations: it moves the player through a teleporter
             CheckAnimations(m, map); // the sim's translations and scrolls after the tics run so far
             CheckFogDoor(m, map); // T6.13l: it opens and closes a door in the sim
@@ -270,6 +271,7 @@ public partial class LevelCheck : Godot.Node
             + "(not the world's): the face turned to an attacker, a skull key in its box, no ammo for the fist, the message line on and off");
         GD.Print($"Level check: weapon icon (T6.13x): {_weaponIconMaps} maps drew {_weaponIconsChecked} icons of the ready weapon (the WAD's pickup sprites, the fist's and pistol's "
             + "first-person frames in the icon box) above the bar's and the fullscreen HUD's ammo, a change dimmed, none with the option off; the bar's pixels unchanged, its ARMS digit brightened in a copy");
+        PrintPlayerWeapons(); // T6.14d
         GD.Print($"Level check: teleports (T5.6): {_teleportMaps} maps teleported the player across a teleport line in a tic: drawn where it lands "
             + "(not interpolated), the camera snap asked for, fog drawn at both ends");
         GD.Print($"Level check: animations (T5.7): {_animSequences} animation sequences drawn with every frame in the atlas; {_animatedMaps} maps ran them: "

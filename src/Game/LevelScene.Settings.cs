@@ -704,6 +704,7 @@ public partial class LevelScene : ISetupHost
         Add("sprites/sight_dim", () => SightDim.Name(SightDimRows), s => SightDimRows = SightDim.Parse(s, "sprites/sight_dim"));
         Add("sprites/brain_marker", () => OnOff(BrainMarking), s => BrainMarking = ParseBrainMarker(s, "sprites/brain_marker"));
         Add("sprites/teammate_rings", () => OnOff(TeammateRinging), s => TeammateRinging = ParseBrainMarker(s, "sprites/teammate_rings")); // T11.10a
+        Add("sprites/player_weapon", () => OnOff(PlayerWeapon), s => PlayerWeapon = ParsePlayerWeapon(s, "sprites/player_weapon")); // T6.14d
 
         // HUD
         Add("hud/mode", () => Hud.Mode.ToString().ToLowerInvariant(), s => Hud.Mode = Choice(s, "hud/mode", "bar", "full", "off") switch
