@@ -185,6 +185,11 @@ window.
 Linux: run IsoDoom.x86_64 (x86_64, with a Vulkan driver). Keep IsoDoom.pck
 and the data_IsoDoom_* folder next to it.
 
+Raspberry Pi (and other 64-bit ARM Linux): use the linux-arm64 zip and run
+IsoDoom.arm64, on a Raspberry Pi 5 with the 64-bit Raspberry Pi OS (its
+Vulkan driver comes with it). If it runs slowly, try
+"IsoDoom.arm64 --rendering-method mobile".
+
 macOS: the app is not signed with an Apple developer identity, so macOS
 blocks it the first time. Right-click IsoDoom.app and pick Open, then Open
 again. On macOS 15 and later, if that offers no Open button, try to open it

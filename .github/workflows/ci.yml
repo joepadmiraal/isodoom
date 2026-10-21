@@ -106,7 +106,7 @@ jobs:
         run: dotnet test --no-build --configuration Debug
 
   export:
-    name: Export Linux, Windows and macOS
+    name: Export Linux (x86_64, arm64), Windows and macOS
     needs: build-test
     runs-on: ubuntu-24.04
     steps:
@@ -123,8 +123,8 @@ jobs:
           key: nuget-export-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj', '**/Directory.Build.props') }}
           restore-keys: nuget-export-${{ runner.os }}-
 
-      # Editor + Linux and Windows x86_64 and macOS export templates for the
-      # pinned Godot .NET build.
+      # Editor + Linux x86_64 and arm64, Windows x86_64 and macOS export
+      # templates for the pinned Godot .NET build.
       - name: Cache Godot
         id: cache-godot
         uses: actions/cache@v6
@@ -132,7 +132,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}.mono
-          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-windows-x86_64-macos
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-mono-linux-x86_64-arm64-windows-x86_64-macos
 
       - name: Download Godot and export templates
         if: steps.cache-godot.outputs.cache-hit != 'true'
@@ -155,12 +155,13 @@ jobs:
           mv "${name}" ~/godot
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}.mono
           mkdir -p "$dest"
-          # Keep only what the Linux, Windows x86_64 and macOS exports need
-          # (the full set is ~1.2 GB). The Windows preset always exports the
+          # Keep only what the Linux x86_64 and arm64, Windows x86_64 and
+          # macOS exports need (the full set is ~1.2 GB). The Windows preset always exports the
           # console wrapper, through which the Windows job reads the game's
           # output. macos.zip holds the universal .app template.
           unzip -q "$tpz" -d templates
           for f in version.txt linux_release.x86_64 linux_debug.x86_64 \
+              linux_release.arm64 linux_debug.arm64 \
               windows_release_x86_64.exe windows_release_x86_64_console.exe \
               windows_debug_x86_64.exe windows_debug_x86_64_console.exe \
               macos.zip; do
@@ -370,6 +371,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # T8.4c: the Linux arm64 build (the Raspberry Pi 5, and any 64-bit ARM
+      # Linux), exported here too: Godot's arm64 template, and `dotnet
+      # publish` takes the linux-arm64 runtime from NuGet and precompiles it
+      # for arm64 (ReadyToRun, T8.3a). Tested natively by test-linux-arm64.
+      - name: Export Linux arm64
+        run: |
+          mkdir -p export/linux-arm64
+          godot --headless --export-release "Linux ARM64" export/linux-arm64/IsoDoom.arm64
+          test -x export/linux-arm64/IsoDoom.arm64
+          chmod +x export/linux-arm64/data_IsoDoom_linuxbsd_arm64/createdump
+          # ELF machine 183: aarch64.
+          test "$(od -An -tu2 -j18 -N2 export/linux-arm64/IsoDoom.arm64 | tr -d ' ')" = 183
+          test "$(od -An -tu2 -j18 -N2 export/linux-arm64/data_IsoDoom_linuxbsd_arm64/libcoreclr.so | tr -d ' ')" = 183
+          ls -la export/linux-arm64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: IsoDoom-linux-arm64
+          path: export/linux-arm64/
+          if-no-files-found: error
+          retention-days: 14
+
   # T8.4: the exported Windows build on Windows, headless (no GPU on the
   # runner): the smoke test, both checks and the route play, as the editor's
   # runs above. IsoDoom.console.exe runs IsoDoom.exe with its output on the
@@ -527,6 +550,97 @@ jobs:
             grep -E "check: |ERROR|Unhandled|Exception" "$f" | grep -v ": OK$" | head -30 | sed "s/^/::error title=$f::/" || true
           done
 
+  # T8.4c: the exported Linux arm64 build on an arm64 runner (the Raspberry
+  # Pi 5's architecture), as the export job tests the x86_64 one: the smoke
+  # test, both checks with a real renderer (Xvfb and lavapipe), the route
+  # play and the netgame loopback; and the route checksums (T8.6) on arm64's
+  # JIT, so a Pi and a PC play the same game.
+  test-linux-arm64:
+    name: Test Linux arm64
+    needs: export
+    runs-on: ubuntu-24.04-arm
+    env:
+      GAME: export/linux-arm64/IsoDoom.arm64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: IsoDoom-linux-arm64
+          path: export/linux-arm64
+
+      # (artifacts lose their executable bits)
+      - name: Prepare the build
+        run: chmod +x "$GAME" export/linux-arm64/data_IsoDoom_linuxbsd_arm64/createdump
+
+      - name: Generate the synthetic IWAD
+        run: |
+          iwad="$RUNNER_TEMP/isodoom-synthetic.wad"
+          dotnet run --project tools/SyntheticIwad --configuration Debug -- "$iwad"
+          echo "ISODOOM_CI_IWAD=$iwad" >> "$GITHUB_ENV"
+
+      - name: Route checksums (arm64)
+        timeout-minutes: 15
+        run: dotnet test tests/IsoDoom.Tests --filter "FullyQualifiedName~RouteChecksumTests"
+
+      - name: Smoke-test the exported build
+        timeout-minutes: 5
+        run: |
+          "$GAME" --headless --quit-after 60 2>&1 | tee smoke.log
+          grep -q "IsoDoom started" smoke.log
+
+      - name: Install Xvfb and lavapipe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb xauth mesa-vulkan-drivers libvulkan1
+
+      - name: Viewer check (exported build, software Vulkan)
+        timeout-minutes: 15
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            "$GAME" --audio-driver Dummy -- --viewer-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee viewer-check.log
+          grep -q "drawn pixels compared" viewer-check.log
+          grep -q "WAD viewer check: OK" viewer-check.log
+
+      - name: Level check (exported build, software Vulkan)
+        timeout-minutes: 15
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            "$GAME" --audio-driver Dummy -- --level-check -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee level-check.log
+          grep -q "drawn pixels compared" level-check.log
+          grep -q "Level check: OK" level-check.log
+
+      - name: Route play (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          r=tests/IsoDoom.Tests/Sim/Routes
+          "$GAME" --headless --fixed-fps 35 -- -iwad "$ISODOOM_CI_IWAD" --level E1M1 \
+            --level-tweaks=vanilla --level-monsters=off \
+            --level-script="route $r/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route $r/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
+
+      - name: Netgame loopback (exported build, headless)
+        timeout-minutes: 10
+        run: |
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" 1000 -- "$GAME"
+          tools/NetLoopback/loopback.sh "$ISODOOM_CI_IWAD" --play tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route E1M2 -- "$GAME"
+
+      # The checks' failure lines as annotations, readable on the run's page.
+      - name: Annotate failures
+        if: failure()
+        run: |
+          for f in *.log; do
+            [ -f "$f" ] || continue
+            grep -E "check: |ERROR|Unhandled|Exception" "$f" | grep -v ": OK$" | head -30 | sed "s/^/::error title=$f::/" || true
+          done
+
   # T11.12: the Windows and Linux builds playing each other. GitHub-hosted
   # runners cannot connect to each other (each job is its own VM behind NAT,
   # with no inbound connections and no address another job could reach;
@@ -593,13 +707,13 @@ jobs:
 
   # A pushed tag v* (e.g. `git tag v0.1.0 && git push origin v0.1.0`)
   # publishes a GitHub release of that commit once every job above passed:
-  # the three builds (stamped with the tag's version by the export job), zipped
+  # the four builds (stamped with the tag's version by the export job), zipped
   # with the player README, COPYING and the notices, with notes generated from the commits since the
   # previous tag. A tag with a hyphen (v0.2.0-rc1) makes a pre-release.
   release:
     name: Release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [actionlint, export, test-windows, test-macos, test-cross]
+    needs: [actionlint, export, test-windows, test-macos, test-linux-arm64, test-cross]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -621,11 +735,13 @@ jobs:
           cp COPYING THIRD-PARTY-NOTICES.md docs-dist/
           for f in README.txt COPYING THIRD-PARTY-NOTICES.md; do
             cp "docs-dist/$f" artifacts/IsoDoom-linux-x86_64/
+            cp "docs-dist/$f" artifacts/IsoDoom-linux-arm64/
             cp "docs-dist/$f" artifacts/IsoDoom-windows-x86_64/
           done
           # Artifacts drop file modes: the game and createdump (T8.3c) get
           # their exec bits back before zipping.
           (cd artifacts/IsoDoom-linux-x86_64 && chmod +x IsoDoom.x86_64 data_IsoDoom_linuxbsd_x86_64/createdump && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-linux-x86_64.zip" .)
+          (cd artifacts/IsoDoom-linux-arm64 && chmod +x IsoDoom.arm64 data_IsoDoom_linuxbsd_arm64/createdump && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-linux-arm64.zip" .)
           (cd artifacts/IsoDoom-windows-x86_64 && zip -r9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-windows-x86_64.zip" .)
           cp artifacts/IsoDoom-macos-universal/IsoDoom.zip "dist/IsoDoom-$TAG-macos-universal.zip"
           (cd docs-dist && zip -9 "$GITHUB_WORKSPACE/dist/IsoDoom-$TAG-macos-universal.zip" README.txt COPYING THIRD-PARTY-NOTICES.md)
@@ -636,6 +752,9 @@ jobs:
           done
           for f in IsoDoom.x86_64 data_IsoDoom_linuxbsd_x86_64/createdump; do
             zipinfo "dist/IsoDoom-$TAG-linux-x86_64.zip" "$f" | grep -q "^-rwx" || { echo "::error::$f is not executable in the Linux zip"; exit 1; }
+          done
+          for f in IsoDoom.arm64 data_IsoDoom_linuxbsd_arm64/createdump; do
+            zipinfo "dist/IsoDoom-$TAG-linux-arm64.zip" "$f" | grep -q "^-rwx" || { echo "::error::$f is not executable in the Linux arm64 zip"; exit 1; }
           done
           ls -la dist
 
