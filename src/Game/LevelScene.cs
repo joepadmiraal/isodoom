@@ -2073,7 +2073,9 @@ public partial class LevelScene : Node3D, IGameHost
         if (length <= edge)
             return;
         from += (to - from) * (edge / length);
-        _shotTracers.Add(from, to, own ? ShotTracers.PlayerColor : ShotTracers.MonsterColor);
+        // Drawn out of the shooter's sprite (its tilt), not from the point in the world below it
+        var foot = new Vector3((float)(shot.shooter.x / 65536.0), (float)(shot.shooter.y / 65536.0), (float)(shot.shooter.z / 65536.0));
+        _shotTracers.Add(from, to, own ? ShotTracers.PlayerColor : ShotTracers.MonsterColor, foot, SpriteOptions.Tilt);
     }
 
     /// <summary>

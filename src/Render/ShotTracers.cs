@@ -23,7 +23,12 @@ public enum TracerMode
 /// twin-stick player sees where the shots go. Each is a ribbon facing the
 /// camera, faint at the shooter and bright where it stopped, fading out (slowly, then fast) over
 /// <see cref="Lifetime"/> seconds; drawn over everything, as the shot is seen
-/// from above. Presentation only: the sim never reads them.
+/// from above. Its start is drawn on the shooter's sprite, where the sprite
+/// shows the shot's height (T3.6's tilt leans the billboard back towards the
+/// camera, so a texel h above the feet shows h up on screen, a point in the
+/// world h·cos(elevation)), and the step out to the shooter's edge only
+/// along the billboard: out of the shooter's gun, not below it.
+/// Presentation only: the sim never reads them.
 /// </summary>
 public partial class ShotTracers : MeshInstance3D
 {
@@ -39,7 +44,7 @@ public partial class ShotTracers : MeshInstance3D
     /// <summary>The colour of the monsters' tracers.</summary>
     public static readonly Color MonsterColor = new(1f, 0.35f, 0.2f);
 
-    private readonly record struct Tracer(Vector3 From, Vector3 To, Color Color, float Age);
+    private readonly record struct Tracer(Vector3 From, Vector3 To, Color Color, Vector3? Foot, float Tilt, float Age);
 
     private readonly List<Tracer> _tracers = [];
     private readonly ImmediateMesh _mesh = new();
@@ -63,9 +68,15 @@ public partial class ShotTracers : MeshInstance3D
         MaterialOverride = material;
     }
 
-    /// <summary>Adds a tracer from <paramref name="from"/> to <paramref name="to"/> (map units: x, y, height).</summary>
-    public void Add(Vector3 from, Vector3 to, Color color) =>
-        _tracers.Add(new Tracer(ToGodot(from), ToGodot(to), color, 0));
+    /// <summary>
+    /// Adds a tracer from <paramref name="from"/> to <paramref name="to"/>
+    /// (map units: x, y, height), drawn from the sprite of a shooter standing
+    /// at <paramref name="foot"/>, which leans back by <paramref name="tilt"/>
+    /// (<see cref="SpriteSettings.Tilt"/>); without one, from
+    /// <paramref name="from"/> itself.
+    /// </summary>
+    public void Add(Vector3 from, Vector3 to, Color color, Vector3? foot = null, float tilt = 0) =>
+        _tracers.Add(new Tracer(ToGodot(from), ToGodot(to), color, foot is { } f ? ToGodot(f) : null, tilt, 0));
 
     /// <summary>Removes every tracer (a level unloads).</summary>
     public void Clear()
@@ -95,8 +106,9 @@ public partial class ShotTracers : MeshInstance3D
         bool begun = false;
         foreach (Tracer t in _tracers)
         {
-            Vector3 d = t.To - t.From;
-            Vector3 view = ortho ? forward : (t.From + t.To) / 2 - camera.GlobalPosition;
+            Vector3 from = OnSprite(t, camera, ortho);
+            Vector3 d = t.To - from;
+            Vector3 view = ortho ? forward : (from + t.To) / 2 - camera.GlobalPosition;
             Vector3 side = d.Cross(view);
             if (side.LengthSquared() < 1e-12f)
                 continue;
@@ -106,15 +118,40 @@ public partial class ShotTracers : MeshInstance3D
             begun = true;
             float age = t.Age / Lifetime, fade = 1 - age * age;
             Color tail = t.Color with { A = 0.25f * fade }, head = t.Color with { A = fade };
-            Vertex(t.From - side, tail);
-            Vertex(t.From + side, tail);
+            Vertex(from - side, tail);
+            Vertex(from + side, tail);
             Vertex(t.To + side, head);
-            Vertex(t.From - side, tail);
+            Vertex(from - side, tail);
             Vertex(t.To + side, head);
             Vertex(t.To - side, head);
         }
         if (begun)
             _mesh.SurfaceEnd();
+    }
+
+    /// <summary>
+    /// Where the shooter's sprite draws the tracer's start: on its billboard
+    /// (sprite.gdshaderinc's: turned about the vertical to face the camera,
+    /// then tilted towards it by the tilt times the camera's elevation, the
+    /// top leaning away), the start's height above the feet up it and its
+    /// step from the feet across it. The upright depth and the wall pull move
+    /// along the view ray, so they leave the place on screen as it is.
+    /// </summary>
+    private static Vector3 OnSprite(Tracer t, Camera3D camera, bool ortho)
+    {
+        if (t.Foot is not { } foot)
+            return t.From;
+        Vector3 toCamera = ortho ? camera.GlobalBasis.Z.Normalized() : (camera.GlobalPosition - foot).Normalized();
+        var facing = new Vector3(toCamera.X, 0, toCamera.Z);
+        if (facing.LengthSquared() < 1e-8f)
+            return t.From;
+        facing = facing.Normalized();
+        Vector3 step = t.From - foot;
+        float rise = step.Y;
+        step.Y = 0;
+        step -= facing * step.Dot(facing);
+        float a = Mathf.Max(t.Tilt, 0) * Mathf.Asin(Mathf.Clamp(toCamera.Y, 0, 1));
+        return foot + step + (Vector3.Up * Mathf.Cos(a) - facing * Mathf.Sin(a)) * rise;
     }
 
     private void Vertex(Vector3 p, Color c)
