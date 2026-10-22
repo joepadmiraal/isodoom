@@ -215,19 +215,23 @@ const int HIDDEN_GRID = 12;
 const float HIDDEN_MARGIN = 1.0;
 #endif
 
-varying flat ivec4 v_rect;
-varying flat int v_flip;
-// The player's own sprite (flag 8; T6.9: its outline when fuzzed).
-varying flat int v_own;
-varying flat int v_colormap;
-// The colour translation's table (T11.10; 0: none).
-varying flat int v_translation;
-varying vec2 v_texcoord;
-// Whether the cutaway may cut this thing (T3.4b), and its foot (map units).
-varying flat int v_cuttable;
-varying flat vec3 v_foot;
-// The wall pull's horizontal distance (T3.5a; 0: none), map units.
-varying flat float v_pull;
+// One varying of our own (T8.4d, SPEC §12: a Raspberry Pi's V3D has room for
+// one beside Godot's built-ins; ShaderVaryingTests), flat, float bits: xyz the
+// thing's foot (map units), w the wall pull's horizontal distance (T3.5a; 0:
+// none, map units). UV is the patch texel coordinates, and COLOR holds small
+// whole numbers (exact under Godot Mobile's half floats up to 2048, and
+// rounded): x and y the atlas slot's low and high COLOR_SLOT_BITS, z the
+// flags: SPRITE_FLIP, SPRITE_OWN the player's own sprite (flag 8; T6.9: its
+// outline when fuzzed), SPRITE_CUTTABLE the cutaway may cut it (T3.4b), the
+// colour translation's table from SPRITE_TRANSLATION_SHIFT (T11.10; 0: none)
+// and the colormap from SPRITE_COLORMAP_SHIFT.
+varying flat ivec4 v_flat;
+const int COLOR_SLOT_BITS = 11;
+const int SPRITE_FLIP = 1;
+const int SPRITE_OWN = 2;
+const int SPRITE_CUTTABLE = 4;
+const int SPRITE_TRANSLATION_SHIFT = 3;
+const int SPRITE_COLORMAP_SHIFT = 5;
 
 vec4 data_texel(sampler2D tex, int id) {
 	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
@@ -320,11 +324,11 @@ void vertex() {
 	int flags = int(round(INSTANCE_CUSTOM.y));
 	int sector = int(round(INSTANCE_CUSTOM.z));
 	vec3 foot = MODEL_MATRIX[3].xyz;
-	v_foot = vec3(foot.x, -foot.z, foot.y) * MAP_UNITS_PER_METRE;
-	v_pull = clamp(INSTANCE_CUSTOM.w, 0.0, max(wall_pull, 0.0));
-	v_cuttable = cut_mode != 0 && (cut_things == 2 || (cut_things == 1 && (flags & 4) == 0)) ? 1 : 0;
-	v_own = (flags & 8) != 0 ? 1 : 0;
-	v_translation = (flags >> TRANSLATION_SHIFT) & 3;
+	float pull = clamp(INSTANCE_CUSTOM.w, 0.0, max(wall_pull, 0.0));
+	v_flat = ivec4(floatBitsToInt(vec3(foot.x, -foot.z, foot.y) * MAP_UNITS_PER_METRE), floatBitsToInt(pull));
+	bool cuttable = cut_mode != 0 && (cut_things == 2 || (cut_things == 1 && (flags & 4) == 0));
+	int sprite_flags = (cuttable ? SPRITE_CUTTABLE : 0) | ((flags & 8) != 0 ? SPRITE_OWN : 0)
+		| (((flags >> TRANSLATION_SHIFT) & 3) << SPRITE_TRANSLATION_SHIFT);
 	// T6.9: MF_SHADOW things are drawn by the FUZZ variant only, the rest by the others.
 	bool fuzzed = fuzz != 0 && (flags & 16) != 0;
 #ifdef FUZZ
@@ -334,16 +338,13 @@ void vertex() {
 #endif
 	if (slot < 0 || skip) {
 		// Nothing to draw: a degenerate quad.
-		v_rect = ivec4(0);
-		v_flip = 0;
-		v_colormap = 0;
-		v_texcoord = vec2(0.0);
+		COLOR = vec4(0.0);
+		UV = vec2(0.0);
 		VERTEX = vec3(0.0);
 	} else {
 		vec4 r = data_texel(sprite_info, 2 * slot);
 		vec4 o = data_texel(sprite_info, 2 * slot + 1);
-		v_rect = ivec4(r + 0.5);
-		v_flip = flags & 1;
+		bool flip = (flags & 1) != 0;
 		float w = r.z, h = r.w, left = o.x, top = o.y;
 		float bottom = top - h;
 		float origin = clamp(0.0, bottom, top);
@@ -352,7 +353,7 @@ void vertex() {
 		float y = VERTEX.y < 0.5 ? bottom - grow : VERTEX.y < 1.5 ? origin : top + grow;
 		float sx = VERTEX.x * (w + 2.0 * grow) - grow;
 		float x = sx - left;
-		v_texcoord = vec2(sx, top - y);
+		UV = vec2(sx, top - y);
 
 		bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
 		// The view plane's right axis, flattened (a Y-axis billboard), and the
@@ -388,18 +389,18 @@ void vertex() {
 				offset += to_camera * (pull / MAP_UNITS_PER_METRE);
 			}
 		}
-		if (v_pull > 0.0) {
+		if (pull > 0.0) {
 			// The wall pull (T3.5a): along the view ray, the radius nearer horizontally.
 			vec3 to_camera = ortho ? normalize(INV_VIEW_MATRIX[2].xyz) : normalize(CAMERA_POSITION_WORLD - (foot + offset));
-			offset += to_camera * (wall_pull_length(to_camera.y, v_pull) / MAP_UNITS_PER_METRE);
+			offset += to_camera * (wall_pull_length(to_camera.y, pull) / MAP_UNITS_PER_METRE);
 		}
 		VERTEX = offset;
-		v_colormap = sprite_colormap(flags, sector, foot, VIEW_MATRIX);
+		sprite_flags |= (flip ? SPRITE_FLIP : 0) | (sprite_colormap(flags, sector, foot, VIEW_MATRIX) << SPRITE_COLORMAP_SHIFT);
+		COLOR = vec4(float(slot & ((1 << COLOR_SLOT_BITS) - 1)), float(slot >> COLOR_SLOT_BITS), float(sprite_flags), 0.0);
 #ifdef UPRIGHT_HIDDEN
-		if (lean > 0.0 && upright_hidden(v_rect, v_flip != 0, left, top, right, foot, v_pull, ortho,
+		if (lean > 0.0 && upright_hidden(ivec4(r + 0.5), flip, left, top, right, foot, pull, ortho,
 				MODELVIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, CAMERA_POSITION_WORLD)) {
 			// Hidden whole (T3.6a): a degenerate quad.
-			v_rect = ivec4(0);
 			VERTEX = vec3(0.0);
 		}
 #endif
@@ -435,25 +436,27 @@ int nearest_index(vec3 c) {
 }
 #endif
 
-bool opaque_at(int col, int row) {
-	if (col < 0 || row < 0 || col >= v_rect.z || row >= v_rect.w) {
+// Whether texel (col, row) of the patch at `rect`, mirrored with `flip`, is opaque.
+bool opaque_at(ivec4 rect, bool flip, int col, int row) {
+	if (col < 0 || row < 0 || col >= rect.z || row >= rect.w) {
 		return false;
 	}
-	if (v_flip != 0) {
+	if (flip) {
 		// r_things.c: a flipped patch keeps its rectangle and mirrors its columns.
-		col = v_rect.z - 1 - col;
+		col = rect.z - 1 - col;
 	}
-	return texelFetch(sprite_atlas, v_rect.xy + ivec2(col, row), 0).g >= 0.5;
+	return texelFetch(sprite_atlas, rect.xy + ivec2(col, row), 0).g >= 0.5;
 }
 
 // IsoDoom.Render.Cutaway.HidesThing: whether centre c cuts billboard point p
-// (map units); n the billboard's horizontal normal towards the camera.
-bool cut_thing(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
+// (map units); n the billboard's horizontal normal towards the camera, `foot`
+// the thing's.
+bool cut_thing(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam, vec3 foot) {
 	if (c.w < 0.5 || p.z <= c.z + cut_height) {
 		return false;
 	}
 	vec3 a = vec3(c.xy, c.z + cut_anchor);
-	if (dot(a - v_foot, n) > -CUT_PLANE_MARGIN) {
+	if (dot(a - foot, n) > -CUT_PLANE_MARGIN) {
 		return false;
 	}
 	vec3 axis = ortho ? to_camera : normalize(cam - a);
@@ -468,11 +471,21 @@ float bayer4(ivec2 q) {
 }
 
 void fragment() {
-	int w = v_rect.z;
-	int h = v_rect.w;
+	// COLOR's and v_flat's fields (as the vertex shader packs them).
+	ivec4 colour = ivec4(round(COLOR));
+	int slot = colour.x | (colour.y << COLOR_SLOT_BITS);
+	int sprite_flags = colour.z;
+	bool flip = (sprite_flags & SPRITE_FLIP) != 0;
+	bool own = (sprite_flags & SPRITE_OWN) != 0;
+	int translation = (sprite_flags >> SPRITE_TRANSLATION_SHIFT) & 3;
+	vec3 foot = intBitsToFloat(v_flat.xyz);
+	float pull = intBitsToFloat(v_flat.w);
+	ivec4 rect = ivec4(data_texel(sprite_info, 2 * slot) + 0.5);
+	int w = rect.z;
+	int h = rect.w;
 #ifdef FUZZ
 	// T6.9: one patch row down on screen, in pixels (taken before any discard).
-	vec2 row_gradient = vec2(dFdx(v_texcoord.y), dFdy(v_texcoord.y));
+	vec2 row_gradient = vec2(dFdx(UV.y), dFdy(UV.y));
 	vec2 row_step = row_gradient / max(dot(row_gradient, row_gradient), 1e-8);
 	// SCREEN_UV per pixel along x and y (its y need not run as FRAGCOORD's).
 	vec2 uv_dx = dFdx(SCREEN_UV);
@@ -481,7 +494,7 @@ void fragment() {
 	if (w <= 0 || h <= 0) {
 		discard;
 	}
-	if (v_cuttable != 0) {
+	if ((sprite_flags & SPRITE_CUTTABLE) != 0) {
 		// Godot space (x, height, -y, metres) to map units (x, y, height).
 		vec3 world = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		vec3 p = vec3(world.x, -world.z, world.y) * MAP_UNITS_PER_METRE;
@@ -489,35 +502,35 @@ void fragment() {
 		vec3 back = normalize(INV_VIEW_MATRIX[2].xyz);
 		vec3 to_camera = vec3(back.x, -back.z, back.y);
 		bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
-		if (v_pull > 0.0) {
+		if (pull > 0.0) {
 			// Undo the wall pull (T3.5a): the cut is tested where the pixel's depth was before it.
 			vec3 ray = ortho ? to_camera : normalize(cam - p);
-			p -= ray * wall_pull_length(ray.z, v_pull);
+			p -= ray * wall_pull_length(ray.z, pull);
 		}
 		// The billboard's normal: the camera's right axis, flattened, turned up (as the vertex shader).
 		vec3 right = vec3(INV_VIEW_MATRIX[0].x, 0.0, INV_VIEW_MATRIX[0].z);
 		right = dot(right, right) > 1e-8 ? normalize(right) : vec3(1.0, 0.0, 0.0);
 		vec3 facing = cross(right, vec3(0.0, 1.0, 0.0));
 		vec3 n = vec3(facing.x, -facing.z, facing.y);
-		if (cut_thing(p, n, cut_player, ortho, to_camera, cam) || cut_thing(p, n, cut_cursor, ortho, to_camera, cam)) {
+		if (cut_thing(p, n, cut_player, ortho, to_camera, cam, foot) || cut_thing(p, n, cut_cursor, ortho, to_camera, cam, foot)) {
 			if (cut_mode == 1 || bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
 				discard;
 			}
 		}
 	}
-	int col = int(floor(v_texcoord.x));
-	int row = int(floor(v_texcoord.y));
+	int col = int(floor(UV.x));
+	int row = int(floor(UV.y));
 	int index = 0;
 	// The colormap the index is drawn through (T6.9: the fuzz's own).
-	int light = v_colormap;
+	int light = sprite_flags >> SPRITE_COLORMAP_SHIFT;
 	// The palette row (T6.13v): the player's own sprite's, but a fuzzed pixel shows the screen behind it in the screen's.
-	int pal = v_own != 0 ? own_palette_index : palette_index;
+	int pal = own ? own_palette_index : palette_index;
 	if (outline < 0) {
 		col = clamp(col, 0, w - 1);
 		row = clamp(row, 0, h - 1);
 	}
 #ifdef FUZZ
-	if (opaque_at(col, row)) {
+	if (opaque_at(rect, flip, col, row)) {
 		// r_draw.c R_DrawFuzzColumn: dest = colormaps[6 * 256 + dest[fuzzoffset[fuzzpos]]],
 		// down the column. The row above was fuzzed already (when it is in the column's
 		// post), so a run of -FUZZOFF darkens again per row: walk up it to the row whose
@@ -530,7 +543,7 @@ void fragment() {
 				source = j + 1;
 				break;
 			}
-			if (!opaque_at(col, j - 1)) {
+			if (!opaque_at(rect, flip, col, j - 1)) {
 				source = j - 1;
 				break;
 			}
@@ -549,21 +562,21 @@ void fragment() {
 		}
 		light = FUZZ_COLORMAP;
 		pal = palette_index;
-	} else if (v_own != 0 && outline >= 0 && (opaque_at(col - 1, row) || opaque_at(col + 1, row) || opaque_at(col, row - 1) || opaque_at(col, row + 1))) {
+	} else if (own && outline >= 0 && (opaque_at(rect, flip, col - 1, row) || opaque_at(rect, flip, col + 1, row) || opaque_at(rect, flip, col, row - 1) || opaque_at(rect, flip, col, row + 1))) {
 		// The player's own sprite keeps its solid outline.
 		index = outline;
 	} else {
 		discard;
 	}
 #else
-	if (opaque_at(col, row)) {
-		int c = v_flip != 0 ? w - 1 - col : col;
-		index = int(texelFetch(sprite_atlas, v_rect.xy + ivec2(c, row), 0).r * 255.0 + 0.5);
-		if (v_translation != 0 && index >= 0x70 && index <= 0x7f) {
+	if (opaque_at(rect, flip, col, row)) {
+		int c = flip ? w - 1 - col : col;
+		index = int(texelFetch(sprite_atlas, rect.xy + ivec2(c, row), 0).r * 255.0 + 0.5);
+		if (translation != 0 && index >= 0x70 && index <= 0x7f) {
 			// T11.10: r_draw.c R_InitTranslationTables (grey, brown, red).
-			index = (v_translation == 1 ? 0x60 : v_translation == 2 ? 0x40 : 0x20) + (index & 0xf);
+			index = (translation == 1 ? 0x60 : translation == 2 ? 0x40 : 0x20) + (index & 0xf);
 		}
-	} else if (outline >= 0 && (opaque_at(col - 1, row) || opaque_at(col + 1, row) || opaque_at(col, row - 1) || opaque_at(col, row + 1))) {
+	} else if (outline >= 0 && (opaque_at(rect, flip, col - 1, row) || opaque_at(rect, flip, col + 1, row) || opaque_at(rect, flip, col, row - 1) || opaque_at(rect, flip, col, row + 1))) {
 		index = outline;
 	} else {
 		discard;

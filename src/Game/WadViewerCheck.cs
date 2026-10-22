@@ -360,7 +360,7 @@ public partial class WadViewerCheck : Node
             {
                 await NextFrame();
                 await NextFrame();
-                Image frame = _viewer.GetViewport().GetTexture().GetImage();
+                Image frame = ScreenCapture.Capture(_viewer.GetViewport());
                 using var keepFrame = GodotRefs.Keep(frame); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
                 Rect2 rect = _viewer.MainView.ImageRect.GetGlobalRect();
                 if ((int)rect.Size.X != img.Width || (int)rect.Size.Y != img.Height)
@@ -452,7 +452,7 @@ public partial class WadViewerCheck : Node
             await NextFrame();
             await NextFrame();
             string path = Path.Combine(dir, file);
-            Image shot = _viewer.GetViewport().GetTexture().GetImage();
+            Image shot = ScreenCapture.Capture(_viewer.GetViewport());
             using var keepShot = GodotRefs.Keep(shot); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
             Error err = shot.SavePng(path);
             if (err != Error.Ok)
@@ -494,7 +494,7 @@ public partial class WadViewerCheck : Node
             await NextFrame();
             await NextFrame();
             string path = Path.Combine(dir, file);
-            Image shot = _viewer.GetViewport().GetTexture().GetImage();
+            Image shot = ScreenCapture.Capture(_viewer.GetViewport());
             using var keepShot = GodotRefs.Keep(shot); // T8.3d: alive to the scope's end, not disposed (GodotRefs.Keep)
             Error err = shot.SavePng(path);
             if (err != Error.Ok)

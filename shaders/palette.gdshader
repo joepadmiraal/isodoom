@@ -15,6 +15,8 @@ uniform sampler2D playpal : filter_nearest, repeat_disable;
 uniform sampler2D colormap : filter_nearest, repeat_disable;
 uniform int palette_index = 0;
 uniform int colormap_index = 0;
+// T8.4d: the canvas is in linear colour (HDR 2D under the Mobile renderer, IsoDoom.Game.Srgb.LinearCanvas); PLAYPAL is sRGB.
+uniform bool linear_colours = false;
 
 void fragment() {
 	vec2 texel = texture(TEXTURE, UV).rg;
@@ -23,5 +25,9 @@ void fragment() {
 	}
 	int index = int(texel.r * 255.0 + 0.5);
 	int mapped = int(texelFetch(colormap, ivec2(index, colormap_index), 0).r * 255.0 + 0.5);
-	COLOR = vec4(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb, COLOR.a);
+	vec3 c = texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb;
+	if (linear_colours) {
+		c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+	}
+	COLOR = vec4(c, COLOR.a);
 }

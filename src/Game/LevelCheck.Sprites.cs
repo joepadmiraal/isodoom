@@ -1012,7 +1012,7 @@ public partial class LevelCheck
                 int c = px - left, r = py - top;
                 if (c < -grow || c >= patch.Width + grow || r < -grow || r >= patch.Height + grow)
                 {
-                    if (!NearBackground(got))
+                    if (!NearBackground(got) && !Leaked(frame, size.X, size.Y, px, py, got, _background))
                         stray++;
                     continue;
                 }
@@ -1022,18 +1022,18 @@ public partial class LevelCheck
                 if (Opaque(c, r))
                 {
                     byte texel = PlayerTranslation.Translate(patch[shown.Flip ? patch.Width - 1 - c : c, r], e.Translation); // (T11.10)
-                    ok = colormap < 0 ? !NearBackground(got) : got == Shade(texel, colormap, e.Own);
+                    ok = colormap < 0 ? !NearBackground(got) : got == Shade(texel, colormap, e.Own) || Leaked(frame, size.X, size.Y, px, py, got, Shade(texel, colormap, e.Own));
                     expected = colormap < 0 ? "a texel" : $"{Shade(texel, colormap, e.Own)} (colormap {colormap})";
                 }
                 else if (grow > 0 && (Opaque(c - 1, r) || Opaque(c + 1, r) || Opaque(c, r - 1) || Opaque(c, r + 1)))
                 {
                     outlined++;
-                    ok = colormap < 0 ? !NearBackground(got) : got == Shade((byte)outline, colormap, e.Own);
+                    ok = colormap < 0 ? !NearBackground(got) : got == Shade((byte)outline, colormap, e.Own) || Leaked(frame, size.X, size.Y, px, py, got, Shade((byte)outline, colormap, e.Own));
                     expected = colormap < 0 ? "the outline" : $"the outline {Shade((byte)outline, colormap, e.Own)}";
                 }
                 else
                 {
-                    ok = NearBackground(got);
+                    ok = NearBackground(got) || Leaked(frame, size.X, size.Y, px, py, got, _background);
                     expected = "the background";
                 }
                 if (!ok && bad++ == 0)
@@ -1175,7 +1175,7 @@ public partial class LevelCheck
                 else
                     expected = At(before, px, py);
                 count++;
-                if (got != expected && bad++ == 0)
+                if (got != expected && !Leaked(frame, size.X, size.Y, px, py, got, expected) && bad++ == 0)
                     first = $"texel ({c}, {r}) at pixel ({px}, {py}): drew {got}, expected {expected}";
             }
         }

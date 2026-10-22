@@ -131,7 +131,7 @@
 // one higher: a door's jambs) and drawn while the wall faces the camera (the
 // view direction; a wall facing away is culled, and its cap would float over
 // its room) and has a height. It shows the wall's texture, its rows going
-// back from the wall's face (v_kind 3: textured as a wall, lit as a floor of
+// back from the wall's face (v_flat's kind 3: textured as a wall, lit as a floor of
 // the sector), and is cut as any floor, but only where its wall would be: the
 // centre behind the wall's plane by more than CUT_PLANE_MARGIN (a player in
 // front of a wall keeps its top whole, as its face). Kind 7 is the same piece per cut
@@ -161,7 +161,7 @@
 // the walls'). It shows the side's texture of that part (its current one, so a
 // pressed switch shows its other texture), UV its column and row (the wall laid
 // back onto the floor, mirrored so that it reads from behind the wall), lit as
-// a floor of the sector (v_kind 3, not a wall cap: v_wall_normal zero).
+// a floor of the sector (v_flat's kind 3, not a wall cap: no wall normal).
 //
 // Height cues (T6.13s; IsoDoom.Render.LedgeEdges, `height_cues` a bit mask: 1
 // edges, 2 shade): kind 10 is a piece of the strip along one side of a
@@ -170,7 +170,7 @@
 // ledge the player could not step back up). It shows palette index
 // LEDGE_INDEX lit at least LEDGE_BRIGHTEN light levels above its floor and at
 // least LEDGE_MIN_LIGHT, its innermost LEDGE_RIM units index 0 (a dark rim, so
-// it reads on a bright floor too); v_kind 4, lit as a floor and cut as one.
+// it reads on a bright floor too); v_flat's kind 4, lit as a floor and cut as one.
 // With shade, every surface lit as a floor (floors, their caps, lids, wall
 // caps, switch markers, ledge edges) gains a light level per SHADE_STEP units
 // it is above `height_reference` (the player's feet), and loses one per
@@ -276,25 +276,28 @@ uniform sampler2D sector_fog : filter_nearest, repeat_disable;
 uniform sampler2D fog_dim : filter_nearest, repeat_disable;
 uniform int fog_dither = 0;
 
-varying flat ivec4 v_rect;
-// 0 floor, 1 solid wall, 2 masked middle, 3 wall cap (a wall's texture, a floor's light), 4 ledge edge (T6.13s).
-varying flat int v_kind;
-varying flat int v_lightnum;
-// The cut centre whose cap this is (kind 4, T3.4a): 0 player, 1 cursor; -1 not a cap.
-varying flat int v_cap;
-// 1 when the cutaway leaves this surface whole: a door's while doors are kept (T6.13d).
-varying flat int v_door;
-// 1 when the fog of war dims this surface (its sector unseen, T6.13l).
-varying flat int v_fog;
-varying vec2 v_texcoord;
-varying vec2 v_map;
-varying float v_height;
-// The surface's normal (map axes): towards the front sector for walls, up for floors.
-varying flat vec3 v_normal;
-// A wall cap's wall (v_kind 3): its normal towards its sector (map axes); v_texcoord.y is how far behind it.
-// Zero for a switch marker (v_kind 3 too, T6.13p).
-varying flat vec2 v_wall_normal;
-varying float v_depth;
+// One varying of our own (T8.4d, SPEC §12: a Raspberry Pi's V3D has room for
+// one beside Godot's built-ins; ShaderVaryingTests), flat:
+//   x  the texture slot (texture_info; -1 none)
+//   y  bits 0-7 the light number + LIGHTNUM_BIAS; 8-11 the kind (0 floor, 1 solid
+//      wall, 2 masked middle, 3 wall cap: a wall's texture, a floor's light, 4
+//      ledge edge, T6.13s); 12-13 the cut centre whose cap this is + 1 (a cutaway cap,
+//      T3.4a: 0 player, 1 cursor; -1 not a cap); FLAT_DOOR the cutaway leaves it
+//      whole (a door's while doors are kept, T6.13d); FLAT_FOG the fog of war
+//      dims it (its sector unseen, T6.13l); FLAT_WALL_CAP a wall cap's wall normal
+//      is set (kind 3; not a switch marker's, T6.13p)
+//   z  the wall's direction (CUSTOM2.w, float bits): the normal (map axes)
+//      towards the front sector of a wall (kinds 1, 2), and of a wall cap's
+//      wall (kind 3, whose texture row is how far behind it); others face up
+//   w  float bits: the height of a surface lit as a floor (kinds 0, 3, 4); a
+//      wall's texture top, its height that less its texture row
+// The rest rides on Godot's built-ins: UV the texture coordinates, UV2 the map
+// point, and the view depth is the fragment's VERTEX.
+varying flat ivec4 v_flat;
+const int LIGHTNUM_BIAS = 128;
+const int FLAT_DOOR = 1 << 14;
+const int FLAT_FOG = 1 << 15;
+const int FLAT_WALL_CAP = 1 << 16;
 
 vec4 data_texel(sampler2D tex, int id) {
 	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
@@ -331,16 +334,25 @@ int fog_state(int sector) {
 }
 
 void vertex() {
+	// What the fragment shader reads (v_flat, UV, UV2).
+	int o_slot = -1;
+	int o_kind = 0;
+	int o_lightnum = 0;
+	int o_cap = -1;
+	int o_door = 0;
+	int o_fog = 0;
+	bool o_wall_cap = false;
+	vec2 o_texcoord = vec2(0.0);
+	float o_height = 0.0;
 	int kind = int(CUSTOM0.x);
 	bool back_face = kind == 3;
 	if (back_face) {
 		kind = 2;
 	}
-	v_cap = -1;
 	bool lid = kind == 5;
 	if (kind == 4) {
 		kind = 0;
-		v_cap = int(CUSTOM0.w);
+		o_cap = int(CUSTOM0.w);
 	} else if (lid) {
 		kind = 0;
 	}
@@ -349,29 +361,25 @@ void vertex() {
 	// seen when either sector is (a shut door's far face, the edge of a seen floor).
 	int fog_back = (kind == 1 || kind == 2) && int(CUSTOM0.w) >= 0 ? fog_state(int(CUSTOM0.w)) : 0;
 	bool unseen = max(fog_state(front_id), fog_back) == 0;
-	v_fog = unseen && fog_mode == 1 ? 1 : 0;
+	o_fog = unseen && fog_mode == 1 ? 1 : 0;
 	bool fog_hides = unseen && fog_mode == 2;
 	if (kind == 10) {
 		// T6.13s: a ledge edge, on its sector's floor while it is a ledge's top.
 		vec4 l_front = data_texel(sector_data, front_id);
 		vec4 l_back = data_texel(sector_data, int(CUSTOM0.w));
 		bool l_collapse = (height_cues & 1) == 0 || l_front.r - l_back.r <= LEDGE_MIN_DROP;
-		v_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
-		v_rect = ivec4(0);
-		v_kind = 4;
-		v_cap = -1;
-		v_lightnum = shade_light(max((int(floor(l_front.b + 0.5)) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight, l_front.r);
-		v_texcoord = UV;
-		v_normal = vec3(0.0, 0.0, 1.0);
-		v_wall_normal = vec2(0.0);
+		o_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
+		o_slot = -1;
+		o_kind = 4;
+		o_cap = -1;
+		o_lightnum = shade_light(max((int(floor(l_front.b + 0.5)) >> LIGHTSEGSHIFT) + LEDGE_BRIGHTEN, LEDGE_MIN_LIGHT) + extralight, l_front.r);
+		o_texcoord = UV;
 		if (l_collapse || fog_hides) {
 			VERTEX.xz = vec2(0.0);
 		}
 		float l_z = l_front.r + LEDGE_LIFT;
 		VERTEX.y = l_z / MAP_UNITS_PER_METRE;
-		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
-		v_height = l_z;
-		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+		o_height = l_z;
 	} else if (kind == 9) {
 		// T6.13p: a switch marker, on its sector's floor.
 		vec4 m_front = data_texel(sector_data, front_id);
@@ -387,29 +395,25 @@ void vertex() {
 		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
 		vec2 to_camera = vec2(view_back.x, -view_back.z);
 		bool m_collapse = switch_markers == 0 || m_slot < 0 || m_top <= m_bottom || dot(n, to_camera) > 0.001;
-		v_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
-		v_rect = m_slot >= 0 ? ivec4(data_texel(texture_info, m_slot) + 0.5) : ivec4(0);
-		v_kind = 3;
-		v_lightnum = (int(floor(m_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight;
-		v_texcoord = vec2(UV.x + m_side.g, UV.y);
-		v_normal = vec3(0.0, 0.0, 1.0);
-		v_wall_normal = vec2(0.0);
+		o_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
+		o_slot = m_slot;
+		o_kind = 3;
+		o_lightnum = (int(floor(m_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight;
+		o_texcoord = vec2(UV.x + m_side.g, UV.y);
 		if (m_collapse || fog_hides) {
 			VERTEX.xz = vec2(0.0);
 		}
 		float m_z = m_front.r + SWITCH_MARKER_LIFT;
-		v_lightnum = shade_light(v_lightnum, m_front.r);
+		o_lightnum = shade_light(o_lightnum, m_front.r);
 		VERTEX.y = m_z / MAP_UNITS_PER_METRE;
-		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
-		v_height = m_z;
-		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+		o_height = m_z;
 	} else if (kind == 6 || kind == 7) {
 		// T6.13e: a wall cap (kind 6) or its cutaway cap (kind 7, CUSTOM0.w its centre).
 		vec4 cap_front = data_texel(sector_data, front_id);
 		vec4 cap_lid = data_texel(sector_lids, front_id);
 		vec4 cap_side = data_texel(side_textures, int(CUSTOM0.y));
 		int cap_slot = int(floor(cap_side.r + 0.5));
-		v_door = cut_doors == 0 && cap_lid.b > 0.5 ? 1 : 0;
+		o_door = cut_doors == 0 && cap_lid.b > 0.5 ? 1 : 0;
 		// The wall's top: its sector's ceiling, or its lid above it (a closed door's jambs).
 		float top = lids == 1 && cap_lid.g >= 0.0 ? max(cap_front.g, cap_lid.r) : cap_front.g;
 		// An island's walls all reach its top.
@@ -419,30 +423,27 @@ void vertex() {
 		}
 		// Towards the front sector, and the view direction towards the camera, both map axes.
 		vec2 n = vec2(sin(CUSTOM2.w), -cos(CUSTOM2.w));
-		v_wall_normal = n;
+		o_wall_cap = true;
 		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
 		vec2 to_camera = vec2(view_back.x, -view_back.z);
 		bool cap_collapse = wall_caps == 0 || cap_slot < 0 || top <= cap_front.r || dot(n, to_camera) < -0.001 * length(to_camera);
 		float cap_z = top;
-		v_cap = kind == 7 ? int(CUSTOM0.w) : -1;
-		if (v_cap >= 0) {
-			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+		o_cap = kind == 7 ? int(CUSTOM0.w) : -1;
+		if (o_cap >= 0) {
+			vec4 c = o_cap == 0 ? cut_player : cut_cursor;
 			cap_z = c.z + cut_height;
-			cap_collapse = cap_collapse || cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || v_door == 1 || top <= cap_z;
+			cap_collapse = cap_collapse || cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || o_door == 1 || top <= cap_z;
 		}
-		v_rect = cap_slot >= 0 ? ivec4(data_texel(texture_info, cap_slot) + 0.5) : ivec4(0);
-		v_kind = 3;
-		v_lightnum = (int(floor(cap_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight - (v_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
-		v_lightnum = shade_light(v_lightnum, cap_z);
-		v_texcoord = vec2(UV.x + cap_side.g, UV.y);
-		v_normal = vec3(0.0, 0.0, 1.0);
+		o_slot = cap_slot;
+		o_kind = 3;
+		o_lightnum = (int(floor(cap_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight - (o_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
+		o_lightnum = shade_light(o_lightnum, cap_z);
+		o_texcoord = vec2(UV.x + cap_side.g, UV.y);
 		if (cap_collapse || fog_hides) {
 			VERTEX.xz = vec2(0.0);
 		}
 		VERTEX.y = cap_z / MAP_UNITS_PER_METRE;
-		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
-		v_height = cap_z;
-		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+		o_height = cap_z;
 	} else {
 		// T6.13e: an island's wall above its ceiling, drawn as a solid wall.
 		bool extension = kind == 8;
@@ -452,7 +453,7 @@ void vertex() {
 		if (extension || lid_end) {
 			kind = 1;
 		}
-		int back_id = v_cap >= 0 || extension || lid_end ? -1 : int(CUSTOM0.w);
+		int back_id = o_cap >= 0 || extension || lid_end ? -1 : int(CUSTOM0.w);
 		vec4 front = data_texel(sector_data, front_id);
 		vec4 back = back_id >= 0 ? data_texel(sector_data, back_id) : front;
 		vec4 side = kind == 0 ? vec4(0.0) : data_texel(side_textures, int(CUSTOM0.y));
@@ -460,7 +461,7 @@ void vertex() {
 		vec2 lid_data = kind == 0 ? data_texel(sector_lids, front_id).rg : vec2(0.0);
 		// T6.13d: a door's floor, lid or caps, or a wall on a door's line.
 		bool door = data_texel(sector_lids, front_id).b > 0.5 || (kind != 0 && back_id >= 0 && data_texel(sector_lids, back_id).b > 0.5);
-		v_door = cut_doors == 0 && door ? 1 : 0;
+		o_door = cut_doors == 0 && door ? 1 : 0;
 		int lid_slot = int(floor(lid_data.g + 0.5));
 		int slot = kind == 0 ? int(front.a + 0.5) : int(floor(side.r + 0.5));
 		bool collapse = false;
@@ -469,8 +470,8 @@ void vertex() {
 			z = lid_data.r;
 			slot = lid_slot;
 			collapse = lids == 0 || front.g >= z || slot < 0;
-		} else if (v_cap >= 0) {
-			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+		} else if (o_cap >= 0) {
+			vec4 c = o_cap == 0 ? cut_player : cut_cursor;
 			z = c.z + cut_height;
 			// The floor's block, or else the solid above the sector up to its lid, spans the cutoff.
 			bool solid_lid = lids == 1 && front.g <= z && z < lid_data.r && lid_slot >= 0;
@@ -478,24 +479,24 @@ void vertex() {
 				slot = lid_slot;
 			}
 			// Nothing to cap: collapse the triangle.
-			collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || v_door == 1 || (front.r <= z && !solid_lid);
+			collapse = cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || o_door == 1 || (front.r <= z && !solid_lid);
 		}
 		ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
-		v_rect = rect;
-		v_kind = kind;
+		o_slot = slot;
+		o_kind = kind;
 		// (not clamped before the shift, as r_segs.c: light 256 is 16 before the fake contrast; P3, D2TWID MAP31)
 		int light = int(floor(front.b + 0.5));
-		v_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
+		o_lightnum = (light >> LIGHTSEGSHIFT) + extralight + (kind == 0 ? 0 : int(CUSTOM2.z));
 
 		if (kind == 0) {
-			v_texcoord = UV;
+			o_texcoord = UV;
 			if (collapse || fog_hides) {
 				VERTEX.xz = vec2(0.0);
 			}
-			if (v_cap >= 0 && cut_cap == 2) {
-				v_lightnum -= CAP_DARKEN;
+			if (o_cap >= 0 && cut_cap == 2) {
+				o_lightnum -= CAP_DARKEN;
 			}
-			v_lightnum = shade_light(v_lightnum, z);
+			o_lightnum = shade_light(o_lightnum, z);
 		} else {
 			// WallSection.Span: clipped to the front sector, empty when top <= bottom.
 			float bottom = max(plane_height(int(CUSTOM1.x), front, back) + CUSTOM1.y, front.r);
@@ -530,26 +531,34 @@ void vertex() {
 				top = bottom;
 			}
 			z = UV.y > 0.5 ? top : bottom;
-			v_texcoord = vec2(UV.x + side.g, texture_top - z);
+			o_texcoord = vec2(UV.x + side.g, texture_top - z);
+			// The fragment's height is this less its texture row.
+			o_height = texture_top;
 		}
 		VERTEX.y = z / MAP_UNITS_PER_METRE;
-		v_map = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
-		v_height = z;
-		v_normal = kind == 0 ? vec3(0.0, 0.0, 1.0) : vec3(sin(CUSTOM2.w), -cos(CUSTOM2.w), 0.0);
-		v_wall_normal = vec2(0.0);
-		v_depth = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z * MAP_UNITS_PER_METRE;
+		if (kind == 0) {
+			o_height = z;
+		}
 	}
+	// Into the one varying (v_flat) and the built-ins; UV is read above, so it is written last.
+	v_flat = ivec4(o_slot,
+		(o_lightnum + LIGHTNUM_BIAS) | (o_kind << 8) | ((o_cap + 1) << 12)
+			| (o_door == 1 ? FLAT_DOOR : 0) | (o_fog == 1 ? FLAT_FOG : 0) | (o_wall_cap ? FLAT_WALL_CAP : 0),
+		floatBitsToInt(CUSTOM2.w), floatBitsToInt(o_height));
+	UV = o_texcoord;
+	UV2 = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
 }
 
-// IsoDoom.Map.LightTables.WallColormap / PlaneColormap.
-int light_colormap() {
+// IsoDoom.Map.LightTables.WallColormap / PlaneColormap: of a surface of kind
+// `kind` (v_flat) at map point `map`, `depth` from the camera.
+int light_colormap(int kind, int lightnum, vec2 map, float depth) {
 	if (colormap_override >= 0) {
 		return colormap_override;
 	}
-	float d = light_mode == 0 ? light_reference : light_mode == 1 ? max(length(v_map - light_origin), light_near) : v_depth;
+	float d = light_mode == 0 ? light_reference : light_mode == 1 ? max(length(map - light_origin), light_near) : depth;
 	int dist = int(clamp(d, 0.0, MAX_DISTANCE) * 65536.0);
-	int lightnum = clamp(v_lightnum, 0, LIGHTLEVELS - 1);
-	if (v_kind == 0 || v_kind == 3 || v_kind == 4) {
+	lightnum = clamp(lightnum, 0, LIGHTLEVELS - 1);
+	if (kind == 0 || kind == 3 || kind == 4) {
 		int z = dist <= 0 ? 0 : min(dist >> LIGHTZSHIFT, MAXLIGHTZ - 1);
 		return int(texelFetch(light_tables, ivec2(z, lightnum), 0).r * 255.0 + 0.5);
 	}
@@ -587,15 +596,16 @@ bool cut_hides(vec3 p, vec3 n, vec4 c, bool ortho, vec3 to_camera, vec3 cam) {
 }
 
 // IsoDoom.Render.Cutaway.WallCut (T6.13e): whether a wall cap's wall would be
-// cut by centre c, the centre behind the wall's plane (it faces the camera).
-// Always true for any other surface.
-bool cap_wall_cut(vec3 p, vec4 c) {
-	if (v_kind != 3 || v_wall_normal == vec2(0.0)) {
+// cut by centre c, the centre behind the wall's plane (it faces the camera):
+// `wall_normal` the wall's normal towards its sector, `behind` how far behind
+// the wall p is. Always true for any other surface (`wall_normal` zero).
+bool cap_wall_cut(vec3 p, vec4 c, vec2 wall_normal, float behind) {
+	if (wall_normal == vec2(0.0)) {
 		return true;
 	}
 	vec2 a = c.xy;
-	// The cap point lies v_texcoord.y behind the wall: the centre's distance in front of it.
-	return dot(a - p.xy, v_wall_normal) - v_texcoord.y <= -CUT_PLANE_MARGIN;
+	// The cap point lies `behind` behind the wall: the centre's distance in front of it.
+	return dot(a - p.xy, wall_normal) - behind <= -CUT_PLANE_MARGIN;
 }
 
 // 4x4 ordered dither threshold (0-1) of a pixel.
@@ -609,52 +619,70 @@ vec3 srgb_to_linear(vec3 c) {
 }
 
 void fragment() {
-	if (v_fog == 1 && fog_dither == 1 && bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
+	// v_flat's fields (as the vertex shader packs them) and the built-ins' values.
+	int slot = v_flat.x;
+	int bits = v_flat.y;
+	int lightnum = (bits & 255) - LIGHTNUM_BIAS;
+	int kind = (bits >> 8) & 15;
+	int cap = ((bits >> 12) & 3) - 1;
+	bool door = (bits & FLAT_DOOR) != 0;
+	bool fog = (bits & FLAT_FOG) != 0;
+	float direction = intBitsToFloat(v_flat.z);
+	bool wall = kind == 1 || kind == 2;
+	vec2 texcoord = UV;
+	vec2 map = UV2;
+	float height = wall ? intBitsToFloat(v_flat.w) - texcoord.y : intBitsToFloat(v_flat.w);
+	if (fog && fog_dither == 1 && bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
 		discard;
 	}
-	vec3 p = vec3(v_map, v_height);
-	if (cut_mode != 0 && v_door == 0) {
+	vec3 p = vec3(map, height);
+	if (cut_mode != 0 && !door) {
 		// Godot space (x, height, -y, metres) to map units (x, y, height).
 		vec3 cam = vec3(CAMERA_POSITION_WORLD.x, -CAMERA_POSITION_WORLD.z, CAMERA_POSITION_WORLD.y) * MAP_UNITS_PER_METRE;
 		// The camera's +Z axis: from the scene towards the camera.
 		vec3 back = normalize(INV_VIEW_MATRIX[2].xyz);
 		vec3 to_camera = vec3(back.x, -back.z, back.y);
 		bool ortho = PROJECTION_MATRIX[3][3] != 0.0;
-		vec3 n = v_normal;
+		// The surface's normal (map axes): towards the front sector for walls, up for floors.
+		vec3 n = wall ? vec3(sin(direction), -cos(direction), 0.0) : vec3(0.0, 0.0, 1.0);
 		if (dot(n, ortho ? to_camera : cam - p) < 0.0) {
 			n = -n;
 		}
-		if ((cut_hides(p, n, cut_player, ortho, to_camera, cam) && cap_wall_cut(p, cut_player)) || (cut_hides(p, n, cut_cursor, ortho, to_camera, cam) && cap_wall_cut(p, cut_cursor))) {
+		// A wall cap's wall (kind 3): its normal towards its sector; zero for a switch marker (T6.13p).
+		vec2 wall_normal = (bits & FLAT_WALL_CAP) != 0 ? vec2(sin(direction), -cos(direction)) : vec2(0.0);
+		if ((cut_hides(p, n, cut_player, ortho, to_camera, cam) && cap_wall_cut(p, cut_player, wall_normal, texcoord.y))
+				|| (cut_hides(p, n, cut_cursor, ortho, to_camera, cam) && cap_wall_cut(p, cut_cursor, wall_normal, texcoord.y))) {
 			if (cut_mode == 1 || bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
 				discard;
 			}
 		}
-		if (v_cap >= 0) {
+		if (cap >= 0) {
 			// A cap shows only inside its centre's disc, where the floor above it is cut.
-			vec4 c = v_cap == 0 ? cut_player : cut_cursor;
+			vec4 c = cap == 0 ? cut_player : cut_cursor;
 			vec3 a = vec3(c.xy, c.z + cut_anchor);
 			vec3 axis = ortho ? to_camera : normalize(cam - a);
 			vec3 d = p - a;
 			// A wall cap's cap only where its wall is cut (T6.13e).
-			if (length(d - axis * dot(d, axis)) >= cut_radius || !cap_wall_cut(p, c)) {
+			if (length(d - axis * dot(d, axis)) >= cut_radius || !cap_wall_cut(p, c, wall_normal, texcoord.y)) {
 				discard;
 			}
 		}
 	}
 	int index;
-	if (v_kind == 4) {
+	if (kind == 4) {
 		// T6.13s: a ledge edge, bright with a dark rim inside.
-		index = v_texcoord.y >= LEDGE_WIDTH - LEDGE_RIM ? 0 : LEDGE_INDEX;
+		index = texcoord.y >= LEDGE_WIDTH - LEDGE_RIM ? 0 : LEDGE_INDEX;
 	} else {
-		ivec2 t = ivec2(floor(v_texcoord));
-		int w = v_rect.z;
-		int h = v_rect.w;
+		ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
+		ivec2 t = ivec2(floor(texcoord));
+		int w = rect.z;
+		int h = rect.w;
 		int col;
 		int row;
-		if (v_kind == 0) {
+		if (kind == 0) {
 			col = t.x & 63;
 			row = t.y & 63;
-		} else if (v_kind == 2) {
+		} else if (kind == 2) {
 			// IsoDoom.Map.TextureWrap.MaskedTexel: columns as solid walls, rows not repeated.
 			col = wall_tiling == 0 ? t.x & ((1 << findMSB(w)) - 1) : floor_mod(t.x, w);
 			row = clamp(t.y, 0, h - 1);
@@ -671,7 +699,7 @@ void fragment() {
 			col = floor_mod(t.x, w);
 			row = floor_mod(t.y, h);
 		}
-		vec2 texel = texelFetch(atlas, v_rect.xy + ivec2(col, row), 0).rg;
+		vec2 texel = texelFetch(atlas, rect.xy + ivec2(col, row), 0).rg;
 #ifdef MASKED_PASS
 		if (texel.g < 0.5) {
 			discard;
@@ -679,9 +707,9 @@ void fragment() {
 #endif
 		index = int(texel.r * 255.0 + 0.5);
 	}
-	int mapped = v_fog == 1
+	int mapped = fog
 		? int(texelFetch(fog_dim, ivec2(index, 0), 0).r * 255.0 + 0.5)
-		: int(texelFetch(colormap, ivec2(index, light_colormap()), 0).r * 255.0 + 0.5);
+		: int(texelFetch(colormap, ivec2(index, light_colormap(kind, lightnum, map, -VERTEX.z * MAP_UNITS_PER_METRE)), 0).r * 255.0 + 0.5);
 	// PLAYPAL holds sRGB values; ALBEDO is linear (Godot converts back on output).
 	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb);
 }

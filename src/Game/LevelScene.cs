@@ -1773,7 +1773,7 @@ public partial class LevelScene : Node3D, IGameHost
         _wipeStartPending = true;
     }
 
-    private Image? CaptureFrame() => DisplayServer.GetName() == "headless" ? null : GetViewport().GetTexture().GetImage();
+    private Image? CaptureFrame() => DisplayServer.GetName() == "headless" ? null : ScreenCapture.Capture(GetViewport());
 
     /// <summary>T7.1a: the frame the full screens (and the menus over them) draw as they stand, composed on the CPU (null without a renderer).</summary>
     private Image? ComposeScreens()
@@ -3450,7 +3450,7 @@ public partial class LevelScene : Node3D, IGameHost
     {
         for (int i = 0; i < 2; i++)
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-        Image frame = GetViewport().GetTexture().GetImage();
+        Image frame = ScreenCapture.Capture(GetViewport());
         if (frame.GetFormat() != Image.Format.Rgba8)
             frame.Convert(Image.Format.Rgba8);
         return frame.GetData();
@@ -3466,7 +3466,7 @@ public partial class LevelScene : Node3D, IGameHost
         }
         for (int i = 0; i < 4; i++)
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-        Error err = GetViewport().GetTexture().GetImage().SavePng(path);
+        Error err = ScreenCapture.Capture(GetViewport()).SavePng(path);
         GD.Print(err == Error.Ok ? $"Level: saved {path}" : $"Level: could not save {path}: {err}");
         GetTree().Quit(err == Error.Ok ? 0 : 1);
     }

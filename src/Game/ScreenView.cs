@@ -70,6 +70,8 @@ public partial class ScreenView : CanvasLayer
         Visible = true;
         _backdrop.Visible = opaque;
         _dim.Visible = dim && !opaque;
+        if (_dim.Visible && Srgb.LinearCanvas && _dim.Material is null)
+            _dim.Material = LinearDim();
         Vector2 size = GetViewport().GetVisibleRect().Size;
         if (_rgba.Length != Screen.Pixels.Length * 4)
             _rgba = new byte[Screen.Pixels.Length * 4];
@@ -117,6 +119,34 @@ public partial class ScreenView : CanvasLayer
         SharpBilinear.Draw(data, w, h, _rgba, Screen.Width, Screen.Height, ScreenRects.RectOf(_rect));
         image.SetData(w, h, false, Image.Format.Rgba8, data);
     }
+
+    /// <summary>
+    /// T8.4d: the dim on a linear canvas (HDR 2D, <see cref="Srgb.LinearCanvas"/>),
+    /// where blending black over it would darken linear colour: the screen
+    /// behind darkened in sRGB values, as <see cref="DimRgb"/> without it.
+    /// </summary>
+    private static ShaderMaterial LinearDim()
+    {
+        _linearDimShader ??= new Shader
+        {
+            Code = $@"
+shader_type canvas_item;
+render_mode unshaded, blend_disabled;
+
+uniform sampler2D screen : hint_screen_texture, filter_nearest, repeat_disable;
+
+void fragment() {{
+    vec3 c = texture(screen, SCREEN_UV).rgb;
+    c = mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+    c *= {(1 - DimAlpha).ToString("R", System.Globalization.CultureInfo.InvariantCulture)};
+    COLOR = vec4(mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)), 1.0);
+}}
+",
+        };
+        return new ShaderMaterial { Shader = _linearDimShader };
+    }
+
+    private static Shader? _linearDimShader;
 
     /// <summary>
     /// T11.9b: a colour channel (0–255, the framebuffer's sRGB value) under

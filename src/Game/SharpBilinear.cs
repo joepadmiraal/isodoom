@@ -24,6 +24,18 @@ shader_type canvas_item;
 render_mode blend_premul_alpha;
 
 uniform vec2 scale = vec2(1.0); // viewport pixels per texel
+// T8.4d: the canvas is in linear colour (HDR 2D, Srgb.LinearCanvas), so TEXTURE reads linear
+// and the hardware's blend would mix linear colour: blend the four texels' sRGB values instead, as without it
+uniform bool srgb_blend = false;
+
+vec3 to_srgb(vec3 c) {
+    return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+
+vec4 texel_srgb(sampler2D tex, ivec2 at, ivec2 size) {
+    vec4 t = texelFetch(tex, clamp(at, ivec2(0), size - 1), 0);
+    return vec4(to_srgb(t.rgb), t.a);
+}
 
 void fragment() {
     vec2 size = 1.0 / TEXTURE_PIXEL_SIZE;
@@ -31,7 +43,17 @@ void fragment() {
     vec2 range = 0.5 - 0.5 / scale;
     vec2 d = fract(texel) - 0.5;
     vec2 f = (d - clamp(d, -range, range)) * scale + 0.5;
-    COLOR = texture(TEXTURE, (floor(texel) + f) / size);
+    if (!srgb_blend) {
+        COLOR = texture(TEXTURE, (floor(texel) + f) / size);
+    } else {
+        vec2 p = floor(texel) + f - 0.5;
+        ivec2 i = ivec2(floor(p));
+        vec2 w = p - floor(p);
+        ivec2 n = ivec2(size);
+        vec4 c = mix(mix(texel_srgb(TEXTURE, i, n), texel_srgb(TEXTURE, i + ivec2(1, 0), n), w.x),
+            mix(texel_srgb(TEXTURE, i + ivec2(0, 1), n), texel_srgb(TEXTURE, i + ivec2(1, 1), n), w.x), w.y);
+        COLOR = vec4(mix(c.rgb / 12.92, pow((c.rgb + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c.rgb)), c.a);
+    }
 }
 ";
 
@@ -77,10 +99,19 @@ void fragment() {
     /// <summary>
     /// <c>blend_premul_alpha</c>: <paramref name="src"/> over the RGBA8
     /// pixel at <paramref name="dst"/>[<paramref name="i"/>] (its alpha kept), rounded.
+    /// T8.4d: on a linear canvas (<see cref="Srgb.LinearCanvas"/>) the
+    /// blend is of linear colour, the shader's sRGB result turned linear.
     /// </summary>
     public static void Over(byte[] dst, int i, (float R, float G, float B, float A) src)
     {
         float keep = 1 - src.A / 255f;
+        if (Srgb.LinearCanvas)
+        {
+            dst[i] = LinearOver(src.R, dst[i], keep);
+            dst[i + 1] = LinearOver(src.G, dst[i + 1], keep);
+            dst[i + 2] = LinearOver(src.B, dst[i + 2], keep);
+            return;
+        }
         dst[i] = ToByte(src.R + dst[i] * keep);
         dst[i + 1] = ToByte(src.G + dst[i + 1] * keep);
         dst[i + 2] = ToByte(src.B + dst[i + 2] * keep);
@@ -104,6 +135,9 @@ void fragment() {
             }
         }
     }
+
+    private static byte LinearOver(float src, byte dst, float keep) =>
+        Srgb.ToByte(Srgb.ToLinear(src / 255.0) + Srgb.ToLinear(dst / 255.0) * keep);
 
     private static byte ToByte(float v) => (byte)Math.Clamp((int)MathF.Floor(v + 0.5f), 0, 255);
 }

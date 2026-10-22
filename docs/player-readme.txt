@@ -186,9 +186,12 @@ Linux: run IsoDoom.x86_64 (x86_64, with a Vulkan driver). Keep IsoDoom.pck
 and the data_IsoDoom_* folder next to it.
 
 Raspberry Pi (and other 64-bit ARM Linux): use the linux-arm64 zip and run
-IsoDoom.arm64, on a Raspberry Pi 5 with the 64-bit Raspberry Pi OS (its
-Vulkan driver comes with it). If it runs slowly, try
-"IsoDoom.arm64 --rendering-method mobile".
+IsoDoom.arm64, on a Raspberry Pi 5 with the 64-bit Raspberry Pi OS and its
+desktop (its Vulkan driver, Mesa's v3dv, comes with it; keep the system
+updated). The game picks the renderer the Pi's graphics chip can run by
+itself. A Pi 5 is not fast enough for 60 frames a second yet: a smaller
+window (Options > More Options > Video, with fullscreen off) runs about
+twice as fast as 1920x1080.
 
 macOS: the app is not signed with an Apple developer identity, so macOS
 blocks it the first time. Right-click IsoDoom.app and pick Open, then Open
