@@ -311,3 +311,10 @@ map_clearmark={
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true
+
+[shader_globals]
+
+linear_canvas={
+"type": "bool",
+"value": false
+}

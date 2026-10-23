@@ -97,6 +97,7 @@ public static class Settings
         new("video/pitch", "CAMERA PITCH", SettingPage.Video, "55", Range(45, 60, 1), "--level-pitch"),
         new("video/projection", "PROJECTION", SettingPage.Video, "ortho", ["ortho", "perspective"], "--level-projection"),
         new("video/wipe", "SCREEN WIPE", SettingPage.Video, "melt", ["melt", "off"], "--level-wipe"),
+        new("video/exact_colours", "EXACT COLOURS", SettingPage.Video, "auto", ["auto", "on", "off"], "--level-exact-colours"), // T8.4d
 
         // gameplay
         new("gameplay/aim_assist", "AIM ASSIST (DEGREES)", SettingPage.Gameplay, "5",

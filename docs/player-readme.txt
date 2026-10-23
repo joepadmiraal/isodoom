@@ -191,7 +191,8 @@ desktop (its Vulkan driver, Mesa's v3dv, comes with it; keep the system
 updated). The game picks the renderer the Pi's graphics chip can run by
 itself. A Pi 5 is not fast enough for 60 frames a second yet: a smaller
 window (Options > More Options > Video, with fullscreen off) runs about
-twice as fast as 1920x1080.
+twice as fast as 1920x1080. Exact Colours on that page is off on a Pi, for
+speed: dark colours are then a shade off, which is hard to see.
 
 macOS: the app is not signed with an Apple developer identity, so macOS
 blocks it the first time. Right-click IsoDoom.app and pick Open, then Open

@@ -24,9 +24,9 @@ shader_type canvas_item;
 render_mode blend_premul_alpha;
 
 uniform vec2 scale = vec2(1.0); // viewport pixels per texel
-// T8.4d: the canvas is in linear colour (HDR 2D, Srgb.LinearCanvas), so TEXTURE reads linear
+// T8.4d: the canvas is in linear colour (exact colours under Mobile, ScreenCapture), so TEXTURE reads linear
 // and the hardware's blend would mix linear colour: blend the four texels' sRGB values instead, as without it
-uniform bool srgb_blend = false;
+global uniform bool linear_canvas;
 
 vec3 to_srgb(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
@@ -43,7 +43,7 @@ void fragment() {
     vec2 range = 0.5 - 0.5 / scale;
     vec2 d = fract(texel) - 0.5;
     vec2 f = (d - clamp(d, -range, range)) * scale + 0.5;
-    if (!srgb_blend) {
+    if (!linear_canvas) {
         COLOR = texture(TEXTURE, (floor(texel) + f) / size);
     } else {
         vec2 p = floor(texel) + f - 0.5;

@@ -66,7 +66,6 @@ public static class IndexedTextures
         var material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
         material.SetParam("playpal", playpal);
         material.SetParam("colormap", colormap);
-        material.SetParam("linear_colours", Game.Srgb.LinearCanvas); // T8.4d
         SetPalette(material, 0);
         SetColormap(material, 0);
         return material;

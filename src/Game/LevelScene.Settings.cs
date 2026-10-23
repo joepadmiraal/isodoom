@@ -604,6 +604,7 @@ public partial class LevelScene : ISetupHost
         });
 
         Add("video/wipe", () => ScreenWipes ? "melt" : "off", s => ScreenWipes = ParseWipe(s, "video/wipe"));
+        Add("video/exact_colours", () => ExactColours, s => ExactColours = s); // T8.4d
 
         // gameplay
         Add("gameplay/aim_assist", () => AimAssistText(Tweaks.AimAssistCone), s =>

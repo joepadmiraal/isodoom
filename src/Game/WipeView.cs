@@ -24,8 +24,8 @@ render_mode unshaded, blend_disabled;
 uniform sampler2D start_screen : filter_nearest, repeat_disable;
 // each column's offset in vanilla rows (0..200): the rows above it show the new frame
 uniform float offsets[160];
-// T8.4d: the canvas is in linear colour (HDR 2D, Srgb.LinearCanvas); the captured frame is sRGB
-uniform bool linear_colours = false;
+// T8.4d: the canvas is in linear colour (exact colours under Mobile, ScreenCapture); the captured frame is sRGB
+global uniform bool linear_canvas;
 
 void fragment() {
     int column = clamp(int(floor(UV.x * 160.0)), 0, 159);
@@ -34,7 +34,7 @@ void fragment() {
         discard;
     }
     vec3 c = texture(start_screen, vec2(UV.x, UV.y - shift)).rgb;
-    if (linear_colours) {
+    if (linear_canvas) {
         c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
     }
     COLOR = vec4(c, 1.0);
@@ -75,7 +75,6 @@ void fragment() {
         else
             _start.Update(StartFrame);
         _material.SetParam("start_screen", _start);
-        _material.SetParam("linear_colours", Srgb.LinearCanvas);
     }
 
     /// <summary>

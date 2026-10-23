@@ -39,7 +39,8 @@ public partial class Main : Node
     public override void _Ready()
     {
         GD.Print($"IsoDoom started (version {Version}, Sim assembly: {typeof(IsoDoom.Sim.SimInfo).Assembly.GetName().Name})");
-        ScreenCapture.UseExactColours(GetViewport());
+        // T8.4d: the default, until the level scene's option; the checks compare pixels exactly
+        ScreenCapture.SetExactColours(GetViewport(), WadLocator.HasUserArg("--level-check") || WadLocator.HasUserArg("--viewer-check") ? "on" : "auto");
         if (!WadLocator.HasUserArg("--no-jit-warmup"))
             JitWarmup.Start(); // T8.3: the sim compiled in the background, before its first tics need it
         if (System.Environment.GetEnvironmentVariable("ISODOOM_GC_STRESS") is { Length: > 0 })

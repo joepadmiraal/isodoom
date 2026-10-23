@@ -143,6 +143,9 @@ namespace IsoDoom.Game;
 /// default on);
 /// <c>--level-wipe=melt|off</c> (T7.1a, <see cref="ScreenWipes"/>: f_wipe.c's
 /// melt at each game state change, the game holding still meanwhile; default melt);
+/// <c>--level-exact-colours=auto|on|off</c> (T8.4d, <see cref="ExactColours"/>:
+/// HDR 2D under the Mobile renderer, for exact palette colours; default auto,
+/// off where Godot chose Mobile for the device, a Raspberry Pi);
 /// <c>--level-palette-effects=screen|player|off</c> (T6.8, T6.13v, <see cref="PaletteFlashes"/>:
 /// the console player's palette flashes, st_stuff.c's red, gold and green,
 /// over the whole view or, with <c>player</c>, on the player's sprite and a
@@ -388,6 +391,24 @@ public partial class LevelScene : Node3D, IGameHost
             ApplyWipes();
         }
     }
+
+    /// <summary>
+    /// T8.4d: exact colours under the Mobile renderer (<see cref="ScreenCapture.SetExactColours"/>;
+    /// <c>--level-exact-colours=auto|on|off</c>, the option <c>video/exact_colours</c>).
+    /// The checks compare pixels exactly, so they run with it on whatever it says.
+    /// </summary>
+    public string ExactColours
+    {
+        get => _exactColours;
+        set
+        {
+            _exactColours = ScreenCapture.ParseExactColours(value, "video/exact_colours");
+            if (IsInsideTree())
+                ScreenCapture.SetExactColours(GetViewport(), IsCheckRun ? "on" : _exactColours);
+        }
+    }
+
+    private string _exactColours = "auto";
 
     /// <summary>T7.1a: the level check's wipes, on for its wipe checks only (the option is ignored under the check).</summary>
     public bool CheckWipes
@@ -966,6 +987,8 @@ public partial class LevelScene : Node3D, IGameHost
                 AutomapTurned = ParseAutomapTurn(automapTurn, "--level-automap-turn"); // T7.9c
             if (WadLocator.GetUserArg("--level-wipe") is string wipe)
                 ScreenWipes = ParseWipe(wipe, "--level-wipe");
+            if (WadLocator.GetUserArg("--level-exact-colours") is string exact)
+                ExactColours = ScreenCapture.ParseExactColours(exact, "--level-exact-colours"); // T8.4d
             if (WadLocator.GetUserArg("--level-fullscreen") is string fullscreen)
                 _fullscreen = Choice(fullscreen, "--level-fullscreen", "off", "on", "exclusive");
             if (WadLocator.GetUserArg("--level-opl") is string opl)

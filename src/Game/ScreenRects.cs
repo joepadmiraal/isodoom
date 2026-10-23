@@ -42,7 +42,6 @@ public static class ScreenRects
         {
             _shader ??= new Shader { Code = SharpBilinear.ShaderCode };
             node.Material = material = new ShaderMaterial { Shader = _shader };
-            material.SetParam("srgb_blend", Srgb.LinearCanvas); // T8.4d
         }
         material.SetParam("scale", new Vector2(rect.W / (float)width, rect.H / (float)height)); // (T8.3: a StringName made once)
         node.TextureFilter = CanvasItem.TextureFilterEnum.Linear;

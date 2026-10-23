@@ -70,8 +70,8 @@ public partial class ScreenView : CanvasLayer
         Visible = true;
         _backdrop.Visible = opaque;
         _dim.Visible = dim && !opaque;
-        if (_dim.Visible && Srgb.LinearCanvas && _dim.Material is null)
-            _dim.Material = LinearDim();
+        if (_dim.Visible)
+            _dim.Material = Srgb.LinearCanvas ? _linearDim ??= LinearDim() : null; // T8.4d
         Vector2 size = GetViewport().GetVisibleRect().Size;
         if (_rgba.Length != Screen.Pixels.Length * 4)
             _rgba = new byte[Screen.Pixels.Length * 4];
@@ -147,6 +147,7 @@ void fragment() {{
     }
 
     private static Shader? _linearDimShader;
+    private ShaderMaterial? _linearDim;
 
     /// <summary>
     /// T11.9b: a colour channel (0–255, the framebuffer's sRGB value) under
