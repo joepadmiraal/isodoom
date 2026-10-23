@@ -153,6 +153,8 @@ uniform sampler2D sprite_atlas : filter_nearest, repeat_disable;
 uniform sampler2D sprite_info : filter_nearest, repeat_disable;
 uniform sampler2D sector_data : filter_nearest, repeat_disable;
 uniform sampler2D playpal : filter_nearest, repeat_disable;
+// PLAYPAL in linear colour, as the level shader's (T8.4h).
+uniform sampler2D playpal_linear : filter_nearest, repeat_disable;
 uniform sampler2D colormap : filter_nearest, repeat_disable;
 uniform int palette_index = 0;
 // The palette row the player's own sprite (flag 8) is drawn in (T6.13v: the
@@ -233,8 +235,9 @@ const int SPRITE_CUTTABLE = 4;
 const int SPRITE_TRANSLATION_SHIFT = 3;
 const int SPRITE_COLORMAP_SHIFT = 5;
 
+// (id >= 0 and SECTOR_DATA_WIDTH 256: a mask and a shift, cheaper than % and / on V3D, T8.4h)
 vec4 data_texel(sampler2D tex, int id) {
-	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
+	return texelFetch(tex, ivec2(id & (SECTOR_DATA_WIDTH - 1), id >> 8), 0);
 }
 
 // r_things.c R_ProjectSprite: the vissprite's colormap.
@@ -407,10 +410,6 @@ void vertex() {
 	}
 }
 
-vec3 srgb_to_linear(vec3 c) {
-	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-}
-
 #ifdef FUZZ
 vec3 linear_to_srgb(vec3 c) {
 	return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
@@ -569,9 +568,11 @@ void fragment() {
 		discard;
 	}
 #else
-	if (opaque_at(rect, flip, col, row)) {
-		int c = flip ? w - 1 - col : col;
-		index = int(texelFetch(sprite_atlas, rect.xy + ivec2(c, row), 0).r * 255.0 + 0.5);
+	// The texel itself, fetched once (T8.4h; opaque_at's test for it).
+	bool inside = col >= 0 && row >= 0 && col < w && row < h;
+	vec2 texel = inside ? texelFetch(sprite_atlas, rect.xy + ivec2(flip ? w - 1 - col : col, row), 0).rg : vec2(0.0);
+	if (texel.g >= 0.5) {
+		index = int(texel.r * 255.0 + 0.5);
 		if (translation != 0 && index >= 0x70 && index <= 0x7f) {
 			// T11.10: r_draw.c R_InitTranslationTables (grey, brown, red).
 			index = (translation == 1 ? 0x60 : translation == 2 ? 0x40 : 0x20) + (index & 0xf);
@@ -583,5 +584,5 @@ void fragment() {
 	}
 #endif
 	int mapped = int(texelFetch(colormap, ivec2(index, light), 0).r * 255.0 + 0.5);
-	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, pal), 0).rgb);
+	ALBEDO = texelFetch(playpal_linear, ivec2(mapped, pal), 0).rgb;
 }

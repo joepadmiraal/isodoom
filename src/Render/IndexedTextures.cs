@@ -50,6 +50,27 @@ public static class IndexedTextures
         return ImageTexture.CreateFromImage(img);
     }
 
+    /// <summary>
+    /// Writes RGB8 sRGB colours (<paramref name="rgb"/>, 3 bytes each) as
+    /// linear RGBA floats (<see cref="Image.Format.Rgbaf"/>'s bytes, alpha 1)
+    /// into <paramref name="rgbaf"/>: what the level and sprite shaders hand
+    /// <c>ALBEDO</c>, so they convert nothing per pixel (T8.4h). The sRGB
+    /// curve as theirs was, in double precision.
+    /// </summary>
+    public static void ToLinearRgbaf(ReadOnlySpan<byte> rgb, Span<byte> rgbaf)
+    {
+        Span<float> linear = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(rgbaf);
+        for (int i = 0; i < rgb.Length / 3; i++)
+        {
+            for (int c = 0; c < 3; c++)
+            {
+                double v = rgb[i * 3 + c] / 255.0;
+                linear[i * 4 + c] = (float)(v < 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4));
+            }
+            linear[i * 4 + 3] = 1f;
+        }
+    }
+
     /// <summary>COLORMAP as an R8 texture: 256 x <see cref="Colormap.Count"/>.</summary>
     public static ImageTexture CreateColormapTexture(Colormap colormap)
     {

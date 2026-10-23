@@ -72,6 +72,9 @@ public partial class LevelCheck
             using Variant c = material.GetShaderParameter(StringNames.Get("colormap"));
             if (p.As<Texture2D>() != m.PlaypalTexture || c.As<Texture2D>() != m.ColormapTexture)
                 Fail($"{map}: a material ({material.Shader.ResourcePath}) is not bound to the mesh's PLAYPAL and COLORMAP textures");
+            using Variant l = material.GetShaderParameter(StringNames.Get("playpal_linear"));
+            if (l.As<Texture2D>() != m.PlaypalLinearTexture)
+                Fail($"{map}: a material ({material.Shader.ResourcePath}) is not bound to the mesh's linear PLAYPAL texture");
         }
         if (CanCapture)
         {

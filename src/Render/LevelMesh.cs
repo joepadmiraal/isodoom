@@ -808,6 +808,9 @@ public sealed class LevelMesh : IDisposable
                 _blend.CopyTo(_playpalRows.AsSpan(row * Playpal.PaletteSize));
                 _playpalImage!.SetData(256, playpal.Count + 1, false, Image.Format.Rgb8, _playpalRows);
                 _playpalTexture!.Update(_playpalImage);
+                IndexedTextures.ToLinearRgbaf(_blend, _linearRows.AsSpan(row * LinearRowBytes, LinearRowBytes));
+                _linearImage!.SetData(256, playpal.Count + 1, false, Image.Format.Rgbaf, _linearRows);
+                _linearTexture!.Update(_linearImage);
             }
         }
         ScreenRow = playerOnly ? 0 : row;
@@ -846,10 +849,18 @@ public sealed class LevelMesh : IDisposable
     private byte[] _playpalRows = [];
     private Image? _playpalImage;
     private ImageTexture? _playpalTexture;
+    // The same rows in linear colour, RGBA floats (T8.4h: the shaders' ALBEDO, IndexedTextures.ToLinearRgbaf).
+    private const int LinearRowBytes = 256 * 16;
+    private byte[] _linearRows = [];
+    private Image? _linearImage;
+    private ImageTexture? _linearTexture;
     private ImageTexture? _colormapTexture;
 
     /// <summary>The <c>playpal</c> texture every material samples: PLAYPAL's palettes, then the <see cref="BlendRow"/> (P5: the level check reads it back).</summary>
     public ImageTexture? PlaypalTexture => _playpalTexture;
+
+    /// <summary>The <c>playpal_linear</c> texture the level and sprite materials sample: <see cref="PlaypalTexture"/>'s rows in linear colour (T8.4h).</summary>
+    public ImageTexture? PlaypalLinearTexture => _linearTexture;
 
     /// <summary>The <c>colormap</c> texture every material samples: COLORMAP (P5: the level check reads it back).</summary>
     public ImageTexture? ColormapTexture => _colormapTexture;
@@ -1189,6 +1200,11 @@ public sealed class LevelMesh : IDisposable
         _playpalTexture = ImageTexture.CreateFromImage(_playpalImage);
         _blendRow = -1;
         SetParameter("playpal", _playpalTexture);
+        _linearRows = new byte[(playpal.Count + 1) * LinearRowBytes];
+        IndexedTextures.ToLinearRgbaf(_playpalRows, _linearRows);
+        _linearImage = Image.CreateFromData(256, playpal.Count + 1, false, Image.Format.Rgbaf, _linearRows);
+        _linearTexture = ImageTexture.CreateFromImage(_linearImage);
+        SetParameter("playpal_linear", _linearTexture);
         _colormapTexture = IndexedTextures.CreateColormapTexture(colormap);
         SetParameter("colormap", _colormapTexture);
         using (Image lights = Image.CreateFromData(LightTables.TableWidth, LightTables.TableHeight, false, Image.Format.R8, Lights.ToBytes()))
@@ -1237,8 +1253,8 @@ public sealed class LevelMesh : IDisposable
         [
             Material, MaskedMaterial, SpriteMaterial, FuzzMaterial, ShadowMaterial,
             AtlasTexture, TextureInfoTexture, SectorDataTexture, LidDataTexture, IslandDataTexture, SideTexturesTexture,
-            FogDataTexture, _fogDimTexture, _playpalTexture, _colormapTexture, LightTablesTexture,
-            _sectorImage, _lidImage, _islandImage, _infoImage, _sideImage, _fogImage, _playpalImage,
+            FogDataTexture, _fogDimTexture, _playpalTexture, _linearTexture, _colormapTexture, LightTablesTexture,
+            _sectorImage, _lidImage, _islandImage, _infoImage, _sideImage, _fogImage, _playpalImage, _linearImage,
         ];
         foreach (GodotObject? o in owned)
             o?.Dispose();

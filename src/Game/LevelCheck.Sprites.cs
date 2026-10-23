@@ -170,7 +170,7 @@ public partial class LevelCheck
             || m.SpriteMaterial.GetShaderParameter(StringNames.Get("sprite_atlas")).As<Texture2D>() != atlas.AtlasTexture
             || m.SpriteMaterial.GetShaderParameter(StringNames.Get("sprite_info")).As<Texture2D>() != atlas.InfoTexture)
             Fail($"{map}: the billboards don't draw with the level's sprite material and the sprite atlas");
-        foreach (string name in new[] { "sector_data", "playpal", "colormap", "palette_index", "colormap_override", "light_tables", "light_mode",
+        foreach (string name in new[] { "sector_data", "playpal", "playpal_linear", "colormap", "palette_index", "colormap_override", "light_tables", "light_mode",
                      "light_origin", "light_reference", "light_near", "light_centerx", "extralight" })
         {
             Variant a = m.Material.GetShaderParameter(StringNames.Get(name)), b = m.SpriteMaterial.GetShaderParameter(StringNames.Get(name));

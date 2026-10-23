@@ -224,8 +224,10 @@ uniform sampler2D sector_data : filter_nearest, repeat_disable;
 uniform sampler2D sector_lids : filter_nearest, repeat_disable;
 uniform sampler2D wall_islands : filter_nearest, repeat_disable;
 uniform sampler2D side_textures : filter_nearest, repeat_disable;
-// PLAYPAL: RGB8, 256 x palettes. COLORMAP: R8, 256 x maps (as palette.gdshader).
-uniform sampler2D playpal : filter_nearest, repeat_disable;
+// PLAYPAL's rows (and the blended flash's, LevelMesh.BlendRow) in linear
+// colour, RGBA float, what ALBEDO takes: no sRGB conversion per fragment
+// (T8.4h; IsoDoom.Render.IndexedTextures.ToLinearRgbaf). COLORMAP: R8, 256 x maps (as palette.gdshader).
+uniform sampler2D playpal_linear : filter_nearest, repeat_disable;
 uniform sampler2D colormap : filter_nearest, repeat_disable;
 uniform int palette_index = 0;
 // -1: from the sector light and distance; 0-33: this map everywhere (vanilla's
@@ -278,14 +280,17 @@ uniform int fog_dither = 0;
 
 // One varying of our own (T8.4d, SPEC §12: a Raspberry Pi's V3D has room for
 // one beside Godot's built-ins; ShaderVaryingTests), flat:
-//   x  the texture slot (texture_info; -1 none)
+//   x  the texture slot (texture_info; -1 none), or with FLAT_RECT (kind 0: a
+//      flat, 64 x 64) its atlas rectangle's corner, x | y << 16 (T8.4h: no
+//      texture_info fetch per fragment)
 //   y  bits 0-7 the light number + LIGHTNUM_BIAS; 8-11 the kind (0 floor, 1 solid
 //      wall, 2 masked middle, 3 wall cap: a wall's texture, a floor's light, 4
 //      ledge edge, T6.13s); 12-13 the cut centre whose cap this is + 1 (a cutaway cap,
 //      T3.4a: 0 player, 1 cursor; -1 not a cap); FLAT_DOOR the cutaway leaves it
 //      whole (a door's while doors are kept, T6.13d); FLAT_FOG the fog of war
 //      dims it (its sector unseen, T6.13l); FLAT_WALL_CAP a wall cap's wall normal
-//      is set (kind 3; not a switch marker's, T6.13p)
+//      is set (kind 3; not a switch marker's, T6.13p); FLAT_RECT x is the
+//      flat's atlas corner
 //   z  the wall's direction (CUSTOM2.w, float bits): the normal (map axes)
 //      towards the front sector of a wall (kinds 1, 2), and of a wall cap's
 //      wall (kind 3, whose texture row is how far behind it); others face up
@@ -298,9 +303,11 @@ const int LIGHTNUM_BIAS = 128;
 const int FLAT_DOOR = 1 << 14;
 const int FLAT_FOG = 1 << 15;
 const int FLAT_WALL_CAP = 1 << 16;
+const int FLAT_RECT = 1 << 17;
 
+// (id >= 0 and SECTOR_DATA_WIDTH 256: a mask and a shift, cheaper than % and / on V3D, T8.4h)
 vec4 data_texel(sampler2D tex, int id) {
-	return texelFetch(tex, ivec2(id % SECTOR_DATA_WIDTH, id / SECTOR_DATA_WIDTH), 0);
+	return texelFetch(tex, ivec2(id & (SECTOR_DATA_WIDTH - 1), id >> 8), 0);
 }
 
 float plane_height(int plane, vec4 front, vec4 back) {
@@ -540,13 +547,38 @@ void vertex() {
 			o_height = z;
 		}
 	}
+	// A flat's atlas corner in place of its slot (T8.4h).
+	int o_first = o_slot;
+	if (o_kind == 0) {
+		ivec2 corner = o_slot >= 0 ? ivec2(data_texel(texture_info, o_slot).xy + 0.5) : ivec2(0);
+		o_first = corner.x | (corner.y << 16);
+	}
 	// Into the one varying (v_flat) and the built-ins; UV is read above, so it is written last.
-	v_flat = ivec4(o_slot,
+	v_flat = ivec4(o_first,
 		(o_lightnum + LIGHTNUM_BIAS) | (o_kind << 8) | ((o_cap + 1) << 12)
-			| (o_door == 1 ? FLAT_DOOR : 0) | (o_fog == 1 ? FLAT_FOG : 0) | (o_wall_cap ? FLAT_WALL_CAP : 0),
+			| (o_door == 1 ? FLAT_DOOR : 0) | (o_fog == 1 ? FLAT_FOG : 0) | (o_wall_cap ? FLAT_WALL_CAP : 0)
+			| (o_kind == 0 ? FLAT_RECT : 0),
 		floatBitsToInt(CUSTOM2.w), floatBitsToInt(o_height));
 	UV = o_texcoord;
 	UV2 = vec2(VERTEX.x, -VERTEX.z) * MAP_UNITS_PER_METRE;
+}
+
+// r_segs.c's wall scale, min((light_centerx << 20) / dist, MAXLIGHTSCALE - 1)
+// (dist > 0 a fixed_t distance up to MAX_DISTANCE units, so under 2^29),
+// without an integer division (V3D has none, T8.4h): the float quotient is
+// within 1 of the integer one, which one step either way then makes exact.
+int wall_scale(int dist) {
+	if (dist <= 0) {
+		return MAXLIGHTSCALE - 1;
+	}
+	int n = light_centerx << 20;
+	int q = min(int(float(n) / float(dist)), MAXLIGHTSCALE);
+	if (q * dist > n) {
+		q--;
+	} else if ((q + 1) * dist <= n) {
+		q++;
+	}
+	return min(q, MAXLIGHTSCALE - 1);
 }
 
 // IsoDoom.Map.LightTables.WallColormap / PlaneColormap: of a surface of kind
@@ -562,13 +594,24 @@ int light_colormap(int kind, int lightnum, vec2 map, float depth) {
 		int z = dist <= 0 ? 0 : min(dist >> LIGHTZSHIFT, MAXLIGHTZ - 1);
 		return int(texelFetch(light_tables, ivec2(z, lightnum), 0).r * 255.0 + 0.5);
 	}
-	int scale = dist <= 0 ? MAXLIGHTSCALE - 1 : min((light_centerx << 20) / dist, MAXLIGHTSCALE - 1);
-	return int(texelFetch(light_tables, ivec2(scale, LIGHTLEVELS + lightnum), 0).r * 255.0 + 0.5);
+	return int(texelFetch(light_tables, ivec2(wall_scale(dist), LIGHTLEVELS + lightnum), 0).r * 255.0 + 0.5);
+}
+
+// floor(a / n) for n > 0 and |a| < 2^22 without an integer division (V3D has
+// none, T8.4h): the float quotient is within 1, which one step makes exact.
+int floor_div(int a, int n) {
+	int q = int(floor(float(a) / float(n)));
+	int m = a - q * n;
+	if (m < 0) {
+		q--;
+	} else if (m >= n) {
+		q++;
+	}
+	return q;
 }
 
 int floor_mod(int a, int n) {
-	int m = a % n;
-	return m < 0 ? m + n : m;
+	return a - floor_div(a, n) * n;
 }
 
 // IsoDoom.Render.Cutaway.Hides: whether centre c cuts wall point p (map units).
@@ -614,10 +657,6 @@ float bayer4(ivec2 q) {
 	return (float(m[(q.y & 3) * 4 + (q.x & 3)]) + 0.5) / 16.0;
 }
 
-vec3 srgb_to_linear(vec3 c) {
-	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-}
-
 void fragment() {
 	// v_flat's fields (as the vertex shader packs them) and the built-ins' values.
 	int slot = v_flat.x;
@@ -636,7 +675,9 @@ void fragment() {
 		discard;
 	}
 	vec3 p = vec3(map, height);
-	if (cut_mode != 0 && !door) {
+	// A centre cuts only above its cutoff (cut_hides' first test, T8.4h: the rest is skipped below every cutoff); a cap tests its centre.
+	bool cut_reach = (cut_player.w >= 0.5 && p.z > cut_player.z + cut_height) || (cut_cursor.w >= 0.5 && p.z > cut_cursor.z + cut_height);
+	if (cut_mode != 0 && !door && (cut_reach || cap >= 0)) {
 		// Godot space (x, height, -y, metres) to map units (x, y, height).
 		vec3 cam = vec3(CAMERA_POSITION_WORLD.x, -CAMERA_POSITION_WORLD.z, CAMERA_POSITION_WORLD.y) * MAP_UNITS_PER_METRE;
 		// The camera's +Z axis: from the scene towards the camera.
@@ -673,7 +714,9 @@ void fragment() {
 		// T6.13s: a ledge edge, bright with a dark rim inside.
 		index = texcoord.y >= LEDGE_WIDTH - LEDGE_RIM ? 0 : LEDGE_INDEX;
 	} else {
-		ivec4 rect = slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
+		// A flat's corner rides in v_flat (FLAT_RECT); a wall's rectangle is its slot's.
+		ivec4 rect = (bits & FLAT_RECT) != 0 ? ivec4(slot & 0xffff, slot >> 16, 64, 64)
+			: slot >= 0 ? ivec4(data_texel(texture_info, slot) + 0.5) : ivec4(0);
 		ivec2 t = ivec2(floor(texcoord));
 		int w = rect.z;
 		int h = rect.w;
@@ -691,9 +734,9 @@ void fragment() {
 			col = t.x & ((1 << findMSB(w)) - 1);
 			row = t.y & 127;
 			if (row >= h) {
-				int i = (col * h + row) % (w * h);
-				col = i / h;
-				row = i % h;
+				int i = floor_mod(col * h + row, w * h);
+				col = floor_div(i, h);
+				row = i - col * h;
 			}
 		} else {
 			col = floor_mod(t.x, w);
@@ -710,6 +753,6 @@ void fragment() {
 	int mapped = fog
 		? int(texelFetch(fog_dim, ivec2(index, 0), 0).r * 255.0 + 0.5)
 		: int(texelFetch(colormap, ivec2(index, light_colormap(kind, lightnum, map, -VERTEX.z * MAP_UNITS_PER_METRE)), 0).r * 255.0 + 0.5);
-	// PLAYPAL holds sRGB values; ALBEDO is linear (Godot converts back on output).
-	ALBEDO = srgb_to_linear(texelFetch(playpal, ivec2(mapped, palette_index), 0).rgb);
+	// ALBEDO is linear (Godot converts back on output).
+	ALBEDO = texelFetch(playpal_linear, ivec2(mapped, palette_index), 0).rgb;
 }
