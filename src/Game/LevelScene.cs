@@ -143,6 +143,9 @@ namespace IsoDoom.Game;
 /// default on);
 /// <c>--level-wipe=melt|off</c> (T7.1a, <see cref="ScreenWipes"/>: f_wipe.c's
 /// melt at each game state change, the game holding still meanwhile; default melt);
+/// <c>--level-render-scale=auto|PERCENT</c> (T8.4f, <see cref="RenderScale"/>: the
+/// 3D view drawn at 50-100% of the window's pixels, scaled up nearest, the HUD
+/// and menus at full size; default auto: 50 on a Raspberry Pi, else 100);
 /// <c>--level-exact-colours=auto|on|off</c> (T8.4d, <see cref="ExactColours"/>:
 /// HDR 2D under the Mobile renderer, for exact palette colours; default auto,
 /// off where Godot chose Mobile for the device, a Raspberry Pi);
@@ -409,6 +412,39 @@ public partial class LevelScene : Node3D, IGameHost
     }
 
     private string _exactColours = "auto";
+
+    /// <summary>
+    /// T8.4f: the share of the window's pixels the 3D view is drawn with
+    /// (<c>--level-render-scale=auto|50-100</c>, the option <c>video/render_scale</c>),
+    /// scaled up nearest (each pixel a block, as vanilla's low detail) under
+    /// the HUD and menus, which keep the window's: for a GPU too slow for the
+    /// window. <c>auto</c> (the default, the user's decision) is 50 where Godot
+    /// chose its Mobile renderer for the device (a Raspberry Pi, about 40 fps at
+    /// 1080p against 19), else 100. The checks draw at 100 whatever it says.
+    /// </summary>
+    public string RenderScale
+    {
+        get => _renderScale;
+        set
+        {
+            _renderScale = ParseRenderScale(value, "video/render_scale");
+            if (!IsInsideTree())
+                return;
+            Viewport viewport = GetViewport();
+            int scale = IsCheckRun ? 100 : _renderScale == "auto" ? (ScreenCapture.MobileForced() ? 50 : 100) : int.Parse(_renderScale, CultureInfo.InvariantCulture);
+            // 100%: Godot's own path, as before the option (no scaling pass)
+            viewport.Scaling3DMode = scale < 100 ? Viewport.Scaling3DModeEnum.Nearest : Viewport.Scaling3DModeEnum.Bilinear;
+            viewport.Scaling3DScale = scale / 100f;
+        }
+    }
+
+    private string _renderScale = "auto";
+
+    /// <summary>T8.4f: <c>video/render_scale</c>'s values: <c>auto</c> or a percentage, 50-100.</summary>
+    public static string ParseRenderScale(string value, string what) =>
+        value == "auto" || int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int p) && p >= 50 && p <= 100
+            ? value
+            : throw new ArgumentException($"{what}: \"{value}\" (auto or 50-100)");
 
     /// <summary>T7.1a: the level check's wipes, on for its wipe checks only (the option is ignored under the check).</summary>
     public bool CheckWipes
@@ -987,6 +1023,8 @@ public partial class LevelScene : Node3D, IGameHost
                 AutomapTurned = ParseAutomapTurn(automapTurn, "--level-automap-turn"); // T7.9c
             if (WadLocator.GetUserArg("--level-wipe") is string wipe)
                 ScreenWipes = ParseWipe(wipe, "--level-wipe");
+            if (WadLocator.GetUserArg("--level-render-scale") is string renderScale)
+                RenderScale = ParseRenderScale(renderScale, "--level-render-scale"); // T8.4f
             if (WadLocator.GetUserArg("--level-exact-colours") is string exact)
                 ExactColours = ScreenCapture.ParseExactColours(exact, "--level-exact-colours"); // T8.4d
             if (WadLocator.GetUserArg("--level-fullscreen") is string fullscreen)

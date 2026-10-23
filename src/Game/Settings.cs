@@ -97,6 +97,7 @@ public static class Settings
         new("video/pitch", "CAMERA PITCH", SettingPage.Video, "55", Range(45, 60, 1), "--level-pitch"),
         new("video/projection", "PROJECTION", SettingPage.Video, "ortho", ["ortho", "perspective"], "--level-projection"),
         new("video/wipe", "SCREEN WIPE", SettingPage.Video, "melt", ["melt", "off"], "--level-wipe"),
+        new("video/render_scale", "3D RESOLUTION %", SettingPage.Video, "auto", ["auto", "50", "60", "67", "75", "80", "90", "100"], "--level-render-scale"), // T8.4f
         new("video/exact_colours", "EXACT COLOURS", SettingPage.Video, "auto", ["auto", "on", "off"], "--level-exact-colours"), // T8.4d
 
         // gameplay

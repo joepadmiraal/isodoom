@@ -84,6 +84,7 @@ public partial class LevelScene : ISetupHost
         EnsureAudioBus(MusicBus);
         SettingsPath = ChooseSettingsPath();
         ApplySettings(SettingsPath is null ? null : LoadSettingsFrom(SettingsPath), pin: true);
+        RenderScale = _renderScale; // T8.4f: its default (auto) depends on the device, so it is applied too
         GetViewport().SizeChanged += WindowResized;
         SyncSettings(bindings: true);
         GD.Print(SettingsPath is null ? "Settings: defaults (no settings file)" : $"Settings: {ProjectSettings.GlobalizePath(SettingsPath)}");
@@ -605,6 +606,7 @@ public partial class LevelScene : ISetupHost
 
         Add("video/wipe", () => ScreenWipes ? "melt" : "off", s => ScreenWipes = ParseWipe(s, "video/wipe"));
         Add("video/exact_colours", () => ExactColours, s => ExactColours = s); // T8.4d
+        Add("video/render_scale", () => RenderScale, s => RenderScale = s); // T8.4f
 
         // gameplay
         Add("gameplay/aim_assist", () => AimAssistText(Tweaks.AimAssistCone), s =>
