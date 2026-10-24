@@ -90,7 +90,7 @@ public partial class LevelCheck
             for (int px = 0; px < size.X; px++)
             {
                 int i = (py * size.X + px) * 4;
-                if (ripple[i] == without[i] && ripple[i + 1] == without[i + 1] && ripple[i + 2] == without[i + 2])
+                if (SameOrLeaked(ripple, without, i)) // T8.4e: or a leaky copy's
                     continue;
                 rippled++;
                 float d2 = (px + 0.5f - cx) * (px + 0.5f - cx) + (py + 0.5f - cy) * (py + 0.5f - cy);

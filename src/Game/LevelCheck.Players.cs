@@ -354,7 +354,7 @@ public partial class LevelCheck
                         Vector3 g = PlanePoint(new Vector2(x + 0.5f, y + 0.5f), feet.Z + AimMarker.Lift);
                         float d = new Vector2(g.X - feet.X, g.Y - feet.Y).Length();
                         bool on = d >= AimMarker.RingInner + 0.3f && d <= AimMarker.RingOuter - 0.3f;
-                        bool same = Same(q, ringed, none);
+                        bool same = SameOrLeaked(ringed, none, (y * size.X + x) * 4); // T8.4e: or a leaky copy's
                         if (on)
                         {
                             inside++;

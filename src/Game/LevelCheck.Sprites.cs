@@ -1150,19 +1150,19 @@ public partial class LevelCheck
                 (int R, int G, int B) got = At(frame, px, py);
                 int c = px - left, r = py - top;
                 (int R, int G, int B) expected;
+                (int Y, int Darkenings)? fuzzSource = null;
                 if (Opaque(c, r))
                 {
                     (int offset, int darkenings) = Fuzz.Source(m.FuzzPhase, c, r, patch.Height, row => Opaque(c, row));
-                    (int R, int G, int B) source = At(before, px, Math.Clamp(py + offset, 0, size.Y - 1));
+                    int sy = Math.Clamp(py + offset, 0, size.Y - 1);
+                    (int R, int G, int B) source = At(before, px, sy);
                     if (NearBackground(source))
                     {
                         voids++;
                         continue;
                     }
-                    int index = Fuzz.NearestIndex(m.DrawnPalette(m.ScreenRow), source.R, source.G, source.B);
-                    for (int n = 1; n < darkenings; n++)
-                        index = fuzzMap[index];
-                    expected = Shade((byte)index, Fuzz.FuzzColormap);
+                    expected = Fuzzed(source, darkenings);
+                    fuzzSource = (sy, darkenings);
                     fuzzed++;
                     if (darkenings > 1)
                         darker++;
@@ -1175,9 +1175,30 @@ public partial class LevelCheck
                 else
                     expected = At(before, px, py);
                 count++;
-                if (got != expected && !Leaked(frame, size.X, size.Y, px, py, got, expected) && bad++ == 0)
+                if (got != expected && !Leaked(frame, size.X, size.Y, px, py, got, expected) && !FuzzLeaked() && bad++ == 0)
                     first = $"texel ({c}, {r}) at pixel ({px}, {py}): drew {got}, expected {expected}";
+
+                // T8.4e: the fuzz reads the screen's copy, which leaks where the copies do: its source a little towards a neighbour.
+                bool FuzzLeaked()
+                {
+                    if (fuzzSource is not { } f)
+                        return false;
+                    foreach ((int R, int G, int B) leaked in LeakedSamples(before, size.X, size.Y, px, f.Y))
+                    {
+                        (int R, int G, int B) e = Fuzzed(leaked, f.Darkenings);
+                        if (got == e || Leaked(frame, size.X, size.Y, px, py, got, e))
+                            return true;
+                    }
+                    return false;
+                }
             }
+        }
+        (int R, int G, int B) Fuzzed((int R, int G, int B) source, int darkenings)
+        {
+            int index = Fuzz.NearestIndex(m.DrawnPalette(m.ScreenRow), source.R, source.G, source.B);
+            for (int n = 1; n < darkenings; n++)
+                index = fuzzMap[index];
+            return Shade((byte)index, Fuzz.FuzzColormap);
         }
         _pixels += count;
         if (bad > 0)
@@ -1287,7 +1308,7 @@ public partial class LevelCheck
                     continue;
                 }
                 below++;
-                if (withLevel[p] != alone[p] || withLevel[p + 1] != alone[p + 1] || withLevel[p + 2] != alone[p + 2])
+                if (!SameOrLeaked(withLevel, alone, p))
                     bad++;
             }
         }
@@ -1390,7 +1411,7 @@ public partial class LevelCheck
             if (NearBackground((alone[p], alone[p + 1], alone[p + 2])))
                 continue;
             drawn++;
-            if (upright[p] != alone[p] || upright[p + 1] != alone[p + 1] || upright[p + 2] != alone[p + 2])
+            if (!SameOrLeaked(upright, alone, p))
                 hidden++;
             if (tilted[p] != alone[p] || tilted[p + 1] != alone[p + 1] || tilted[p + 2] != alone[p + 2])
                 hiddenTilted++;
@@ -1580,12 +1601,12 @@ public partial class LevelCheck
                 things.SetEntry(thing, original);
                 if (frames.Exists(v => v.Depth is null || v.Upright is null || v.Level is null))
                     return;
-                static int Differ(byte[] a, byte[] b)
+                int Differ(byte[] a, byte[] b)
                 {
                     int n = 0;
                     for (int p = 0; p < a.Length; p += 4)
                     {
-                        if (a[p] != b[p] || a[p + 1] != b[p + 1] || a[p + 2] != b[p + 2])
+                        if (!SameOrLeaked(a, b, p))
                             n++;
                     }
                     return n;
@@ -1791,12 +1812,12 @@ public partial class LevelCheck
                 if (NearBackground((alone[p], alone[p + 1], alone[p + 2])) || (behind && !OnWall(p / 4 % size.X, p / 4 / size.X)))
                     continue;
                 drawn++;
-                if (pulled[p] != want[p] || pulled[p + 1] != want[p + 1] || pulled[p + 2] != want[p + 2])
+                if (!SameOrLeaked(pulled, want, p))
                     bad++;
                 for (int k = 0; k < others.Length; k++)
                 {
                     byte[] o = otherFrames[k]!;
-                    if (o[p] != want[p] || o[p + 1] != want[p + 1] || o[p + 2] != want[p + 2])
+                    if (!SameOrLeaked(o, want, p))
                         badOthers[k]++;
                 }
             }

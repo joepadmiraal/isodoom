@@ -787,7 +787,7 @@ public partial class LevelCheck
                     {
                         CutPixel.Skip => true,
                         CutPixel.Cleared when cuts => NearBackground(got),
-                        _ => got == (off[b], off[b + 1], off[b + 2]),
+                        _ => SameOrLeaked(frame, off, b), // T8.4e: a leaky copy brings in the cleared neighbours
                     };
                     if (!ok && bad++ == 0)
                         first = $"pixel ({i % size.X}, {i / size.X}): drew {got}, class {classes[i]}, {(off[b], off[b + 1], off[b + 2])} with the cutaway off";
@@ -800,7 +800,7 @@ public partial class LevelCheck
             {
                 int b = i * 4;
                 (int R, int G, int B) got = (dither[b], dither[b + 1], dither[b + 2]);
-                if (classes[i] == CutPixel.Keep && got != (off[b], off[b + 1], off[b + 2]))
+                if (classes[i] == CutPixel.Keep && !SameOrLeaked(dither, off, b))
                     badDither++;
                 else if (classes[i] == CutPixel.Cleared && NearBackground(got))
                     ditherCleared++;

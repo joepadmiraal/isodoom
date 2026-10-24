@@ -1276,6 +1276,8 @@ public partial class LevelCheck : Godot.Node
         UpperWallMode upperMode = m.UpperMode;
         m.SetUpperWalls(UpperWallMode.All);
 
+        await MeasureCopyLeak(m); // T8.4e: whether the comparisons must accept this GPU's leaky copies
+
         // Light (T2.8): the player-distance mapping (default) from player 1's
         // start; then top-down again with no diminishing (and extralight 1),
         // by camera depth, and with a fixed colormap (invulnerability).
@@ -1563,7 +1565,7 @@ public partial class LevelCheck : Godot.Node
                             }
                             else
                                 expected = Shade(texel, map0);
-                            ok = got == expected;
+                            ok = got == expected || Leaked(frame, w, h, px, py, got, expected); // T8.4e: or a leaky copy's
                             sectorsSeen[s] = true;
                         }
                         compared++;
@@ -1847,7 +1849,7 @@ public partial class LevelCheck : Godot.Node
                     _maskedBackOpaque++;
                 else if (masked)
                     _maskedOpaque++;
-                if (got != expected && bad++ == 0)
+                if (got != expected && !Leaked(frame, w, h, px, py, got, expected) && bad++ == 0) // T8.4e: or a leaky copy's
                     first = $"d {dPixel}, z {zFixed / 65536.0} (texel {tc},{tr}): drew {got}, expected {expected}";
             }
         }
@@ -1998,7 +2000,7 @@ public partial class LevelCheck : Godot.Node
                 int p = (py * w + px) * 4;
                 (int R, int G, int B) got = (frame[p], frame[p + 1], frame[p + 2]);
                 compared++;
-                if (got != expected && bad++ == 0)
+                if (got != expected && !Leaked(frame, w, h, px, py, got, expected) && bad++ == 0) // T8.4e: or a leaky copy's
                     first = $"map ({hx}, {hy}): drew {got}, expected {expected}";
             }
         }
@@ -2180,61 +2182,6 @@ public partial class LevelCheck : Godot.Node
             }
         }
         throw new InvalidOperationException("No background colour is free of the palette.");
-    }
-
-    /// <summary>T8.4d: the most of a neighbouring pixel <see cref="Leaked"/> takes (linear colour).</summary>
-    private const double MaxLeak = 1.0 / 64;
-
-    /// <summary>
-    /// T8.4d: whether pixel (<paramref name="px"/>, <paramref name="py"/>) of
-    /// <paramref name="frame"/> (<paramref name="width"/> × <paramref name="height"/>),
-    /// <paramref name="got"/>, is <paramref name="expected"/> with a little of a
-    /// neighbour in it. Under Godot's Mobile renderer the level reaches the screen
-    /// through a filtered copy (the fuzz pass reads the screen texture, so Godot
-    /// cannot tonemap in a subpass), which a Raspberry Pi's V3D samples with up to
-    /// 1/128 of the next pixels (lavapipe exactly): seen where a dark sprite meets the
-    /// check's bright background. Within a level of a bilinear sample of the frame
-    /// with <paramref name="expected"/> in place of the pixel, at most <see cref="MaxLeak"/>
-    /// of the way to a neighbour on each axis (linear colour); never under Forward+.
-    /// </summary>
-    private static bool Leaked(byte[] frame, int width, int height, int px, int py, (int R, int G, int B) got, (int R, int G, int B) expected)
-    {
-        if (!IsoDoom.Game.Srgb.LinearCanvas)
-            return false;
-        const int Steps = 16;
-        (double R, double G, double B) e = Linear(expected);
-        foreach (int dx in (ReadOnlySpan<int>)[-1, 1])
-        {
-            foreach (int dy in (ReadOnlySpan<int>)[-1, 1])
-            {
-                // A bilinear sample a little towards (dx, dy): the pixel, its neighbours across and down, and the one diagonally.
-                (double R, double G, double B) h = Linear(At(px + dx, py)), v = Linear(At(px, py + dy)), d = Linear(At(px + dx, py + dy));
-                for (int i = 0; i <= Steps; i++)
-                {
-                    double wx = MaxLeak * i / Steps;
-                    for (int j = 0; j <= Steps; j++)
-                    {
-                        double wy = MaxLeak * j / Steps;
-                        double we = (1 - wx) * (1 - wy), wh = wx * (1 - wy), wv = (1 - wx) * wy, wd = wx * wy;
-                        if (Near(got.R, e.R * we + h.R * wh + v.R * wv + d.R * wd) && Near(got.G, e.G * we + h.G * wh + v.G * wv + d.G * wd)
-                            && Near(got.B, e.B * we + h.B * wh + v.B * wv + d.B * wd))
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        return false;
-
-        (int R, int G, int B) At(int x, int y)
-        {
-            int q = (Math.Clamp(y, 0, height - 1) * width + Math.Clamp(x, 0, width - 1)) * 4;
-            return (frame[q], frame[q + 1], frame[q + 2]);
-        }
-        static (double R, double G, double B) Linear((int R, int G, int B) c) =>
-            (IsoDoom.Game.Srgb.ToLinear(c.R / 255.0), IsoDoom.Game.Srgb.ToLinear(c.G / 255.0), IsoDoom.Game.Srgb.ToLinear(c.B / 255.0));
-        static bool Near(int got, double linear) => Math.Abs(got - IsoDoom.Game.Srgb.ToByte(linear)) <= 1;
     }
 
     /// <summary>Whether a drawn pixel shows the background (within <see cref="BackgroundTolerance"/>).</summary>

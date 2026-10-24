@@ -223,6 +223,13 @@ public partial class LevelCheck
     /// </summary>
     private async Task<int?> CompareMenuScreen(string what, bool dimmed = false)
     {
+        // The dim's byte of a linear value read from the back buffer (ScreenView.LinearDim: darkened in sRGB values).
+        static int DimmedByte(double linear)
+        {
+            double srgb = linear <= 0.0031308 ? linear * 12.92 : 1.055 * Math.Pow(linear, 1 / 2.4) - 0.055;
+            return (int)Math.Round(srgb * (1 - ScreenView.DimAlpha) * 255);
+        }
+
         if (await Capture(what) is not byte[] frame)
             return null;
         Vector2I size = ViewSize();
@@ -252,6 +259,8 @@ public partial class LevelCheck
                     int expected = dimmed ? ScreenView.DimRgb(under[i + c]) : under[i + c];
                     ok &= Math.Abs(frame[i + c] - expected) <= 1;
                 }
+                // T8.4e: the dim reads the canvas's back buffer, a copy that leaks where the copies do.
+                ok = ok || (dimmed && Leaked(under, size.X, size.Y, x, y, (frame[i], frame[i + 1], frame[i + 2]), (under[i], under[i + 1], under[i + 2]), DimmedByte));
                 if (!ok && badBehind++ == 0)
                     firstBehind = $"({x}, {y}): ({frame[i]}, {frame[i + 1]}, {frame[i + 2]}) over ({under[i]}, {under[i + 1]}, {under[i + 2]})";
             }
