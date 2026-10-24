@@ -106,6 +106,9 @@ public sealed class LevelMesh : IDisposable
     /// <summary>The masked middles' variant of the level shader (T3.1).</summary>
     public const string MaskedShaderPath = "res://shaders/level_masked.gdshader";
 
+    /// <summary>The level shader without discard (T8.4i), for the chunks no cut centre reaches (<see cref="ChooseChunkMaterials"/>).</summary>
+    public const string NoDiscardShaderPath = "res://shaders/level_nodiscard.gdshader";
+
     /// <summary>Map units per Godot metre (SPEC §7.1).</summary>
     public const float MapUnitsPerMetre = 32f;
 
@@ -295,6 +298,13 @@ public sealed class LevelMesh : IDisposable
     public ShaderMaterial MaskedMaterial { get; private set; } = null!;
 
     /// <summary>
+    /// <see cref="Material"/> without discard (T8.4i, <c>shaders/level_nodiscard.gdshader</c>):
+    /// a chunk's first surface's override while no cut centre reaches it and
+    /// nothing dithers (<see cref="ChooseChunkMaterials"/>). Its parameters follow <see cref="Material"/>'s.
+    /// </summary>
+    public ShaderMaterial NoDiscardMaterial { get; private set; } = null!;
+
+    /// <summary>
     /// The material of the level's thing sprites (T3.5, <c>shaders/sprite.gdshader</c>,
     /// used by <see cref="ThingSprites"/>): it gets every shared parameter
     /// (palette, light tables and settings, sector data) with the other two;
@@ -314,7 +324,7 @@ public sealed class LevelMesh : IDisposable
     public ShaderMaterial ShadowMaterial { get; private set; } = null!;
 
     /// <summary>Every material (level, masked, sprites and their fuzz pass), for setting a shader parameter on each.</summary>
-    public IEnumerable<ShaderMaterial> Materials => [Material, MaskedMaterial, SpriteMaterial, FuzzMaterial];
+    public IEnumerable<ShaderMaterial> Materials => [Material, MaskedMaterial, NoDiscardMaterial, SpriteMaterial, FuzzMaterial];
 
     public ImageTexture AtlasTexture { get; private set; } = null!;
     public ImageTexture TextureInfoTexture { get; private set; } = null!;
@@ -630,6 +640,89 @@ public sealed class LevelMesh : IDisposable
         CutCursor = cursor;
         SetParameter("cut_player", player is Vector3 p ? new Vector4(p.X, p.Y, p.Z, 1) : Vector4.Zero);
         SetParameter("cut_cursor", cursor is Vector3 c ? new Vector4(c.X, c.Y, c.Z, 1) : Vector4.Zero);
+    }
+
+    // T8.4i: each chunk's solid surface's map box (min x, min y, max x, max y; NaN x: none), the
+    // islands its walls and caps reach, and whether it draws with NoDiscardMaterial.
+    private Vector4[] _chunkBoxes = [];
+    private int[][] _chunkIslands = [];
+    private bool[] _chunkPlain = [];
+
+    /// <summary>
+    /// Whether every chunk must draw with the discarding <see cref="Material"/>
+    /// whatever the cut centres (T8.4i): while the fog of war dims with its
+    /// dither, which discards anywhere.
+    /// </summary>
+    public bool AllChunksDiscard => FogMode == FogStyle.Dim && FogDimLook.Dither;
+
+    /// <summary>Whether <see cref="ChooseChunkMaterials"/> gives any chunk <see cref="NoDiscardMaterial"/> (T8.4i; the level check compares the frames without it).</summary>
+    public bool SplitChunks { get; set; } = true;
+
+    /// <summary>
+    /// Whether a cut centre may cut or cap anything of chunk
+    /// <paramref name="sector"/>'s floors and solid walls this frame (T8.4i,
+    /// <see cref="Render.Cutaway.MayReach"/> for each active centre, from its
+    /// box and the highest of its sector's floor, ceiling and lid and its
+    /// islands' tops as uploaded), seen by a camera at
+    /// <paramref name="camera"/> looking along minus <paramref name="back"/>
+    /// (map units and axes). False for a chunk without floors or solid walls.
+    /// </summary>
+    public bool ChunkMayBeCut(int sector, Vector3 camera, Vector3 back, bool orthographic)
+    {
+        Vector4 box = _chunkBoxes[sector];
+        if (float.IsNaN(box.X) || Cutaway.Style == CutawayStyle.Off)
+            return false;
+        Color data = _sectorTexels[sector];
+        float top = Math.Max(Math.Max(data.R, data.G), _lidTexels[sector].R);
+        foreach (int island in _chunkIslands[sector])
+            top = float.IsNaN(_islandTops[island]) ? float.PositiveInfinity : Math.Max(top, _islandTops[island]);
+        var min = new Vector3(box.X, box.Y, 0);
+        var max = new Vector3(box.Z, box.W, top);
+        Vector3? eye = orthographic ? null : camera;
+        return (CutPlayer is Vector3 p && Render.Cutaway.MayReach(min, max, p, Cutaway, back, eye))
+            || (CutCursor is Vector3 c && Render.Cutaway.MayReach(min, max, c, Cutaway, back, eye));
+    }
+
+    /// <summary>Whether chunk <paramref name="sector"/> has floors or solid walls (its first surface; T8.4i).</summary>
+    public bool ChunkHasSolid(int sector) => sector < _chunkBoxes.Length && !float.IsNaN(_chunkBoxes[sector].X);
+
+    /// <summary>Whether chunk <paramref name="sector"/>'s first surface draws with <see cref="NoDiscardMaterial"/>, as <see cref="ChooseChunkMaterials"/> last chose (T8.4i).</summary>
+    public bool ChunkDrawsPlain(int sector) => _chunkPlain[sector];
+
+    /// <summary>
+    /// T8.4i: gives each chunk's floors and solid walls (<paramref name="chunks"/>,
+    /// <see cref="SectorMeshes"/>' nodes) <see cref="NoDiscardMaterial"/> where
+    /// no cut centre may reach them (<see cref="ChunkMayBeCut"/>) seen by
+    /// <paramref name="camera"/>, and the discarding <see cref="Material"/>
+    /// elsewhere and while <see cref="AllChunksDiscard"/>: the same pixels, but
+    /// V3D keeps its early depth test for the first. Call it just before the
+    /// frame is drawn, with the camera it is drawn from (every caller's
+    /// centres and heights as set); only the chunks whose choice changed are
+    /// touched.
+    /// </summary>
+    public void ChooseChunkMaterials(MeshInstance3D?[] chunks, Camera3D? camera)
+    {
+        bool all = AllChunksDiscard || !SplitChunks || camera is null;
+        Vector3 eye = Vector3.Zero, back = Vector3.Zero;
+        bool ortho = false;
+        if (camera is not null)
+        {
+            Transform3D t = camera.GlobalTransform;
+            eye = new Vector3(t.Origin.X, -t.Origin.Z, t.Origin.Y) * MapUnitsPerMetre;
+            Vector3 z = t.Basis.Z.Normalized();
+            back = new Vector3(z.X, -z.Z, z.Y);
+            ortho = camera.Projection == Camera3D.ProjectionType.Orthogonal;
+        }
+        for (int s = 0; s < chunks.Length && s < _chunkPlain.Length; s++)
+        {
+            if (chunks[s] is not MeshInstance3D node || float.IsNaN(_chunkBoxes[s].X))
+                continue;
+            bool plain = !all && !ChunkMayBeCut(s, eye, back, ortho);
+            if (plain == _chunkPlain[s])
+                continue;
+            _chunkPlain[s] = plain;
+            node.SetSurfaceOverrideMaterial(0, plain ? NoDiscardMaterial : null);
+        }
     }
 
     /// <summary>Whether the lids are drawn (T6.13b), as last set (<see cref="SetDoorLids"/>; on until set).</summary>
@@ -1009,6 +1102,7 @@ public sealed class LevelMesh : IDisposable
         {
             Material.SetShaderParameter(stringName, value);
             MaskedMaterial.SetShaderParameter(stringName, value);
+            NoDiscardMaterial.SetShaderParameter(stringName, value);
             SpriteMaterial.SetShaderParameter(stringName, value);
             FuzzMaterial.SetShaderParameter(stringName, value);
         }
@@ -1181,6 +1275,7 @@ public sealed class LevelMesh : IDisposable
 
         Material = new ShaderMaterial { Shader = GodotRefs.LoadShader(ShaderPath) };
         MaskedMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(MaskedShaderPath) };
+        NoDiscardMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(NoDiscardShaderPath) };
         FuzzMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(ThingSprites.FuzzShaderPath) };
         SpriteMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(ThingSprites.ShaderPath), NextPass = FuzzMaterial };
         ShadowMaterial = new ShaderMaterial { Shader = GodotRefs.LoadShader(ThingSprites.ShadowShaderPath) };
@@ -1251,7 +1346,7 @@ public sealed class LevelMesh : IDisposable
         SectorMeshes = [];
         GodotObject?[] owned =
         [
-            Material, MaskedMaterial, SpriteMaterial, FuzzMaterial, ShadowMaterial,
+            Material, MaskedMaterial, NoDiscardMaterial, SpriteMaterial, FuzzMaterial, ShadowMaterial,
             AtlasTexture, TextureInfoTexture, SectorDataTexture, LidDataTexture, IslandDataTexture, SideTexturesTexture,
             FogDataTexture, _fogDimTexture, _playpalTexture, _linearTexture, _colormapTexture, LightTablesTexture,
             _sectorImage, _lidImage, _islandImage, _infoImage, _sideImage, _fogImage, _playpalImage, _linearImage,
@@ -1268,6 +1363,9 @@ public sealed class LevelMesh : IDisposable
         public readonly List<Vector2> Uv = [];
         public readonly List<float> Custom0 = [], Custom1 = [], Custom2 = [];
         public readonly List<int> Indices = [];
+
+        // T8.4i: the islands whose tops its walls and caps reach.
+        public readonly List<int> Islands = [];
 
         public void Add(Vector3 v, Vector2 uv, Vector4 c0, Vector4 c1, Vector4 c2)
         {
@@ -1393,6 +1491,8 @@ public sealed class LevelMesh : IDisposable
         foreach (WallCap cap in Caps.Caps)
         {
             Chunk c = ChunkOf(cap.Sector);
+            if (cap.Island >= 0 && !c.Islands.Contains(cap.Island))
+                c.Islands.Add(cap.Island);
             int part = 3 * cap.Side + PartMiddle;
             float column = (float)(Level.Sides[cap.Side].TextureOffset / 65536.0);
             var c2 = new Vector4(0, 0, 0, (float)Math.Atan2(cap.Dy, cap.Dx));
@@ -1467,6 +1567,8 @@ public sealed class LevelMesh : IDisposable
             if (!IsDrawn(s) || s.BackSector is not null || s.Kind != WallSectionKind.Middle || Caps.IslandOf(s.Line.Index) is not (>= 0 and int island))
                 continue;
             Chunk c = ChunkOf(s.FrontSector.Index);
+            if (!c.Islands.Contains(island))
+                c.Islands.Add(island);
             var c0 = new Vector4(KindWallExtension, SidePartId(s), s.FrontSector.Index, island);
             var c1 = new Vector4((int)WallPlane.FrontCeiling, 0, (int)WallPlane.FrontCeiling, 0);
             foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
@@ -1513,6 +1615,9 @@ public sealed class LevelMesh : IDisposable
             | (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom1Shift)
             | (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom2Shift);
         SectorMeshes = new ArrayMesh?[chunks.Length];
+        _chunkBoxes = new Vector4[chunks.Length];
+        _chunkIslands = new int[chunks.Length][];
+        _chunkPlain = new bool[chunks.Length];
         Aabb? bounds = null;
         for (int s = 0; s < chunks.Length; s++)
         {
@@ -1546,6 +1651,23 @@ public sealed class LevelMesh : IDisposable
 
             // The shader moves vertices vertically, so cull with the full height range.
             (Vector3 lo, Vector3 hi) = (min!.Value, max!.Value);
+            // T8.4i: the solid surface's map box (x, y) and islands; NaN: no solid surface.
+            if (chunks[s] is Chunk solid)
+            {
+                Vector3 smin = solid.Vertices[0], smax = smin;
+                foreach (Vector3 v in solid.Vertices)
+                {
+                    smin = smin.Min(v);
+                    smax = smax.Max(v);
+                }
+                _chunkBoxes[s] = new Vector4(smin.X, -smax.Z, smax.X, -smin.Z) * MapUnitsPerMetre;
+                _chunkIslands[s] = [.. solid.Islands];
+            }
+            else
+            {
+                _chunkBoxes[s] = new Vector4(float.NaN, 0, 0, 0);
+                _chunkIslands[s] = [];
+            }
             mesh.CustomAabb = new Aabb(new Vector3(lo.X, -HeightRange, lo.Z), new Vector3(hi.X - lo.X, 2 * HeightRange, hi.Z - lo.Z));
             SectorMeshes[s] = mesh;
 

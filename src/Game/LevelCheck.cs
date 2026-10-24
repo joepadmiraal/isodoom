@@ -1368,6 +1368,8 @@ public partial class LevelCheck : Godot.Node
 
         await CutawayCheck(m);
 
+        await ChunkSplitCheck(m); // T8.4i
+
         await LidCheck(m);
         await LidEndCheck(m); // T6.13f
         m.SetDoorLids(DoorLidMode.Off);

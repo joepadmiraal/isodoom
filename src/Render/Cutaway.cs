@@ -120,6 +120,56 @@ public static class Cutaway
     /// </summary>
     public const float PlaneMargin = 1f;
 
+    /// <summary>
+    /// How far (map units) <see cref="MayReach"/> grows a box and the disc, so
+    /// that the GPU's rounding (interpolated points, its normalize) never cuts
+    /// a point the CPU's test left out (T8.4i).
+    /// </summary>
+    public const float ReachMargin = 8f;
+
+    /// <summary>
+    /// Whether centre <paramref name="centre"/> (x, y, floor height) may cut
+    /// or cap any point of the box from <paramref name="min"/> to
+    /// <paramref name="max"/> (map units; max's z the height of the highest
+    /// thing drawn in it, min's z unused: a cap lies at the cutoff), T8.4i: false only when no point of the box above the centre's
+    /// cutoff lies within the radius (and <see cref="ReachMargin"/>) of the
+    /// anchor's line towards the camera, which every cut (<see cref="Hides"/>)
+    /// and cap (<see cref="Caps"/>, the shader's kinds 4 and 7) needs; then a
+    /// chunk in it can be drawn by a shader without discard. Conservative:
+    /// the box's projection on three directions across the line (its
+    /// horizontal and vertical ones and the one towards the box's centre)
+    /// must each miss the disc. <paramref name="toCamera"/> and
+    /// <paramref name="camera"/> as in <see cref="Hides"/>.
+    /// </summary>
+    public static bool MayReach(Vector3 min, Vector3 max, Vector3 centre, CutawaySettings settings, Vector3 toCamera, Vector3? camera = null)
+    {
+        if (settings.Style == CutawayStyle.Off)
+            return false;
+        float cutoff = centre.Z + settings.Height;
+        if (max.Z <= cutoff - ReachMargin)
+            return false;
+        // From the cutoff up: cut points lie above it, caps at it (below a raised floor).
+        Vector3 lo = new Vector3(min.X, min.Y, cutoff) - new Vector3(ReachMargin, ReachMargin, ReachMargin);
+        Vector3 hi = max + new Vector3(ReachMargin, ReachMargin, ReachMargin);
+        var a = new Vector3(centre.X, centre.Y, centre.Z + Anchor);
+        Vector3 axis = camera is Vector3 c ? (c - a).Normalized() : toCamera.Normalized();
+        Vector3 across = axis.Cross(new Vector3(0, 0, 1));
+        across = across.LengthSquared() > 1e-8f ? across.Normalized() : new Vector3(1, 0, 0);
+        Vector3 up = axis.Cross(across).Normalized();
+        Vector3 mid = (lo + hi) / 2, half = (hi - lo) / 2;
+        Vector3 toMid = mid - a;
+        Vector3 toward = toMid - axis * toMid.Dot(axis);
+        float r = settings.Radius + ReachMargin;
+        foreach (Vector3 w in (ReadOnlySpan<Vector3>)[across, up, toward.LengthSquared() > 1e-8f ? toward.Normalized() : across])
+        {
+            float centreOn = toMid.Dot(w);
+            float extent = Math.Abs(half.X * w.X) + Math.Abs(half.Y * w.Y) + Math.Abs(half.Z * w.Z);
+            if (centreOn - extent > r || centreOn + extent < -r)
+                return false;
+        }
+        return true;
+    }
+
     /// <summary>Light levels (of vanilla's 16) a <see cref="CutawayCap.Dark"/> cap loses against its floor (the shader's <c>CAP_DARKEN</c>).</summary>
     public const int CapDarken = 4;
 

@@ -1,7 +1,11 @@
 // Level shader body (SPEC §7.2, §7.4, §12 T2.5, T3.1), included by
 // level.gdshader (floors and solid walls) and level_masked.gdshader (masked
-// middles, with MASKED_PASS defined: the only variant with the opacity mask).
-// Both discard the fragments the cutaway removes (T3.4).
+// middles, with MASKED_PASS defined: the only variant with the opacity mask),
+// and by level_nodiscard.gdshader (NO_DISCARD, T8.4i: floors and solid walls
+// that no cut centre reaches). The first two discard the fragments the
+// cutaway removes (T3.4); the third has no discard at all (a shader that may
+// discard costs V3D its early depth test: every overdrawn fragment shaded),
+// and its cutaway caps collapse.
 //
 // Each material draws its kinds for every sector of a level. Textures and
 // flats sit in one RG8 index atlas (R = palette index, G = opacity), looked
@@ -547,6 +551,12 @@ void vertex() {
 			o_height = z;
 		}
 	}
+#ifdef NO_DISCARD
+	// T8.4i: a chunk no cut centre reaches; its caps show nowhere.
+	if (o_cap >= 0) {
+		VERTEX.xz = vec2(0.0);
+	}
+#endif
 	// A flat's atlas corner in place of its slot (T8.4h).
 	int o_first = o_slot;
 	if (o_kind == 0) {
@@ -671,10 +681,11 @@ void fragment() {
 	vec2 texcoord = UV;
 	vec2 map = UV2;
 	float height = wall ? intBitsToFloat(v_flat.w) - texcoord.y : intBitsToFloat(v_flat.w);
+	vec3 p = vec3(map, height);
+#ifndef NO_DISCARD
 	if (fog && fog_dither == 1 && bayer4(ivec2(FRAGCOORD.xy)) < 0.5) {
 		discard;
 	}
-	vec3 p = vec3(map, height);
 	// A centre cuts only above its cutoff (cut_hides' first test, T8.4h: the rest is skipped below every cutoff); a cap tests its centre.
 	bool cut_reach = (cut_player.w >= 0.5 && p.z > cut_player.z + cut_height) || (cut_cursor.w >= 0.5 && p.z > cut_cursor.z + cut_height);
 	if (cut_mode != 0 && !door && (cut_reach || cap >= 0)) {
@@ -709,6 +720,7 @@ void fragment() {
 			}
 		}
 	}
+#endif
 	int index;
 	if (kind == 4) {
 		// T6.13s: a ledge edge, bright with a dark rim inside.

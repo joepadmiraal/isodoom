@@ -840,10 +840,34 @@ public partial class LevelScene : Node3D, IGameHost
     /// <inheritdoc cref="OpenWadMilliseconds"/>
     public double LastLoadMilliseconds { get; private set; }
 
+    /// <summary>
+    /// T8.4i: just before each frame is drawn, the chunks no cut centre
+    /// reaches from the drawing camera get the level shader without discard
+    /// (<see cref="LevelMesh.ChooseChunkMaterials"/>; after every caller set
+    /// its centres, heights and camera, the level check's too).
+    /// </summary>
+    private void ChooseChunkMaterials() => Mesh?.ChooseChunkMaterials(Chunks, GetViewport().GetCamera3D());
+
+    /// <summary>T8.4i: the level script's <c>chunks</c> line: the chunks with floors or solid walls and how many draw without discard.</summary>
+    public string ChunksText()
+    {
+        int solid = 0, plain = 0;
+        for (int s = 0; s < Chunks.Length; s++)
+        {
+            if (Chunks[s] is not null && Mesh is { } mesh && mesh.ChunkHasSolid(s))
+            {
+                solid++;
+                plain += mesh.ChunkDrawsPlain(s) ? 1 : 0;
+            }
+        }
+        return $"chunks: {plain} of {solid} without discard{(Mesh?.AllChunksDiscard == true ? " (the fog dithers: none)" : "")}";
+    }
+
     public override void _Ready()
     {
         _camera = new Camera3D { Current = true };
         AddChild(_camera);
+        RenderingServer.FramePreDraw += ChooseChunkMaterials; // T8.4i
         Environment = new Godot.Environment
         {
             BackgroundMode = Godot.Environment.BGMode.Color,

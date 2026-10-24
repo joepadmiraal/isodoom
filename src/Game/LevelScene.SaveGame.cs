@@ -49,6 +49,7 @@ public partial class LevelScene
 
     public override void _ExitTree()
     {
+        RenderingServer.FramePreDraw -= ChooseChunkMaterials; // T8.4i
         if (!IsCheckRun)
             SyncSettings(); // T8.3: a change since the last frame's sync is saved too
         RemoveTempSaves();

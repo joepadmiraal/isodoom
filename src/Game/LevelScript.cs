@@ -576,6 +576,12 @@ public partial class LevelScript : Node
                         await Drain();
                         GD.Print($"Level script: {_scene.FogText()}");
                         break;
+                    case "chunks":
+                        // T8.4i: waits for the queued tics and a frame; prints how many chunks draw without discard
+                        await Drain();
+                        await Frames(1);
+                        GD.Print($"Level script: {_scene.ChunksText()}");
+                        break;
                     case "markers":
                         // T6.13u: waits for the queued tics and a frame; prints the marked monsters
                         await Drain();
