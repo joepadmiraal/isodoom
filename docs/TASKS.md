@@ -818,6 +818,9 @@ Legend: `[ ]` todo, `[x]` done.
   *Done (2026-10-24; SPEC §12 "Arcade mode (T8.12)"):* `TiccmdBuilder.AutoFire`, `Tweaks.InfiniteAmmo`, `Tweaks.AutoDoors` (`World.P_AutoDoor`), `Tweaks.WithArcade()`; save version 7, net protocol 7. Tests: `ArcadeTests`, `TiccmdBuilderTests`, `NetMessagesTests`, `WorldTests.TweakFlags`. Checked in the game with `--level-script` (`heard pistol`, the ammo in `print`, `heard doropn`).
 - [ ] **T8.12a Arcade mode on the cabinet (for the user).** Play a few maps on the cabinet with `--arcade`. Note anything that still needs a button: weapon changes, the reborn after death (use), the intermission (fire skips it, so the right stick will skip it too). A setting under Options, besides the flag, may also help.
   *Done when:* the user has played it on the cabinet and the follow-ups are tasks here.
+- [x] **T8.12b A wider aim assist in arcade mode (the user's request).** The cabinet's stick has 8 directions, so the player faces only every 45° and the default ±5° cone misses most targets. `--arcade` sets the aim assist to ±25°.
+  *Done when:* `--arcade` gives a ±25° cone that catches a target halfway between two of the stick's directions, `--level-aim-assist` and the menu still change it, and the tests pass.
+  *Done (2026-10-24; SPEC §12 "Arcade aim assist (T8.12b)"):* `Tweaks.ArcadeAimAssistCone`, set by `Tweaks.WithArcade()`; `--arcade` pins `gameplay/aim_assist` for the run as `--level-aim-assist` does. Tests: `AimAssistTests.TheArcadeConeCoversAnEightWayStick`, `WorldTests.TweakFlags`. Checked in the game: `--arcade` gives `setting gameplay/aim_assist = 25`, and with `--level-aim-assist=10` gives 10.
 
 ## M9 — Ultimate Doom
 

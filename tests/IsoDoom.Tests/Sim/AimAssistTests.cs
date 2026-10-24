@@ -64,6 +64,21 @@ public class AimAssistTests
     }
 
     [Fact]
+    public void TheArcadeConeCoversAnEightWayStick()
+    {
+        // T8.12b: a target halfway between two of an 8-way stick's facings, 22.5° off, at 600 units
+        Assert.Equal(Tweaks.ArcadeAimAssistCone, Tweaks.TopDown.WithArcade().AimAssistCone);
+        Assert.Equal(Tweaks.ArcadeAimAssistCone, Tweaks.Vanilla.WithArcade().AimAssistCone);
+        World world = Room(Assist());
+        Zombie(world, 64 + 554, 256 + 230);
+        Assert.Equal(0u, Snap(world));
+        world = Room(Tweaks.Vanilla.WithArcade());
+        mobj_t z = Zombie(world, 64 + 554, 256 + 230);
+        Assert.Equal(AngleTo(world, z), Snap(world));
+        Assert.Same(z, world.linetarget);
+    }
+
+    [Fact]
     public void ACloseTargetCountsWithItsWidth()
     {
         // 50 units ahead, 30 to the side: its centre is 31° off but its edge 14° (its half-width as seen from the player 17°)

@@ -497,7 +497,7 @@ public class WorldTests
         string[] arcade = [nameof(Tweaks.InfiniteAmmo), nameof(Tweaks.AutoDoors)]; // T8.12: only with --arcade
         Assert.All(flags, f => Assert.Equal(!arcade.Contains(f.Name), (bool)f.GetValue(Tweaks.TopDown)!));
         Assert.All(flags, f => Assert.True((bool)f.GetValue(Tweaks.TopDown.WithArcade())!, f.Name));
-        Assert.All(flags, f => Assert.Equal(arcade.Contains(f.Name), (bool)f.GetValue(Tweaks.Vanilla.WithArcade())!));
+        Assert.All(flags, f => Assert.Equal(arcade.Contains(f.Name) || f.Name == nameof(Tweaks.AimAssist), (bool)f.GetValue(Tweaks.Vanilla.WithArcade())!));
         Assert.Same(Tweaks.TopDown, new World(_medium, Tweaks.TopDown).tweaks);
     }
 }

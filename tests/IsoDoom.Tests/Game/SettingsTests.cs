@@ -29,7 +29,7 @@ public class SettingsTests
         {
             Assert.Contains(def.Default, def.Choices);
             Assert.True(def.Key.IndexOf('/') > 0, def.Key);
-            Assert.All(def.Args, a => Assert.True(a.StartsWith("--level-", System.StringComparison.Ordinal) || a == "-name", a)); // T11.9c: -name, a netgame argument
+            Assert.All(def.Args, a => Assert.True(a.StartsWith("--level-", System.StringComparison.Ordinal) || a is "-name" or "--arcade", a)); // T11.9c: -name, a netgame argument; T8.12b: --arcade, which sets the aim assist
         }
         Assert.Equal(Settings.GameActions.Length + Settings.MenuActions.Length,
             Settings.GameActions.Concat(Settings.MenuActions).Distinct().Count());

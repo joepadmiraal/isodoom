@@ -43,6 +43,13 @@ public sealed record Tweaks
     public const uint DefaultAimAssistCone = 5 * Tables.ANG1;
 
     /// <summary>
+    /// <see cref="AimAssistCone"/> in the arcade mode (<see cref="WithArcade"/>): ±25°.
+    /// An 8-way stick faces only every 45°, so every direction is within
+    /// 22.5° of a facing; the cone reaches a little past that (SPEC §12 T8.12b).
+    /// </summary>
+    public const uint ArcadeAimAssistCone = 25 * Tables.ANG1;
+
+    /// <summary>
     /// SPEC §6.3 #2: the player's hitscans, melee attacks and missiles snap
     /// horizontally to the nearest target within ±this angle (BAM) of the
     /// facing when the facing itself misses (<see cref="World.P_AimAssist"/>,
@@ -84,6 +91,9 @@ public sealed record Tweaks
     /// </summary>
     public bool AutoDoors { get; init; }
 
-    /// <summary>These tweaks with the arcade mode's on (<see cref="InfiniteAmmo"/>, <see cref="AutoDoors"/>).</summary>
-    public Tweaks WithArcade() => this with { InfiniteAmmo = true, AutoDoors = true };
+    /// <summary>
+    /// These tweaks with the arcade mode's on (<see cref="InfiniteAmmo"/>,
+    /// <see cref="AutoDoors"/>) and its wide aim assist (<see cref="ArcadeAimAssistCone"/>).
+    /// </summary>
+    public Tweaks WithArcade() => this with { InfiniteAmmo = true, AutoDoors = true, AimAssistCone = ArcadeAimAssistCone };
 }

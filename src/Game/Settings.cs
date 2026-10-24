@@ -102,7 +102,7 @@ public static class Settings
 
         // gameplay
         new("gameplay/aim_assist", "AIM ASSIST (DEGREES)", SettingPage.Gameplay, "5",
-            ["off", "1", "2", "3", "4", "5", "6", "8", "10", "12", "15", "20", "25", "30", "45"], "--level-aim-assist", "--level-tweaks"),
+            ["off", "1", "2", "3", "4", "5", "6", "8", "10", "12", "15", "20", "25", "30", "45"], "--level-aim-assist", "--level-tweaks", "--arcade"),
         new("gameplay/cutaway", "CUTAWAY", SettingPage.Gameplay, "cut", ["cut", "dither", "off"], "--level-cutaway"),
         new("gameplay/cutaway_things", "CUTAWAY THINGS", SettingPage.Gameplay, "decor", ["decor", "all", "off"], "--level-cutaway-things"),
         new("gameplay/cutaway_cap", "CUTAWAY CAP", SettingPage.Gameplay, "dark", ["dark", "flat", "off"], "--level-cutaway-cap"),

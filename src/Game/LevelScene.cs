@@ -174,7 +174,8 @@ namespace IsoDoom.Game;
 /// <see cref="Tweaks.AimAssistCone"/>, 0–45°; default 5 with topdown, off with vanilla);
 /// <c>--arcade</c> (T8.12: for a twin-stick cabinet, the right stick fires
 /// while it aims, <see cref="TiccmdBuilder.AutoFire"/>, and the sim's
-/// <see cref="Tweaks.InfiniteAmmo"/> and <see cref="Tweaks.AutoDoors"/>);
+/// <see cref="Tweaks.InfiniteAmmo"/> and <see cref="Tweaks.AutoDoors"/>; T8.12b:
+/// the aim assist ±25°, <see cref="Tweaks.ArcadeAimAssistCone"/>, for an 8-way stick);
 /// <c>--level-sprite-tilt=0-1|off|half|full</c> (billboards turn towards the
 /// camera by this fraction of its elevation, T3.6, <see cref="SpriteSettings"/>;
 /// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
@@ -941,14 +942,15 @@ public partial class LevelScene : Node3D, IGameHost
                     "vanilla" => Tweaks.Vanilla,
                     _ => throw new ArgumentException($"--level-tweaks: \"{tweaks}\" (topdown or vanilla)"),
                 };
-            if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
-                Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             if (WadLocator.HasUserArg("--arcade"))
             {
-                // T8.12: the arcade mode, for a twin-stick cabinet: the right stick fires, ammo never runs out, doors open by walking into them
+                // T8.12: the arcade mode, for a twin-stick cabinet: the right stick fires, ammo never runs out, doors open by walking into them;
+                // T8.12b: the aim assist ±25° for an 8-way stick (--level-aim-assist below still sets it)
                 Tweaks = Tweaks.WithArcade();
                 TiccmdBuilder.AutoFire = true;
             }
+            if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
+                Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
             _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission, GameVersion); // T7.1: g_game.c's flow, d_main.c's title loop
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only

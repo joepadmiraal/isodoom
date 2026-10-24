@@ -72,8 +72,9 @@ the marks (B).
 
 Arcade mode, for a twin-stick cabinet: start the game with --arcade (on a
 Raspberry Pi, for example: ./IsoDoom.arm64 -- --arcade). The right stick
-then fires while it aims, ammo never runs out, and walking into a door
-opens it. In a network game the host's choice counts for everyone, but the
+then fires while it aims, ammo never runs out, walking into a door
+opens it, and the aim assist reaches 25 degrees either side, so an 8-way
+stick hits what lies between its directions. In a network game the host's choice counts for everyone, but the
 right stick's firing is each player's own.
 
 The classic cheats work when typed during play (iddqd, idkfa, ...), and a
