@@ -200,6 +200,17 @@ public class TiccmdBuilderTests
         Assert.Equal(buttoncode_t.BT_ATTACK, Build(new TiccmdInput { Attack = true }, Tweaks.Vanilla).buttons);
     }
 
+    /// <summary>T8.12: with the arcade mode's auto-fire the right stick fires while it aims, and only then.</summary>
+    [Fact]
+    public void AutoFireFiresWhileTheStickAims()
+    {
+        var builder = new TiccmdBuilder { AutoFire = true };
+        Assert.Equal(buttoncode_t.BT_ATTACK, Build(new TiccmdInput { AimX = 1 }, builder: builder).buttons);
+        Assert.Equal(0, Build(new TiccmdInput { AimX = TiccmdBuilder.StickAimThreshold * 0.9f }, builder: builder).buttons); // released: the aim stays, no fire
+        Assert.Equal(0, Build(new TiccmdInput { MoveX = 1, CursorMoved = true, Cursor = (100f, 0f) }, builder: builder).buttons); // the mouse aims without firing
+        Assert.Equal(0, Build(new TiccmdInput { AimX = 1 }).buttons); // off by default
+    }
+
     /// <summary>T6.6: the next/previous weapon (Chocolate Doom's <c>G_NextWeapon</c>) as <c>BT_CHANGE</c> with a weapon number.</summary>
     [Fact]
     public void NextAndPreviousWeapon()

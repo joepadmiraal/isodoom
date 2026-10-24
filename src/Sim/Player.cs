@@ -128,6 +128,13 @@ public sealed class player_t
     public bool usedown;
 
     /// <summary>
+    /// Not vanilla (<see cref="Tweaks.AutoDoors"/>): 1 + the <c>leveltime</c>
+    /// the player last pushed against a locked door it has no key for (0 for
+    /// none), so the refusal's message and grunt come once per push, not every tic.
+    /// </summary>
+    public int autodoortic;
+
+    /// <summary>
     /// The <c>forwardmove</c> and <c>sidemove</c> the player last moved on the
     /// ground with, for <see cref="Tweaks.InstantStop"/> (not vanilla's).
     /// </summary>
@@ -198,6 +205,7 @@ public sealed class player_t
         System.Array.Clear(ammo);
         System.Array.Clear(maxammo);
         attackdown = usedown = false;
+        autodoortic = 0;
         lastforwardmove = lastsidemove = 0;
         cheats = refire = 0;
         killcount = itemcount = secretcount = 0;

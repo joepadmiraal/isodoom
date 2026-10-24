@@ -494,7 +494,10 @@ public class WorldTests
         PropertyInfo[] flags = [.. typeof(Tweaks).GetProperties().Where(p => p.PropertyType == typeof(bool))];
         Assert.NotEmpty(flags);
         Assert.All(flags, f => Assert.False((bool)f.GetValue(Tweaks.Vanilla)!, f.Name));
-        Assert.All(flags, f => Assert.True((bool)f.GetValue(Tweaks.TopDown)!, f.Name));
+        string[] arcade = [nameof(Tweaks.InfiniteAmmo), nameof(Tweaks.AutoDoors)]; // T8.12: only with --arcade
+        Assert.All(flags, f => Assert.Equal(!arcade.Contains(f.Name), (bool)f.GetValue(Tweaks.TopDown)!));
+        Assert.All(flags, f => Assert.True((bool)f.GetValue(Tweaks.TopDown.WithArcade())!, f.Name));
+        Assert.All(flags, f => Assert.Equal(arcade.Contains(f.Name), (bool)f.GetValue(Tweaks.Vanilla.WithArcade())!));
         Assert.Same(Tweaks.TopDown, new World(_medium, Tweaks.TopDown).tweaks);
     }
 }

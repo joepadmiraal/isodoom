@@ -269,6 +269,70 @@ public sealed partial class World
     }
 
     /// <summary>
+    /// Not vanilla (<see cref="Tweaks.AutoDoors"/>, SPEC §6.3 #7, §12 T8.12):
+    /// after <paramref name="player"/>'s move failed (<see cref="P_TryMove"/>),
+    /// each manual door line its box touched (<see cref="spechit"/>, as
+    /// p_enemy.c's <c>P_Move</c> opens doors for monsters) with the player on
+    /// its front side is used (<see cref="P_UseSpecialLine"/>), but only when
+    /// that opens it: its sector has no thinker, or a raise door's is closing
+    /// (a use of an opening or open one would close it). A locked door the
+    /// player has no key for refuses (message and grunt) only when it did
+    /// not push one the tic before (<see cref="player_t.autodoortic"/>).
+    /// </summary>
+    public void P_AutoDoor(player_t player)
+    {
+        mobj_t mo = player.mo!;
+        for (int i = 0; i < numspechit; i++)
+        {
+            line_t ld = spechit[i]!;
+            bool raise;
+            switch (ld.special)
+            {
+                case 1:
+                case 26:
+                case 27:
+                case 28:
+                case 117:
+                    raise = true;
+                    break;
+                case 31:
+                case 32:
+                case 33:
+                case 34:
+                case 118:
+                    raise = false;
+                    break;
+                default:
+                    continue;
+            }
+            if (ld.backsector == null || P_PointOnLineSide(mo.x, mo.y, ld) != 0)
+                continue;
+
+            thinker_t? active = ld.backsector.specialdata;
+            if (active != null && !(raise && active is vldoor_t { direction: -1 }))
+                continue;
+
+            if (!P_HasDoorKey(player, ld.special))
+            {
+                bool pushing = player.autodoortic == leveltime + 1 || player.autodoortic == leveltime; // this tic or the last
+                player.autodoortic = leveltime + 1;
+                if (pushing)
+                    continue;
+            }
+            P_UseSpecialLine(mo, ld, 0);
+        }
+    }
+
+    /// <summary>Whether <paramref name="player"/> holds the key <see cref="EV_VerticalDoor"/> asks for door special <paramref name="special"/> (true for an unlocked one).</summary>
+    private static bool P_HasDoorKey(player_t player, int special) => special switch
+    {
+        26 or 32 => player.cards[(int)card_t.it_bluecard] || player.cards[(int)card_t.it_blueskull],
+        27 or 34 => player.cards[(int)card_t.it_yellowcard] || player.cards[(int)card_t.it_yellowskull],
+        28 or 33 => player.cards[(int)card_t.it_redcard] || player.cards[(int)card_t.it_redskull],
+        _ => true,
+    };
+
+    /// <summary>
     /// p_doors.c <c>EV_VerticalDoor</c>: open a door manually, no tag value
     /// (the door is the line's back sector; only front sides are used). The
     /// locked ones (26-28, 32-34) need the key, which only a player can have.

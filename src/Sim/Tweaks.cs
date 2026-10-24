@@ -14,7 +14,7 @@ public sealed record Tweaks
     /// <summary>All off: pure vanilla behaviour.</summary>
     public static Tweaks Vanilla { get; } = new();
 
-    /// <summary>All on: the twin-stick game.</summary>
+    /// <summary>All on but the arcade mode's (<see cref="WithArcade"/>): the twin-stick game.</summary>
     public static Tweaks TopDown { get; } = new()
     {
         AbsoluteAiming = true,
@@ -69,4 +69,21 @@ public sealed record Tweaks
     /// input (wall slides, knockback) keeps vanilla's friction.
     /// </summary>
     public bool InstantStop { get; init; }
+
+    /// <summary>
+    /// SPEC §6.3 #7, the arcade mode: firing uses no ammo (the weapons'
+    /// actions leave <see cref="player_t.ammo"/> as it is), so ammo never runs out.
+    /// </summary>
+    public bool InfiniteAmmo { get; init; }
+
+    /// <summary>
+    /// SPEC §6.3 #7, the arcade mode: a player whose move is blocked by a
+    /// manual door's line (<see cref="World.P_AutoDoor"/>) opens it as its use
+    /// would; a door already opening or open is left alone, and a locked
+    /// door it has no key for refuses once per push.
+    /// </summary>
+    public bool AutoDoors { get; init; }
+
+    /// <summary>These tweaks with the arcade mode's on (<see cref="InfiniteAmmo"/>, <see cref="AutoDoors"/>).</summary>
+    public Tweaks WithArcade() => this with { InfiniteAmmo = true, AutoDoors = true };
 }

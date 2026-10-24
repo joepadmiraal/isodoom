@@ -172,6 +172,9 @@ namespace IsoDoom.Game;
 /// movement and turning; default topdown);
 /// <c>--level-aim-assist=DEG|off</c> (T6.7: the aim assist's half-cone,
 /// <see cref="Tweaks.AimAssistCone"/>, 0–45°; default 5 with topdown, off with vanilla);
+/// <c>--arcade</c> (T8.12: for a twin-stick cabinet, the right stick fires
+/// while it aims, <see cref="TiccmdBuilder.AutoFire"/>, and the sim's
+/// <see cref="Tweaks.InfiniteAmmo"/> and <see cref="Tweaks.AutoDoors"/>);
 /// <c>--level-sprite-tilt=0-1|off|half|full</c> (billboards turn towards the
 /// camera by this fraction of its elevation, T3.6, <see cref="SpriteSettings"/>;
 /// default full), <c>--level-sprite-tilt-depth=upright|tilted</c> (default
@@ -940,6 +943,12 @@ public partial class LevelScene : Node3D, IGameHost
                 };
             if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
+            if (WadLocator.HasUserArg("--arcade"))
+            {
+                // T8.12: the arcade mode, for a twin-stick cabinet: the right stick fires, ammo never runs out, doors open by walking into them
+                Tweaks = Tweaks.WithArcade();
+                TiccmdBuilder.AutoFire = true;
+            }
             OpenWad();
             _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission, GameVersion); // T7.1: g_game.c's flow, d_main.c's title loop
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
@@ -2897,7 +2906,7 @@ public partial class LevelScene : Node3D, IGameHost
             text.Append(net.OverlayText()).Append('\n'); // T11.11
         if (World is { } world)
             text.Append(CultureInfo.InvariantCulture, $"tic {world.leveltime}{(Paused ? " (paused)" : ScriptedTics ? $" (scripted, {QueuedTics} queued)" : "")}   checksum {world.Checksum():x16}   "
-                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}{(Tweaks.AimAssist ? $"   aim assist ±{Tweaks.AimAssistCone * (360.0 / 4294967296.0):0.#}°" : "")}"
+                + $"ticcmd {LastTiccmd.forwardmove} {LastTiccmd.sidemove} {LastTiccmd.angleturn}{(Tweaks == Tweaks.Vanilla ? "   tweaks: vanilla" : "")}{(Tweaks.AimAssist ? $"   aim assist ±{Tweaks.AimAssistCone * (360.0 / 4294967296.0):0.#}°" : "")}{(TiccmdBuilder.AutoFire ? "   arcade" : "")}"
                 + $"{(TeleportSnaps > 0 ? $"   teleports {TeleportSnaps}" : "")}\n");
         if (Cursor is { } hit)
         {

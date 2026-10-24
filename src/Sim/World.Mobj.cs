@@ -269,6 +269,10 @@ public sealed partial class World
                 // blocked move
                 if (mo.player != null)
                 {
+                    // not vanilla: the arcade mode opens a door the move pushed against (SPEC §6.3 #7)
+                    if (tweaks.AutoDoors)
+                        P_AutoDoor(mo.player);
+
                     // try to slide along it
                     P_SlideMove(mo);
                 }

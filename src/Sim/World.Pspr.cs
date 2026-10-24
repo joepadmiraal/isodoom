@@ -647,7 +647,8 @@ public sealed partial class World
         S_StartSound(player.mo, sfxenum_t.sfx_pistol);
 
         P_SetMobjState(player.mo!, statenum_t.S_PLAY_ATK2);
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
 
         P_SetPsprite(player, ps_flash, Info.weaponinfo[(int)player.readyweapon].flashstate);
 
@@ -667,7 +668,8 @@ public sealed partial class World
         S_StartSound(player.mo, sfxenum_t.sfx_shotgn);
         P_SetMobjState(player.mo!, statenum_t.S_PLAY_ATK2);
 
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
 
         P_SetPsprite(player, ps_flash, Info.weaponinfo[(int)player.readyweapon].flashstate);
 
@@ -692,7 +694,8 @@ public sealed partial class World
         S_StartSound(mo, sfxenum_t.sfx_dshtgn);
         P_SetMobjState(mo, statenum_t.S_PLAY_ATK2);
 
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo] -= 2;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo] -= 2;
 
         P_SetPsprite(player, ps_flash, Info.weaponinfo[(int)player.readyweapon].flashstate);
 
@@ -750,7 +753,8 @@ public sealed partial class World
             return;
 
         P_SetMobjState(player.mo!, statenum_t.S_PLAY_ATK2);
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
 
         P_SetPsprite(player, ps_flash,
             Info.weaponinfo[(int)player.readyweapon].flashstate
@@ -766,7 +770,8 @@ public sealed partial class World
     /// </summary>
     public void A_FireMissile(player_t player, pspdef_t psp)
     {
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
         P_SpawnPlayerMissile(player.mo!, mobjtype_t.MT_ROCKET);
     }
 
@@ -776,7 +781,8 @@ public sealed partial class World
     /// </summary>
     public void A_FirePlasma(player_t player, pspdef_t psp)
     {
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo]--;
 
         P_SetPsprite(player, ps_flash,
             Info.weaponinfo[(int)player.readyweapon].flashstate + (P_Random() & 1));
@@ -796,7 +802,8 @@ public sealed partial class World
     /// </summary>
     public void A_FireBFG(player_t player, pspdef_t psp)
     {
-        player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo] -= BFGCELLS;
+        if (!tweaks.InfiniteAmmo) // not vanilla: the arcade mode (SPEC §6.3 #7)
+            player.ammo[(int)Info.weaponinfo[(int)player.readyweapon].ammo] -= BFGCELLS;
         P_SpawnPlayerMissile(player.mo!, mobjtype_t.MT_BFG);
     }
 }

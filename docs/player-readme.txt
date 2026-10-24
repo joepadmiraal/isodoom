@@ -70,6 +70,12 @@ right), F toggles follow (D-pad left), the arrows pan when not following
 (right stick), G the grid (right stick click), M marks a spot (X), C clears
 the marks (B).
 
+Arcade mode, for a twin-stick cabinet: start the game with --arcade (on a
+Raspberry Pi, for example: ./IsoDoom.arm64 -- --arcade). The right stick
+then fires while it aims, ammo never runs out, and walking into a door
+opens it. In a network game the host's choice counts for everyone, but the
+right stick's firing is each player's own.
+
 The classic cheats work when typed during play (iddqd, idkfa, ...), and a
 pad has them under Options > More Options > Cheats.
 

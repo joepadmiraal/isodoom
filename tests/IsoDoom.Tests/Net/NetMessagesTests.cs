@@ -92,6 +92,16 @@ public class NetMessagesTests
         r.End();
     }
 
+    [Fact]
+    public void The_arcade_tweaks_travel()
+    {
+        // T8.12: every player runs the host's arcade mode.
+        var settings = new NetGameSettings(new SpawnSettings(GameMode.shareware, skill_t.sk_medium), Tweaks.TopDown.WithArcade(), 1, 1);
+        var r = Reader(NetMessages.EncodeSettings(settings), NetMessageType.Settings);
+        Assert.Equal(settings, r.Settings());
+        r.End();
+    }
+
     private static NetReader Reader(byte[] message, NetMessageType type)
     {
         var r = new NetReader(message);

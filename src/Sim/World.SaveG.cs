@@ -93,6 +93,8 @@ public sealed partial class World
         w.Write(tweaks.AimAssistCone);
         w.Write(tweaks.UseFallback);
         w.Write(tweaks.InstantStop);
+        w.Write(tweaks.InfiniteAmmo); // SaveGameFile.VERSION 7
+        w.Write(tweaks.AutoDoors);
         w.Write(level.Name);
 
         // The data first (finding the thinkers only referenced on the way), then the table, then the data.
@@ -288,6 +290,7 @@ public sealed partial class World
             WriteInts(w, p.maxammo);
             w.Write(p.attackdown);
             w.Write(p.usedown);
+            w.Write(p.autodoortic); // SaveGameFile.VERSION 7
             w.Write(p.lastforwardmove);
             w.Write(p.lastsidemove);
             w.Write(p.cheats);
@@ -536,6 +539,8 @@ public sealed partial class World
                 AimAssistCone = r.ReadUInt32(),
                 UseFallback = r.ReadBoolean(),
                 InstantStop = r.ReadBoolean(),
+                InfiniteAmmo = r.ReadBoolean(),
+                AutoDoors = r.ReadBoolean(),
             };
             string map = r.ReadString();
             if (map.Length is 0 or > 8)
@@ -811,6 +816,7 @@ public sealed partial class World
             ReadInts(r, p.maxammo, "ammo");
             p.attackdown = r.ReadBoolean();
             p.usedown = r.ReadBoolean();
+            p.autodoortic = r.ReadInt32();
             p.lastforwardmove = r.ReadSByte();
             p.lastsidemove = r.ReadSByte();
             p.cheats = r.ReadInt32();

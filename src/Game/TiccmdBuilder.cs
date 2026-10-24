@@ -120,6 +120,12 @@ public sealed class TiccmdBuilder
     /// </summary>
     public int MouseSensitivity { get; set; } = 5;
 
+    /// <summary>
+    /// T8.12, the arcade mode (<c>--arcade</c>): the right stick fires while
+    /// it aims (<see cref="StickAimThreshold"/>), as if the fire button were held.
+    /// </summary>
+    public bool AutoFire { get; set; }
+
     /// <summary>A new level (or a respawn): the player keeps its angle until something aims, and turning starts slow.</summary>
     public void Reset()
     {
@@ -214,7 +220,7 @@ public sealed class TiccmdBuilder
         }
 
         // Buttons (g_game.c; the sim reads them from M5/M6).
-        if (input.Attack)
+        if (input.Attack || (AutoFire && stickAims))
             cmd.buttons |= buttoncode_t.BT_ATTACK;
         if (input.Use)
             cmd.buttons |= buttoncode_t.BT_USE;

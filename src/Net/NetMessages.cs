@@ -61,7 +61,7 @@
 // SpawnSettings.playersingame; T11.5a: in the lobby the host's, at the
 // Start the players'), episode, map (u8), timer in
 // minutes (u16, SpawnSettings.timelimit), the tweaks (u8 flags: 1 AbsoluteAiming, 2 AbsoluteMovement,
-// 4 UseFallback, 8 InstantStop; u32 AimAssistCone). Every player runs these.
+// 4 UseFallback, 8 InstantStop, 16 InfiniteAmmo, 32 AutoDoors; u32 AimAssistCone). Every player runs these.
 //
 // TICS. The server starts the game at its clock's zero = the start tic, and
 // fills tics start..start+delay-1 with empty commands for everyone. A
@@ -183,8 +183,8 @@ namespace IsoDoom.Net;
 /// <summary>The protocol's constants (see the comment block at the top of <c>NetMessages.cs</c>).</summary>
 public static class NetProtocol
 {
-    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c; 5: the commands and bundles go unreliable with acknowledgements, the quit carries the last commands, T11.12c; 6: the delay adapts in the game: the Start's flag, the Delay message, the ping's needed delay, stall and gap, T11.12b).</summary>
-    public const ushort Version = 6;
+    /// <summary>The protocol version; a hello with another is refused (2: the settings carry <c>playersingame</c>, T11.5a; 3: the pong carries the waiting slots and the pings, T11.11; 4: the hello and the lobby carry the players' names, T11.9c; 5: the commands and bundles go unreliable with acknowledgements, the quit carries the last commands, T11.12c; 6: the delay adapts in the game: the Start's flag, the Delay message, the ping's needed delay, stall and gap, T11.12b; 7: the arcade mode's tweaks, T8.12).</summary>
+    public const ushort Version = 7;
 
     /// <summary>T11.9c: the longest player name, in characters (<see cref="CleanName"/>).</summary>
     public const int MaxNameLength = 15;
@@ -842,7 +842,8 @@ public sealed class NetWriter
         U8(checked((byte)settings.Map));
         U16(checked((ushort)s.timelimit));
         Tweaks t = settings.Tweaks;
-        U8((byte)((t.AbsoluteAiming ? 1 : 0) | (t.AbsoluteMovement ? 2 : 0) | (t.UseFallback ? 4 : 0) | (t.InstantStop ? 8 : 0)));
+        U8((byte)((t.AbsoluteAiming ? 1 : 0) | (t.AbsoluteMovement ? 2 : 0) | (t.UseFallback ? 4 : 0) | (t.InstantStop ? 8 : 0)
+            | (t.InfiniteAmmo ? 16 : 0) | (t.AutoDoors ? 32 : 0)));
         U32(t.AimAssistCone);
     }
 }
@@ -939,7 +940,7 @@ public sealed class NetReader
         int timer = U16();
         int tweakFlags = U8();
         uint cone = U32();
-        if (flags > 15 || tweakFlags > 15 || deathmatch > 2)
+        if (flags > 15 || tweakFlags > 63 || deathmatch > 2)
             throw new NetProtocolException("Settings: unknown flags.");
         if (playersingame >= 1 << NetProtocol.MaxPlayers)
             throw new NetProtocolException($"Settings: players in game {playersingame}.");
@@ -952,6 +953,8 @@ public sealed class NetReader
             AbsoluteMovement = (tweakFlags & 2) != 0,
             UseFallback = (tweakFlags & 4) != 0,
             InstantStop = (tweakFlags & 8) != 0,
+            InfiniteAmmo = (tweakFlags & 16) != 0,
+            AutoDoors = (tweakFlags & 32) != 0,
             AimAssistCone = cone,
         };
         return new NetGameSettings(spawn, tweaks, episode, map);
