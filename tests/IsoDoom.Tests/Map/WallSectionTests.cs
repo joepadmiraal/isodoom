@@ -78,7 +78,7 @@ public class WallSectionTests
         (13, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontFloor, 64), 0),
         (14, 0, Middle, "BRKPNL", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         // L15: sky on both sides: no upper, and the unpegged lower anchors at worldtop = the back ceiling.
-        (15, 0, Lower, "BRKPNL", P(FrontFloor), P(BackFloor), P(BackCeiling, 8), 8),
+        (15, 0, Lower, "SW1BRCOM", P(FrontFloor), P(BackFloor), P(BackCeiling, 8), 8),
         (15, 0, MaskedMiddle, "GRATE", P(HigherFloor), P(LowerCeiling), P(HigherFloor, 64 + 8), 8),
         (15, 1, Lower, "-", P(FrontFloor), P(BackFloor), P(BackCeiling), 0),
         (15, 1, MaskedMiddle, "GRATE", P(HigherFloor), P(LowerCeiling), P(HigherFloor, 64), 0),

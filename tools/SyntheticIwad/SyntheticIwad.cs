@@ -746,7 +746,7 @@ public static class SyntheticIwad
             Sidedef("PANEL", "BRICK1", "-", 4, 16, 4), // 15: L12 back (A): unpegged upper and lower, offsets
             Sidedef("-", "-", "BRICK1", 3),         // 16: L13
             Sidedef("-", "-", "BRKPNL", 4),         // 17: L14
-            Sidedef("-", "BRKPNL", "GRATE", 4, 8, 8), // 18: L15 front (A): no upper (sky), lower, masked
+            Sidedef("-", "SW1BRCOM", "GRATE", 4, 8, 8), // 18: L15 front (A): no upper (sky), lower (a switch texture on B's 80-unit rise, facing away: T10.6a's top marker), masked
             Sidedef("-", "-", "GRATE", 5),          // 19: L15 back (B): masked only
             Sidedef("-", "-", "BRKPNL", 4),         // 20: L16
             Sidedef("-", "-", "BRICK1", 5),         // 21: L17

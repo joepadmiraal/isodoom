@@ -26,12 +26,13 @@ public enum SwitchMarkerMode
 /// <param name="Dy">The unit direction from the section's <c>V1</c> to <c>V2</c>.</param>
 /// <param name="Length">The side's length, map units.</param>
 /// <param name="Rows">The texture rows the marker shows (<see cref="SwitchMarkers.Band"/>): the far edge shows <c>Top</c>, the wall's foot the row above <c>Bottom</c>.</param>
-/// <param name="Pieces">Convex polygons, clockwise (interior on the right of each edge, as the floors), on the side's front sector's floor within <see cref="Depth"/> in front of the wall.</param>
+/// <param name="Pieces">Convex polygons, clockwise (interior on the right of each edge, as the floors), on the side's front sector's floor within <see cref="Depth"/> in front of the wall; for a <paramref name="Top"/> marker on its back sector's floor within <see cref="Depth"/> behind it.</param>
+/// <param name="Top">A top marker (T10.6a): a lower switch's on the top of the raised sector behind its wall (<see cref="SwitchMarkers.Tops"/>).</param>
 public sealed record SwitchMarker(WallSection Section, double X, double Y, double Dx, double Dy, double Length, (int Top, int Bottom) Rows,
-    IReadOnlyList<(double X, double Y)[]> Pieces)
+    IReadOnlyList<(double X, double Y)[]> Pieces, bool Top = false)
 {
-    /// <summary>The side's sector, whose floor the marker lies on.</summary>
-    public int Sector => Section.FrontSector.Index;
+    /// <summary>The sector whose floor the marker lies on: the side's, or a top marker's the one behind the wall.</summary>
+    public int Sector => Top ? Section.BackSector!.Index : Section.FrontSector.Index;
 
     /// <summary>How far the marker reaches in front of the wall, map units: one unit per texture row.</summary>
     public int Depth => Rows.Bottom - Rows.Top;
@@ -52,8 +53,11 @@ public sealed record SwitchMarker(WallSection Section, double X, double Y, doubl
     /// </summary>
     public double Column(double x, double y) => Length - Along(x, y);
 
-    /// <summary>The texture row at <paramref name="x"/>, <paramref name="y"/>: the wall laid back onto the floor, its rows going up away from the wall.</summary>
-    public double Row(double x, double y) => Rows.Bottom - InFront(x, y);
+    /// <summary>
+    /// The texture row at <paramref name="x"/>, <paramref name="y"/>: the wall laid back onto the floor, its rows going up away from the wall;
+    /// a top marker's, the wall folded back over its top edge onto the top, its rows going down into the block from <c>Rows.Top</c> at the edge.
+    /// </summary>
+    public double Row(double x, double y) => Top ? Rows.Top - InFront(x, y) : Rows.Bottom - InFront(x, y);
 }
 
 /// <summary>
@@ -98,10 +102,34 @@ public sealed class SwitchMarkers
     // Pieces smaller than this (square map units) are dropped.
     private const double MinArea = 1e-3;
 
-    private SwitchMarkers(List<SwitchMarker> markers) => Markers = markers;
+    private SwitchMarkers(List<SwitchMarker> markers, List<SwitchMarker> tops) => (Markers, Tops) = (markers, tops);
 
-    /// <summary>The markers, in line order, front side first (only sides with a piece left).</summary>
+    /// <summary>The markers on the floor in front of each switch, in line order, front side first (only sides with a piece left).</summary>
     public IReadOnlyList<SwitchMarker> Markers { get; }
+
+    /// <summary>
+    /// The top markers (T10.6a, SPEC §12), in line order: a switch on a lower
+    /// texture (a riser, a counter's or a computer block's face) also gets the
+    /// same strip mirrored to its wall's other side, on the raised sector's floor
+    /// behind it (clipped to it), read as the wall folded back over its top edge
+    /// (<see cref="SwitchMarker.Row"/>), since the raised sector hides the floor
+    /// marker from the camera's side. The shader shows one while the rise hides
+    /// more than half its floor marker (and places it on the sector's lid where
+    /// that shows).
+    /// </summary>
+    public IReadOnlyList<SwitchMarker> Tops { get; }
+
+    /// <summary>Every marker: <see cref="Markers"/>, then <see cref="Tops"/>, the order of the level mesh's.</summary>
+    public IEnumerable<SwitchMarker> All
+    {
+        get
+        {
+            foreach (SwitchMarker k in Markers)
+                yield return k;
+            foreach (SwitchMarker k in Tops)
+                yield return k;
+        }
+    }
 
     /// <summary>
     /// Whether a marker shows for its wall seen with the direction towards the
@@ -111,6 +139,21 @@ public sealed class SwitchMarkers
     /// </summary>
     public static bool Shows(SwitchMarker marker, double toCameraX, double toCameraY) =>
         marker.Normal.X * toCameraX + marker.Normal.Y * toCameraY <= Parallel;
+
+    /// <summary>
+    /// Whether a top marker (<see cref="Tops"/>, T10.6a) shows, the shader's
+    /// test: its wall does not face the camera (<see cref="Shows"/>) and the
+    /// raised top, <paramref name="rise"/> above the switch's floor, hides
+    /// more than half of its floor marker's depth from a camera in the unit
+    /// direction <paramref name="toCameraX"/>, <paramref name="toCameraY"/>,
+    /// <paramref name="toCameraZ"/> (map axes, z up).
+    /// </summary>
+    public static bool TopShows(SwitchMarker marker, double rise, double toCameraX, double toCameraY, double toCameraZ) =>
+        Shows(marker, toCameraX, toCameraY) && Hidden(marker, rise, toCameraX, toCameraY, toCameraZ) > 0.5 * marker.Depth;
+
+    /// <summary>How far in front of its wall a rise of <paramref name="rise"/> hides the floor from the camera (<see cref="TopShows"/>).</summary>
+    public static double Hidden(SwitchMarker marker, double rise, double toCameraX, double toCameraY, double toCameraZ) =>
+        rise * Math.Max(-(marker.Normal.X * toCameraX + marker.Normal.Y * toCameraY), 0) / Math.Max(toCameraZ, 1e-4);
 
     /// <summary>
     /// The rows a switch pair's marker shows, <c>[Top, Bottom)</c>: those where
@@ -164,6 +207,7 @@ public sealed class SwitchMarkers
         keys.Sort();
 
         var markers = new List<SwitchMarker>();
+        var tops = new List<SwitchMarker>();
         foreach ((int Line, int Side) key in keys)
         {
             WallSection s = bySide[key];
@@ -172,28 +216,41 @@ public sealed class SwitchMarkers
             double dx = (x2 - x1) / length, dy = (y2 - y1) / length;
             (int Top, int Bottom) band = rows[TextureName(s)];
             int depth = band.Bottom - band.Top;
-            // The strip in front of the side (its right), clockwise.
             (double X, double Y) Point(double along, double inFront) => (x1 + along * dx + inFront * dy, y1 + along * dy - inFront * dx);
-            List<(double X, double Y)> strip = [Point(0, 0), Point(length, 0), Point(length, depth), Point(0, depth)];
-            var pieces = new List<(double X, double Y)[]>();
-            foreach (int sub in polygons.BySector[s.FrontSector.Index])
-            {
-                PolygonVertex[] floor = polygons.Polygons[sub];
-                List<(double X, double Y)> piece = strip;
-                for (int k = 0; k < floor.Length && piece.Count >= 3; k++)
-                {
-                    double ax = floor[k].X / 65536.0, ay = floor[k].Y / 65536.0;
-                    double bx = floor[(k + 1) % floor.Length].X / 65536.0, by = floor[(k + 1) % floor.Length].Y / 65536.0;
-                    // Clockwise: the interior is on the right of each edge.
-                    piece = WallCaps.Clip(piece, (by - ay, ax - bx, -((by - ay) * ax + (ax - bx) * ay)));
-                }
-                if (piece.Count >= 3 && Math.Abs(WallCaps.Area(piece)) > MinArea)
-                    pieces.Add([.. piece]);
-            }
+            // The strip in front of the side (its right), clockwise.
+            List<(double X, double Y)[]> pieces = Clip([Point(0, 0), Point(length, 0), Point(length, depth), Point(0, depth)], polygons, s.FrontSector.Index);
             if (pieces.Count > 0)
                 markers.Add(new SwitchMarker(s, x1, y1, dx, dy, length, band, pieces));
+            // T10.6a: a lower switch's top marker, the strip behind the side (its left), clockwise.
+            if (s.Kind == WallSectionKind.Lower && s.BackSector is not null)
+            {
+                List<(double X, double Y)[]> top = Clip([Point(0, 0), Point(0, -depth), Point(length, -depth), Point(length, 0)], polygons, s.BackSector.Index);
+                if (top.Count > 0)
+                    tops.Add(new SwitchMarker(s, x1, y1, dx, dy, length, band, top, true));
+            }
         }
-        return new SwitchMarkers(markers);
+        return new SwitchMarkers(markers, tops);
+    }
+
+    // A strip clipped to a sector's floor (its subsector polygons): the pieces left.
+    private static List<(double X, double Y)[]> Clip(List<(double X, double Y)> strip, SubsectorPolygons polygons, int sector)
+    {
+        var pieces = new List<(double X, double Y)[]>();
+        foreach (int sub in polygons.BySector[sector])
+        {
+            PolygonVertex[] floor = polygons.Polygons[sub];
+            List<(double X, double Y)> piece = strip;
+            for (int k = 0; k < floor.Length && piece.Count >= 3; k++)
+            {
+                double ax = floor[k].X / 65536.0, ay = floor[k].Y / 65536.0;
+                double bx = floor[(k + 1) % floor.Length].X / 65536.0, by = floor[(k + 1) % floor.Length].Y / 65536.0;
+                // Clockwise: the interior is on the right of each edge.
+                piece = WallCaps.Clip(piece, (by - ay, ax - bx, -((by - ay) * ax + (ax - bx) * ay)));
+            }
+            if (piece.Count >= 3 && Math.Abs(WallCaps.Area(piece)) > MinArea)
+                pieces.Add([.. piece]);
+        }
+        return pieces;
     }
 
     /// <summary>The texture name of a section's part of its sidedef.</summary>

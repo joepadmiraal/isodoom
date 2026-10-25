@@ -20,10 +20,19 @@ namespace IsoDoom.Game;
 /// sector just above its floor; pixels outside every marker must not change),
 /// and from the game camera's angle a marker of a wall facing away (drawn) and
 /// one of a wall facing the camera (not drawn).
+/// T10.6a: on every map, every lower switch side with a sector behind it has a
+/// top marker on that sector's floor, shown from the game camera exactly when
+/// its wall faces away and its rise hides more than half its floor marker
+/// (<see cref="SwitchMarkers.TopShows"/>; the floor markers so hidden are not
+/// looked for from the game camera). With a real renderer, from the game
+/// camera, the largest shown top markers draw their texels lit as a floor of
+/// their sector, every pixel only they cover against the CPU, and the largest
+/// whose block a cut centre in front of its switch cuts draws on the cutaway's
+/// dark cap, every pixel in the cut disc only it covers against the CPU.
 /// </summary>
 public partial class LevelCheck
 {
-    private int _markerMaps, _markerSides, _markersShown;
+    private int _markerMaps, _markerSides, _markersShown, _topMarkers, _topMarkersShown;
 
     /// <summary>The marker the renderer check views on E1M3: its exit switch, whose wall faces north (the task's case).</summary>
     private const int E1M3ExitLine = 982;
@@ -96,12 +105,64 @@ public partial class LevelCheck
         int triangles = m.Markers.Markers.Sum(k => k.Pieces.Sum(p => p.Length - 2));
         if (triangles != m.SwitchMarkerTriangleCount)
             Fail($"{map}: {m.SwitchMarkerTriangleCount} switch marker triangles, {triangles} expected");
+
+        // T10.6a: a top marker for exactly the lower switch sides with a sector behind them, in it, as deep as the floor marker.
+        Vector3 toCamera = Cutaway.ToMapAxes(GameBasis(IsoCamera.DefaultPitch).Z).Normalized();
+        var tops = m.Markers.Tops.ToDictionary(k => (k.Section.Line.Index, k.Section.Side));
+        var topsShown = new List<int>();
+        foreach ((int line, int side) in sides)
+        {
+            WallSection s = bySide.TryGetValue((line, side), out SwitchMarker? marker) ? marker.Section
+                : tops.TryGetValue((line, side), out SwitchMarker? only) ? only.Section : m.Walls.Sections.First(k => k.Line.Index == line && k.Side == side);
+            string what = $"{map}: line {line} side {side}'s switch";
+            bool expected = s.Kind == WallSectionKind.Lower && s.BackSector is not null;
+            if (!tops.TryGetValue((line, side), out SwitchMarker? top))
+            {
+                if (expected)
+                    Fail($"{what}: a lower switch with sector {s.BackSector!.Index} behind it, but no top marker");
+                continue;
+            }
+            if (!expected)
+                Fail($"{what}: a top marker on a {s.Kind} switch{(s.BackSector is null ? " with no sector behind it" : "")}");
+            else if (!top.Top || top.Sector != s.BackSector!.Index || top.Section != s || marker is not null && top.Rows != marker.Rows)
+                Fail($"{what}: its top marker is on sector {top.Sector} (rows {top.Rows}), expected sector {s.BackSector!.Index}");
+            else if (top.Pieces.Any(p => p.Any(v => top.InFront(v.X, v.Y) > 1e-6 || top.InFront(v.X, v.Y) < -top.Depth - 1e-6)))
+                Fail($"{what}: its top marker reaches outside the {top.Depth} units behind its wall");
+            if (TopShows(m, top, toCamera))
+                topsShown.Add(line);
+        }
+        if (tops.Count != sides.Count(k => tops.ContainsKey(k)))
+            Fail($"{map}: {tops.Count} top markers, {sides.Count(k => tops.ContainsKey(k))} of them on switch sides");
+        int topTriangles = m.Markers.Tops.Sum(k => k.Pieces.Sum(p => p.Length - 2));
+        if (topTriangles != m.SwitchTopTriangleCount)
+            Fail($"{map}: {m.SwitchTopTriangleCount} switch top marker triangles, {topTriangles} expected");
+
         _markerMaps++;
         _markerSides += sides.Count;
         _markersShown += shown.Count;
+        _topMarkers += tops.Count;
+        _topMarkersShown += topsShown.Count;
         if (sides.Count > 0)
-            GD.Print($"Level check: {map}: {sides.Count} switch sides with markers, {shown.Count} facing away from the game camera (shown: lines {string.Join(" ", shown)})");
+        {
+            GD.Print($"Level check: {map}: {sides.Count} switch sides with markers, {shown.Count} facing away from the game camera (shown: lines {string.Join(" ", shown)}); "
+                + $"{tops.Count} top markers, {topsShown.Count} shown (lines {string.Join(" ", topsShown)})");
+        }
     }
+
+    /// <summary>T10.6a: the height a top marker lies on, as uploaded: its sector's lid while the lid shows (the shader's rule, kind 5's), else its floor.</summary>
+    private static float TopSurface(LevelMesh m, SwitchMarker k)
+    {
+        Color data = m.SectorData(k.Sector);
+        (float lid, int slot, _, _) = m.LidData(k.Sector);
+        return m.LidMode == DoorLidMode.On && slot >= 0 && data.G < lid ? lid : data.R;
+    }
+
+    // The height a marker is drawn at (with the cutaway off).
+    private static float MarkerZ(LevelMesh m, SwitchMarker k) => (k.Top ? TopSurface(m, k) : m.SectorData(k.Sector).R) + SwitchMarkers.Lift;
+
+    // T10.6a: whether a top marker shows from a camera in the direction toCamera (map axes): the shader's rule on the uploaded heights.
+    private static bool TopShows(LevelMesh m, SwitchMarker k, Vector3 toCamera) =>
+        SwitchMarkers.TopShows(k, TopSurface(m, k) - m.SectorData(k.Section.FrontSector.Index).R, toCamera.X, toCamera.Y, toCamera.Z);
 
     private async Task SwitchMarkerCheck(LevelMesh m)
     {
@@ -132,6 +193,7 @@ public partial class LevelCheck
         m.UpdateSectors();
 
         await CompareMarkersFromGameCamera(m, flat);
+        await CompareTopMarkersFromGameCamera(m);
         m.SetSwitchMarkers(SwitchMarkerMode.Off);
     }
 
@@ -228,10 +290,13 @@ public partial class LevelCheck
         string map = m.Level.Name;
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        // T10.6a: a marker whose top marker shows is hidden by its block (Doom II MAP01's line 75): the top marker's check views it.
+        var topShown = m.Markers.Tops.Where(k => TopShows(m, k, toCamera)).Select(k => (k.Section.Line.Index, k.Section.Side)).ToHashSet();
         List<SwitchMarker> largest = [.. m.Markers.Markers.OrderByDescending(k => k.Pieces.Sum(Area))];
+        List<SwitchMarker> open = [.. largest.Where(k => SwitchMarkers.Shows(k, flat.X, flat.Y) && !topShown.Contains((k.Section.Line.Index, k.Section.Side)))];
         int changed = 0;
         SwitchMarker? shown = null;
-        foreach (SwitchMarker k in largest.Where(k => SwitchMarkers.Shows(k, flat.X, flat.Y)).Take(10))
+        foreach (SwitchMarker k in open.Take(10))
         {
             changed = await CompareMarkerFromGameCamera(m, k, basis, toCamera, true);
             if (changed >= 50)
@@ -240,34 +305,12 @@ public partial class LevelCheck
                 break;
             }
         }
-        bool uncovered = false;
-        if (shown is null)
-        {
-            // T10.5b: a marker can be hidden whole by what stands between it and the camera (Doom II
-            // MAP01's only one, line 75's, a switch on the riser of a 64-unit block that hides it from
-            // the camera's side): then it must draw once the cutaway cuts all of that away, to just
-            // above the marker, with no cap.
-            foreach (SwitchMarker k in largest.Where(k => SwitchMarkers.Shows(k, flat.X, flat.Y)).Take(10))
-            {
-                double cx = k.Pieces.Average(p => p.Average(v => v.X)), cy = k.Pieces.Average(p => p.Average(v => v.Y));
-                m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Off, Doors = CutawayDoors.Cut, Height = 2 * SwitchMarkers.Lift });
-                m.SetCutawayCentres(new Vector3((float)cx, (float)cy, k.Section.FrontSector.FloorHeight / 65536f), null);
-                changed = await CompareMarkerFromGameCamera(m, k, basis, toCamera, true);
-                m.SetCutawayCentres(null, null);
-                m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
-                if (changed >= 50)
-                {
-                    (shown, uncovered) = (k, true);
-                    break;
-                }
-            }
-        }
-        if (shown is null && largest.Any(k => SwitchMarkers.Shows(k, flat.X, flat.Y)))
-            Fail($"{map}: no switch marker of a wall facing away from the game camera drew 50 pixels (of the ten largest), also with what is in front of them cut away");
+        if (shown is null && open.Count > 0)
+            Fail($"{map}: no switch marker of a wall facing away from the game camera (and no top marker shown) drew 50 pixels (of the ten largest)");
         SwitchMarker? facing = largest.FirstOrDefault(k => !SwitchMarkers.Shows(k, flat.X, flat.Y));
         int facingPixels = facing is null ? 0 : await CompareMarkerFromGameCamera(m, facing, basis, toCamera, false);
-        string away = shown is null ? "none facing away"
-            : $"line {shown.Section.Line.Index}'s (facing away) changed {changed} pixels{(uncovered ? " (hidden whole by what stands in front of it: drawn with that cut away to just above it)" : "")}";
+        string away = shown is null ? $"none facing away{(topShown.Count > 0 ? $" but those under {topShown.Count} top marker(s)" : "")}"
+            : $"line {shown.Section.Line.Index}'s (facing away) changed {changed} pixels";
         string towards = facing is null ? "none facing the camera" : $"line {facing.Section.Line.Index}'s (facing the camera) none of the {facingPixels} it alone covers";
         GD.Print($"Level check: {map}: switch markers from the game camera: {away}; {towards}");
     }
@@ -277,7 +320,7 @@ public partial class LevelCheck
     // are); with true, returns how many changed.
     private async Task<int> CompareMarkerFromGameCamera(LevelMesh m, SwitchMarker marker, Basis basis, Vector3 toCamera, bool drawnExpected)
     {
-        float Z(SwitchMarker k) => k.Section.FrontSector.FloorHeight / 65536f + SwitchMarkers.Lift;
+        float Z(SwitchMarker k) => MarkerZ(m, k);
         double cx = marker.Pieces.Average(p => p.Average(v => v.X)), cy = marker.Pieces.Average(p => p.Average(v => v.Y));
         CutView(new Vector3((float)cx, (float)cy, Z(marker) - Cutaway.Anchor), basis, toCamera);
         Camera3D camera = _scene.Camera;
@@ -285,7 +328,7 @@ public partial class LevelCheck
             [.. k.Pieces.Select(p => p.Select(v => camera.UnprojectPosition(new Vector3((float)v.X, Z(k), (float)-v.Y) / LevelMesh.MapUnitsPerMetre))
                 .Select(q => ((double)q.X, (double)q.Y)).ToArray())];
         List<(double X, double Y)[]> own = Project(marker);
-        List<(double X, double Y)[]> others = [.. m.Markers.Markers.Where(k => k != marker).SelectMany(Project)];
+        List<(double X, double Y)[]> others = [.. m.Markers.All.Where(k => k != marker).SelectMany(Project)];
         Vector2I size = ViewSize();
         var alone = new List<Vector2I>();
         for (int py = Math.Max(0, (int)own.Min(p => p.Min(v => v.Y))); py < Math.Min(size.Y, (int)own.Max(p => p.Max(v => v.Y)) + 1); py++)
@@ -311,5 +354,126 @@ public partial class LevelCheck
         if (!drawnExpected && alone.Count < 20)
             Fail($"{what}: only {alone.Count} pixels to compare (at least 20 expected)");
         return drawnExpected ? changed : alone.Count;
+    }
+
+    /// <summary>
+    /// T10.6a: from the game camera, the four largest top markers shown
+    /// (<see cref="TopShows"/>) with the cutaway off, and the largest whose top
+    /// is above the cutoff of a cut centre 8 units in front of its switch (a
+    /// player at it) with the cutaway cutting with its dark cap: the pixels
+    /// only the marker covers (in the cut disc with the cutaway) show its
+    /// texel at the point of its plane there, lit as a floor of its sector (and
+    /// darkened as the cap), or nothing changes where something stands in
+    /// front of it; at least 50 must show it.
+    /// </summary>
+    private async Task CompareTopMarkersFromGameCamera(LevelMesh m)
+    {
+        string map = m.Level.Name;
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        List<SwitchMarker> shown = [.. m.Markers.Tops.Where(k => TopShows(m, k, toCamera)).OrderByDescending(k => k.Pieces.Sum(Area))];
+        if (shown.Count == 0)
+        {
+            GD.Print($"Level check: {map}: no top switch marker shown from the game camera to view");
+            return;
+        }
+        foreach (SwitchMarker k in shown.Take(4))
+            await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, false);
+        float Front(SwitchMarker k) => m.SectorData(k.Section.FrontSector.Index).R;
+        if (shown.FirstOrDefault(k => TopSurface(m, k) > Front(k) + CutawaySettings.DefaultHeight + 1 && !m.Lids.IsDoor(k.Sector)) is SwitchMarker tall)
+            await CompareTopMarkerFromGameCamera(m, tall, basis, toCamera, true);
+        else
+            GD.Print($"Level check: {map}: no top switch marker shown whose block the cutaway cuts");
+    }
+
+    private async Task CompareTopMarkerFromGameCamera(LevelMesh m, SwitchMarker k, Basis basis, Vector3 toCamera, bool cut)
+    {
+        WallSection s = k.Section;
+        Sector sector = m.Level.Sectors[k.Sector];
+        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Dark };
+        float front = m.SectorData(s.FrontSector.Index).R;
+        // A cut centre 8 units in front of the middle of the switch, on its floor (a player using it).
+        double mx = k.X + k.Dx * k.Length / 2 + k.Normal.X * 8, my = k.Y + k.Dy * k.Length / 2 + k.Normal.Y * 8;
+        var centre = new Vector3((float)mx, (float)my, front);
+        float z = (cut ? front + settings.Height : TopSurface(m, k)) + SwitchMarkers.Lift;
+        string what = $"{m.Level.Name}: line {s.Line.Index}'s top switch marker from the game camera{(cut ? ", its block cut by a centre in front of it" : "")}";
+        double cx = k.Pieces.Average(p => p.Average(v => v.X)), cy = k.Pieces.Average(p => p.Average(v => v.Y));
+        CutView(new Vector3((float)cx, (float)cy, z - Cutaway.Anchor), basis, toCamera);
+        Camera3D camera = _scene.Camera;
+        List<List<Vector2>> Project(SwitchMarker marker, float height) =>
+            [.. marker.Pieces.Select(p => p.Select(v => camera.UnprojectPosition(new Vector3((float)v.X, height, (float)-v.Y) / LevelMesh.MapUnitsPerMetre)).ToList())];
+        List<List<Vector2>> own = Project(k, z);
+        List<List<Vector2>> others = [.. m.Markers.All.Where(o => o != k).SelectMany(o => Project(o, MarkerZ(m, o)))];
+        static bool In(List<Vector2> p, float x, float y) => InConvex([.. p.Select(v => ((double)v.X, (double)v.Y))], x, y);
+        Vector2 anchor = camera.UnprojectPosition(LevelMesh.ToGodot((int)(centre.X * 65536), (int)(centre.Y * 65536), centre.Z + Cutaway.Anchor));
+        Vector2I size = ViewSize();
+        var alone = new List<Vector2I>();
+        int minY = (int)own.Min(p => p.Min(v => v.Y)), maxY = (int)own.Max(p => p.Max(v => v.Y)), minX = (int)own.Min(p => p.Min(v => v.X)), maxX = (int)own.Max(p => p.Max(v => v.X));
+        for (int py = Math.Max(0, minY); py < Math.Min(size.Y, maxY + 1); py++)
+        {
+            for (int px = Math.Max(0, minX); px < Math.Min(size.X, maxX + 1); px++)
+            {
+                float x = px + 0.5f, y = py + 0.5f;
+                if (cut && (new Vector2(x, y) - anchor).Length() >= settings.Radius - 3)
+                    continue;
+                bool inside = true;
+                foreach ((float ox, float oy) in new[] { (0f, 0f), (2f, 0f), (-2f, 0f), (0f, 2f), (0f, -2f) })
+                {
+                    inside &= own.Any(p => In(p, x + ox, y + oy)) && !others.Any(p => In(p, x + ox, y + oy));
+                    if (!inside)
+                        break;
+                }
+                if (inside)
+                    alone.Add(new Vector2I(px, py));
+            }
+        }
+        if (cut)
+        {
+            m.SetCutawayCentres(centre, null);
+            m.SetCutaway(settings);
+        }
+        m.SetSwitchMarkers(SwitchMarkerMode.Off);
+        byte[]? off = await Capture($"{what}, markers off");
+        m.SetSwitchMarkers(SwitchMarkerMode.On);
+        byte[]? on = await Capture($"{what}, markers on");
+        if (cut)
+        {
+            m.SetCutawayCentres(null, null);
+            m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
+        }
+        if (off is null || on is null)
+            return;
+
+        IsoDoom.Wad.Graphics.IndexedImage tex = ShownComposite(m, Textures.R_CheckTextureNumForName(SwitchMarkers.TextureName(s)));
+        Vector3 eye = Cutaway.ToMapAxes(camera.GlobalTransform.Origin) * LevelMesh.MapUnitsPerMetre;
+        int light = sector.LightLevel + (cut ? 16 * Cutaway.CapLightOffset(settings.Cap) : 0);
+        int w = size.X, drawn = 0, hidden = 0, bad = 0;
+        string first = "";
+        foreach (Vector2I q in alone)
+        {
+            Vector3 p = PlanePoint(new Vector2(q.X + 0.5f, q.Y + 0.5f), z);
+            double column = s.TextureOffset / 65536.0 + k.Column(p.X, p.Y), row = k.Row(p.X, p.Y);
+            if (Math.Abs(column - Math.Round(column)) < 1.0 / 64 || Math.Abs(row - Math.Round(row)) < 1.0 / 64)
+                continue;
+            int colormap = ExpectedColormap(m, false, light, 0, p.X, p.Y, (eye - p).Dot(toCamera));
+            if (colormap < 0)
+                continue;
+            (int tc, int tr) = TextureWrap.WallTexel((int)Math.Floor(column), (int)Math.Floor(row), tex.Width, tex.Height, WallTextureTiling.Vanilla);
+            (int R, int G, int B) expected = Shade(tex[tc, tr], colormap);
+            int i = (q.Y * w + q.X) * 4;
+            (int R, int G, int B) got = (on[i], on[i + 1], on[i + 2]);
+            if (got == expected)
+                drawn++;
+            else if (got == (off[i], off[i + 1], off[i + 2]))
+                hidden++;
+            else if (bad++ == 0)
+                first = $"pixel ({q.X}, {q.Y}), map ({p.X:F1}, {p.Y:F1}), column {column:F2}, row {row:F2}: drew {got}, expected {expected}";
+        }
+        _pixels += drawn + hidden + bad;
+        if (bad > 0)
+            Fail($"{what}: {bad} of {drawn + hidden + bad} pixel(s) differ, first at {first}");
+        if (drawn < 50)
+            Fail($"{what}: only {drawn} pixels drew it ({hidden} hidden; at least 50 expected)");
+        GD.Print($"Level check: {what}: {drawn} pixels against the texture ({SwitchMarkers.TextureName(s)}), {hidden} hidden");
     }
 }

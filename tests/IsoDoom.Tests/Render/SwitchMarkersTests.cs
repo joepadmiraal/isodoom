@@ -12,11 +12,22 @@ using Xunit;
 
 namespace IsoDoom.Tests.Render;
 
-/// <summary>T6.13p: the switch markers, decals on the floor in front of switches on walls facing away from the camera (<see cref="SwitchMarkers"/>).</summary>
+/// <summary>
+/// T6.13p: the switch markers, decals on the floor in front of switches on walls facing away from the camera (<see cref="SwitchMarkers"/>);
+/// T10.6a: and a lower switch's top marker on the raised sector behind it (<see cref="SwitchMarkers.Tops"/>).
+/// </summary>
 public class SwitchMarkersTests
 {
     // The game camera looks north-west from the south-east (IsoCamera.Yaw 45°): towards it, flattened.
     private static (double X, double Y) ToCamera => (Math.Sqrt(0.5), -Math.Sqrt(0.5));
+
+    // The same in 3D at the default pitch (IsoCamera.DefaultPitch, 55°), map axes, z up.
+    private static (double X, double Y, double Z) ToCamera3 =>
+        (Math.Cos(55 * Math.PI / 180) * Math.Sqrt(0.5), -Math.Cos(55 * Math.PI / 180) * Math.Sqrt(0.5), Math.Sin(55 * Math.PI / 180));
+
+    // Whether a top marker shows from the game camera with its sectors' heights at the level's start.
+    private static bool TopShows(SwitchMarker m) => SwitchMarkers.TopShows(m,
+        (m.Section.BackSector!.FloorHeight - m.Section.FrontSector.FloorHeight) / 65536.0, ToCamera3.X, ToCamera3.Y, ToCamera3.Z);
 
     private static (Level Level, WallSections Walls, SubsectorPolygons Polygons, Textures Textures, SwitchMarkers Markers) Build(WadArchive wad, string map,
         GameMode mode = GameMode.shareware)
@@ -132,6 +143,88 @@ public class SwitchMarkersTests
         Assert.Equal(88.0 * 8, narrow.Pieces.Sum(p => Math.Abs(WallCaps.Area(p))), 3);
     }
 
+    [Fact]
+    public void TheSyntheticLowerSwitchGetsATopMarkerOnTheLedge()
+    {
+        (Level level, _, SubsectorPolygons polygons, Textures textures, SwitchMarkers markers) = Build(Synthetic(), "E1M1");
+        // E1M1's L15 (x 912, from y 128 down to -128) faces west into courtyard A (floor -16), its
+        // lower SW1BRCOM under ledge B (floor 64, x 912-1040): a top marker on B, L6's (one-sided) none.
+        SwitchMarker top = Assert.Single(markers.Tops);
+        SwitchMarker floor = markers.Markers.Single(m => m.Section.Line.Index == 15);
+        Assert.Equal(15, top.Section.Line.Index);
+        Assert.True(top.Top);
+        Assert.False(floor.Top);
+        Assert.Equal(WallSectionKind.Lower, top.Section.Kind);
+        Assert.Equal((4, 5), (floor.Sector, top.Sector));
+        Assert.Equal(floor.Rows, top.Rows);
+        (int first, int last) = SwitchMarkers.Band(textures.R_GenerateComposite(textures.R_TextureNumForName("SW1BRCOM")), textures.R_GenerateComposite(textures.R_TextureNumForName("SW2BRCOM")));
+        Assert.Equal((first, last), top.Rows);
+        // The whole side, Depth deep behind the wall (B is 128 wide), clockwise as the floors.
+        Assert.Equal(256.0 * top.Depth, top.Pieces.Sum(p => Math.Abs(WallCaps.Area(p))), 6);
+        Assert.All(top.Pieces, p => Assert.True(WallCaps.Area(p) < 0));
+        // Folded back over the wall's top edge: the band's top row along the edge, its rows going
+        // down into the block; the columns mirrored as the floor marker's (V1, y 128, shows the last).
+        Assert.Equal(first, top.Row(912, 0), 9);
+        Assert.Equal(last, top.Row(912 + top.Depth, 0), 9);
+        Assert.Equal(256, top.Column(912, 128), 9);
+        Assert.Equal(0, top.Column(912, -128), 9);
+        Assert.Equal(floor.Column(900, 40), top.Column(930, 40), 9);
+        // From the game camera B's 80-unit rise hides 40 units in front of the wall, more than half
+        // the floor marker's depth: the top marker shows. A rise of 16 (8 hidden) would not; nor
+        // seen straight down, or with the wall facing the camera.
+        Assert.True(SwitchMarkers.Shows(top, ToCamera.X, ToCamera.Y));
+        Assert.True(TopShows(top));
+        Assert.Equal(80 * Math.Sqrt(0.5) / Math.Tan(55 * Math.PI / 180), SwitchMarkers.Hidden(top, 80, ToCamera3.X, ToCamera3.Y, ToCamera3.Z), 9);
+        Assert.False(SwitchMarkers.TopShows(top, 16, ToCamera3.X, ToCamera3.Y, ToCamera3.Z));
+        Assert.False(SwitchMarkers.TopShows(top, 80, 0, 0, 1));
+        Assert.False(SwitchMarkers.TopShows(top, 80, -ToCamera3.X, -ToCamera3.Y, ToCamera3.Z));
+        CheckOnTheirFloors(level, polygons, markers);
+        // E1M2's switches are all on one-sided walls: no top markers.
+        Assert.Empty(Build(Synthetic(), "E1M2").Markers.Tops);
+    }
+
+    [Fact]
+    public void Doom2Map01CounterSwitchGetsATopMarker()
+    {
+        // The user's report: line 75, SW1COMP on the west riser of block sector 46 (floor 112 over 48).
+        (Level level, _, SubsectorPolygons polygons, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireDoom2()), "MAP01", GameMode.commercial);
+        SwitchMarker top = markers.Tops.Single(m => m.Section.Line.Index == 75);
+        Assert.Equal(46, top.Sector);
+        Assert.Equal("SW1COMP", SwitchMarkers.TextureName(top.Section), ignoreCase: true);
+        Assert.Equal((-1, 0), (Math.Round(top.Normal.X, 9), Math.Round(top.Normal.Y, 9)));
+        Assert.Equal(top.Length * top.Depth, top.Pieces.Sum(p => Math.Abs(WallCaps.Area(p))), 3);
+        Assert.True(TopShows(top));
+        CheckOnTheirFloors(level, polygons, markers);
+    }
+
+    [Fact]
+    public void TntMap01ComputerSwitchesGetTopMarkers()
+    {
+        // Lines 314 and 318: SW1COMP on the west faces of the computer blocks, sectors 71 and 72
+        // (floor 138), in front of them the step sector 70 (floor 8).
+        (Level level, _, SubsectorPolygons polygons, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireTnt()), "MAP01", GameMode.commercial);
+        foreach ((int line, int sector) in new[] { (314, 71), (318, 72) })
+        {
+            SwitchMarker top = markers.Tops.Single(m => m.Section.Line.Index == line);
+            Assert.Equal(sector, top.Sector);
+            Assert.Equal(70, top.Section.FrontSector.Index);
+            Assert.Equal("SW1COMP", SwitchMarkers.TextureName(top.Section), ignoreCase: true);
+            Assert.Equal(top.Length * top.Depth, top.Pieces.Sum(p => Math.Abs(WallCaps.Area(p))), 3);
+            Assert.True(TopShows(top), $"line {line}");
+        }
+        CheckOnTheirFloors(level, polygons, markers);
+    }
+
+    [Theory]
+    [MemberData(nameof(Doom1Maps))]
+    public void Doom1TopMarkersAreTheLowerSwitchesWithASectorBehind(string map)
+    {
+        (Level level, _, SubsectorPolygons polygons, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireDoom1()), map);
+        Assert.Equal(markers.Markers.Where(m => m.Section.Kind == WallSectionKind.Lower && m.Section.BackSector is not null).Select(m => (m.Section.Line.Index, m.Section.Side)),
+            markers.Tops.Select(m => (m.Section.Line.Index, m.Section.Side)));
+        CheckOnTheirFloors(level, polygons, markers);
+    }
+
     public static TheoryData<string> Doom1Maps() => new() { "E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M8", "E1M9" };
 
     [Theory]
@@ -162,11 +255,11 @@ public class SwitchMarkersTests
         Assert.All(e1m1.Markers.Where(m => m.Section.Line.Special == 11), m => Assert.False(SwitchMarkers.Shows(m, ToCamera.X, ToCamera.Y)));
     }
 
-    // Every piece lies on its marker's sector's floor, in front of its wall within its depth.
+    // Every piece lies on its marker's sector's floor, in front of its wall within its depth (a top marker's behind it).
     private static void CheckOnTheirFloors(Level level, SubsectorPolygons polygons, SwitchMarkers markers)
     {
         var floors = FloorTriangles.Build(level, polygons);
-        foreach (SwitchMarker m in markers.Markers)
+        foreach (SwitchMarker m in markers.All)
         {
             Assert.NotEmpty(m.Pieces);
             foreach ((double X, double Y)[] p in m.Pieces)
@@ -175,7 +268,7 @@ public class SwitchMarkersTests
                 Assert.Equal(m.Sector, floors.SectorAt((int)Math.Round(cx * 65536), (int)Math.Round(cy * 65536)));
                 foreach ((double x, double y) in p)
                 {
-                    Assert.InRange(m.InFront(x, y), -1e-6, m.Depth + 1e-6);
+                    Assert.InRange(m.InFront(x, y), m.Top ? -m.Depth - 1e-6 : -1e-6, m.Top ? 1e-6 : m.Depth + 1e-6);
                     Assert.InRange(m.Along(x, y), -1e-6, m.Length + 1e-6);
                 }
             }

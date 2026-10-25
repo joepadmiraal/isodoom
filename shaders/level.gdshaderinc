@@ -166,6 +166,21 @@
 // pressed switch shows its other texture), UV its column and row (the wall laid
 // back onto the floor, mirrored so that it reads from behind the wall), lit as
 // a floor of the sector (v_flat's kind 3, not a wall cap: no wall normal).
+// Kind 12 (T10.6a; SwitchMarkers.Tops) is a piece of a lower switch's top
+// marker, the same strip on the other side of its wall, on the floor of the
+// raised sector behind it (CUSTOM0.z; CUSTOM0.w the switch's own sector), or
+// on that sector's lid while its lid shows (T6.13b: the top the camera sees),
+// SWITCH_MARKER_LIFT above it, lit, fogged and cut as a floor of that sector:
+// the wall folded back over its top edge. Besides kind 9's rule it shows only
+// while the rise (its height less the switch's floor) hides more than half
+// the floor marker's depth (CUSTOM2.x) from the camera: rise times the
+// camera's horizontal reach towards the wall over its height, both from
+// INV_VIEW_MATRIX (the pitch is a setting), so a low step keeps its floor marker alone.
+// It is built twice more, CUSTOM2.y a cut centre + 1 (as kind 7 for the wall
+// caps): placed on that centre's cutaway cap while the cutaway cuts its block
+// below its top (the cap on, not a kept door), darkened as the cap and shown
+// only where the cap is, so a block cut open still shows its switch on its stub;
+// the floor marker beyond the stub stays hidden by it.
 //
 // Height cues (T6.13s; IsoDoom.Render.LedgeEdges, `height_cues` a bit mask: 1
 // edges, 2 shade): kind 10 is a piece of the strip along one side of a
@@ -391,10 +406,12 @@ void vertex() {
 		float l_z = l_front.r + LEDGE_LIFT;
 		VERTEX.y = l_z / MAP_UNITS_PER_METRE;
 		o_height = l_z;
-	} else if (kind == 9) {
-		// T6.13p: a switch marker, on its sector's floor.
-		vec4 m_front = data_texel(sector_data, front_id);
-		int m_back_id = int(CUSTOM0.w);
+	} else if (kind == 9 || kind == 12) {
+		// T6.13p: a switch marker, on its sector's floor; T10.6a: a top marker (kind 12), on the raised sector's behind its wall.
+		bool m_on_top = kind == 12;
+		vec4 m_on = data_texel(sector_data, front_id);
+		int m_back_id = m_on_top ? front_id : int(CUSTOM0.w);
+		vec4 m_front = m_on_top ? data_texel(sector_data, int(CUSTOM0.w)) : m_on;
 		vec4 m_back = m_back_id >= 0 ? data_texel(sector_data, m_back_id) : m_front;
 		vec4 m_side = data_texel(side_textures, int(CUSTOM0.y));
 		int m_slot = int(floor(m_side.r + 0.5));
@@ -406,18 +423,34 @@ void vertex() {
 		vec3 view_back = INV_VIEW_MATRIX[2].xyz;
 		vec2 to_camera = vec2(view_back.x, -view_back.z);
 		bool m_collapse = switch_markers == 0 || m_slot < 0 || m_top <= m_bottom || dot(n, to_camera) > 0.001;
-		o_door = cut_doors == 0 && data_texel(sector_lids, front_id).b > 0.5 ? 1 : 0;
+		vec4 m_lid = data_texel(sector_lids, front_id);
+		o_door = cut_doors == 0 && m_lid.b > 0.5 ? 1 : 0;
+		// The surface it lies on: its sector's floor, or a top marker's lid while it shows (as kind 5's).
+		float m_surface = m_on_top && lids == 1 && m_lid.g >= 0.0 && m_on.g < m_lid.r ? m_lid.r : m_on.r;
+		// A top marker's copy on a cut centre's cap (CUSTOM2.y the centre + 1), where the cutaway cuts its block down.
+		o_cap = m_on_top ? int(CUSTOM2.y) - 1 : -1;
+		if (o_cap >= 0) {
+			vec4 c = o_cap == 0 ? cut_player : cut_cursor;
+			float m_cut = c.z + cut_height;
+			m_collapse = m_collapse || cut_mode == 0 || cut_cap == 0 || c.w < 0.5 || o_door == 1 || m_surface <= m_cut;
+			m_surface = m_cut;
+		}
+		if (m_on_top) {
+			float m_hidden = (m_surface - m_front.r) * max(-dot(n, to_camera), 0.0) / max(view_back.y, 1e-4);
+			m_collapse = m_collapse || m_hidden <= 0.5 * CUSTOM2.x;
+		}
 		o_slot = m_slot;
 		o_kind = 3;
-		o_lightnum = (int(floor(m_front.b + 0.5)) >> LIGHTSEGSHIFT) + extralight;
+		o_lightnum = (int(floor(m_on.b + 0.5)) >> LIGHTSEGSHIFT) + extralight - (o_cap >= 0 && cut_cap == 2 ? CAP_DARKEN : 0);
 		o_texcoord = vec2(UV.x + m_side.g, UV.y);
 		if (m_collapse || fog_hides) {
 			VERTEX.xz = vec2(0.0);
 		}
-		float m_z = m_front.r + SWITCH_MARKER_LIFT;
-		o_lightnum = shade_light(o_lightnum, m_front.r);
+		float m_z = m_surface + SWITCH_MARKER_LIFT;
+		o_lightnum = shade_light(o_lightnum, m_surface);
 		VERTEX.y = m_z / MAP_UNITS_PER_METRE;
-		o_height = m_z;
+		// A cap's copy is cut and shown as its cap, at the cutoff (cut_hides cuts only above it).
+		o_height = o_cap >= 0 ? m_surface : m_z;
 	} else if (kind == 6 || kind == 7) {
 		// T6.13e: a wall cap (kind 6) or its cutaway cap (kind 7, CUSTOM0.w its centre).
 		vec4 cap_front = data_texel(sector_data, front_id);

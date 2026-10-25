@@ -287,7 +287,7 @@ public partial class LevelCheck : Godot.Node
         if (_rebornMaps + _rebornSkipped != _scene.MapNames.Count)
             Fail($"{_scene.MapNames.Count - _rebornMaps - _rebornSkipped} map(s) did not reborn the player");
         GD.Print($"Level check: switch markers (T6.13p): {_markerMaps} maps, {_markerSides} switch sides with a marker on their floor, "
-            + $"{_markersShown} of them shown from the game camera (their walls face away), the rest not");
+            + $"{_markersShown} of them shown from the game camera (their walls face away), the rest not; T10.6a: {_topMarkers} top markers, {_topMarkersShown} of them shown");
         PrintLedges();
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
@@ -639,7 +639,7 @@ public partial class LevelCheck : Godot.Node
         foreach (WallCap cap in m.Caps.Caps)
             (caps[cap.Sector] ??= []).Add(cap);
         var markers = new List<SwitchMarker>?[level.Sectors.Length];
-        foreach (SwitchMarker marker in m.Markers.Markers)
+        foreach (SwitchMarker marker in m.Markers.All)
             (markers[marker.Sector] ??= []).Add(marker);
         var ledges = new List<LedgeEdge>?[level.Sectors.Length];
         foreach (LedgeEdge edge in m.Ledges.Edges)
@@ -721,7 +721,8 @@ public partial class LevelCheck : Godot.Node
     /// lid (T6.13b, <see cref="LevelMesh.KindLid"/>). Last the sector's wall caps
     /// (T6.13e, <paramref name="caps"/>), each as a fan per piece, then again per
     /// cut centre (<see cref="LevelMesh.KindWallCap"/>, <see cref="LevelMesh.KindWallCapCut"/>),
-    /// the sector's switch markers (T6.13p, <paramref name="markers"/>, <see cref="LevelMesh.KindSwitchMarker"/>),
+    /// the sector's switch markers (T6.13p, <paramref name="markers"/>, <see cref="LevelMesh.KindSwitchMarker"/>; then
+    /// the top markers on it, T10.6a, <see cref="LevelMesh.KindSwitchTop"/>, each again per cut centre),
     /// each as a fan per piece, the sector's ledge edges (T6.13s, <paramref name="ledges"/>, <see cref="LevelMesh.KindLedge"/>),
     /// each as a fan per piece, the walls of islands once more (<see cref="LevelMesh.KindWallExtension"/>),
     /// and a lid sector's one-sided walls once more, wound the other way, as its lid's ends
@@ -739,9 +740,9 @@ public partial class LevelCheck : Godot.Node
         List<WallSection> islandWalls = [.. sectionsOfSurface.Where(w => !w.Back && IsIslandWall(m, w.S)).Select(w => w.S)];
         List<WallSection> lidEndWalls = [.. sectionsOfSurface.Where(w => !w.Back && m.Lids.HasEnd(w.S)).Select(w => w.S)];
         int extensionQuads = islandWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count) + lidEndWalls.Sum(w => m.Pieces.Of(w.Line, w.Side).Count);
-        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)) + markers.Sum(k => k.Pieces.Sum(p => p.Length))
+        int capVertices = 3 * caps.Sum(c => c.Pieces.Sum(p => p.Length)) + markers.Sum(k => (k.Top ? 3 : 1) * k.Pieces.Sum(p => p.Length))
             + ledges.Sum(e => e.Pieces.Sum(p => p.Length)) + 4 * extensionQuads;
-        int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + markers.Sum(k => k.Pieces.Sum(p => 3 * (p.Length - 2)))
+        int capIndices = 3 * caps.Sum(c => c.Pieces.Sum(p => 3 * (p.Length - 2))) + markers.Sum(k => (k.Top ? 3 : 1) * k.Pieces.Sum(p => 3 * (p.Length - 2)))
             + ledges.Sum(e => e.Pieces.Sum(p => 3 * (p.Length - 2))) + 6 * extensionQuads;
         int expectedVertices = floorCopies * floorVertices + 4 * quadCount + capVertices; // the floor, the walls, the caps and lid, the wall caps
         using Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surface); // T8.3d: disposed, so held across its reads (GodotRefs)
@@ -943,13 +944,17 @@ public partial class LevelCheck : Godot.Node
             }
         }
 
-        // T6.13p: the switch markers, each piece a fan, with the switch section's sidedef part, sectors and planes.
+        // T6.13p: the switch markers, each piece a fan, with the switch section's sidedef part, sectors and planes;
+        // T10.6a: a top marker's sectors the other way round and its depth in CUSTOM2.x.
         foreach (SwitchMarker marker in markers)
         {
             WallSection s = marker.Section;
-            string sw = $"{level.Name}: line {s.Line.Index} side {s.Side}'s switch marker";
+            string sw = $"{level.Name}: line {s.Line.Index} side {s.Side}'s switch {(marker.Top ? "top " : "")}marker";
+            (int kind, int other, float depth) = marker.Top ? (LevelMesh.KindSwitchTop, s.FrontSector.Index, marker.Depth)
+                : (LevelMesh.KindSwitchMarker, s.BackSector?.Index ?? -1, 0f);
             float column = (float)(s.TextureOffset / 65536.0);
-            foreach ((double X, double Y)[] piece in marker.Pieces)
+            int[] centres = marker.Top ? [-1, LevelMesh.CapPlayer, LevelMesh.CapCursor] : [-1];
+            foreach ((int centre, (double X, double Y)[] piece) in centres.SelectMany(c => marker.Pieces.Select(p => (c, p))))
             {
                 bool ok = true;
                 for (int k = 0; k < piece.Length && ok; k++)
@@ -959,7 +964,7 @@ public partial class LevelCheck : Godot.Node
                     var tex = new Vector2(column + (float)marker.Column(x, y), (float)marker.Row(x, y));
                     int i = (cv + k) * 4;
                     ok = Near(pos[cv + k], at) && Math.Abs(uv[cv + k].X - tex.X) < 1e-3 && Math.Abs(uv[cv + k].Y - tex.Y) < 1e-3
-                        && Custom(c0, cv + k, LevelMesh.KindSwitchMarker, LevelMesh.SidePartId(s), marker.Sector, s.BackSector?.Index ?? -1)
+                        && Custom(c0, cv + k, kind, LevelMesh.SidePartId(s), marker.Sector, other) && c2[i] == depth && c2[i + 1] == centre + 1
                         && (int)c1[i] == (int)s.Bottom.Plane && Math.Abs(c1[i + 1] - s.Bottom.Offset / 65536f) < 1e-3
                         && (int)c1[i + 2] == (int)s.Top.Plane && Math.Abs(c1[i + 3] - s.Top.Offset / 65536f) < 1e-3
                         && Math.Abs(c2[i + 3] - (float)Math.Atan2(marker.Dy, marker.Dx)) < 1e-6;

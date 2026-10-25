@@ -88,7 +88,9 @@ namespace IsoDoom.Render;
 /// which the vertex shader places just above its sector's floor while the
 /// wall faces away from the camera and has a height, showing the switch's
 /// texture (its current one, from <c>side_textures</c>) laid back onto the
-/// floor. <see cref="SetSwitchMarkers"/> turns them off.</item>
+/// floor; a lower switch's also on the top of the raised sector behind it
+/// (<see cref="SwitchMarkers.Tops"/>, <see cref="KindSwitchTop"/>, T10.6a), while
+/// that sector's rise hides the floor marker. <see cref="SetSwitchMarkers"/> turns them off.</item>
 /// <item><b>Height cues</b> (T6.13s): a strip on each side of every two-sided
 /// line (<see cref="LedgeEdges"/>; <see cref="KindLedge"/>), which the vertex
 /// shader places just above its sector's floor while that floor is more than
@@ -138,9 +140,13 @@ public sealed class LevelMesh : IDisposable
     /// <see cref="KindLidEnd"/> (T6.13f) is a quad of a lid sector's one-sided wall
     /// again (<see cref="DoorLids.HasEnd"/>), from its sector's ceiling up to its lid,
     /// wound the other way: the end of the lid's block, facing the void.
+    /// <see cref="KindSwitchTop"/> (T10.6a) is a piece of a lower switch's top marker
+    /// (<see cref="SwitchMarkers.Tops"/>), placed on its back sector's floor (or lid):
+    /// <c>CUSTOM0.z</c> that sector, <c>CUSTOM0.w</c> the switch's own, <c>CUSTOM2.x</c> the marker's depth,
+    /// <c>CUSTOM2.y</c> 0, or a cut centre + 1 for its copies on that centre's cutaway cap (built after it).
     /// </summary>
     public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7,
-        KindWallExtension = 8, KindSwitchMarker = 9, KindLedge = 10, KindLidEnd = 11;
+        KindWallExtension = 8, KindSwitchMarker = 9, KindLedge = 10, KindLidEnd = 11, KindSwitchTop = 12;
 
     /// <summary>A cap vertex's centre (<c>CUSTOM0.w</c>, T3.4a): the shader's <c>cut_player</c> or <c>cut_cursor</c>.</summary>
     public const int CapPlayer = 0, CapCursor = 1;
@@ -341,6 +347,9 @@ public sealed class LevelMesh : IDisposable
 
     /// <summary>Number of switch marker triangles (T6.13p, <see cref="KindSwitchMarker"/>).</summary>
     public int SwitchMarkerTriangleCount { get; private set; }
+
+    /// <summary>Number of switch top marker triangles (T10.6a, <see cref="KindSwitchTop"/>), without their two cutaway cap copies.</summary>
+    public int SwitchTopTriangleCount { get; private set; }
 
     /// <summary>Number of ledge edge triangles (T6.13s, <see cref="KindLedge"/>).</summary>
     public int LedgeTriangleCount { get; private set; }
@@ -647,6 +656,7 @@ public sealed class LevelMesh : IDisposable
     private Vector4[] _chunkBoxes = [];
     private int[][] _chunkIslands = [];
     private bool[] _chunkPlain = [];
+    private bool[] _chunkMarked = [];
 
     /// <summary>
     /// Whether every chunk must draw with the discarding <see cref="Material"/>
@@ -674,6 +684,8 @@ public sealed class LevelMesh : IDisposable
             return false;
         Color data = _sectorTexels[sector];
         float top = Math.Max(Math.Max(data.R, data.G), _lidTexels[sector].R);
+        if (_chunkMarked[sector])
+            top = Math.Max(top, Math.Max(data.R, _lidTexels[sector].R) + SwitchMarkers.Lift); // T10.6a: a top marker above its floor or lid
         foreach (int island in _chunkIslands[sector])
             top = float.IsNaN(_islandTops[island]) ? float.PositiveInfinity : Math.Max(top, _islandTops[island]);
         var min = new Vector3(box.X, box.Y, 0);
@@ -1367,6 +1379,9 @@ public sealed class LevelMesh : IDisposable
         // T8.4i: the islands whose tops its walls and caps reach.
         public readonly List<int> Islands = [];
 
+        // T10.6a: whether it holds a top marker, drawn up to SwitchMarkers.Lift above its floor or lid.
+        public bool Marked;
+
         public void Add(Vector3 v, Vector2 uv, Vector4 c0, Vector4 c1, Vector4 c2)
         {
             Vertices.Add(v);
@@ -1517,27 +1532,37 @@ public sealed class LevelMesh : IDisposable
             }
         }
 
-        // T6.13p: each switch side's marker, on its sector's floor.
-        foreach (SwitchMarker marker in Markers.Markers)
+        // T6.13p: each switch side's marker, on its sector's floor; T10.6a: then the top markers, on their back
+        // sector's, each again per cut centre as its copy on the cutaway cap.
+        foreach (SwitchMarker marker in Markers.All)
         {
             WallSection s = marker.Section;
             Chunk c = ChunkOf(marker.Sector);
-            var c0 = new Vector4(KindSwitchMarker, SidePartId(s), marker.Sector, s.BackSector?.Index ?? -1);
+            if (marker.Top)
+                c.Marked = true;
+            var c0 = marker.Top ? new Vector4(KindSwitchTop, SidePartId(s), marker.Sector, s.FrontSector.Index)
+                : new Vector4(KindSwitchMarker, SidePartId(s), marker.Sector, s.BackSector?.Index ?? -1);
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
-            var c2 = new Vector4(0, 0, 0, (float)Math.Atan2(marker.Dy, marker.Dx));
             float column = Units(s.TextureOffset);
-            foreach ((double X, double Y)[] piece in marker.Pieces)
+            foreach (int centre in marker.Top ? new[] { -1, CapPlayer, CapCursor } : [-1])
             {
-                int first = c.Vertices.Count;
-                foreach ((double x, double y) in piece)
+                var c2 = new Vector4(marker.Top ? marker.Depth : 0, centre + 1, 0, (float)Math.Atan2(marker.Dy, marker.Dx));
+                foreach ((double X, double Y)[] piece in marker.Pieces)
                 {
-                    var uv = new Vector2(column + (float)marker.Column(x, y), (float)marker.Row(x, y));
-                    c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, c1, c2);
+                    int first = c.Vertices.Count;
+                    foreach ((double x, double y) in piece)
+                    {
+                        var uv = new Vector2(column + (float)marker.Column(x, y), (float)marker.Row(x, y));
+                        c.Add(new Vector3((float)(x / MapUnitsPerMetre), 0, (float)(-y / MapUnitsPerMetre)), uv, c0, c1, c2);
+                    }
+                    // A fan, clockwise in map space as the floors.
+                    for (int i = 1; i + 1 < piece.Length; i++)
+                        c.Indices.AddRange([first, first + i, first + i + 1]);
+                    if (marker.Top && centre < 0)
+                        SwitchTopTriangleCount += piece.Length - 2;
+                    else if (!marker.Top)
+                        SwitchMarkerTriangleCount += piece.Length - 2;
                 }
-                // A fan, clockwise in map space as the floors.
-                for (int i = 1; i + 1 < piece.Length; i++)
-                    c.Indices.AddRange([first, first + i, first + i + 1]);
-                SwitchMarkerTriangleCount += piece.Length - 2;
             }
         }
 
@@ -1618,6 +1643,7 @@ public sealed class LevelMesh : IDisposable
         _chunkBoxes = new Vector4[chunks.Length];
         _chunkIslands = new int[chunks.Length][];
         _chunkPlain = new bool[chunks.Length];
+        _chunkMarked = new bool[chunks.Length];
         Aabb? bounds = null;
         for (int s = 0; s < chunks.Length; s++)
         {
@@ -1662,6 +1688,7 @@ public sealed class LevelMesh : IDisposable
                 }
                 _chunkBoxes[s] = new Vector4(smin.X, -smax.Z, smax.X, -smin.Z) * MapUnitsPerMetre;
                 _chunkIslands[s] = [.. solid.Islands];
+                _chunkMarked[s] = solid.Marked;
             }
             else
             {
