@@ -3652,7 +3652,9 @@ public partial class LevelScene : Node3D, IGameHost
         _message.Text = _status = message;
         if (IsCheckRun)
             GD.PrintErr("Level check: FAILED (no WAD loaded)");
-        if (WadLocator.HasUserArg("--level-screenshot") || IsCheckRun)
+        // T7.14a: a run nobody watches (headless, a script, a screenshot, the check) ends on it; a window shows it and waits
+        if (DisplayServer.GetName() == "headless" || WadLocator.HasUserArg("--level-script")
+            || WadLocator.HasUserArg("--level-screenshot") || IsCheckRun)
             GetTree().Quit(1);
     }
 }

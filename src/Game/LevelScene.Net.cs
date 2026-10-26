@@ -114,8 +114,6 @@ public partial class LevelScene
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
         {
             Fail($"net: {e.Message}");
-            if (DisplayServer.GetName() == "headless" || WadLocator.HasUserArg("--level-script"))
-                GetTree().Quit(1);
             return false;
         }
     }
@@ -200,8 +198,6 @@ public partial class LevelScene
             // GameFlow's version (the intermissions, the finales, the next map) is the scene's: it must be the host's
             Fail($"net: the host plays -gameversion {IsoDoom.Wad.GameVersions.Cmdline(version)}, this machine {IsoDoom.Wad.GameVersions.Cmdline(Flow.gameversion)}: start it with -gameversion {IsoDoom.Wad.GameVersions.Cmdline(version)}");
             StopNet();
-            if (DisplayServer.GetName() == "headless" || WadLocator.HasUserArg("--level-script"))
-                GetTree().Quit(1);
             return;
         }
         NetGame = start;
