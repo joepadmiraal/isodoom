@@ -9,6 +9,9 @@ wads/*
 # stops Godot importing them.
 screenshots/
 
+# Demos (.lmp) downloaded for -playdemo (T7.14): other people's, never commit them.
+lmps/
+
 # Godot
 .godot/
 export/
