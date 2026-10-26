@@ -737,7 +737,7 @@ public static class SyntheticIwad
             Sidedef("-", "-", "BRICK1", 1, 0, 8),   // 6: L5, with a y offset
             Sidedef("-", "-", "SW1BRCOM", 1),       // 7: L6, a switch texture facing away from the game camera (no special; T6.13p's marker)
             Sidedef("-", "-", "BRICK1", 2),         // 8: L7
-            Sidedef("PANEL", "-", "-", 2),          // 9: L8 front (C): pegged upper; no lower (same floors)
+            Sidedef("SW1BRCOM", "-", "-", 2),       // 9: L8 front (C): pegged upper (a switch texture over door D, facing away: T10.6e's marker on its lid); no lower (same floors)
             Sidedef("-", "-", "-", 3),              // 10: L8 back (door): nothing to draw
             Sidedef("-", "-", "BRICK1", 2),         // 11: L9
             Sidedef("-", "-", "BRICK1", 2, 0, 8),   // 12: L10, lower unpegged with a y offset

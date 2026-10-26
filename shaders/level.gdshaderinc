@@ -180,7 +180,13 @@
 // caps): placed on that centre's cutaway cap while the cutaway cuts its block
 // below its top (the cap on, not a kept door), darkened as the cap and shown
 // only where the cap is, so a block cut open still shows its switch on its stub;
-// the floor marker beyond the stub stays hidden by it.
+// the floor marker beyond the stub stays hidden by it. T10.6e: CUSTOM2.z >= 1
+// marks an upper switch's top marker over a door (the face above it): on the
+// door's lid only, collapsed while the lid does not show (the lids off),
+// following it as the door opens (its lintel's top), or at the ceiling of
+// sector CUSTOM2.z - 2 (the door's other neighbour, whose upper wall faces the
+// camera) where that is higher, the block's top the camera sees; its cap
+// copies need the doors cut.
 //
 // Height cues (T6.13s; IsoDoom.Render.LedgeEdges, `height_cues` a bit mask: 1
 // edges, 2 shade): kind 10 is a piece of the strip along one side of a
@@ -426,7 +432,15 @@ void vertex() {
 		vec4 m_lid = data_texel(sector_lids, front_id);
 		o_door = cut_doors == 0 && m_lid.b > 0.5 ? 1 : 0;
 		// The surface it lies on: its sector's floor, or a top marker's lid while it shows (as kind 5's).
-		float m_surface = m_on_top && lids == 1 && m_lid.g >= 0.0 && m_on.g < m_lid.r ? m_lid.r : m_on.r;
+		bool m_lid_shows = lids == 1 && m_lid.g >= 0.0 && m_on.g < m_lid.r;
+		float m_surface = m_on_top && m_lid_shows ? m_lid.r : m_on.r;
+		// T10.6e: an upper switch's over a door, on its lid only, or at the top of the door's other face where that is higher.
+		bool m_door_top = m_on_top && CUSTOM2.z > 0.5;
+		m_collapse = m_collapse || (m_door_top && !m_lid_shows);
+		int m_beyond = int(CUSTOM2.z + 0.5) - 2;
+		if (m_door_top && m_beyond >= 0) {
+			m_surface = max(m_surface, data_texel(sector_data, m_beyond).g);
+		}
 		// A top marker's copy on a cut centre's cap (CUSTOM2.y the centre + 1), where the cutaway cuts its block down.
 		o_cap = m_on_top ? int(CUSTOM2.y) - 1 : -1;
 		if (o_cap >= 0) {

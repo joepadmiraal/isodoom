@@ -62,7 +62,7 @@ public class WallSectionTests
         (6, 0, Middle, "SW1BRCOM", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         (7, 0, Middle, "BRICK1", P(FrontFloor), P(FrontCeiling), P(FrontCeiling), 0),
         // L8: room C | closed door D.
-        (8, 0, Upper, "PANEL", P(BackCeiling), P(FrontCeiling), P(BackCeiling, 72), 0),
+        (8, 0, Upper, "SW1BRCOM", P(BackCeiling), P(FrontCeiling), P(BackCeiling, 128), 0),
         (8, 0, Lower, "-", P(FrontFloor), P(BackFloor), P(BackFloor), 0),
         (8, 1, Upper, "-", P(BackCeiling), P(FrontCeiling), P(BackCeiling), 0),
         (8, 1, Lower, "-", P(FrontFloor), P(BackFloor), P(BackFloor), 0),
@@ -194,7 +194,7 @@ public class WallSectionTests
         WallSection roomSide = Find(walls, 8, 0, Upper), courtyardSide = Find(walls, 12, 1, Upper);
         door.CeilingHeight = 120 << FRACBITS; // the door opens
         Assert.Equal((120, 128), Units(roomSide.Span()));
-        Assert.Equal(120 + 72 << FRACBITS, roomSide.TextureTop.Evaluate(roomSide.FrontSector, roomSide.BackSector)); // pegged: moves with the door
+        Assert.Equal(120 + 128 << FRACBITS, roomSide.TextureTop.Evaluate(roomSide.FrontSector, roomSide.BackSector)); // pegged: moves with the door
         Assert.Equal((120, 256), Units(courtyardSide.Span()));
         Assert.Equal(260 << FRACBITS, courtyardSide.TextureTop.Evaluate(courtyardSide.FrontSector, courtyardSide.BackSector)); // unpegged: stays
 

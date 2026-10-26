@@ -287,7 +287,8 @@ public partial class LevelCheck : Godot.Node
         if (_rebornMaps + _rebornSkipped != _scene.MapNames.Count)
             Fail($"{_scene.MapNames.Count - _rebornMaps - _rebornSkipped} map(s) did not reborn the player");
         GD.Print($"Level check: switch markers (T6.13p): {_markerMaps} maps, {_markerSides} switch sides with a marker on their floor, "
-            + $"{_markersShown} of them shown from the game camera (their walls face away), the rest not; T10.6a: {_topMarkers} top markers, {_topMarkersShown} of them shown");
+            + $"{_markersShown} of them shown from the game camera (their walls face away), the rest not; T10.6a: {_topMarkers} top markers, {_topMarkersShown} of them shown; "
+            + $"T10.6e: {_doorTopMarkers} of them on doors' lids");
         PrintLedges();
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
@@ -945,7 +946,7 @@ public partial class LevelCheck : Godot.Node
         }
 
         // T6.13p: the switch markers, each piece a fan, with the switch section's sidedef part, sectors and planes;
-        // T10.6a: a top marker's sectors the other way round and its depth in CUSTOM2.x.
+        // T10.6a: a top marker's sectors the other way round and its depth in CUSTOM2.x; T10.6e: CUSTOM2.z on a door's lid its other sector + 2.
         foreach (SwitchMarker marker in markers)
         {
             WallSection s = marker.Section;
@@ -965,6 +966,7 @@ public partial class LevelCheck : Godot.Node
                     int i = (cv + k) * 4;
                     ok = Near(pos[cv + k], at) && Math.Abs(uv[cv + k].X - tex.X) < 1e-3 && Math.Abs(uv[cv + k].Y - tex.Y) < 1e-3
                         && Custom(c0, cv + k, kind, LevelMesh.SidePartId(s), marker.Sector, other) && c2[i] == depth && c2[i + 1] == centre + 1
+                        && c2[i + 2] == (marker.Lid ? marker.Beyond + 2 : 0)
                         && (int)c1[i] == (int)s.Bottom.Plane && Math.Abs(c1[i + 1] - s.Bottom.Offset / 65536f) < 1e-3
                         && (int)c1[i + 2] == (int)s.Top.Plane && Math.Abs(c1[i + 3] - s.Top.Offset / 65536f) < 1e-3
                         && Math.Abs(c2[i + 3] - (float)Math.Atan2(marker.Dy, marker.Dx)) < 1e-6;

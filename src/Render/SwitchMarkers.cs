@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using IsoDoom.Map;
 using IsoDoom.Wad.Graphics;
 
@@ -28,8 +29,13 @@ public enum SwitchMarkerMode
 /// <param name="Rows">The texture rows the marker shows (<see cref="SwitchMarkers.Band"/>): the far edge shows <c>Top</c>, the wall's foot the row above <c>Bottom</c>.</param>
 /// <param name="Pieces">Convex polygons, clockwise (interior on the right of each edge, as the floors), on the side's front sector's floor within <see cref="Depth"/> in front of the wall; for a <paramref name="Top"/> marker on its back sector's floor within <see cref="Depth"/> behind it.</param>
 /// <param name="Top">A top marker (T10.6a): a lower switch's on the top of the raised sector behind its wall (<see cref="SwitchMarkers.Tops"/>).</param>
+/// <param name="Lid">A top marker on a door's lid (T10.6e): an upper switch's over a door behind its wall, drawn only while the door's lid shows (<see cref="SwitchMarkers.Tops"/>).</param>
+/// <param name="RowShift">A lid marker's rows moved down the band (T10.6e): a door thinner than the band shows the window of the band's rows
+/// where the pair differs most (<see cref="SwitchMarkers.BestWindow"/>), not only its top ones.</param>
+/// <param name="Beyond">A lid marker's other sector (T10.6e): the door's neighbour but the switch's with the highest ceiling at load, whose upper wall
+/// faces the camera above the door; the marker lies at the higher of its ceiling and the lid, the block's top as the camera sees it (-1: none).</param>
 public sealed record SwitchMarker(WallSection Section, double X, double Y, double Dx, double Dy, double Length, (int Top, int Bottom) Rows,
-    IReadOnlyList<(double X, double Y)[]> Pieces, bool Top = false)
+    IReadOnlyList<(double X, double Y)[]> Pieces, bool Top = false, bool Lid = false, int RowShift = 0, int Beyond = -1)
 {
     /// <summary>The sector whose floor the marker lies on: the side's, or a top marker's the one behind the wall.</summary>
     public int Sector => Top ? Section.BackSector!.Index : Section.FrontSector.Index;
@@ -57,7 +63,7 @@ public sealed record SwitchMarker(WallSection Section, double X, double Y, doubl
     /// The texture row at <paramref name="x"/>, <paramref name="y"/>: the wall laid back onto the floor, its rows going up away from the wall;
     /// a top marker's, the wall folded back over its top edge onto the top, its rows going down into the block from <c>Rows.Top</c> at the edge.
     /// </summary>
-    public double Row(double x, double y) => Top ? Rows.Top - InFront(x, y) : Rows.Bottom - InFront(x, y);
+    public double Row(double x, double y) => Top ? Rows.Top + RowShift - InFront(x, y) : Rows.Bottom - InFront(x, y);
 }
 
 /// <summary>
@@ -116,6 +122,15 @@ public sealed class SwitchMarkers
     /// marker from the camera's side. The shader shows one while the rise hides
     /// more than half its floor marker (and places it on the sector's lid where
     /// that shows).
+    /// T10.6e (SPEC §12, the user's decision): a switch on an upper texture
+    /// over a door (the face above it, <see cref="DoorLids.IsDoor"/>, a lid
+    /// sector) also gets one, on the door's lid (<see cref="SwitchMarker.Lid"/>):
+    /// the door block hides its floor marker, and the cutaway keeps doors whole.
+    /// It is drawn only while the lid shows, and follows it as the door opens;
+    /// where the door's other neighbour's ceiling is higher than the lid (its
+    /// upper wall, facing the camera, hides the lid), at that ceiling
+    /// (<see cref="SwitchMarker.Beyond"/>), and on a door thinner than the
+    /// band, the band's middle rows (<see cref="SwitchMarker.RowShift"/>).
     /// </summary>
     public IReadOnlyList<SwitchMarker> Tops { get; }
 
@@ -186,13 +201,57 @@ public sealed class SwitchMarkers
         return (top, top + depth);
     }
 
+    /// <summary>How many columns differ between a switch pair's two textures in each row (T10.6e), within the shorter texture.</summary>
+    public static int[] RowDifferences(IndexedImage off, IndexedImage on)
+    {
+        int height = Math.Min(off.Height, on.Height), width = Math.Min(off.Width, on.Width);
+        int[] rows = new int[height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int a = y * off.Width + x, b = y * on.Width + x;
+                if (off.Pixels[a] != on.Pixels[b] || off.Opaque[a] != on.Opaque[b])
+                    rows[y]++;
+            }
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// The first row of the <paramref name="count"/> rows within
+    /// <paramref name="band"/> where <paramref name="differences"/> (per row,
+    /// <see cref="RowDifferences"/>) add up most, the topmost of equals
+    /// (T10.6e: what a door thinner than the band shows); the band's top when
+    /// it is no deeper than that.
+    /// </summary>
+    public static int BestWindow(int[] differences, (int Top, int Bottom) band, int count)
+    {
+        int best = band.Top, most = -1;
+        for (int first = band.Top; first + count <= band.Bottom; first++)
+        {
+            int sum = 0;
+            for (int y = first; y < first + count && y < differences.Length; y++)
+                sum += differences[y];
+            if (sum > most)
+                (best, most) = (first, sum);
+        }
+        return best;
+    }
+
     /// <summary>
     /// Builds the markers of a level: <paramref name="walls"/>
     /// its wall sections, <paramref name="polygons"/> its subsector polygons,
     /// <paramref name="rows"/> the switch textures (both of each pair, by name,
-    /// any case) and the rows their marker shows (<see cref="Band"/>).
+    /// any case) and the rows their marker shows (<see cref="Band"/>),
+    /// <paramref name="lids"/> its lid sectors and <paramref name="level"/> the
+    /// level (T10.6e: an upper switch over a door among them gets a top marker
+    /// on its lid; none without them), <paramref name="differences"/> the
+    /// switch textures' differing texels per row (<see cref="RowDifferences"/>;
+    /// without them a thin door shows the band's top rows).
     /// </summary>
-    public static SwitchMarkers Build(WallSections walls, SubsectorPolygons polygons, IReadOnlyDictionary<string, (int Top, int Bottom)> rows)
+    public static SwitchMarkers Build(WallSections walls, SubsectorPolygons polygons, IReadOnlyDictionary<string, (int Top, int Bottom)> rows,
+        DoorLids? lids = null, Level? level = null, IReadOnlyDictionary<string, int[]>? differences = null)
     {
         // Per side: its switch section, the first of upper, middle, lower.
         var bySide = new Dictionary<(int Line, int Side), WallSection>();
@@ -221,16 +280,39 @@ public sealed class SwitchMarkers
             List<(double X, double Y)[]> pieces = Clip([Point(0, 0), Point(length, 0), Point(length, depth), Point(0, depth)], polygons, s.FrontSector.Index);
             if (pieces.Count > 0)
                 markers.Add(new SwitchMarker(s, x1, y1, dx, dy, length, band, pieces));
-            // T10.6a: a lower switch's top marker, the strip behind the side (its left), clockwise.
-            if (s.Kind == WallSectionKind.Lower && s.BackSector is not null)
+            // T10.6a: a lower switch's top marker, the strip behind the side (its left), clockwise;
+            // T10.6e: an upper switch's over a door, on the door's lid.
+            bool onLid = level is not null && IsOverDoor(s, lids);
+            if ((s.Kind == WallSectionKind.Lower && s.BackSector is not null) || onLid)
             {
-                List<(double X, double Y)[]> top = Clip([Point(0, 0), Point(0, -depth), Point(length, -depth), Point(length, 0)], polygons, s.BackSector.Index);
-                if (top.Count > 0)
+                List<(double X, double Y)[]> top = Clip([Point(0, 0), Point(0, -depth), Point(length, -depth), Point(length, 0)], polygons, s.BackSector!.Index);
+                if (top.Count > 0 && !onLid)
                     tops.Add(new SwitchMarker(s, x1, y1, dx, dy, length, band, top, true));
+                else if (top.Count > 0)
+                {
+                    // T10.6e: on a door thinner than the band the rows where the pair differs most; at the top of the camera's side of the block.
+                    int thick = (int)Math.Round(top.Max(p => p.Max(v => (v.X - x1) * -dy + (v.Y - y1) * dx)));
+                    int shift = differences is not null && differences.TryGetValue(TextureName(s), out int[]? diff) ? BestWindow(diff, band, thick) - band.Top : 0;
+                    int beyond = -1;
+                    foreach (int n in lids!.Neighbours(s.BackSector.Index))
+                    {
+                        if (n != s.FrontSector.Index && (beyond < 0 || level!.Sectors[n].CeilingHeight > level.Sectors[beyond].CeilingHeight))
+                            beyond = n;
+                    }
+                    tops.Add(new SwitchMarker(s, x1, y1, dx, dy, length, band, top, true, true, shift, beyond));
+                }
             }
         }
         return new SwitchMarkers(markers, tops);
     }
+
+    /// <summary>
+    /// Whether <paramref name="s"/> is an upper section over a door with a lid
+    /// (T10.6e): its back sector a door (<see cref="DoorLids.IsDoor"/>) and a
+    /// lid sector (<see cref="DoorLids.Has"/>), so the face above a door.
+    /// </summary>
+    public static bool IsOverDoor(WallSection s, DoorLids? lids) =>
+        lids is not null && s.Kind == WallSectionKind.Upper && s.BackSector is { } back && lids.Has(back.Index) && lids.IsDoor(back.Index);
 
     // A strip clipped to a sector's floor (its subsector polygons): the pieces left.
     private static List<(double X, double Y)[]> Clip(List<(double X, double Y)> strip, SubsectorPolygons polygons, int sector)

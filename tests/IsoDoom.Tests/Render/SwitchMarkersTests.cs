@@ -14,7 +14,8 @@ namespace IsoDoom.Tests.Render;
 
 /// <summary>
 /// T6.13p: the switch markers, decals on the floor in front of switches on walls facing away from the camera (<see cref="SwitchMarkers"/>);
-/// T10.6a: and a lower switch's top marker on the raised sector behind it (<see cref="SwitchMarkers.Tops"/>).
+/// T10.6a: and a lower switch's top marker on the raised sector behind it (<see cref="SwitchMarkers.Tops"/>);
+/// T10.6e: and an upper switch's over a door, on the door's lid (<see cref="SwitchMarker.Lid"/>).
 /// </summary>
 public class SwitchMarkersTests
 {
@@ -37,13 +38,17 @@ public class SwitchMarkersTests
         var walls = WallSections.Build(level, textures);
         var polygons = SubsectorPolygons.Build(level);
         var rows = new Dictionary<string, (int Top, int Bottom)>(StringComparer.OrdinalIgnoreCase);
+        var differences = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
         foreach (switchlist_t s in Switches.For(mode))
         {
             int a = textures.R_CheckTextureNumForName(s.name1), b = textures.R_CheckTextureNumForName(s.name2);
             if (a > 0 && b > 0)
+            {
                 rows[s.name1] = rows[s.name2] = SwitchMarkers.Band(textures.R_GenerateComposite(a), textures.R_GenerateComposite(b));
+                differences[s.name1] = differences[s.name2] = SwitchMarkers.RowDifferences(textures.R_GenerateComposite(a), textures.R_GenerateComposite(b));
+            }
         }
-        return (level, walls, polygons, textures, SwitchMarkers.Build(walls, polygons, rows));
+        return (level, walls, polygons, textures, SwitchMarkers.Build(walls, polygons, rows, DoorLids.Build(level, FloorTriangles.Build(level, polygons)), level, differences));
     }
 
     private static WadArchive Synthetic() => new([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)]);
@@ -82,6 +87,16 @@ public class SwitchMarkersTests
         // No row differs: the middle 16; a texture shorter than 16: all of it.
         Assert.Equal((56, 72), BandOf(128, 0, 0));
         Assert.Equal((0, 8), BandOf(8, 2, 3));
+    }
+
+    [Fact]
+    public void BestWindowIsWhereThePairDiffersMost()
+    {
+        int[] differences = [0, 1, 0, 0, 5, 5, 0, 9, 0, 0];
+        Assert.Equal(4, SwitchMarkers.BestWindow(differences, (0, 10), 4)); // 5 + 5 + 0 + 9 = 19, against rows 5-8's 14 and 7-10's 9
+        Assert.Equal(7, SwitchMarkers.BestWindow(differences, (0, 10), 1));
+        Assert.Equal(2, SwitchMarkers.BestWindow([0, 0, 0, 0, 0], (2, 5), 2)); // none differ: the top
+        Assert.Equal(2, SwitchMarkers.BestWindow(differences, (2, 5), 3)); // as deep as the band: its top
     }
 
     [Fact]
@@ -148,8 +163,9 @@ public class SwitchMarkersTests
     {
         (Level level, _, SubsectorPolygons polygons, Textures textures, SwitchMarkers markers) = Build(Synthetic(), "E1M1");
         // E1M1's L15 (x 912, from y 128 down to -128) faces west into courtyard A (floor -16), its
-        // lower SW1BRCOM under ledge B (floor 64, x 912-1040): a top marker on B, L6's (one-sided) none.
-        SwitchMarker top = Assert.Single(markers.Tops);
+        // lower SW1BRCOM under ledge B (floor 64, x 912-1040): a top marker on B, L6's (one-sided) none
+        // (L8's, an upper over door D, is T10.6e's).
+        SwitchMarker top = Assert.Single(markers.Tops, m => !m.Lid);
         SwitchMarker floor = markers.Markers.Single(m => m.Section.Line.Index == 15);
         Assert.Equal(15, top.Section.Line.Index);
         Assert.True(top.Top);
@@ -181,6 +197,83 @@ public class SwitchMarkersTests
         CheckOnTheirFloors(level, polygons, markers);
         // E1M2's switches are all on one-sided walls: no top markers.
         Assert.Empty(Build(Synthetic(), "E1M2").Markers.Tops);
+    }
+
+    [Fact]
+    public void TheSyntheticDoorSwitchGetsATopMarkerOnTheLid()
+    {
+        (Level level, _, SubsectorPolygons polygons, Textures textures, SwitchMarkers markers) = Build(Synthetic(), "E1M1");
+        // T10.6e: E1M1's L8 (x 640, from y 128 down to -128) faces west into room C, its upper
+        // SW1BRCOM over door D (sector 3, x 640-656, closed): a top marker on D, on its lid only.
+        SwitchMarker top = Assert.Single(markers.Tops, m => m.Lid);
+        SwitchMarker floor = markers.Markers.Single(m => m.Section.Line.Index == 8);
+        Assert.Equal(8, top.Section.Line.Index);
+        Assert.True(top.Top);
+        Assert.False(floor.Lid);
+        Assert.Equal(WallSectionKind.Upper, top.Section.Kind);
+        Assert.Equal((2, 3), (floor.Sector, top.Sector));
+        Assert.Equal(floor.Rows, top.Rows);
+        // Clipped to the door's 16 units: the 16 rows of the band where the pair differs most, folded back over the edge.
+        Assert.Equal(256.0 * 16, top.Pieces.Sum(p => Math.Abs(WallCaps.Area(p))), 6);
+        int[] differences = SwitchMarkers.RowDifferences(textures.R_GenerateComposite(textures.R_TextureNumForName("SW1BRCOM")), textures.R_GenerateComposite(textures.R_TextureNumForName("SW2BRCOM")));
+        Assert.Equal(SwitchMarkers.BestWindow(differences, top.Rows, 16) - top.Rows.Top, top.RowShift);
+        Assert.Equal(top.Rows.Top + top.RowShift, top.Row(640, 0), 9);
+        Assert.Equal(top.Rows.Top + top.RowShift + 16, top.Row(656, 0), 9);
+        Assert.Equal(floor.Column(630, 40), top.Column(650, 40), 9);
+        // Its lid at C's ceiling (128), courtyard A's (sector 4, sky at 256) the door's other side: the marker
+        // lies at the top of A's upper wall (the shader's max), a rise of 256 hiding the floor marker.
+        Assert.Equal(4, top.Beyond);
+        Assert.True(SwitchMarkers.TopShows(top, 256, ToCamera3.X, ToCamera3.Y, ToCamera3.Z));
+        CheckOnTheirFloors(level, polygons, markers);
+        // Without the lid sectors, none (and L15's stays).
+        var walls = WallSections.Build(level, Textures.R_InitTextures(Synthetic()));
+        var rows = new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase) { ["SW1BRCOM"] = top.Rows, ["SW2BRCOM"] = top.Rows };
+        Assert.Equal([15], SwitchMarkers.Build(walls, polygons, rows).Tops.Select(m => m.Section.Line.Index));
+    }
+
+    [Fact]
+    public void Doom2Map09DoorFaceSwitchesGetTopMarkersOnTheirLids()
+    {
+        // The sweep's MAP09 lines 210-216: SW*LION over doors, facing away; 209-215 face the camera.
+        (Level level, _, SubsectorPolygons polygons, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireDoom2()), "MAP09", GameMode.commercial);
+        foreach (int line in new[] { 210, 212, 214, 216 })
+        {
+            SwitchMarker top = markers.Tops.Single(m => m.Section.Line.Index == line);
+            Assert.True(top.Lid, $"line {line}");
+            Assert.Equal(WallSectionKind.Upper, top.Section.Kind);
+            Assert.Equal(top.Section.BackSector!.Index, top.Sector);
+            Assert.True(SwitchMarkers.Shows(top, ToCamera.X, ToCamera.Y), $"line {line}");
+        }
+        CheckOnTheirFloors(level, polygons, markers);
+    }
+
+    [Fact]
+    public void DoomE2M5DoorFaceSwitchesGetTopMarkersOnTheirLids()
+    {
+        // The sweep's doom.wad E2M5 sides, upper SW1WOOD and others over doors, facing away.
+        int[] lines = [94, 169, 357, 359, 391, 395, 444, 454, 503, 549, 555, 565, 610, 623, 729, 873, 884, 1130, 1322];
+        (Level level, _, SubsectorPolygons polygons, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireDoom()), "E2M5", GameMode.retail);
+        foreach (int line in lines)
+        {
+            SwitchMarker top = markers.Tops.Single(m => m.Section.Line.Index == line);
+            Assert.True(top.Lid, $"line {line}");
+            Assert.True(SwitchMarkers.Shows(top, ToCamera.X, ToCamera.Y), $"line {line}");
+        }
+        CheckOnTheirFloors(level, polygons, markers);
+    }
+
+    [Fact]
+    public void DoorFaceMarkersLieAtTheTopTheCameraSees()
+    {
+        // doom.wad E3M7 line 980: SW1LION over door 126 (floor -88), its room's ceiling 8 (the lid), the door's other
+        // side (sector 125) at 40: that side's upper wall faces the camera and hides the lid, so the marker lies at 40.
+        (Level level, _, _, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireDoom()), "E3M7", GameMode.retail);
+        SwitchMarker top = markers.Tops.Single(m => m.Section.Line.Index == 980);
+        Assert.True(top.Lid);
+        Assert.Equal((126, 125), (top.Sector, top.Beyond));
+        Assert.Equal(40, level.Sectors[top.Beyond].CeilingHeight >> 16);
+        // An 8-thick door shows the 8 rows of the band where the pair differs most.
+        Assert.InRange(top.RowShift, 0, top.Depth - 8);
     }
 
     [Fact]
@@ -220,8 +313,11 @@ public class SwitchMarkersTests
     public void Doom1TopMarkersAreTheLowerSwitchesWithASectorBehind(string map)
     {
         (Level level, _, SubsectorPolygons polygons, _, SwitchMarkers markers) = Build(WadArchive.Open(TestWads.RequireDoom1()), map);
-        Assert.Equal(markers.Markers.Where(m => m.Section.Kind == WallSectionKind.Lower && m.Section.BackSector is not null).Select(m => (m.Section.Line.Index, m.Section.Side)),
-            markers.Tops.Select(m => (m.Section.Line.Index, m.Section.Side)));
+        // T10.6e: and the upper switches over a door with a lid, on its lid.
+        DoorLids lids = DoorLids.Build(level, FloorTriangles.Build(level, polygons));
+        Assert.Equal(markers.Markers.Where(m => (m.Section.Kind == WallSectionKind.Lower && m.Section.BackSector is not null) || SwitchMarkers.IsOverDoor(m.Section, lids))
+            .Select(m => (m.Section.Line.Index, m.Section.Side)), markers.Tops.Select(m => (m.Section.Line.Index, m.Section.Side)));
+        Assert.All(markers.Tops, m => Assert.Equal(m.Section.Kind == WallSectionKind.Upper, m.Lid));
         CheckOnTheirFloors(level, polygons, markers);
     }
 

@@ -29,10 +29,15 @@ namespace IsoDoom.Game;
 /// their sector, every pixel only they cover against the CPU, and the largest
 /// whose block a cut centre in front of its switch cuts draws on the cutaway's
 /// dark cap, every pixel in the cut disc only it covers against the CPU.
+/// T10.6e: an upper switch over a door with a lid has a top marker too, on the
+/// door's lid only (<see cref="SwitchMarker.Lid"/>); with a renderer the
+/// largest shown is viewed on the lid with the cutaway off, on, the doors cut
+/// (on the cap) and the door open, and not drawn with the lids off
+/// (<see cref="CompareDoorTopMarkersFromGameCamera"/>).
 /// </summary>
 public partial class LevelCheck
 {
-    private int _markerMaps, _markerSides, _markersShown, _topMarkers, _topMarkersShown;
+    private int _markerMaps, _markerSides, _markersShown, _topMarkers, _topMarkersShown, _doorTopMarkers;
 
     /// <summary>The marker the renderer check views on E1M3: its exit switch, whose wall faces north (the task's case).</summary>
     private const int E1M3ExitLine = 982;
@@ -110,26 +115,33 @@ public partial class LevelCheck
         Vector3 toCamera = Cutaway.ToMapAxes(GameBasis(IsoCamera.DefaultPitch).Z).Normalized();
         var tops = m.Markers.Tops.ToDictionary(k => (k.Section.Line.Index, k.Section.Side));
         var topsShown = new List<int>();
+        var doorTops = new List<int>();
         foreach ((int line, int side) in sides)
         {
             WallSection s = bySide.TryGetValue((line, side), out SwitchMarker? marker) ? marker.Section
                 : tops.TryGetValue((line, side), out SwitchMarker? only) ? only.Section : m.Walls.Sections.First(k => k.Line.Index == line && k.Side == side);
             string what = $"{map}: line {line} side {side}'s switch";
-            bool expected = s.Kind == WallSectionKind.Lower && s.BackSector is not null;
+            // T10.6e: and the upper switches over a door with a lid, on its lid.
+            bool overDoor = SwitchMarkers.IsOverDoor(s, m.Lids);
+            bool expected = (s.Kind == WallSectionKind.Lower && s.BackSector is not null) || overDoor;
             if (!tops.TryGetValue((line, side), out SwitchMarker? top))
             {
                 if (expected)
-                    Fail($"{what}: a lower switch with sector {s.BackSector!.Index} behind it, but no top marker");
+                    Fail($"{what}: a {s.Kind} switch with sector {s.BackSector!.Index} behind it, but no top marker");
                 continue;
             }
             if (!expected)
-                Fail($"{what}: a top marker on a {s.Kind} switch{(s.BackSector is null ? " with no sector behind it" : "")}");
+                Fail($"{what}: a top marker on a {s.Kind} switch{(s.BackSector is null ? " with no sector behind it" : " not over a door")}");
+            else if (top.Lid != overDoor)
+                Fail($"{what}: its top marker is {(top.Lid ? "" : "not ")}on a lid only, the {s.Kind} switch is {(overDoor ? "" : "not ")}over a door");
             else if (!top.Top || top.Sector != s.BackSector!.Index || top.Section != s || marker is not null && top.Rows != marker.Rows)
                 Fail($"{what}: its top marker is on sector {top.Sector} (rows {top.Rows}), expected sector {s.BackSector!.Index}");
             else if (top.Pieces.Any(p => p.Any(v => top.InFront(v.X, v.Y) > 1e-6 || top.InFront(v.X, v.Y) < -top.Depth - 1e-6)))
                 Fail($"{what}: its top marker reaches outside the {top.Depth} units behind its wall");
             if (TopShows(m, top, toCamera))
                 topsShown.Add(line);
+            if (top.Lid)
+                doorTops.Add(line);
         }
         if (tops.Count != sides.Count(k => tops.ContainsKey(k)))
             Fail($"{map}: {tops.Count} top markers, {sides.Count(k => tops.ContainsKey(k))} of them on switch sides");
@@ -142,27 +154,38 @@ public partial class LevelCheck
         _markersShown += shown.Count;
         _topMarkers += tops.Count;
         _topMarkersShown += topsShown.Count;
+        _doorTopMarkers += doorTops.Count;
         if (sides.Count > 0)
         {
             GD.Print($"Level check: {map}: {sides.Count} switch sides with markers, {shown.Count} facing away from the game camera (shown: lines {string.Join(" ", shown)}); "
-                + $"{tops.Count} top markers, {topsShown.Count} shown (lines {string.Join(" ", topsShown)})");
+                + $"{tops.Count} top markers, {topsShown.Count} shown (lines {string.Join(" ", topsShown)}), {doorTops.Count} of them on doors' lids (lines {string.Join(" ", doorTops)})");
         }
     }
 
-    /// <summary>T10.6a: the height a top marker lies on, as uploaded: its sector's lid while the lid shows (the shader's rule, kind 5's), else its floor.</summary>
+    /// <summary>T10.6a: the height a top marker lies on, as uploaded: its sector's lid while the lid shows (the shader's rule, kind 5's), else its floor; T10.6e: a door's lid marker at its other sector's ceiling where that is higher.</summary>
     private static float TopSurface(LevelMesh m, SwitchMarker k)
     {
-        Color data = m.SectorData(k.Sector);
-        (float lid, int slot, _, _) = m.LidData(k.Sector);
-        return m.LidMode == DoorLidMode.On && slot >= 0 && data.G < lid ? lid : data.R;
+        if (!LidShows(m, k.Sector))
+            return m.SectorData(k.Sector).R;
+        // T10.6e: a door's at the top of its other face where that is higher.
+        float lid = m.LidData(k.Sector).Height;
+        return k.Lid && k.Beyond >= 0 ? Math.Max(lid, m.SectorData(k.Beyond).G) : lid;
     }
 
     // The height a marker is drawn at (with the cutaway off).
     private static float MarkerZ(LevelMesh m, SwitchMarker k) => (k.Top ? TopSurface(m, k) : m.SectorData(k.Sector).R) + SwitchMarkers.Lift;
 
-    // T10.6a: whether a top marker shows from a camera in the direction toCamera (map axes): the shader's rule on the uploaded heights.
-    private static bool TopShows(LevelMesh m, SwitchMarker k, Vector3 toCamera) =>
-        SwitchMarkers.TopShows(k, TopSurface(m, k) - m.SectorData(k.Section.FrontSector.Index).R, toCamera.X, toCamera.Y, toCamera.Z);
+    // T10.6a: whether a top marker shows from a camera in the direction toCamera (map axes): the shader's rule on the uploaded heights
+    // (T10.6e: a door's only while its lid shows).
+    private static bool TopShows(LevelMesh m, SwitchMarker k, Vector3 toCamera) => (!k.Lid || LidShows(m, k.Sector))
+        && SwitchMarkers.TopShows(k, TopSurface(m, k) - m.SectorData(k.Section.FrontSector.Index).R, toCamera.X, toCamera.Y, toCamera.Z);
+
+    // Whether a sector's lid shows, as uploaded: the shader's rule (kind 5's).
+    private static bool LidShows(LevelMesh m, int sector)
+    {
+        (float lid, int slot, _, _) = m.LidData(sector);
+        return m.LidMode == DoorLidMode.On && slot >= 0 && m.SectorData(sector).G < lid;
+    }
 
     private async Task SwitchMarkerCheck(LevelMesh m)
     {
@@ -194,6 +217,7 @@ public partial class LevelCheck
 
         await CompareMarkersFromGameCamera(m, flat);
         await CompareTopMarkersFromGameCamera(m);
+        await CompareDoorTopMarkersFromGameCamera(m); // T10.6e
         m.SetSwitchMarkers(SwitchMarkerMode.Off);
     }
 
@@ -378,32 +402,92 @@ public partial class LevelCheck
             return;
         }
         foreach (SwitchMarker k in shown.Take(4))
-            await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, false);
+            await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, null, false);
         float Front(SwitchMarker k) => m.SectorData(k.Section.FrontSector.Index).R;
         if (shown.FirstOrDefault(k => TopSurface(m, k) > Front(k) + CutawaySettings.DefaultHeight + 1 && !m.Lids.IsDoor(k.Sector)) is SwitchMarker tall)
-            await CompareTopMarkerFromGameCamera(m, tall, basis, toCamera, true);
+            await CompareTopMarkerFromGameCamera(m, tall, basis, toCamera, new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Dark }, true);
         else
             GD.Print($"Level check: {map}: no top switch marker shown whose block the cutaway cuts");
     }
 
-    private async Task CompareTopMarkerFromGameCamera(LevelMesh m, SwitchMarker k, Basis basis, Vector3 toCamera, bool cut)
+    /// <summary>
+    /// T10.6e: with the lids on, from the game camera, the largest top marker
+    /// shown of an upper switch over a door (<see cref="SwitchMarker.Lid"/>),
+    /// on the door's lid: with the cutaway off; with the default cutaway
+    /// (doors kept) around a centre in front of its switch, the door and its
+    /// marker whole; with the doors cut, on the dark cap of the cut door; and
+    /// with the door open (its ceiling 4 below its lid, as p_doors.c opens
+    /// it), still on the lid. Every pixel only it covers against the CPU
+    /// texel and light, at least 50 drawn each time; and with the lids off,
+    /// none of them changes.
+    /// </summary>
+    private async Task CompareDoorTopMarkersFromGameCamera(LevelMesh m)
+    {
+        string map = m.Level.Name;
+        Basis basis = GameBasis(IsoCamera.DefaultPitch);
+        Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
+        DoorLidMode lidMode = m.LidMode;
+        m.SetDoorLids(DoorLidMode.On);
+        SwitchMarker? k = m.Markers.Tops.Where(t => t.Lid && TopShows(m, t, toCamera)).MaxBy(t => t.Pieces.Sum(Area));
+        if (k is null)
+        {
+            GD.Print($"Level check: {map}: no top switch marker on a door's lid shown from the game camera to view");
+            m.SetDoorLids(lidMode);
+            return;
+        }
+        await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, null, false, ", on its door's lid");
+        await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, new CutawaySettings(), false, ", the cutaway on around a centre in front of it, the door kept");
+        float front = m.SectorData(k.Section.FrontSector.Index).R;
+        if (TopSurface(m, k) > front + CutawaySettings.DefaultHeight + 1 && m.SectorData(k.Sector).G <= front + CutawaySettings.DefaultHeight)
+        {
+            await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, new CutawaySettings { Doors = CutawayDoors.Cut, Cap = CutawayCap.Dark }, true,
+                ", the doors cut: on the cut door's cap");
+        }
+        else
+            GD.Print($"Level check: {map}: line {k.Section.Line.Index}'s door does not span the cutoff of a centre in front of its switch: no view with the doors cut");
+
+        // Open, as p_doors.c opens it: 4 below its lid, which stays as the lintel's top, the marker on it.
+        Sector door = m.Level.Sectors[k.Sector];
+        int old = door.CeilingHeight;
+        door.CeilingHeight = ((int)m.LidData(k.Sector).Height - 4) << Fixed.FRACBITS;
+        m.UpdateSectors();
+        await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, null, false, $", its door open to {door.CeilingHeight >> Fixed.FRACBITS}");
+        door.CeilingHeight = old;
+        m.UpdateSectors();
+
+        // The lids off: no lid, so no marker (the shader collapses it): where it lay, nothing changes with the markers on.
+        float lid = TopSurface(m, k);
+        m.SetDoorLids(DoorLidMode.Off);
+        await CompareTopMarkerFromGameCamera(m, k, basis, toCamera, null, false, ", the lids off: not drawn", lid);
+        m.SetDoorLids(lidMode);
+    }
+
+    // With noneAt, the marker must not be drawn: the pixels only it would cover at that height must not change with the markers on.
+    private async Task CompareTopMarkerFromGameCamera(LevelMesh m, SwitchMarker k, Basis basis, Vector3 toCamera, CutawaySettings? cutaway, bool onCap,
+        string label = "", float? noneAt = null)
     {
         WallSection s = k.Section;
         Sector sector = m.Level.Sectors[k.Sector];
-        var settings = new CutawaySettings { Style = CutawayStyle.Cut, Cap = CutawayCap.Dark };
+        CutawaySettings settings = cutaway ?? new CutawaySettings();
+        bool cut = onCap;
         float front = m.SectorData(s.FrontSector.Index).R;
         // A cut centre 8 units in front of the middle of the switch, on its floor (a player using it).
         double mx = k.X + k.Dx * k.Length / 2 + k.Normal.X * 8, my = k.Y + k.Dy * k.Length / 2 + k.Normal.Y * 8;
         var centre = new Vector3((float)mx, (float)my, front);
-        float z = (cut ? front + settings.Height : TopSurface(m, k)) + SwitchMarkers.Lift;
-        string what = $"{m.Level.Name}: line {s.Line.Index}'s top switch marker from the game camera{(cut ? ", its block cut by a centre in front of it" : "")}";
+        float z = (noneAt ?? (cut ? front + settings.Height : TopSurface(m, k))) + SwitchMarkers.Lift;
+        string what = $"{m.Level.Name}: line {s.Line.Index}'s top switch marker from the game camera{(cut && label.Length == 0 ? ", its block cut by a centre in front of it" : label)}";
         double cx = k.Pieces.Average(p => p.Average(v => v.X)), cy = k.Pieces.Average(p => p.Average(v => v.Y));
         CutView(new Vector3((float)cx, (float)cy, z - Cutaway.Anchor), basis, toCamera);
         Camera3D camera = _scene.Camera;
         List<List<Vector2>> Project(SwitchMarker marker, float height) =>
             [.. marker.Pieces.Select(p => p.Select(v => camera.UnprojectPosition(new Vector3((float)v.X, height, (float)-v.Y) / LevelMesh.MapUnitsPerMetre)).ToList())];
         List<List<Vector2>> own = Project(k, z);
-        List<List<Vector2>> others = [.. m.Markers.All.Where(o => o != k).SelectMany(o => Project(o, MarkerZ(m, o)))];
+        // T10.6e: a door's lid marker hides its own floor marker, lower and beyond the door from the camera, where both are
+        // (the door's cap copy lies above the floor marker on screen); and a marker whose wall faces the camera is never drawn
+        // (the door's other face's, on the same lid: Doom II MAP09's line 209 behind 210).
+        Vector2 flat = new Vector2(toCamera.X, toCamera.Y).Normalized();
+        List<List<Vector2>> others = [.. m.Markers.All.Where(o => o != k && (!k.Lid || o.Top || o.Section != s) && SwitchMarkers.Shows(o, flat.X, flat.Y))
+            .SelectMany(o => Project(o, MarkerZ(m, o)))];
         static bool In(List<Vector2> p, float x, float y) => InConvex([.. p.Select(v => ((double)v.X, (double)v.Y))], x, y);
         Vector2 anchor = camera.UnprojectPosition(LevelMesh.ToGodot((int)(centre.X * 65536), (int)(centre.Y * 65536), centre.Z + Cutaway.Anchor));
         Vector2I size = ViewSize();
@@ -427,7 +511,7 @@ public partial class LevelCheck
                     alone.Add(new Vector2I(px, py));
             }
         }
-        if (cut)
+        if (cutaway is not null)
         {
             m.SetCutawayCentres(centre, null);
             m.SetCutaway(settings);
@@ -436,13 +520,24 @@ public partial class LevelCheck
         byte[]? off = await Capture($"{what}, markers off");
         m.SetSwitchMarkers(SwitchMarkerMode.On);
         byte[]? on = await Capture($"{what}, markers on");
-        if (cut)
+        if (cutaway is not null)
         {
             m.SetCutawayCentres(null, null);
             m.SetCutaway(new CutawaySettings { Style = CutawayStyle.Off });
         }
         if (off is null || on is null)
             return;
+        if (noneAt is not null)
+        {
+            (int changed, string firstChanged) = ChangedPixels(alone, on, off, "the markers off");
+            _pixels += alone.Count;
+            if (changed > 0)
+                Fail($"{what}: {changed} of its {alone.Count} pixel(s) changed with the markers on, first at {firstChanged}");
+            if (alone.Count < 20)
+                Fail($"{what}: only {alone.Count} pixels to compare (at least 20 expected)");
+            GD.Print($"Level check: {what}: none of its {alone.Count} pixels changed");
+            return;
+        }
 
         IsoDoom.Wad.Graphics.IndexedImage tex = ShownComposite(m, Textures.R_CheckTextureNumForName(SwitchMarkers.TextureName(s)));
         Vector3 eye = Cutaway.ToMapAxes(camera.GlobalTransform.Origin) * LevelMesh.MapUnitsPerMetre;

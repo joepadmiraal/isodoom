@@ -90,7 +90,8 @@ namespace IsoDoom.Render;
 /// texture (its current one, from <c>side_textures</c>) laid back onto the
 /// floor; a lower switch's also on the top of the raised sector behind it
 /// (<see cref="SwitchMarkers.Tops"/>, <see cref="KindSwitchTop"/>, T10.6a), while
-/// that sector's rise hides the floor marker. <see cref="SetSwitchMarkers"/> turns them off.</item>
+/// that sector's rise hides the floor marker; an upper switch's over a door on
+/// the door's lid (T10.6e). <see cref="SetSwitchMarkers"/> turns them off.</item>
 /// <item><b>Height cues</b> (T6.13s): a strip on each side of every two-sided
 /// line (<see cref="LedgeEdges"/>; <see cref="KindLedge"/>), which the vertex
 /// shader places just above its sector's floor while that floor is more than
@@ -141,9 +142,11 @@ public sealed class LevelMesh : IDisposable
     /// again (<see cref="DoorLids.HasEnd"/>), from its sector's ceiling up to its lid,
     /// wound the other way: the end of the lid's block, facing the void.
     /// <see cref="KindSwitchTop"/> (T10.6a) is a piece of a lower switch's top marker
-    /// (<see cref="SwitchMarkers.Tops"/>), placed on its back sector's floor (or lid):
+    /// (<see cref="SwitchMarkers.Tops"/>; T10.6e: or an upper switch's over a door), placed on its back sector's floor (or lid):
     /// <c>CUSTOM0.z</c> that sector, <c>CUSTOM0.w</c> the switch's own, <c>CUSTOM2.x</c> the marker's depth,
-    /// <c>CUSTOM2.y</c> 0, or a cut centre + 1 for its copies on that centre's cutaway cap (built after it).
+    /// <c>CUSTOM2.y</c> 0, or a cut centre + 1 for its copies on that centre's cutaway cap (built after it);
+    /// <c>CUSTOM2.z</c> 0, or for an upper switch's over a door (T10.6e, <see cref="SwitchMarker.Lid"/>: on the door's lid only, none while it does not show)
+    /// its <see cref="SwitchMarker.Beyond"/> + 2, the sector whose ceiling it lies at when that is above the lid.
     /// </summary>
     public const int KindFloor = 0, KindWall = 1, KindMasked = 2, KindMaskedBack = 3, KindCap = 4, KindLid = 5, KindWallCap = 6, KindWallCapCut = 7,
         KindWallExtension = 8, KindSwitchMarker = 9, KindLedge = 10, KindLidEnd = 11, KindSwitchTop = 12;
@@ -403,7 +406,8 @@ public sealed class LevelMesh : IDisposable
         var floors = FloorTriangles.Build(level, polygons);
         var lids = DoorLids.Build(level, floors);
         var caps = WallCaps.Build(level, polygons);
-        var markers = SwitchMarkers.Build(walls, polygons, SwitchRows(textures, walls, switchPairs, compositeMode));
+        var switchDifferences = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
+        var markers = SwitchMarkers.Build(walls, polygons, SwitchRows(textures, walls, switchPairs, compositeMode, switchDifferences), lids, level, switchDifferences);
         var ledges = LedgeEdges.Build(level, polygons);
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
@@ -498,10 +502,11 @@ public sealed class LevelMesh : IDisposable
 
     /// <summary>
     /// The rows each switch texture's marker shows (T6.13p, <see cref="SwitchMarkers.Band"/>),
-    /// by name: both textures of every pair (both in the WAD) one of which a section of <paramref name="walls"/> draws.
+    /// by name: both textures of every pair (both in the WAD) one of which a section of <paramref name="walls"/> draws;
+    /// into <paramref name="differences"/>, when given, each one's differing texels per row (T10.6e, <see cref="SwitchMarkers.RowDifferences"/>).
     /// </summary>
     public static Dictionary<string, (int Top, int Bottom)> SwitchRows(Textures textures, WallSections walls, IEnumerable<(string Off, string On)>? pairs,
-        TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla)
+        TextureCompositeMode compositeMode = TextureCompositeMode.Vanilla, Dictionary<string, int[]>? differences = null)
     {
         var rows = new Dictionary<string, (int Top, int Bottom)>(StringComparer.OrdinalIgnoreCase);
         var drawn = new HashSet<int>();
@@ -515,7 +520,10 @@ public sealed class LevelMesh : IDisposable
             int a = textures.R_CheckTextureNumForName(off), b = textures.R_CheckTextureNumForName(on);
             if (a <= 0 || b <= 0 || (!drawn.Contains(a) && !drawn.Contains(b)))
                 continue;
-            rows[off] = rows[on] = SwitchMarkers.Band(textures.R_GenerateComposite(a, compositeMode), textures.R_GenerateComposite(b, compositeMode));
+            IndexedImage offImage = textures.R_GenerateComposite(a, compositeMode), onImage = textures.R_GenerateComposite(b, compositeMode);
+            rows[off] = rows[on] = SwitchMarkers.Band(offImage, onImage);
+            if (differences is not null)
+                differences[off] = differences[on] = SwitchMarkers.RowDifferences(offImage, onImage); // T10.6e
         }
         return rows;
     }
@@ -1546,7 +1554,7 @@ public sealed class LevelMesh : IDisposable
             float column = Units(s.TextureOffset);
             foreach (int centre in marker.Top ? new[] { -1, CapPlayer, CapCursor } : [-1])
             {
-                var c2 = new Vector4(marker.Top ? marker.Depth : 0, centre + 1, 0, (float)Math.Atan2(marker.Dy, marker.Dx));
+                var c2 = new Vector4(marker.Top ? marker.Depth : 0, centre + 1, marker.Lid ? marker.Beyond + 2 : 0, (float)Math.Atan2(marker.Dy, marker.Dx));
                 foreach ((double X, double Y)[] piece in marker.Pieces)
                 {
                     int first = c.Vertices.Count;
