@@ -3352,6 +3352,21 @@ exit normal
 
     public static int Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--lmp")
+        {
+            // T7.14: a route written as a demo (RouteFile.ToDemo), for -playdemo FILE.lmp
+            try
+            {
+                File.WriteAllBytes(args[2], IsoDoom.Game.RouteFile.Parse(args[1]).ToDemoLump());
+            }
+            catch (FormatException e)
+            {
+                Console.Error.WriteLine($"{args[1]}: {e.Message}");
+                return 1;
+            }
+            Console.WriteLine($"wrote {args[2]}");
+            return 0;
+        }
         if (args.Length == 3 && args[0] == "--probe")
         {
             var probe = new Steer(IwadOf(args[1]), args[1]);

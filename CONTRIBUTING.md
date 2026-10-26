@@ -48,6 +48,8 @@ godot --headless -- --level-check -iwad /tmp/isodoom-synthetic.wad    # ends "Le
 godot --headless --fixed-fps 35 -- -iwad /tmp/isodoom-synthetic.wad --level E1M1 \
   --level-tweaks=vanilla --level-monsters=off \
   --level-script="route tests/IsoDoom.Tests/Sim/Routes/synthetic-exit.route; gamestate intermission; skip; map E1M2 1; route tests/IsoDoom.Tests/Sim/Routes/synthetic-secret-exit.route; map E1M2 2; skip; gamestate demoscreen"
+# A route written as a .lmp demo, played with -playdemo to its end, on the route's own world (T7.14; ends "demoplay: OK").
+tools/DemoPlay/demoplay.sh /tmp/isodoom-synthetic.wad tests/IsoDoom.Tests/Sim/Routes/synthetic-dm-exit-2p.route
 # The netgame: a host and a client process over ENet on loopback (ends "loopback: OK").
 tools/NetLoopback/loopback.sh /tmp/isodoom-synthetic.wad 1000
 # ... the client finding the host by LAN discovery instead of its address (T11.9d; needs UDP port 5028 free).
@@ -68,7 +70,7 @@ tools/NetLoopback/loopback.sh /tmp/isodoom-synthetic.wad --play tests/IsoDoom.Te
 
 Each command exits non-zero on a failure.
 
-CI then exports the Linux build, smoke-tests it and runs the netgame loopback tests on it (the exchange, the lockstep play, a client and a host killed mid-game, and a forced desync), and exports the Windows build and runs its smoke test, both checks, the route play and the netgame loopback's exchange and play headless on a Windows runner (through `IsoDoom.console.exe`, the script under Git Bash), and the same for the macOS build on an Apple Silicon and an Intel macOS runner, and for the Linux arm64 build (the Raspberry Pi's) on an arm64 Linux runner, with a real renderer and the route checksums. A Linux runner also plays the Windows build under Wine against the Linux build over loopback, each way round (`test-cross`). It also runs both checks again on the exported build with a real renderer (Xvfb and lavapipe), which compares the drawn pixels. To run the same checks locally without exporting, use the editor:
+CI then exports the Linux build, smoke-tests it, plays a demo file on it and runs the netgame loopback tests on it (the exchange, the lockstep play, a client and a host killed mid-game, and a forced desync), and exports the Windows build and runs its smoke test, both checks, the route play and the netgame loopback's exchange and play headless on a Windows runner (through `IsoDoom.console.exe`, the script under Git Bash), and the same for the macOS build on an Apple Silicon and an Intel macOS runner, and for the Linux arm64 build (the Raspberry Pi's) on an arm64 Linux runner, with a real renderer and the route checksums. A Linux runner also plays the Windows build under Wine against the Linux build over loopback, each way round (`test-cross`). It also runs both checks again on the exported build with a real renderer (Xvfb and lavapipe), which compares the drawn pixels. To run the same checks locally without exporting, use the editor:
 
 ```bash
 WAYLAND_DISPLAY= VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json \

@@ -518,6 +518,28 @@ public sealed class RouteFile
     }
 
     /// <summary>
+    /// T7.14: the route as a demo of its own map (<see cref="ToDemo"/>,
+    /// the episode and map of <see cref="Map"/>), for <c>-playdemo FILE.lmp</c>.
+    /// A route a demo can't carry (route events, a <c>start</c>, a
+    /// <c>timer</c>: none of them is in a demo's header or commands, so it
+    /// would play another game) is a <see cref="FormatException"/>.
+    /// </summary>
+    public byte[] ToDemoLump()
+    {
+        var lost = new List<string>();
+        if (Events.Count > 0)
+            lost.Add($"{Events.Count} route event(s)");
+        if (Start is not null)
+            lost.Add("a start");
+        if (Timer != 0)
+            lost.Add("a timer");
+        if (lost.Count > 0)
+            throw new FormatException($"the route has {string.Join(", ", lost)}, which a demo can't carry");
+        string map = Map ?? "E1M1";
+        return ToDemo(World.EpisodeNumber(map), World.MapNumber(map));
+    }
+
+    /// <summary>
     /// Runs the events of tic <paramref name="tic"/> (0-based) in
     /// <paramref name="world"/>, as the vanilla reference does before the
     /// players think in that tic's <c>P_Ticker</c>; call it before that tic's <c>G_Ticker</c>.

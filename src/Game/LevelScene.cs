@@ -952,7 +952,10 @@ public partial class LevelScene : Node3D, IGameHost
             if (WadLocator.GetUserArg("--level-aim-assist") is string aimAssist)
                 Tweaks = Tweaks with { AimAssistCone = ParseAimAssistCone(aimAssist) };
             OpenWad();
-            _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission, GameVersion); // T7.1: g_game.c's flow, d_main.c's title loop
+            _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission, GameVersion) // T7.1: g_game.c's flow, d_main.c's title loop
+            {
+                demoversion = GameVersions.DemoVersion(GameVersion, WadLocator.GetUserArg("-gameversion") is not null, Wad!, GameMode, GameMission), // T7.14
+            };
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
             ApplyAspect(); // T7.11: square under the check but for its 4:3 checks
             InitSaves(); // T7.6: the save slots' directory
@@ -1098,6 +1101,15 @@ public partial class LevelScene : Node3D, IGameHost
                 }
                 else // a map the WAD lacks (E1M1 on Doom II): the title loop, the reason in the overlay, the scene set up as without --level
                     _flow.D_StartTitle($"--level {map}: the WAD has no map {map.ToUpperInvariant()}");
+            }
+            else if (WadLocator.GetUserArg("-playdemo") is string demo && !NetRequested())
+            {
+                // T7.14: d_main.c D_DoomMain's -playdemo: "quit after one demo"; its game starts at once (no melt, as --level's)
+                _flow.singledemo = true;
+                _flow.G_DeferedPlayDemo(demo);
+                _flow.G_DoGameActions();
+                if (_flow.demoplayback)
+                    _flow.wipegamestate = gamestate_t.GS_LEVEL;
             }
             else
                 _flow.D_StartTitle(null); // T7.1: d_main.c D_DoomMain without a map: the title loop (T11.8: a netgame's until its Start)
@@ -1748,7 +1760,7 @@ public partial class LevelScene : Node3D, IGameHost
             _ticTime = 0;
             TicFraction = 1;
         }
-        else if (flow.paused || flow.gamestate != gamestate_t.GS_LEVEL || World is { } w && flow.MenuHolds(w))
+        else if (flow.paused || flow.demopaused || flow.gamestate != gamestate_t.GS_LEVEL || World is { } w && flow.MenuHolds(w))
             TicFraction = 1; // T7.1: the world holds still (T7.2: also under the menu): show its last tic
         else
             TicFraction = Math.Clamp(_ticTime / TicSeconds, 0, 1);
@@ -1768,7 +1780,7 @@ public partial class LevelScene : Node3D, IGameHost
                 _beforeNext = null;
                 pending(world);
             }
-            Tic(BuildTiccmd(World?.tweaks ?? Tweaks));
+            Tic(Flow.demoplayback ? DemoTiccmd() : BuildTiccmd(World?.tweaks ?? Tweaks));
             return;
         }
         (ticcmd_t? cmd, Action<World>? before, ticcmd_t[]? all) = _scriptTics.Dequeue();
@@ -1781,6 +1793,19 @@ public partial class LevelScene : Node3D, IGameHost
     }
 
     private Action<World>? _beforeNext;
+
+    /// <summary>
+    /// T7.14: the local command while a demo plays: the input builds none (the
+    /// demo's commands are the tic's) but the pause key's (<see cref="GameFlow.demopaused"/>);
+    /// the input is still taken, so nothing pressed during the demo is left for after it.
+    /// </summary>
+    private ticcmd_t DemoTiccmd()
+    {
+        ticcmd_t cmd = BuildTiccmd(Tweaks.Vanilla);
+        return (cmd.buttons & (buttoncode_t.BT_SPECIAL | buttoncode_t.BT_SPECIALMASK)) == (buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE)
+            ? new ticcmd_t { buttons = cmd.buttons }
+            : default;
+    }
 
     /// <summary>
     /// T6.5: runs <paramref name="action"/> on the world before a tic (e.g.
@@ -2028,7 +2053,7 @@ public partial class LevelScene : Node3D, IGameHost
     {
         if (_flow is not { } flow || _graphics is not { } g || Playpal is null)
             return;
-        bool pause = flow.paused || FocusPaused;
+        bool pause = flow.paused || flow.demopaused || FocusPaused; // (T7.14: this machine's pause of a demo)
         gamestate_t state = flow.gamestate;
         (int Row, int Palette, int Strength) palette = state == gamestate_t.GS_LEVEL ? LevelScreenPalette : (0, 0, PaletteFlash.FullStrength);
         UpdateMenuScreens(flow, palette, pause); // T7.2: M_Drawer, last (over the pause graphic), on its own layer
@@ -2337,6 +2362,57 @@ public partial class LevelScene : Node3D, IGameHost
         Skill = skill;
         LevelEnded = null;
         return TryLoad(map, null);
+    }
+
+    /// <summary>
+    /// <see cref="IGameHost.G_InitDemo"/> (T7.14): <see cref="IGameHost.G_InitNew"/>
+    /// whose new world (<see cref="StartWorld"/>) is the demo's: its header's
+    /// settings and players, every tweak off whatever <c>--level-tweaks</c>
+    /// says (the presentation's options stay the user's), its console player
+    /// the local one; <c>-timer</c> still counts, as vanilla's (a demo has no timer).
+    /// </summary>
+    bool IGameHost.G_InitDemo(RouteFile demo, string map)
+    {
+        Skill = (skill_t)(demo.Skill - 1);
+        LevelEnded = null;
+        _demoStart = demo;
+        try
+        {
+            return TryLoad(map, null);
+        }
+        finally
+        {
+            _demoStart = null;
+        }
+    }
+
+    // T7.14: the demo whose world StartWorld makes (G_InitDemo's)
+    private RouteFile? _demoStart;
+
+    /// <summary><see cref="IGameHost.G_DemoLump"/> (T7.14): <see cref="DemoFiles.Find"/> in the WAD, a relative file name against <c>$PWD</c>.</summary>
+    (byte[] Data, string Source) IGameHost.G_DemoLump(string name) =>
+        DemoFiles.Find(name, Wad ?? throw new FileNotFoundException("no WAD open"), WadLocator.ResolveUserPath);
+
+    /// <summary>
+    /// <see cref="IGameHost.G_DemoDone"/> (T7.14): <c>-playdemo</c>'s demo
+    /// played to its end quits, as vanilla's; a refused one stays at the title
+    /// loop with its message, but quits with exit code 1 headless (nobody to
+    /// read it). Under <c>--level-script</c> neither quits (the script's end
+    /// does): after the demo's end the world holds still (scripted tics, an
+    /// empty queue), so the script reads the demo's last state.
+    /// </summary>
+    void IGameHost.G_DemoDone(bool refused)
+    {
+        if (WadLocator.HasUserArg("--level-script"))
+        {
+            if (!refused)
+                ScriptedTics = true;
+            return;
+        }
+        if (!refused)
+            _ = QuitQuietly(0);
+        else if (DisplayServer.GetName() == "headless")
+            _ = QuitQuietly(1);
     }
 
     /// <summary>
@@ -3318,7 +3394,9 @@ public partial class LevelScene : Node3D, IGameHost
             else
             {
                 int players = PlayersMask(level, GameModes.Deathmatch != 0); // T11.10: --level-players
-                world = NetGame is { } net // T11.8: a netgame's world, the Start's settings and tweaks, its slot the local player
+                world = _demoStart is { } demo // T7.14: a demo's world, its header's
+                    ? new World(demo.Settings(GameMode, Skill, GameVersion, GameMission) with { timelimit = GameModes.TimerMinutes }, Tweaks.Vanilla) { consoleplayer = demo.ConsolePlayer }
+                    : NetGame is { } net // T11.8: a netgame's world, the Start's settings and tweaks, its slot the local player
                     ? new World(net.Settings.Spawn, net.Settings.Tweaks) { consoleplayer = net.ConsolePlayer }
                     : new World(GameModes.Apply(new SpawnSettings(GameMode, Skill, netgame: players != 1, nomonsters: NoMonsters, gameversion: GameVersion, gamemission: GameMission,
                         playersingame: players)), Tweaks) // T11.4: -deathmatch, -altdeath, -timer, -avg, -respawn, -fast, -nomonsters

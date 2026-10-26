@@ -91,15 +91,20 @@ public partial class LevelScript
     /// waits (frames) until the scene shows map NAME, or the game is in STATE
     /// (<c>level</c>, <c>intermission</c>, <c>finale</c>, <c>demoscreen</c>);
     /// fails after SECONDS (default 120) or when the netgame's session ended.
-    /// For a netgame, where another machine may drive the game.
+    /// For a netgame, where another machine may drive the game. T7.14:
+    /// <c>until demo ended|refused [SECONDS]</c> waits until <c>-playdemo</c>'s
+    /// demo played to its end (the world then holds still) or was refused.
     /// </summary>
     private async Task<int> Until(string what, string name, int seconds)
     {
-        if (what is not ("map" or "gamestate"))
-            throw new ArgumentException($"until: \"{what}\" (map or gamestate)");
-        bool Reached() => what == "map"
-            ? string.Equals(_scene.Mesh?.Level.Name, name, StringComparison.OrdinalIgnoreCase) && _scene.GameState == gamestate_t.GS_LEVEL
-            : string.Equals(GameFlow.StateName(_scene.GameState), name, StringComparison.OrdinalIgnoreCase);
+        if (what is not ("map" or "gamestate" or "demo") || what == "demo" && name is not ("ended" or "refused"))
+            throw new ArgumentException($"until: \"{what} {name}\" (map NAME, gamestate STATE or demo ended|refused)");
+        bool Reached() => what switch
+        {
+            "map" => string.Equals(_scene.Mesh?.Level.Name, name, StringComparison.OrdinalIgnoreCase) && _scene.GameState == gamestate_t.GS_LEVEL,
+            "demo" => name == "ended" ? _scene.Flow.DemoEnded : _scene.Flow.DemoRefused is not null,
+            _ => string.Equals(GameFlow.StateName(_scene.GameState), name, StringComparison.OrdinalIgnoreCase),
+        };
         ulong deadline = Time.GetTicksMsec() + (ulong)seconds * 1000;
         while (!Reached() && Time.GetTicksMsec() < deadline && _scene.Net?.Failure is null)
             await Frames(1);

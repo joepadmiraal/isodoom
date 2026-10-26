@@ -78,6 +78,56 @@ public static class GameVersions
     };
 
     /// <summary>
+    /// T7.14: Chocolate Doom g_game.c <c>G_VanillaVersionCode</c>: the
+    /// version byte a demo of <paramref name="gameversion"/> carries (106 for
+    /// v1.666, 107 for v1.7, 108 for v1.8; "all other versions are variants
+    /// on v1.9": 109). v1.2 has none (Chocolate Doom's <c>I_Error</c>); it is
+    /// not emulated (<see cref="Emulated"/>).
+    /// </summary>
+    [SuppressMessage("Style", "IDE1006", Justification = "Vanilla name (Chocolate Doom g_game.c)")]
+    public static int G_VanillaVersionCode(GameVersion gameversion) => gameversion switch
+    {
+        GameVersion.exe_doom_1_666 => 106,
+        GameVersion.exe_doom_1_7 => 107,
+        GameVersion.exe_doom_1_8 => 108,
+        _ => 109,
+    };
+
+    /// <summary>
+    /// T7.14: the version byte the game plays demos of (<c>G_DoPlayDemo</c>'s
+    /// check): <paramref name="gameversion"/>'s (<see cref="G_VanillaVersionCode"/>)
+    /// when <c>-gameversion</c> named it (<paramref name="cmdline"/>); without
+    /// it, Chocolate Doom d_main.c <c>InitGameVersion</c>'s "Detect version
+    /// from demo lump" for Doom, Doom II and the shareware episode: the first
+    /// of <c>DEMO1</c>–<c>DEMO3</c> in <paramref name="wad"/> whose version
+    /// byte is v1.666's to v1.9's (Doom II v1.666's IWAD plays its own demos;
+    /// an older byte is v1.2's, which has no code: 0, every demo refused). The
+    /// sim plays v1.666 to v1.9 alike (SPEC §12 T10.7), so this is the check
+    /// alone, not the version emulated.
+    /// </summary>
+    public static int DemoVersion(GameVersion gameversion, bool cmdline, WadArchive wad, GameMode gamemode, GameMission gamemission)
+    {
+        ArgumentNullException.ThrowIfNull(wad);
+        if (cmdline || !(gamemode is GameMode.shareware or GameMode.registered || gamemode == GameMode.commercial && gamemission == GameMission.doom2))
+            return G_VanillaVersionCode(gameversion);
+        for (int i = 1; i <= 3; i++)
+        {
+            string name = $"DEMO{i}";
+            if (wad.W_CheckNumForName(name) > 0 && wad.W_CacheLumpName(name).Span is { Length: > 0 } demo)
+            {
+                switch (demo[0])
+                {
+                    case <= 4:
+                        return 0; // exe_doom_1_2
+                    case >= 106 and <= 109:
+                        return demo[0];
+                }
+            }
+        }
+        return G_VanillaVersionCode(gameversion);
+    }
+
+    /// <summary>
     /// d_main.c <c>InitGameVersion</c>: the version to emulate for
     /// <paramref name="iwad"/> (<paramref name="cmdline"/>, <c>-gameversion</c>'s
     /// argument, else <see cref="Default"/>), and the IWAD as that executable

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using IsoDoom.Audio;
 using IsoDoom.Sim;
 using IsoDoom.Wad;
@@ -82,6 +83,34 @@ public interface IGameHost
     /// loaded (the host says why).
     /// </summary>
     bool G_LoadGame(SaveGameFile save) => false;
+
+    /// <summary>
+    /// T7.14: <see cref="G_InitNew"/> for a demo (g_game.c <c>G_DoPlayDemo</c>'s
+    /// <c>G_InitNew</c>): a new game on <paramref name="map"/> with the
+    /// settings of <paramref name="demo"/>'s header (skill, deathmatch,
+    /// respawn, fast, nomonsters, the players in the game, a netgame for a
+    /// netdemo, its console player), every tweak off. False when it can't be
+    /// loaded. None by default (the tests' hosts but the demos').
+    /// </summary>
+    bool G_InitDemo(RouteFile demo, string map) => false;
+
+    /// <summary>
+    /// T7.14: the demo <c>-playdemo</c> names (<see cref="DemoFiles.Find"/>:
+    /// a file or the WAD's lump), its bytes and what it was; a
+    /// <see cref="FileNotFoundException"/> with the player's message when
+    /// there is none. None by default.
+    /// </summary>
+    (byte[] Data, string Source) G_DemoLump(string name) => throw new FileNotFoundException($"no demo {name}", name);
+
+    /// <summary>
+    /// T7.14: a <see cref="GameFlow.singledemo"/> demo played to its end
+    /// (g_game.c <c>G_CheckDemoStatus</c>'s <c>I_Quit</c>), or a demo
+    /// refused (<paramref name="refused"/>, the message shown). Nothing by
+    /// default (the tests' hosts go on).
+    /// </summary>
+    void G_DemoDone(bool refused)
+    {
+    }
 }
 
 /// <summary>
@@ -115,6 +144,7 @@ public sealed class GameFlow
         Wi = new WiStuff(this);
         Finale = new FFinale(this);
         Menu = new MMenu(this, gamevariant);
+        demoversion = GameVersions.G_VanillaVersionCode(this.gameversion);
     }
 
     /// <summary>doomstat.h <c>gamemode</c>.</summary>
@@ -176,10 +206,53 @@ public sealed class GameFlow
     public bool netsession;
 
     /// <summary>d_net.c <c>netgame</c> for the menus: a netgame's session (<see cref="netsession"/>) or a netgame's world.</summary>
-    public bool InNetGame => netsession || host.World?.netgame == true;
+    public bool InNetGame => netsession || host.World?.netgame == true && !demoplayback; // (T7.14: m_menu.c's netgame && !demoplayback)
 
     /// <summary>g_game.c <c>usergame</c>: a game the user started (not the title loop; T7.6's saves need one).</summary>
     public bool usergame;
+
+    /// <summary>
+    /// g_game.c <c>demoplayback</c> (T7.14): a demo plays (<see cref="G_DeferedPlayDemo"/>):
+    /// each tic's commands are the demo's (<see cref="G_Ticker(ticcmd_t[])"/>), the
+    /// input builds none, the menu holds nothing (<see cref="MenuHolds"/>).
+    /// </summary>
+    public bool demoplayback;
+
+    /// <summary>g_game.c <c>netdemo</c> (T7.14): the demo has player 2 in the game, so its world is a netgame's.</summary>
+    public bool netdemo;
+
+    /// <summary>g_game.c <c>singledemo</c> (T7.14): <c>-playdemo</c>'s demo: the game quits at its end ("quit after one demo").</summary>
+    public bool singledemo;
+
+    /// <summary>g_game.c <c>defdemoname</c> (T7.14): the demo <see cref="G_DeferedPlayDemo"/> asked for.</summary>
+    public string? defdemoname;
+
+    /// <summary>T7.14: the demo played last (<see cref="G_DoPlayDemo"/>), or null.</summary>
+    public RouteFile? Demo { get; private set; }
+
+    /// <summary>T7.14: the demo's tics run (the next one's index in <see cref="RouteFile.NetCmds"/>).</summary>
+    public int DemoTic { get; private set; }
+
+    /// <summary>
+    /// T7.14: the version byte demos must carry (<see cref="GameVersions.G_VanillaVersionCode"/>
+    /// of <see cref="gameversion"/>; the game scene's is <see cref="GameVersions.DemoVersion"/>).
+    /// </summary>
+    public int demoversion;
+
+    /// <summary>T7.14: why the last demo was refused (its message), null after a demo started.</summary>
+    public string? DemoRefused { get; private set; }
+
+    /// <summary>T7.14: the last demo played to its end (<see cref="G_CheckDemoStatus"/>).</summary>
+    public bool DemoEnded { get; private set; }
+
+    /// <summary>
+    /// T7.14, not vanilla (SPEC §12 T7.14): this machine's pause during a demo
+    /// (the pause key's <c>BTS_PAUSE</c> in the local command). Vanilla's
+    /// <c>G_ReadDemoTiccmd</c> overwrites the local command, so its demos
+    /// never pause; here nothing ticks while it holds (the demo's tics wait),
+    /// so the demo stays in sync. The pause graphic shows.
+    /// </summary>
+    public bool demopaused;
 
     /// <summary>d_main.c <c>gametic</c> as the game counts it: every <see cref="G_Ticker(ticcmd_t[])"/> (title, intermission and level).</summary>
     public int gametic;
@@ -402,12 +475,27 @@ public sealed class GameFlow
     /// </summary>
     public void G_Ticker(ticcmd_t[] netcmds)
     {
-        // T7.9a: st_stuff.c ST_Responder's cheats, which vanilla's responder runs between the tics, before this one
-        // (T11.1: each player's own, on the sender)
-        for (int i = 0; i < World.MAXPLAYERS; i++)
+        if (demoplayback)
         {
-            if (PlayerInGame(i))
-                ST_DoCheat(i, netcmds[i]);
+            // T7.14, not vanilla: this machine's pause holds the demo (demopaused)
+            if ((netcmds[ConsolePlayer].buttons & (buttoncode_t.BT_SPECIAL | buttoncode_t.BT_SPECIALMASK)) == (buttoncode_t.BT_SPECIAL | buttoncode_t.BTS_PAUSE))
+            {
+                demopaused = !demopaused;
+                if (demopaused)
+                    Sound?.S_PauseSound();
+                else
+                    Sound?.S_ResumeSound();
+            }
+        }
+        else
+        {
+            // T7.9a: st_stuff.c ST_Responder's cheats, which vanilla's responder runs between the tics, before this one
+            // (T11.1: each player's own, on the sender; T7.14: none in a demo)
+            for (int i = 0; i < World.MAXPLAYERS; i++)
+            {
+                if (PlayerInGame(i))
+                    ST_DoCheat(i, netcmds[i]);
+            }
         }
 
         if (advancedemo)
@@ -416,6 +504,20 @@ public sealed class GameFlow
 
         // do things to change the game state
         G_DoGameActions();
+
+        if (demoplayback)
+        {
+            if (demopaused)
+                return; // T7.14: nothing ticks: the demo waits
+            // G_ReadDemoTiccmd for each player in the game (the demo's commands in place of the input's): its
+            // end, DEMOMARKER, is G_CheckDemoStatus, and that tic does not run
+            if (DemoTic >= Demo!.NetCmds.Count)
+            {
+                G_CheckDemoStatus();
+                return;
+            }
+            netcmds = Demo.NetCmds[DemoTic++];
+        }
 
         // vanilla copies each player's ticcmd in every state (the level's copy is World.G_Ticker's)
         World? world = host.World;
@@ -443,6 +545,8 @@ public sealed class GameFlow
                         Sound?.S_ResumeSound();
                     break;
                 case buttoncode_t.BTS_SAVEGAME:
+                    if (demoplayback)
+                        break; // T7.14, not vanilla: a demo's save does not overwrite the player's slot
                     if (savedescription.Length == 0)
                         savedescription = "NET GAME";
                     savegameslot = (netcmds[i].buttons & buttoncode_t.BTS_SAVEMASK) >> buttoncode_t.BTS_SAVESHIFT;
@@ -519,7 +623,7 @@ public sealed class GameFlow
     /// <c>viewz</c> to 1, still runs; a reborn player's is 0, so held at once).
     /// </summary>
     public bool MenuHolds(World world) =>
-        !world.netgame && Menu.menuactive && world.players[world.consoleplayer].viewz != 1;
+        !world.netgame && Menu.menuactive && !demoplayback && world.players[world.consoleplayer].viewz != 1;
 
     /// <summary>
     /// s_sound.c <c>S_StartSound(NULL, …)</c> for the game's screens (the
@@ -547,7 +651,7 @@ public sealed class GameFlow
     public System.Collections.Generic.IReadOnlyList<(cheat_t Cheat, byte Param)> ST_Responder(int key)
     {
         _matched.Clear();
-        if (gamestate != gamestate_t.GS_LEVEL || host.World is not { } world)
+        if (gamestate != gamestate_t.GS_LEVEL || host.World is not { } world || demoplayback) // (T7.14: a demo's tics take no cheat)
             return _matched;
         Cheats.Check(MCheat.KeyCode(key), world.ST_CheatsAllowed, !world.netgame, gamemission, _matched);
         foreach ((cheat_t, byte) cheat in _matched)
@@ -911,6 +1015,7 @@ public sealed class GameFlow
             Sound?.S_ResumeSound();
         }
         advancedemo = false; // not vanilla: as G_InitNewMap
+        G_StopDemo(); // T7.14, not vanilla (whose demo would go on reading over the loaded game)
         MRandom.M_ClearRandom();
         usergame = true;
         gameskill = save.Skill;
@@ -937,8 +1042,8 @@ public sealed class GameFlow
     /// <summary>
     /// g_game.c <c>G_Ticker</c>'s "do things to change the game state": runs
     /// the game actions until none is left (T7.6: <c>ga_loadgame</c>,
-    /// <c>ga_savegame</c>); there is no demo playback (SPEC §7.6)
-    /// and no screenshot action (the level script's <c>shot</c>).
+    /// <c>ga_savegame</c>; T7.14: <c>ga_playdemo</c>, <c>-playdemo</c>'s);
+    /// there is no screenshot action (the level script's <c>shot</c>).
     /// </summary>
     public void G_DoGameActions()
     {
@@ -967,8 +1072,11 @@ public sealed class GameFlow
                 case gameaction_t.ga_savegame:
                     G_DoSaveGame();
                     break;
+                case gameaction_t.ga_playdemo:
+                    G_DoPlayDemo();
+                    break;
                 default:
-                    // ga_playdemo, ga_screenshot: not ported
+                    // ga_screenshot: not ported
                     gameaction = gameaction_t.ga_nothing;
                     break;
             }
@@ -1013,8 +1121,112 @@ public sealed class GameFlow
     /// </summary>
     private void G_DoNewGame()
     {
+        G_StopDemo(); // demoplayback = false; netdemo = false (the world's netgame and modes are the new game's)
         G_InitNew(d_skill, d_episode, d_map);
         gameaction = gameaction_t.ga_nothing;
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_DeferedPlayDemo</c> (T7.14): demo <paramref name="name"/>
+    /// (<c>-playdemo</c>'s: a file or the WAD's lump, <see cref="IGameHost.G_DemoLump"/>)
+    /// plays from the next tic.
+    /// </summary>
+    public void G_DeferedPlayDemo(string name)
+    {
+        defdemoname = name;
+        gameaction = gameaction_t.ga_playdemo;
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_DoPlayDemo</c> (T7.14): reads the demo's header (the
+    /// vanilla-input adapter, <see cref="RouteFile.FromDemo"/>) and starts its
+    /// game (<see cref="IGameHost.G_InitDemo"/>, not a user's game: no saves),
+    /// whose tics then read its commands (<see cref="G_Ticker(ticcmd_t[])"/>).
+    /// A demo the sim can't play in sync is refused (vanilla's <c>I_Error</c>)
+    /// with a message at the title loop: none found; another version byte
+    /// than <see cref="demoversion"/> (Chocolate Doom's "Demo is from a
+    /// different game version!"); a damaged one (cut short, no
+    /// <c>DEMOMARKER</c>, a console player not in the game); a map the WAD
+    /// lacks or <c>G_InitNew</c>'s clamps would change.
+    /// </summary>
+    private void G_DoPlayDemo()
+    {
+        gameaction = gameaction_t.ga_nothing;
+        string name = defdemoname ?? "";
+        RouteFile demo;
+        string source;
+        try
+        {
+            (byte[] data, source) = host.G_DemoLump(name);
+            if (data.Length > 0 && data[0] != demoversion)
+                throw new FormatException($"Demo is from a different game version!\n(read {data[0]}, should be {demoversion})");
+            demo = RouteFile.FromDemo(data, name, gamemode == GameMode.commercial);
+            if (G_InitNewMapName(World.EpisodeNumber(demo.Map!), World.MapNumber(demo.Map!)) != demo.Map || !host.HasLump(demo.Map!))
+                throw new FormatException($"the demo is for {demo.Map},\nwhich this game lacks");
+        }
+        catch (Exception e) when (e is FormatException or IOException or UnauthorizedAccessException)
+        {
+            G_DemoRefused(e.Message.StartsWith(name + ": ", StringComparison.Ordinal) ? e.Message[(name.Length + 2)..] : e.Message);
+            return;
+        }
+        Log?.Invoke($"Demo: {name} ({source}): {demo.Map}, skill {demo.Skill}, players {demo.PlayersInGame:x} (console player {demo.ConsolePlayer + 1}), "
+            + $"deathmatch {demo.Deathmatch}, respawn {demo.Respawn}, fast {demo.Fast}, monsters {demo.Monsters}: {demo.NetCmds.Count} tics");
+        Demo = demo;
+        DemoTic = 0;
+        DemoEnded = false;
+        DemoRefused = null;
+        demopaused = false;
+        demoplayback = true;
+        netdemo = demo.Netgame;
+        InitNewGame((skill_t)(demo.Skill - 1), demo.Map!, demo); // vanilla's G_InitNew, its clamps checked above
+        if (!demoplayback)
+        {
+            G_DemoRefused($"{demo.Map} could not be loaded"); // (the host said why)
+            return;
+        }
+        usergame = false;
+    }
+
+    // G_DoPlayDemo's I_Error: the title loop with the message (and the log's line)
+    private void G_DemoRefused(string why)
+    {
+        Log?.Invoke($"Demo: {defdemoname} refused: {why.Replace('\n', ' ')}");
+        D_StartTitle($"demo {defdemoname} refused: {why.Replace('\n', ' ')}");
+        DemoRefused = why;
+        Menu.M_StartMessage($"can't play the demo {defdemoname}:\n{why}\n\n{MMenu.PRESSKEY}", null, false);
+        host.G_DemoDone(true);
+    }
+
+    /// <summary>
+    /// g_game.c <c>G_CheckDemoStatus</c> (T7.14): the demo's end
+    /// (<c>DEMOMARKER</c>): playback stops (vanilla also resets the netgame
+    /// and the modes, which are the world's here: the next game's are its
+    /// own); with <see cref="singledemo"/> the game quits (<see cref="IGameHost.G_DemoDone"/>),
+    /// else the title loop's next step. False without a demo playing.
+    /// </summary>
+    public bool G_CheckDemoStatus()
+    {
+        if (!demoplayback)
+            return false;
+        Log?.Invoke($"Demo: {defdemoname} played to its end: {DemoTic} tics"
+            + (host.World is { } world ? $", leveltime {world.leveltime} checksum {world.Checksum():x16}" : ""));
+        G_StopDemo();
+        DemoEnded = true;
+        if (singledemo)
+            host.G_DemoDone(false); // I_Quit
+        else
+            D_AdvanceDemo();
+        return true;
+    }
+
+    // demoplayback = false, netdemo = false: a new game, a load or the title loop ends the demo's game
+    private void G_StopDemo()
+    {
+        if (demopaused)
+            Sound?.S_ResumeSound();
+        demoplayback = false;
+        netdemo = false;
+        demopaused = false;
     }
 
     /// <summary>
@@ -1027,7 +1239,12 @@ public sealed class GameFlow
     {
         if (skill > skill_t.sk_nightmare)
             skill = skill_t.sk_nightmare;
+        G_InitNewMap(skill, G_InitNewMapName(episode, map));
+    }
 
+    /// <summary>The map <see cref="G_InitNew"/> starts for <paramref name="episode"/> and <paramref name="map"/>, after its clamps.</summary>
+    private string G_InitNewMapName(int episode, int map)
+    {
         if (episode < 1)
             episode = 1;
 
@@ -1053,7 +1270,7 @@ public sealed class GameFlow
         if (map > 9 && gamemode != GameMode.commercial)
             map = 9;
 
-        G_InitNewMap(skill, World.MapName(gamemode, episode, map));
+        return World.MapName(gamemode, episode, map);
     }
 
     /// <summary>
@@ -1065,7 +1282,10 @@ public sealed class GameFlow
     /// respawning and fast monsters are the world's settings), the game
     /// state the level. A map that can't be loaded goes back to the title loop.
     /// </summary>
-    public void G_InitNewMap(skill_t skill, string map)
+    public void G_InitNewMap(skill_t skill, string map) => InitNewGame(skill, map, null);
+
+    // G_InitNewMap, for a demo (T7.14) with its header's settings (IGameHost.G_InitDemo)
+    private void InitNewGame(skill_t skill, string map, RouteFile? demo)
     {
         if (paused)
         {
@@ -1079,7 +1299,7 @@ public sealed class GameFlow
         gameskill = skill;
         // the sky (R_TextureNumForName("SKY1"…)) is the presentation's: never drawn (SPEC §7.2)
         G_DoLoadLevelWipe();
-        if (!host.G_InitNew(skill, map))
+        if (!(demo is null ? host.G_InitNew(skill, map) : host.G_InitDemo(demo, map)))
         {
             D_StartTitle(null);
             return;
@@ -1188,6 +1408,7 @@ public sealed class GameFlow
     public void D_StartTitle(string? why)
     {
         HeldMessage = null; // T11.11's follow-up: the game's held message goes with it
+        G_StopDemo(); // T7.14: the demo's game goes with it
         host.EndGame(why);
         gameaction = gameaction_t.ga_nothing;
         demosequence = -1;
@@ -1280,7 +1501,7 @@ public sealed class GameFlow
             ? $"finale (cast call: {FFinale.castorder[Finale.castnum].name}{(Finale.castdeath ? " dying" : Finale.castattacking ? " attacking" : "")}, {Finale.caststate}, tic {Finale.finalecount})" // T10.5
             : $"finale (stage {Finale.finalestage}, tic {Finale.finalecount})",
         _ => $"title loop: {pagename} ({pagetic} tics)",
-    } + (paused ? ", paused" : "");
+    } + (paused ? ", paused" : "") + (demoplayback ? $", demo {defdemoname} (tic {DemoTic} of {Demo!.NetCmds.Count}{(demopaused ? ", paused" : "")})" : "");
 
     /// <summary>The level script's names of the game states (<c>gamestate NAME</c>).</summary>
     public static string StateName(gamestate_t state) => state switch

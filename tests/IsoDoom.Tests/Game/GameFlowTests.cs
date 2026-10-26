@@ -4,6 +4,7 @@ using IsoDoom.Map;
 using IsoDoom.Sim;
 using IsoDoom.Tools.SyntheticIwad;
 using IsoDoom.Wad;
+using IsoDoom.Wad.Graphics;
 using Xunit;
 
 namespace IsoDoom.Tests.Game;
@@ -97,6 +98,38 @@ public class GameFlowTests
             Loads.Add("load " + save.Map);
             World = save.LoadWorld(Level.Load(Wad, save.Map), null, PicAnims.FlatNames(Wad));
             return true;
+        }
+
+        // T7.14: a demo's world, as VanillaRoute.NewWorld makes a route's (its header's settings and players, every tweak off)
+        public bool G_InitDemo(RouteFile demo, string map)
+        {
+            Loads.Add("demo " + map);
+            if (Wad.W_CheckNumForName(map) < 0)
+                return false;
+            Textures? textures = Wad.W_CheckNumForName("TEXTURE1") >= 0 ? Textures.R_InitTextures(Wad) : null;
+            World = new World(demo.Settings(_mode, (skill_t)(demo.Skill - 1), _gameversion), Tweaks.Vanilla)
+            {
+                consoleplayer = demo.ConsolePlayer,
+                textures = textures,
+                map31exists = Wad.W_CheckNumForName("MAP31") >= 0,
+            };
+            World.P_InitPicAnims(textures, PicAnims.FlatNames(Wad));
+            World.G_DoLoadLevel(Level.Load(Wad, map));
+            return true;
+        }
+
+        /// <summary>T7.14: the demos found (<see cref="DemoFiles.Find"/> in <see cref="Wad"/>, a relative file name against the working directory).</summary>
+        public (byte[] Data, string Source) G_DemoLump(string name) => DemoFiles.Find(name, Wad);
+
+        /// <summary>T7.14: the demos played to their end (<see cref="IGameHost.G_DemoDone"/>, a single demo's quit) and refused.</summary>
+        public int DemosEnded, DemosRefused;
+
+        public void G_DemoDone(bool refused)
+        {
+            if (refused)
+                DemosRefused++;
+            else
+                DemosEnded++;
         }
 
         public void LevelCompleted() => Completed++;

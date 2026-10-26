@@ -159,7 +159,9 @@ namespace IsoDoom.Game;
 /// <c>power invulnerability; wake; sim live; wait 120; tictime 700</c> for the tic budget.
 /// <c>demo LUMP [TICS]</c> (T6.13) queues the WAD's demo lump (e.g. <c>DEMO1</c>) as a route
 /// (<see cref="RouteFile.FromDemo"/>: the vanilla-input adapter); like <c>route</c> it needs
-/// <c>--level-tweaks=vanilla</c>, the demo's map and skill and monsters on.
+/// <c>--level-tweaks=vanilla</c>, the demo's map and skill and monsters on. T7.14: under
+/// <c>-playdemo NAME</c>, which plays the demo itself (<see cref="GameFlow.G_DeferedPlayDemo"/>),
+/// <c>until demo ended|refused [SECONDS]</c> waits for its end (the world then holds still) or its refusal.
 /// <c>spawn TYPE X Y [ANGLE]</c> (T6.9, debugging) spawns a mobj of <c>mobjtype_t</c>
 /// <c>MT_TYPE</c> (e.g. <c>shadows</c>, the spectre, which DOOM1's maps lack) on the floor at
 /// map point X, Y facing ANGLE (degrees, default 0) through <c>P_SpawnMobj</c>, before the next

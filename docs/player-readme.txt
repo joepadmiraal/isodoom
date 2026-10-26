@@ -42,6 +42,13 @@ the game):
   IsoDoom.x86_64 -- -iwad /path/to/DOOM2.WAD
   IsoDoom.console.exe -- -iwad C:\Games\Doom\DOOM2.WAD   (absolute paths on Windows)
   IsoDoom.x86_64 -- -iwad DOOM2.WAD -file mymod.wad      (add a PWAD)
+  IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run.lmp    (watch a demo, then quit)
+
+"-playdemo" plays a demo recorded with the original Doom (a .lmp file, or
+a demo in the WAD such as "-playdemo demo1") with the original game's
+rules, then quits. Pause works while it plays. A demo the game can't play
+correctly (another version of Doom, or a damaged file) is refused with a
+message.
 
 
 Controls
