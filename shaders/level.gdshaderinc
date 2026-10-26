@@ -57,7 +57,8 @@
 //              side's scroll is added, T5.7), UV.y = 0 bottom, 1 top
 //              CUSTOM1 = bottom plane, bottom offset, top plane, top offset
 //              CUSTOM2 = texture-top plane (+ 8: add the slot's texture height, for a texture
-//                        whose bottom is pegged; T5.1), texture-top offset, fake contrast
+//                        whose bottom is pegged; T5.1; + 16: an upper switch the upper-walls
+//                        rule keeps, T10.6f), texture-top offset, fake contrast
 //                        (-1, 0, +1), direction from end A to B (radians; LevelMesh.PieceAngle)
 //              planes are IsoDoom.Map.WallPlane: 0 front floor, 1 front ceiling,
 //              2 back floor, 3 back ceiling, 4 higher floor, 5 lower ceiling
@@ -124,6 +125,7 @@
 // door, a crusher) or its lid shows (R above its ceiling, the lids on or not:
 // a lintel, a window, a closed door). Over a room with a lower ceiling, which
 // is not drawn, it would hang in the air as a band.
+// A switch (T10.6f; LevelMesh.KeepsSwitchUpper, CUSTOM2.x + 16) is always kept.
 //
 // Doors (T6.13d; IsoDoom.Render.DoorLids.IsDoor, `cut_doors` 0 keep, 1 cut):
 // with 0, nothing of a door sector is cut: its floor, its lid, and every wall
@@ -580,7 +582,7 @@ void vertex() {
 			top = max(top, bottom);
 			// An upper wall over a sector that does not keep it (a room's lower ceiling).
 			bool dropped = false;
-			if (upper_walls == 1 && kind == 1 && !extension && back_id >= 0 && int(CUSTOM0.y + 0.5) % 3 == 0) {
+			if (upper_walls == 1 && kind == 1 && !extension && back_id >= 0 && int(CUSTOM0.y + 0.5) % 3 == 0 && (texture_plane & 16) == 0) {
 				vec4 back_lid = data_texel(sector_lids, back_id);
 				dropped = back_lid.a < 0.5 && back_lid.r <= back.g;
 			}

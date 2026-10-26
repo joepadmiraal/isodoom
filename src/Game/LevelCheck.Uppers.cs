@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;
 using IsoDoom.Map;
@@ -12,15 +13,53 @@ namespace IsoDoom.Game;
 /// keep it (<see cref="DoorLids.KeepsUppers"/>) side-on, drawn with every
 /// upper wall and nothing (the background) with only the doors' kept; and the
 /// largest one over a sector that keeps it (a door, a lintel), the same both ways.
+/// T10.6f: on every map, every upper wall whose texture is a switch of the
+/// game's pairs is kept (<see cref="LevelMesh.KeepsSwitchUpper"/>, its
+/// vertices flagged), and no other; with a real renderer the largest such
+/// switch over a sector that does not keep its upper walls is drawn the same
+/// both ways.
 /// </summary>
 public partial class LevelCheck
 {
+    private int _switchUppers, _switchUppersKept;
+
+    /// <summary>
+    /// T10.6f: every upper switch of <paramref name="map"/> is kept by the
+    /// upper-walls rule (<see cref="LevelMesh.KeepsSwitchUpper"/>; the vertex
+    /// check expects its flag) and nothing else is; counts those over a
+    /// sector that does not keep its upper walls, which the rule would drop.
+    /// </summary>
+    private void CheckSwitchUppers(LevelMesh m, string map)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string off, string on) in LevelScene.SwitchPairs(_scene.GameMode))
+        {
+            names.Add(off);
+            names.Add(on);
+        }
+        foreach (WallSection s in m.Walls.Sections)
+        {
+            bool expected = s.Kind == WallSectionKind.Upper && LevelMesh.IsDrawn(s) && names.Contains(SwitchMarkers.TextureName(s));
+            if (m.KeepsSwitchUpper(s) != expected)
+                Fail($"{map}: line {s.Line.Index} side {s.Side} {s.Kind} ({SwitchMarkers.TextureName(s)}): {(expected ? "an upper switch not kept" : "kept as an upper switch")} (T10.6f)");
+            if (!expected)
+                continue;
+            _switchUppers++;
+            if (s.BackSector is Sector back && !m.Lids.KeepsUppers(back.Index, n => m.Level.Sectors[n].CeilingHeight / 65536f))
+            {
+                _switchUppersKept++;
+                GD.Print($"Level check: {map}: line {s.Line.Index} side {s.Side}'s upper switch ({SwitchMarkers.TextureName(s)}) over sector {back.Index}, "
+                    + "which does not keep its upper walls: kept (T10.6f)");
+            }
+        }
+    }
+
     private async Task UpperWallCheck(LevelMesh m)
     {
         string map = m.Level.Name;
         Vector2I size = ViewSize();
-        WallSection? dropped = null, kept = null;
-        float droppedArea = 0, keptArea = 0;
+        WallSection? dropped = null, kept = null, keptSwitch = null;
+        float droppedArea = 0, keptArea = 0, switchArea = 0;
         foreach (WallSection s in m.Walls.Sections)
         {
             if (s.Kind != WallSectionKind.Upper || s.BackSector is not Sector back || !LevelMesh.IsDrawn(s))
@@ -29,7 +68,13 @@ public partial class LevelCheck
             float height = (top - bottom) / 65536f, length = SectionLength(s);
             if (height <= 8 || length <= 8 || height >= size.Y - 8 || length >= size.X - 8)
                 continue;
-            if (m.Lids.KeepsUppers(back.Index, n => m.Level.Sectors[n].CeilingHeight / 65536f))
+            if (!m.Lids.KeepsUppers(back.Index, n => m.Level.Sectors[n].CeilingHeight / 65536f) && m.KeepsSwitchUpper(s))
+            {
+                // T10.6f: a switch the rule would drop.
+                if (height * length > switchArea)
+                    (keptSwitch, switchArea) = (s, height * length);
+            }
+            else if (m.Lids.KeepsUppers(back.Index, n => m.Level.Sectors[n].CeilingHeight / 65536f))
             {
                 if (height * length > keptArea)
                     (kept, keptArea) = (s, height * length);
@@ -47,6 +92,10 @@ public partial class LevelCheck
             GD.Print($"Level check: {map}: no upper wall over a sector that keeps it");
         else
             await CompareUpperWall(m, kept, false);
+        if (keptSwitch is null)
+            GD.Print($"Level check: {map}: no upper switch over a sector that does not keep its upper walls (T10.6f)");
+        else
+            await CompareUpperWall(m, keptSwitch, false);
         m.SetUpperWalls(UpperWallMode.All);
     }
 

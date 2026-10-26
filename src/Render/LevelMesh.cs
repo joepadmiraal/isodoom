@@ -167,6 +167,13 @@ public sealed class LevelMesh : IDisposable
     /// </summary>
     public const int PlaneAddsTextureHeight = 8;
 
+    /// <summary>
+    /// The kept-switch flag (<c>CUSTOM2.x</c>, T10.6f): an upper wall whose
+    /// texture is a switch (<see cref="KeepsSwitchUpper"/>), which
+    /// <see cref="UpperWallMode.Doors"/> never drops.
+    /// </summary>
+    public const int PlaneKeepsUpper = 16;
+
     /// <summary>Half the height range of a chunk's culling box, in metres (any fixed_t height fits).</summary>
     private const float HeightRange = 32768f / MapUnitsPerMetre;
 
@@ -195,6 +202,7 @@ public sealed class LevelMesh : IDisposable
     private int[] _slotShows = []; // the slot whose rectangle each slot's texture_info holds (T5.7)
     private bool _infoDirty;
     private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _switchTextures = new(StringComparer.OrdinalIgnoreCase); // both of each pair (T10.6f)
 
     private LevelMesh(Level level, WallSections walls, FloorTriangles floors, DoorLids lids, WallCaps caps, SwitchMarkers markers, LedgeEdges ledges,
         Textures textures, int[] textureSlot, List<string> slotNames, TextureAtlas atlas, Image sectorImage)
@@ -407,7 +415,8 @@ public sealed class LevelMesh : IDisposable
         var lids = DoorLids.Build(level, floors);
         var caps = WallCaps.Build(level, polygons);
         var switchDifferences = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
-        var markers = SwitchMarkers.Build(walls, polygons, SwitchRows(textures, walls, switchPairs, compositeMode, switchDifferences), lids, level, switchDifferences);
+        Dictionary<string, (int Top, int Bottom)> switchRows = SwitchRows(textures, walls, switchPairs, compositeMode, switchDifferences);
+        var markers = SwitchMarkers.Build(walls, polygons, switchRows, lids, level, switchDifferences);
         var ledges = LedgeEdges.Build(level, polygons);
 
         // Texture slots: the wall textures the drawn sections use, then the floor flats.
@@ -493,6 +502,7 @@ public sealed class LevelMesh : IDisposable
             Image.CreateEmpty(DataWidth, Rows(level.Sectors.Length), false, Image.Format.Rgbaf));
         foreach ((string? name, int slot) in flatSlot)
             mesh._flatSlot[name] = slot;
+        mesh._switchTextures.UnionWith(switchRows.Keys);
         mesh.RuntimeTextures = runtime;
         mesh.RuntimeFlats = runtimeFlats;
         mesh.CreateTextures(playpal, colormap);
@@ -799,7 +809,17 @@ public sealed class LevelMesh : IDisposable
     /// <summary>Which upper walls are drawn, as last set (<see cref="SetUpperWalls"/>; <see cref="UpperWallMode.Doors"/> until set).</summary>
     public UpperWallMode UpperMode { get; private set; } = UpperWallMode.Doors;
 
-    /// <summary>Draws every upper wall, or only those over the sectors that keep them (<see cref="DoorLids.KeepsUppers"/>).</summary>
+    /// <summary>
+    /// Whether <paramref name="s"/> is an upper wall whose texture is a switch
+    /// (T10.6f, SPEC §12): <see cref="UpperWallMode.Doors"/> keeps it whatever
+    /// the sector across its line, since a dropped switch facing the camera has
+    /// no marker either and would show nowhere. A switch changes only into its
+    /// pair's other texture, a switch too, so the flag holds at run time.
+    /// </summary>
+    public bool KeepsSwitchUpper(WallSection s) =>
+        s.Kind == WallSectionKind.Upper && IsDrawn(s) && _switchTextures.Contains(Textures.TextureDefs[s.Texture].Name);
+
+    /// <summary>Draws every upper wall, or only those over the sectors that keep them (<see cref="DoorLids.KeepsUppers"/>) and the switches (<see cref="KeepsSwitchUpper"/>).</summary>
     public void SetUpperWalls(UpperWallMode mode)
     {
         UpperMode = mode;
@@ -1437,9 +1457,10 @@ public sealed class LevelMesh : IDisposable
             Chunk c = masked ? maskedChunks[s.FrontSector.Index] ??= new Chunk() : ChunkOf(s.FrontSector.Index);
             var c0 = new Vector4(masked ? KindMasked : KindWall, SidePartId(s), s.FrontSector.Index, s.BackSector?.Index ?? -1);
             var c1 = new Vector4((int)s.Bottom.Plane, Units(s.Bottom.Offset), (int)s.Top.Plane, Units(s.Top.Offset));
+            int texturePlane = TexturePlane(s, s.TextureTop.Plane) + (KeepsSwitchUpper(s) ? PlaneKeepsUpper : 0);
             foreach (WallPiece piece in Pieces.Of(s.Line, s.Side))
             {
-                var c2 = new Vector4(TexturePlane(s, s.TextureTop.Plane), TextureTopOffset(s), piece.Contrast, PieceAngle(piece));
+                var c2 = new Vector4(texturePlane, TextureTopOffset(s), piece.Contrast, PieceAngle(piece));
                 (float u1, float u2) = (Column(s, piece.ColumnA), Column(s, piece.ColumnB));
                 Vector3 p1 = ToGodot(piece.A.X, piece.A.Y, 0), p2 = ToGodot(piece.B.X, piece.B.Y, 0);
                 int first = c.Vertices.Count;

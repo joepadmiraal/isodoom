@@ -230,6 +230,7 @@ public partial class LevelCheck : Godot.Node
             sections += s;
             vertices += v;
             CheckSwitchMarkerData(m, map); // T6.13p
+            CheckSwitchUppers(m, map); // T10.6f
             CheckLedgeData(m, map); // T6.13s
             CheckTextureChangeData(m, map);
             CheckSectorInterpolation(m, map);
@@ -289,6 +290,8 @@ public partial class LevelCheck : Godot.Node
         GD.Print($"Level check: switch markers (T6.13p): {_markerMaps} maps, {_markerSides} switch sides with a marker on their floor, "
             + $"{_markersShown} of them shown from the game camera (their walls face away), the rest not; T10.6a: {_topMarkers} top markers, {_topMarkersShown} of them shown; "
             + $"T10.6e: {_doorTopMarkers} of them on doors' lids");
+        GD.Print($"Level check: upper switches (T10.6f): {_switchUppers} upper walls with a switch texture kept by the upper-walls rule, "
+            + $"{_switchUppersKept} of them over a sector that does not keep its upper walls");
         PrintLedges();
         GD.Print($"Level check: run-time data (T5.1): {_interpolatedSectors} maps drew a sector moved in the sim at its interpolated heights; "
             + $"{_textureChanges} wall textures and {_flatChanges} floor flats changed at run time and back; "
@@ -848,7 +851,8 @@ public partial class LevelCheck : Godot.Node
                     if (!Custom(c0, b + k, kind, LevelMesh.SidePartId(s), ownSector, otherSector))
                         Fail($"{sw}: corner {k}: kind/side part/sectors ({Custom4(c0, b + k)}), expected {kind}, part {LevelMesh.SidePartId(s)}, {ownSector}, {otherSector}");
                     WallPlane Plane(WallPlane p) => backFace ? LevelMesh.OtherSide(p) : p;
-                    int texturePlane = (int)Plane(s.TextureTop.Plane) + (s.BottomPegged ? LevelMesh.PlaneAddsTextureHeight : 0);
+                    int texturePlane = (int)Plane(s.TextureTop.Plane) + (s.BottomPegged ? LevelMesh.PlaneAddsTextureHeight : 0)
+                        + (!backFace && m.KeepsSwitchUpper(s) ? LevelMesh.PlaneKeepsUpper : 0); // T10.6f
                     if ((int)c1[(b + k) * 4] != (int)Plane(s.Bottom.Plane) || (int)c1[(b + k) * 4 + 2] != (int)Plane(s.Top.Plane)
                         || (int)c2[(b + k) * 4] != texturePlane)
                         Fail($"{sw}: corner {k}: plane references {(WallPlane)(int)c1[(b + k) * 4]}, {(WallPlane)(int)c1[(b + k) * 4 + 2]}, {(int)c2[(b + k) * 4]}"
