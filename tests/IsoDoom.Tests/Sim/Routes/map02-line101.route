@@ -3,7 +3,7 @@
 # (at most 450 tics). Written by tools/RouteGen (map02-line101).
 iwad doom2
 map MAP02
-start 2592 3208 270
+start 992 1472 270
 
 # forwardmove sidemove turn buttons [xcount]; turn << 8 = angleturn
 0 0 0 0

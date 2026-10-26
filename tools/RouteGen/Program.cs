@@ -2551,9 +2551,9 @@ exit normal
 
 """, (g, log) =>
         {
-            g.GoToDoors(2656, 3550, 8, 50);
+            g.GoToDoors(992, 1182, 8, 50);
             log("at the exit switch");
-            g.Exit(2656, 3600);
+            g.Exit(992, 1232);
         }),
         ["map06-exit"] = new(Doom2, "MAP06", """
 # Doom II MAP06 (T10.1): started beside the exit switch (line 638, 11),
@@ -2607,7 +2607,7 @@ monsters
             IsoDoom.Sim.mobj_t? Nearest() => g.World.Mobjs()
                 .Where(m => (m.flags & IsoDoom.Sim.mobjflag_t.MF_COUNTKILL) != 0 && m.health > 0 && g.World.P_CheckSight(g.Mo, m))
                 .OrderBy(Dist).FirstOrDefault();
-            g.Walk(3490, 2900, 20);
+            g.Walk(1890, 1156, 20);
             g.WaitUntil(() => p.readyweapon == IsoDoom.Sim.weapontype_t.wp_supershotgun && p.pendingweapon == IsoDoom.Sim.weapontype_t.wp_nochange, 200);
             log("super shotgun " + State());
             for (int i = 0; i < 40 && p.health > 0; i++)
@@ -2626,7 +2626,7 @@ monsters
             g.Tic(0, 0, 0, 0);
             g.Wait(35);
             log("done " + State());
-        }, (3520, 2904, 180), Skill: IsoDoom.Sim.skill_t.sk_medium, Monsters: true),
+        }, (1920, 1160, 180), Skill: IsoDoom.Sim.skill_t.sk_medium, Monsters: true),
         ["map07-bosses"] = new(Doom2, "MAP07", """
 # Doom II MAP07 on skill 1 with monsters (T10.3): the start room's switch
 # (line 162, S1 lower tag 1) opens it. All but one mancubus and one
