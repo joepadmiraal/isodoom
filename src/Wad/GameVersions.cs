@@ -94,37 +94,23 @@ public static class GameVersions
     };
 
     /// <summary>
-    /// T7.14: the version byte the game plays demos of (<c>G_DoPlayDemo</c>'s
-    /// check): <paramref name="gameversion"/>'s (<see cref="G_VanillaVersionCode"/>)
-    /// when <c>-gameversion</c> named it (<paramref name="cmdline"/>); without
-    /// it, Chocolate Doom d_main.c <c>InitGameVersion</c>'s "Detect version
-    /// from demo lump" for Doom, Doom II and the shareware episode: the first
-    /// of <c>DEMO1</c>–<c>DEMO3</c> in <paramref name="wad"/> whose version
-    /// byte is v1.666's to v1.9's (Doom II v1.666's IWAD plays its own demos;
-    /// an older byte is v1.2's, which has no code: 0, every demo refused). The
-    /// sim plays v1.666 to v1.9 alike (SPEC §12 T10.7), so this is the check
-    /// alone, not the version emulated.
+    /// T7.14: the version byte of the IWAD's own demos, as Chocolate Doom's
+    /// d_main.c <c>InitGameVersion</c> reads it ("Detect version from demo
+    /// lump"): the first of <c>DEMO1</c>–<c>DEMO3</c> in <paramref name="wad"/>
+    /// whose byte is v1.666's to v1.9's (Doom II v1.666's IWAD: 106), or null.
+    /// The game only logs it beside a demo of another version (the sim plays
+    /// v1.666 to v1.9 alike, SPEC §12 T10.7; a demo needs its IWAD's maps).
     /// </summary>
-    public static int DemoVersion(GameVersion gameversion, bool cmdline, WadArchive wad, GameMode gamemode, GameMission gamemission)
+    public static int? IwadDemoVersion(WadArchive wad)
     {
         ArgumentNullException.ThrowIfNull(wad);
-        if (cmdline || !(gamemode is GameMode.shareware or GameMode.registered || gamemode == GameMode.commercial && gamemission == GameMission.doom2))
-            return G_VanillaVersionCode(gameversion);
         for (int i = 1; i <= 3; i++)
         {
             string name = $"DEMO{i}";
-            if (wad.W_CheckNumForName(name) > 0 && wad.W_CacheLumpName(name).Span is { Length: > 0 } demo)
-            {
-                switch (demo[0])
-                {
-                    case <= 4:
-                        return 0; // exe_doom_1_2
-                    case >= 106 and <= 109:
-                        return demo[0];
-                }
-            }
+            if (wad.W_CheckNumForName(name) > 0 && wad.W_CacheLumpName(name).Span is [>= 106 and <= 109, ..] demo)
+                return demo[0];
         }
-        return G_VanillaVersionCode(gameversion);
+        return null;
     }
 
     /// <summary>

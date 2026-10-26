@@ -954,7 +954,8 @@ public partial class LevelScene : Node3D, IGameHost
             OpenWad();
             _flow = new GameFlow(this, GameMode, MRandom, GameVariant, GameMission, GameVersion) // T7.1: g_game.c's flow, d_main.c's title loop
             {
-                demoversion = GameVersions.DemoVersion(GameVersion, WadLocator.GetUserArg("-gameversion") is not null, Wad!, GameMode, GameMission), // T7.14
+                demoversion = WadLocator.GetUserArg("-gameversion") is not null ? GameVersions.G_VanillaVersionCode(GameVersion) : null, // T7.14
+                iwaddemoversion = GameVersions.IwadDemoVersion(Wad!),
             };
             ApplyWipes(); // T7.1a: the check turns them on for its wipe checks only
             ApplyAspect(); // T7.11: square under the check but for its 4:3 checks

@@ -132,7 +132,8 @@ public sealed class DemoPlaybackTests : IDisposable
 
     public static TheoryData<string, string> Refusals() => new()
     {
-        { "version", "Demo is from a different game version!\n(read 108, should be 109)" },
+        { "version", "Demo is from a different game version!\n(read 105, should be 106 to 109)" },
+        { "-gameversion", "Demo is from a different game version!\n(read 108, should be 109)" },
         { "cut short", "no DEMOMARKER at the end" },
         { "map", "the demo is for E1M9,\nwhich this game lacks" },
         { "episode", "the demo is for E2M1,\nwhich this game lacks" },
@@ -147,7 +148,8 @@ public sealed class DemoPlaybackTests : IDisposable
         byte[] demo = VanillaRoute.Load("synthetic-exit").File.ToDemoLump();
         switch (what)
         {
-            case "version": demo[0] = 108; break;
+            case "version": demo[0] = 105; break;
+            case "-gameversion": demo[0] = 108; break;
             case "cut short": demo = demo[..^1]; break;
             case "map": demo[3] = 9; break;
             case "episode": demo[2] = 2; break;
@@ -157,6 +159,8 @@ public sealed class DemoPlaybackTests : IDisposable
         if (what != "missing")
             File.WriteAllBytes(Path.Combine(_dir, name + ".lmp"), demo);
         (GameFlow flow, GameFlowTests.Host host) = New();
+        if (what == "-gameversion")
+            flow.demoversion = GameVersions.G_VanillaVersionCode(GameVersion.exe_doom_1_9); // -gameversion 1.9: its byte only
         flow.G_DeferedPlayDemo(what == "missing" ? name : Path.Combine(_dir, name)); // (missing: relative, against the working directory)
         flow.G_Ticker(None);
         Assert.Equal(message, flow.DemoRefused);
@@ -194,17 +198,38 @@ public sealed class DemoPlaybackTests : IDisposable
         Assert.Equal(108, GameVersions.G_VanillaVersionCode(GameVersion.exe_doom_1_8));
         Assert.All([GameVersion.exe_doom_1_9, GameVersion.exe_ultimate, GameVersion.exe_final, GameVersion.exe_final2],
             v => Assert.Equal(109, GameVersions.G_VanillaVersionCode(v)));
-        // (Chocolate Doom's W_CheckNumForName(demolumpname) > 0: never the WAD's first lump)
+        // the IWAD's own demos' (Chocolate Doom's InitGameVersion; W_CheckNumForName(...) > 0: never the WAD's first lump)
         WadArchive Iwad(byte version) => new([new WadBuilder(WadType.Iwad).Lump("PLAYPAL").Lump("DEMO1", version, 2, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0x80).ToWadFile()]);
-        // Chocolate Doom's InitGameVersion: without -gameversion, the IWAD's demos (Doom II v1.666's); with it, its own
-        Assert.Equal(106, GameVersions.DemoVersion(GameVersion.exe_doom_1_9, false, Iwad(106), GameMode.commercial, GameMission.doom2));
-        Assert.Equal(109, GameVersions.DemoVersion(GameVersion.exe_doom_1_9, true, Iwad(106), GameMode.commercial, GameMission.doom2));
-        Assert.Equal(109, GameVersions.DemoVersion(GameVersion.exe_final, false, Iwad(106), GameMode.commercial, GameMission.pack_tnt));
-        Assert.Equal(0, GameVersions.DemoVersion(GameVersion.exe_doom_1_9, false, Iwad(3), GameMode.registered, GameMission.doom)); // v1.2's: none plays
-        Assert.Equal(109, GameVersions.DemoVersion(GameVersion.exe_doom_1_9, false, Iwad(200), GameMode.shareware, GameMission.doom));
+        Assert.Equal(106, GameVersions.IwadDemoVersion(Iwad(106)));
+        Assert.Null(GameVersions.IwadDemoVersion(Iwad(3))); // v1.2's
+        Assert.Equal(109, GameVersions.IwadDemoVersion(new WadArchive([WadFile.FromBytes(SyntheticIwad.Build(), SyntheticIwad.DefaultFileName)])));
     }
 
     /// <summary>DOOM1.WAD's <c>DEMO1</c> by its lump name (vanilla's <c>-playdemo demo1</c>) plays to its end on the same world as its route.</summary>
+    /// <summary>Without <c>-gameversion</c>, a demo of any version the sim plays (v1.666's to v1.9's) plays, whatever the IWAD's own demos are.</summary>
+    [Theory]
+    [InlineData(106)]
+    [InlineData(107)]
+    [InlineData(108)]
+    [InlineData(109)]
+    public void WithoutGameversionEveryVersionTheSimPlaysPlays(byte version)
+    {
+        VanillaRoute route = VanillaRoute.Load("synthetic-exit");
+        byte[] demo = route.File.ToDemoLump();
+        demo[0] = version;
+        string path = Path.Combine(_dir, "v" + version);
+        File.WriteAllBytes(path + ".lmp", demo);
+        (GameFlow flow, GameFlowTests.Host host) = New();
+        flow.iwaddemoversion = 106; // Doom II v1.666's IWAD: another version's demo plays, with a warning
+        var log = new List<string>();
+        flow.Log = log.Add;
+        flow.G_DeferedPlayDemo(path);
+        Assert.Equal(route.Cmds.Count, Play(flow, host).Count);
+        Assert.Null(flow.DemoRefused);
+        Assert.Equal(1, host.DemosEnded);
+        Assert.Equal(version != 106, log.Exists(l => l.Contains("may go out of step", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void TheWadsDemoLumpPlaysToItsEnd()
     {

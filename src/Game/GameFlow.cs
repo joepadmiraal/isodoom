@@ -144,7 +144,6 @@ public sealed class GameFlow
         Wi = new WiStuff(this);
         Finale = new FFinale(this);
         Menu = new MMenu(this, gamevariant);
-        demoversion = GameVersions.G_VanillaVersionCode(this.gameversion);
     }
 
     /// <summary>doomstat.h <c>gamemode</c>.</summary>
@@ -234,10 +233,21 @@ public sealed class GameFlow
     public int DemoTic { get; private set; }
 
     /// <summary>
-    /// T7.14: the version byte demos must carry (<see cref="GameVersions.G_VanillaVersionCode"/>
-    /// of <see cref="gameversion"/>; the game scene's is <see cref="GameVersions.DemoVersion"/>).
+    /// T7.14: the version byte demos must carry: with <c>-gameversion</c> its
+    /// own (<see cref="GameVersions.G_VanillaVersionCode"/>, Chocolate Doom's
+    /// check); null without it (the default): any the sim plays, v1.666's to
+    /// v1.9's, alike (SPEC §12 T10.7), whatever version the IWAD is (Doom II
+    /// v1.666's plays v1.9's demos).
     /// </summary>
-    public int demoversion;
+    public int? demoversion;
+
+    /// <summary>
+    /// T7.14: the version byte of the IWAD's own demos (<see cref="GameVersions.IwadDemoVersion"/>:
+    /// Doom II v1.666's IWAD 106), or null; a demo of another version is
+    /// played, with a warning in the log: its maps may differ from those it
+    /// was recorded on (the IWAD's release, not the executable).
+    /// </summary>
+    public int? iwaddemoversion;
 
     /// <summary>T7.14: why the last demo was refused (its message), null after a demo started.</summary>
     public string? DemoRefused { get; private set; }
@@ -1155,11 +1165,13 @@ public sealed class GameFlow
         string name = defdemoname ?? "";
         RouteFile demo;
         string source;
+        int version;
         try
         {
             (byte[] data, source) = host.G_DemoLump(name);
-            if (data.Length > 0 && data[0] != demoversion)
-                throw new FormatException($"Demo is from a different game version!\n(read {data[0]}, should be {demoversion})");
+            version = data.Length > 0 ? data[0] : 0;
+            if (data.Length > 0 && (demoversion is int expected ? version != expected : version is < RouteFile.OldestDemoVersion or > RouteFile.DemoVersion))
+                throw new FormatException($"Demo is from a different game version!\n(read {data[0]}, should be {demoversion?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? $"{RouteFile.OldestDemoVersion} to {RouteFile.DemoVersion}"})");
             demo = RouteFile.FromDemo(data, name, gamemode == GameMode.commercial);
             if (G_InitNewMapName(World.EpisodeNumber(demo.Map!), World.MapNumber(demo.Map!)) != demo.Map || !host.HasLump(demo.Map!))
                 throw new FormatException($"the demo is for {demo.Map},\nwhich this game lacks");
@@ -1171,6 +1183,9 @@ public sealed class GameFlow
         }
         Log?.Invoke($"Demo: {name} ({source}): {demo.Map}, skill {demo.Skill}, players {demo.PlayersInGame:x} (console player {demo.ConsolePlayer + 1}), "
             + $"deathmatch {demo.Deathmatch}, respawn {demo.Respawn}, fast {demo.Fast}, monsters {demo.Monsters}: {demo.NetCmds.Count} tics");
+        if (iwaddemoversion is int iwad && iwad != version)
+            Log?.Invoke($"Demo: {name} is a {VersionName(version)} demo, but this IWAD is {VersionName(iwad)}'s (its own demos are): "
+                + "a demo plays as recorded only on the IWAD release it was recorded with, so it may go out of step, as vanilla's would");
         Demo = demo;
         DemoTic = 0;
         DemoEnded = false;
@@ -1186,6 +1201,9 @@ public sealed class GameFlow
         }
         usergame = false;
     }
+
+    // A demo version byte's release: 106 is v1.666, 107 v1.7, 108 v1.8, 109 v1.9
+    private static string VersionName(int version) => version == 106 ? "v1.666" : $"v1.{version - 100}";
 
     // G_DoPlayDemo's I_Error: the title loop with the message (and the log's line)
     private void G_DemoRefused(string why)
