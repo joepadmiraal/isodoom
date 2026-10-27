@@ -1,4 +1,4 @@
-// T11.9d: LAN discovery (docs/plans/lan-discovery.md, SPEC §12 "Player names
+// T11.9d: LAN discovery (SPEC §12 "Player names
 // and LAN discovery"). The client queries, the hosts answer, as Chocolate
 // Doom's net_query.c LAN search (NET_LANQuery; GPL-2.0, its idea, our wire
 // format): a join's Join Game page sends a small UDP query to the broadcast
