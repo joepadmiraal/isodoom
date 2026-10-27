@@ -246,7 +246,7 @@ jobs:
 
       - name: Smoke-test the exported build
         run: |
-          timeout 120 export/linux/IsoDoom.x86_64 --headless --quit-after 60 2>&1 | tee smoke.log
+          timeout 120 export/linux/IsoDoom.x86_64 --headless --quit-after 60 -- -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee smoke.log
           grep -q "IsoDoom started" smoke.log
 
       # The exported build with a real renderer: Xvfb plus Mesa's software
@@ -430,7 +430,7 @@ jobs:
       - name: Smoke-test the exported build
         timeout-minutes: 5
         run: |
-          export/windows/IsoDoom.console.exe --headless --quit-after 60 2>&1 | tee smoke.log
+          export/windows/IsoDoom.console.exe --headless --quit-after 60 -- -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee smoke.log
           grep -q "IsoDoom started" smoke.log
 
       - name: Viewer check (exported build, headless)
@@ -516,7 +516,7 @@ jobs:
       - name: Smoke-test the exported build
         timeout-minutes: 5
         run: |
-          "$GAME" --headless --quit-after 60 2>&1 | tee smoke.log
+          "$GAME" --headless --quit-after 60 -- -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee smoke.log
           grep -q "IsoDoom started" smoke.log
 
       - name: Viewer check (exported build, headless)
@@ -598,7 +598,7 @@ jobs:
       - name: Smoke-test the exported build
         timeout-minutes: 5
         run: |
-          "$GAME" --headless --quit-after 60 2>&1 | tee smoke.log
+          "$GAME" --headless --quit-after 60 -- -iwad "$ISODOOM_CI_IWAD" 2>&1 | tee smoke.log
           grep -q "IsoDoom started" smoke.log
 
       - name: Install Xvfb and lavapipe
@@ -698,7 +698,7 @@ jobs:
           echo "WINE=$wine" >> "$GITHUB_ENV"
           echo "WINEPREFIX=$RUNNER_TEMP/wineprefix" >> "$GITHUB_ENV"
           WINEPREFIX="$RUNNER_TEMP/wineprefix" "$wine" wineboot --init
-          WINEPREFIX="$RUNNER_TEMP/wineprefix" "$wine" export/windows/IsoDoom.exe --headless --quit-after 60 2>&1 | tee smoke.log
+          WINEPREFIX="$RUNNER_TEMP/wineprefix" "$wine" export/windows/IsoDoom.exe --headless --quit-after 60 -- -iwad "Z:$ISODOOM_CI_IWAD" 2>&1 | tee smoke.log
           grep -q "IsoDoom started" smoke.log
 
       - name: Netgame Windows host, Linux client (exchange)
