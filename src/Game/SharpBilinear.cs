@@ -32,8 +32,8 @@ vec3 to_srgb(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
-vec4 texel_srgb(sampler2D tex, ivec2 at, ivec2 size) {
-    vec4 t = texelFetch(tex, clamp(at, ivec2(0), size - 1), 0);
+// (the texel is fetched by the caller: Godot's headless (dummy) shader compiler errs on TEXTURE passed as a sampler2D argument)
+vec4 texel_srgb(vec4 t) {
     return vec4(to_srgb(t.rgb), t.a);
 }
 
@@ -49,9 +49,10 @@ void fragment() {
         vec2 p = floor(texel) + f - 0.5;
         ivec2 i = ivec2(floor(p));
         vec2 w = p - floor(p);
-        ivec2 n = ivec2(size);
-        vec4 c = mix(mix(texel_srgb(TEXTURE, i, n), texel_srgb(TEXTURE, i + ivec2(1, 0), n), w.x),
-            mix(texel_srgb(TEXTURE, i + ivec2(0, 1), n), texel_srgb(TEXTURE, i + ivec2(1, 1), n), w.x), w.y);
+        ivec2 i0 = clamp(i, ivec2(0), ivec2(size) - 1);
+        ivec2 i1 = clamp(i + 1, ivec2(0), ivec2(size) - 1);
+        vec4 c = mix(mix(texel_srgb(texelFetch(TEXTURE, i0, 0)), texel_srgb(texelFetch(TEXTURE, ivec2(i1.x, i0.y), 0)), w.x),
+            mix(texel_srgb(texelFetch(TEXTURE, ivec2(i0.x, i1.y), 0)), texel_srgb(texelFetch(TEXTURE, i1, 0)), w.x), w.y);
         COLOR = vec4(mix(c.rgb / 12.92, pow((c.rgb + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c.rgb)), c.a);
     }
 }
