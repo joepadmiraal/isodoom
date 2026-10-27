@@ -42,13 +42,7 @@ the game):
   IsoDoom.x86_64 -- -iwad /path/to/DOOM2.WAD
   IsoDoom.console.exe -- -iwad C:\Games\Doom\DOOM2.WAD   (absolute paths on Windows)
   IsoDoom.x86_64 -- -iwad DOOM2.WAD -file mymod.wad      (add a PWAD)
-  IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run.lmp    (watch a demo, then quit)
-
-"-playdemo" plays a demo recorded with the original Doom (a .lmp file, or
-a demo in the WAD such as "-playdemo demo1") with the original game's
-rules, then quits. Pause works while it plays. A demo the game can't play
-correctly (another version of Doom, or a damaged file) is refused with a
-message.
+  IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run.lmp    (a demo: see Demos)
 
 
 Controls
@@ -77,18 +71,74 @@ right), F toggles follow (D-pad left), the arrows pan when not following
 (right stick), G the grid (right stick click), M marks a spot (X), C clears
 the marks (B).
 
-Arcade mode, for a twin-stick cabinet: start the game with --arcade (on a
-Raspberry Pi, for example: ./IsoDoom.arm64 -- --arcade). The right stick
-then fires while it aims, ammo never runs out, walking into a door
-opens it, and the aim assist reaches 25 degrees either side, so an 8-way
-stick hits what lies between its directions. In a network game the host's choice counts for everyone, but the
-right stick's firing is each player's own.
-
 The classic cheats work when typed during play (iddqd, idkfa, ...), and a
 pad has them under Options > More Options > Cheats.
 
 F1 lists the remaining keys (camera and display toggles); F3 shows a
 status overlay.
+
+
+Arcade mode
+-----------
+
+For a twin-stick cabinet, where both hands are on the sticks and the
+buttons are out of reach, start the game with --arcade (after "--"):
+
+  ./IsoDoom.arm64 -- --arcade                  (on a Raspberry Pi 5, say)
+  ./IsoDoom.arm64 -- --arcade -iwad DOOM2.WAD
+
+Arcade mode changes four things:
+
+  - The right stick fires while it aims. Push it in a direction to turn
+    and shoot; let go to stop. The mouse never fires by itself.
+  - Ammo never runs out. Firing uses none, so you never have to change
+    weapon for lack of it.
+  - Walking into a door opens it, as the use button would. A locked door
+    without its key refuses once per push. Switches and other usable lines
+    still need the use button.
+  - The aim assist reaches 25 degrees either side (5 normally). An 8-way
+    stick only faces in 45-degree steps, so this catches a target that
+    lies between two directions. --level-aim-assist=DEG after --arcade
+    still overrides it.
+
+Changing weapon and coming back after dying still need a button (LB/RB
+and A by default; every action can be rebound under Options > More
+Options > Controls). In a network game the host's choice of infinite
+ammo, door opening and aim assist holds for every player, while the right
+stick's firing is each player's own.
+
+
+Demos
+-----
+
+"-playdemo" plays a demo recorded with the original Doom, with the
+original game's rules, and quits at its end:
+
+  IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run.lmp   (a .lmp file)
+  IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run       (run.lmp, else the
+                                                         WAD's lump RUN)
+  IsoDoom.x86_64 -- -iwad DOOM1.WAD -playdemo demo1     (a demo built into
+                                                         the WAD)
+
+A name ending in .lmp is that file; otherwise the game tries NAME.lmp, then
+a demo lump in the WAD, then the file NAME itself. Relative paths are taken
+from the current directory (on Windows, pass an absolute path). A demo
+recorded with a PWAD needs the same PWAD: -file mymod.wad -playdemo run.lmp.
+
+Every IWAD carries the demos id Software recorded: demo1 to demo3 (The
+Ultimate Doom also has demo4). The title screen cycles only its pages and
+does not play them, so start them with -playdemo demo1 and so on.
+
+The demo picks the map, skill, game modes and players itself; your display
+options (camera, HUD, fog of war, ...) still apply. Pause works while it
+plays, and starting a new game or loading a save from the menu ends it.
+
+A demo only stays in step with the release of Doom (and IWAD version) it
+was recorded on. Any demo from v1.666 to v1.9 plays, with a warning in the
+log when its version differs from the IWAD's own demos; with -gameversion
+(e.g. -gameversion 1.666) only that version's demos play. A demo that
+isn't found, is cut short or is for a map the WAD lacks is refused with a
+message.
 
 
 Multiplayer

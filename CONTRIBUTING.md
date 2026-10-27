@@ -12,6 +12,28 @@ To set up without the container (Linux x86_64 is what CI and the scripts assume)
 - **Godot 4.7.2 stable, .NET edition** ("mono", not the standard build), as `godot` on your `PATH`. The version must match `IsoDoom.csproj`'s `Godot.NET.Sdk`.
 - Optional: **actionlint 1.7.12** with **shellcheck**, to lint the workflow (the version and SHA-256 are pinned in `.devcontainer/Dockerfile`). You also need **xvfb-run** and **mesa-vulkan-drivers** (lavapipe) for the checks with a real renderer, and the 4.7.2 .NET **export templates** to export.
 
+### Running outside the dev container
+
+To run on the host, export a Linux build in the container and run it on the host (any x86_64 Linux). The export bundles the .NET runtime, so the host needs only a Vulkan GPU driver.
+
+1. In the container, export (or re-export after a code change):
+
+   ```bash
+   godot --headless --export-release "Linux" export/linux/IsoDoom.x86_64
+   ```
+
+   This needs the export templates. Build the dev container with `INSTALL_EXPORT_TEMPLATES=true`.
+
+2. On the host, from the repo root (the workspace is a bind mount, so the build is already there):
+
+   ```bash
+   export/linux/IsoDoom.x86_64 -- --level E1M1 -iwad wads/DOOM1.WAD   # level scene
+   export/linux/IsoDoom.x86_64 -- --level-check -iwad wads/DOOM1.WAD  # level check
+   export/linux/IsoDoom.x86_64 -- --viewer-check -iwad wads/DOOM1.WAD # viewer check
+   ```
+
+   On a hybrid-GPU laptop, put `__NV_PRIME_RENDER_OFFLOAD=1` before the command to use the NVIDIA GPU, or pass `--gpu-index N` before `--`. Godot's startup log names the device it picked.
+
 ## Game data
 
 **No WAD data goes in the repo**: no WAD files, and no images, sounds or dumps made from them. `wads/` is gitignored. Put your own copy there:
