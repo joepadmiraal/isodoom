@@ -11,8 +11,9 @@ namespace IsoDoom.Tests.Graphics;
 /// T1.4a wall textures against a full IWAD: DOOM II (any version; skipped
 /// without it). DOOM II has TEXTURE1 only, so the TEXTURE2 path stays covered
 /// by the synthetic <see cref="TextureCompositionTests"/>. Counts and lists
-/// that may differ between releases are asserted only for v1.666
-/// (<see cref="TestWads.Doom2V1666Md5"/>); other versions get lower bounds.
+/// that may differ between releases are asserted only for v1.666 and v1.9
+/// (<see cref="TestWads.Doom2V1666Md5"/>, <see cref="TestWads.Doom2V19Md5"/>:
+/// the same TEXTURE1, PNAMES and patches); other versions get lower bounds.
 /// </summary>
 public class Doom2TextureTests
 {
@@ -28,7 +29,7 @@ public class Doom2TextureTests
         return (wad, Textures.R_InitTextures(wad));
     }
 
-    private static bool IsV1666 => TestWads.Doom2Md5 == TestWads.Doom2V1666Md5;
+    private static bool IsKnownVersion => TestWads.IsDoom2V1666 || TestWads.IsDoom2V19;
 
     private static IEnumerable<int> All(Textures t) => Enumerable.Range(0, t.NumTextures);
 
@@ -44,7 +45,7 @@ public class Doom2TextureTests
         Assert.Equal((128, 128), (midgrate.Width, midgrate.Height));
         Assert.Equal([("M1_1", 0, 0)], midgrate.Patches.Select(p => (p.PatchName, p.OriginX, p.OriginY)));
 
-        if (IsV1666)
+        if (IsKnownVersion)
         {
             Assert.Equal(469, t.PatchNames.Count);
             Assert.Equal(428, t.NumTextures);
@@ -119,10 +120,10 @@ public class Doom2TextureTests
     }
 
     [Fact]
-    public void OnlyTheMaskedMidtexturesHaveHolesInV1666()
+    public void OnlyTheMaskedMidtexturesHaveHoles()
     {
         (WadArchive wad, Textures t) = OpenDoom2();
-        Assert.SkipUnless(IsV1666, "Hole list is for DOOM II v1.666.");
+        Assert.SkipUnless(IsKnownVersion, "Hole list is for DOOM II v1.666 and v1.9.");
         foreach (TextureCompositeMode mode in _modes)
         {
             string[] withHoles = [.. All(t).Where(i => t.R_GenerateComposite(i, mode).Opaque.Any(b => b == 0))
@@ -140,10 +141,10 @@ public class Doom2TextureTests
     }
 
     [Fact]
-    public void VanillaAndCorrectedDifferOnlyWhereOriginYIsUsedInV1666()
+    public void VanillaAndCorrectedDifferOnlyWhereOriginYIsUsed()
     {
         (_, Textures t) = OpenDoom2();
-        Assert.SkipUnless(IsV1666, "Difference list is for DOOM II v1.666.");
+        Assert.SkipUnless(IsKnownVersion, "Difference list is for DOOM II v1.666 and v1.9.");
         string[] differ = [.. All(t).Where(i =>
             {
                 IndexedImage v = t.R_GenerateComposite(i), c = t.R_GenerateComposite(i, TextureCompositeMode.Corrected);

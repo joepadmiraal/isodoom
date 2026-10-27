@@ -70,8 +70,22 @@ public static class TestWads
         return Doom2Path!;
     }
 
-    /// <summary>MD5 of the DOOM II v1.666 IWAD; tests assert version-specific counts only for this file.</summary>
+    /// <summary>MD5 of the DOOM II v1.666 IWAD; tests assert version-specific counts only for this file and <see cref="Doom2V19Md5"/>.</summary>
     public const string Doom2V1666Md5 = "30e3c2d0350b67bfbf47271970b74b2f";
+
+    /// <summary>
+    /// MD5 of the DOOM II v1.9 IWAD. Against v1.666, id rebuilt MAP01–03 and
+    /// MAP05 (moved coordinates, renumbered lines) and changed other maps, the
+    /// demos and the end and intermission pictures; its textures and sprites are
+    /// v1.666's.
+    /// </summary>
+    public const string Doom2V19Md5 = "25e1459ca71d321525f84628f45ca8cd";
+
+    /// <summary>Whether <see cref="Doom2Path"/> is DOOM II v1.666.</summary>
+    public static bool IsDoom2V1666 => Doom2Md5 == Doom2V1666Md5;
+
+    /// <summary>Whether <see cref="Doom2Path"/> is DOOM II v1.9.</summary>
+    public static bool IsDoom2V19 => Doom2Md5 == Doom2V19Md5;
 
     private static readonly Lazy<string?> _doom2Md5Value = new(() => Doom2Path is null ? null : Md5Of(Doom2Path));
 

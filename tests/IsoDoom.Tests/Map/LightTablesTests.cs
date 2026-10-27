@@ -195,11 +195,17 @@ public class LightTablesTests
         var sides = new List<string>();
         for (int m = 1; m <= 32; m++)
             sides.AddRange(UnusualSides(Level.Load(wad, $"MAP{m:D2}")));
-        if (TestWads.Doom2Md5 == TestWads.Doom2V1666Md5)
-            Assert.Equal(Doom2Unusual, string.Join("; ", sides)); // other versions: built without errors
+        if (TestWads.IsDoom2V1666)
+            Assert.Equal(Doom2Unusual, string.Join("; ", sides));
+        else if (TestWads.IsDoom2V19)
+            Assert.Equal(Doom2V19Unusual, string.Join("; ", sides)); // other versions: built without errors
     }
 
     private const string E1Unusual = "E1M6 282:1 0:-1 8:0";
     private const string Doom2Unusual = "MAP05 859:0 0:0 48:1 56:0; MAP18 489:0 0:0 323:-1; MAP20 149:0 0:0 84:-1 304:0; "
+        + "MAP20 647:0 0:0 1232:1 1357:0; MAP25 137:0 0:0 263:1 266:0; MAP31 607:0 0:0 145:-1";
+
+    // v1.9: the same sides, MAP05's line renumbered.
+    private const string Doom2V19Unusual = "MAP05 858:0 0:0 48:1 56:0; MAP18 489:0 0:0 323:-1; MAP20 149:0 0:0 84:-1 304:0; "
         + "MAP20 647:0 0:0 1232:1 1357:0; MAP25 137:0 0:0 263:1 266:0; MAP31 607:0 0:0 145:-1";
 }

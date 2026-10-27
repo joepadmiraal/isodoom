@@ -306,8 +306,96 @@ public partial class LevelCheck
     }
 
     /// <summary>
+    /// Where <see cref="TeammateRingCheck"/> draws its ring: player 1's feet
+    /// when no wall could hide part of a ring there from the game camera, else
+    /// the nearest such point within 512 units (on its sector's floor), so the
+    /// check does not hang on where the map puts its start (DOOM II v1.9's
+    /// MAP01 start sits 16 units nearer the room south-east of it than
+    /// v1.666's, whose wall then hid most of the ring). A line could hide the
+    /// ring when it crosses the ring's disc, or when a view ray from the disc
+    /// towards the camera crosses it below its top: a one-sided line facing
+    /// the camera (one facing away is not drawn) its sector's ceiling, a
+    /// two-sided one the highest floor or ceiling that differs across it.
+    /// </summary>
+    private static Vector3 RingSpot(IsoDoom.Map.Level level, mobj_t me, Vector3 toCamera)
+    {
+        Vector3 feet = Foot(me);
+        var flat = new Vector2(toCamera.X, toCamera.Y);
+        double rise = toCamera.Z / flat.Length(); // the view ray's rise per unit across the map
+        Vector2 dir = flat.Normalized();
+
+        static double X(IsoDoom.Map.Vertex v) => v.X / 65536.0;
+        static double Y(IsoDoom.Map.Vertex v) => v.Y / 65536.0;
+
+        double Top(IsoDoom.Map.Line l)
+        {
+            if (l.FrontSector is not { } f)
+                return double.MinValue;
+            if (l.BackSector is not { } b)
+            {
+                // The front faces right of v1 -> v2.
+                double nx = Y(l.V2) - Y(l.V1), ny = X(l.V1) - X(l.V2);
+                return nx * dir.X + ny * dir.Y > 0 ? f.CeilingHeight / 65536.0 : double.MinValue;
+            }
+            double top = double.MinValue;
+            if (f.FloorHeight != b.FloorHeight)
+                top = Math.Max(f.FloorHeight, b.FloorHeight) / 65536.0;
+            if (f.CeilingHeight != b.CeilingHeight)
+                top = Math.Max(top, Math.Max(f.CeilingHeight, b.CeilingHeight) / 65536.0);
+            return top;
+        }
+
+        bool Crosses(double ax, double ay, double bx, double by) =>
+            level.Lines.Any(l => SegmentDistance(ax, ay, bx, by, X(l.V1), Y(l.V1), X(l.V2), Y(l.V2)) < 1);
+
+        // Whether the view ray from (qx, qy, z0) towards the camera passes within a unit of a line below its top.
+        bool Hidden(double qx, double qy, double z0)
+        {
+            foreach (IsoDoom.Map.Line l in level.Lines)
+            {
+                double top = Top(l);
+                if (top <= z0)
+                    continue;
+                double reach = (top - z0) / rise + 1;
+                if (SegmentDistance(qx, qy, qx + dir.X * reach, qy + dir.Y * reach, X(l.V1), Y(l.V1), X(l.V2), Y(l.V2)) < 1)
+                    return true;
+            }
+            return false;
+        }
+
+        bool Clear(double x, double y, double z)
+        {
+            for (int a = 0; a < 32; a++)
+            {
+                double angle = a * Math.PI / 16;
+                for (double r = AimMarker.RingInner - 1; r <= AimMarker.RingOuter + 1; r += AimMarker.RingOuter - AimMarker.RingInner + 2)
+                {
+                    double qx = x + r * Math.Cos(angle), qy = y + r * Math.Sin(angle);
+                    if (Crosses(x, y, qx, qy) || Hidden(qx, qy, z + AimMarker.Lift))
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        if (Clear(feet.X, feet.Y, feet.Z))
+            return feet;
+        for (int d = 16; d <= 512; d += 16)
+        {
+            for (int a = 0; a < 32; a++)
+            {
+                double angle = a * Math.PI / 16, x = feet.X + d * Math.Cos(angle), y = feet.Y + d * Math.Sin(angle);
+                double z = level.R_PointInSubsector((int)Math.Round(x * 65536), (int)Math.Round(y * 65536)).Sector.FloorHeight / 65536.0;
+                if (Clear(x, y, z))
+                    return new Vector3((float)x, (float)y, (float)z);
+            }
+        }
+        return feet; // none: the check then says how much of the ring it found drawn
+    }
+
+    /// <summary>
     /// T11.10a, with a real renderer: a teammate ring in each player's colour
-    /// at player 1's feet from the game camera's angle (the things, the
+    /// at player 1's feet (or near them, <see cref="RingSpot"/>) from the game camera's angle (the things, the
     /// player's own sprite and the cutaway off). Every pixel the ring changes
     /// must lie on its annulus (the view ray through the pixel's centre meets
     /// the plane a unit above the floor between its radii) and be its colour
@@ -321,7 +409,7 @@ public partial class LevelCheck
             return;
         Basis basis = GameBasis(IsoCamera.DefaultPitch);
         Vector3 toCamera = Cutaway.ToMapAxes(basis.Z).Normalized();
-        Vector3 feet = Foot(me);
+        Vector3 feet = RingSpot(m.Level, me, toCamera);
         bool playerShown = _scene.Player?.Visible ?? false, thingsShown = things.Visible;
         _scene.Player?.Visible = false;
         things.Visible = false;
@@ -382,7 +470,7 @@ public partial class LevelCheck
                     Fail($"{what}: {changed} pixels changed, {astray} off its annulus, {wrong} not its colour (first {first}); {insideChanged} of the annulus's {inside} drawn");
             }
             _pixels += compared;
-            GD.Print($"Level check: {map}: teammate rings (T11.10a): a ring in each of the four players' colours from the game camera, {compared} pixels compared");
+            GD.Print($"Level check: {map}: teammate rings (T11.10a): a ring in each of the four players' colours from the game camera at ({feet.X:F0}, {feet.Y:F0}), {compared} pixels compared");
         }
         finally
         {

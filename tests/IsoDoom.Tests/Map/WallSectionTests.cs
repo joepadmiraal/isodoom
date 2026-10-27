@@ -344,7 +344,7 @@ public class WallSectionTests
         CheckConsistent(walls);
     }
 
-    /// <summary>The same for DOOM II v1.666 (other versions only have to build).</summary>
+    /// <summary>The same for DOOM II v1.666 (and, through <see cref="_doom2V19Missing"/>, v1.9; other versions only have to build).</summary>
     private static readonly Dictionary<string, string> _doom2V1666Missing = new()
     {
             { "MAP01", "334:1L 335:1L 369:1L" },
@@ -381,6 +381,19 @@ public class WallSectionTests
             { "MAP32", "" },
     };
 
+    /// <summary>
+    /// DOOM II v1.9: v1.666's but where it rebuilt or changed the maps: MAP02's
+    /// and MAP05's lines renumbered, one more upper wall without a texture in MAP14,
+    /// three of MAP24's fixed.
+    /// </summary>
+    private static readonly Dictionary<string, string> _doom2V19Missing = new(_doom2V1666Missing)
+    {
+        ["MAP02"] = "327:0L 328:0L 338:0L 339:0L",
+        ["MAP05"] = "489:1U 560:1U",
+        ["MAP14"] = _doom2V1666Missing["MAP14"] + " 1305:1U",
+        ["MAP24"] = "687:1L 688:1L",
+    };
+
     public static TheoryData<string> Doom2Maps()
     {
         var data = new TheoryData<string>();
@@ -397,8 +410,10 @@ public class WallSectionTests
         var textures = Textures.R_InitTextures(wad);
         var walls = WallSections.Build(Level.Load(wad, name), textures);
         CheckConsistent(walls);
-        if (TestWads.Doom2Md5 == TestWads.Doom2V1666Md5)
+        if (TestWads.IsDoom2V1666)
             Assert.Equal(_doom2V1666Missing[name], Format(walls.Missing));
+        else if (TestWads.IsDoom2V19)
+            Assert.Equal(_doom2V19Missing[name], Format(walls.Missing));
     }
 
     private static string Format(IEnumerable<MissingWallTexture> missing) =>

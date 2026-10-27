@@ -11,8 +11,9 @@ namespace IsoDoom.Tests.Graphics;
 /// T1.5a sprite indexing against a full IWAD: DOOM II (any version; skipped
 /// without it). DOOM II has a lump for every one of the 138 info.c
 /// <c>sprnames</c>, so this also checks the ported name table. Totals that may
-/// differ between releases are asserted only for v1.666
-/// (<see cref="TestWads.Doom2V1666Md5"/>).
+/// differ between releases are asserted only for v1.666 and v1.9
+/// (<see cref="TestWads.Doom2V1666Md5"/>, <see cref="TestWads.Doom2V19Md5"/>:
+/// the same sprites).
 /// </summary>
 public class Doom2SpriteTests
 {
@@ -22,7 +23,7 @@ public class Doom2SpriteTests
         return (wad, Sprites.R_InitSprites(wad));
     }
 
-    private static bool IsV1666 => TestWads.Doom2Md5 == TestWads.Doom2V1666Md5;
+    private static bool IsKnownVersion => TestWads.IsDoom2V1666 || TestWads.IsDoom2V19;
 
     private static IEnumerable<int> UsedLumps(Sprites s) =>
         s.SpriteDefs.SelectMany(d => d.Frames).SelectMany(f => f.Lump).Distinct();
@@ -42,7 +43,7 @@ public class Doom2SpriteTests
         Assert.Equal(ns.Count, used.Count);
         Assert.All(ns, l => Assert.True(used.Contains(l), $"sprite lump {l.Name} is not used"));
 
-        if (IsV1666)
+        if (IsKnownVersion)
         {
             Assert.Equal(1381, ns.Count);
             Assert.Equal(628, s.SpriteDefs.Sum(d => d.NumFrames));
