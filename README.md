@@ -16,6 +16,39 @@ Download the zip for your system from the [releases](https://github.com/joepadmi
 - Every action can be rebound in Options → More Options → Controls; F1 lists the other keys.
 - **macOS.** The app is not notarized: open it the first time with right-click → Open (on macOS 15, System Settings → Privacy & Security → Open Anyway), or run `xattr -dr com.apple.quarantine IsoDoom.app`.
 
+### Arcade cabinet
+
+For a twin-stick cabinet, where both hands are on the sticks and the buttons are out of reach, start the game with `--arcade` (after `--`):
+
+```bash
+./IsoDoom.arm64 -- --arcade                      # e.g. on a Raspberry Pi 5
+./IsoDoom.arm64 -- --arcade -iwad DOOM2.WAD
+```
+
+Arcade mode changes four things:
+
+- **The right stick fires while it aims.** Push it in a direction to turn and shoot; let go to stop. The mouse never fires by itself.
+- **Ammo never runs out.** Firing uses none, so you never have to change weapon for lack of it.
+- **Walking into a door opens it**, as the use button would. A locked door without its key refuses once per push. Switches and other usable lines still need the use button.
+- **The aim assist reaches 25° either side** (5° normally). An 8-way stick only faces in 45° steps, so this catches a target that lies between two directions. `--level-aim-assist=DEG` after `--arcade` still overrides it.
+
+Changing weapon and coming back after dying still need a button (LB/RB and A by default; every action can be rebound under Options → More Options → Controls). In a network game the host's choice of infinite ammo, door opening and aim assist holds for every player, while the right stick's firing is each player's own.
+
+### Demos
+
+`-playdemo` plays a demo recorded with the original Doom, with the original game's rules, and quits at its end:
+
+```bash
+./IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run.lmp    # a .lmp file
+./IsoDoom.x86_64 -- -iwad DOOM2.WAD -playdemo run        # run.lmp, else the WAD's lump RUN
+./IsoDoom.x86_64 -- -iwad DOOM1.WAD -playdemo demo1      # a demo built into the WAD
+```
+
+- **`.lmp` files.** A name ending in `.lmp` is that file; otherwise the game tries `NAME.lmp`, then a demo lump in the WAD, then the file `NAME` itself. Relative paths are taken from the current directory (on Windows, pass an absolute path). A demo recorded with a PWAD needs the same PWAD: `-file mymod.wad -playdemo run.lmp`.
+- **Built-in demos.** Every IWAD carries the demos id Software recorded: `demo1` to `demo3` (The Ultimate Doom also has `demo4`). The title screen cycles only its pages and does not play them, so start them with `-playdemo demo1` and so on.
+- The demo picks the map, skill, game modes and players itself; your display options (camera, HUD, fog of war, …) still apply. Pause works while it plays, and starting a new game or loading a save from the menu ends it.
+- A demo only stays in step with the release of Doom (and IWAD version) it was recorded on. Any demo from v1.666 to v1.9 plays, with a warning in the log when its version differs from the IWAD's own demos; with `-gameversion` (e.g. `-gameversion 1.666`) only that version's demos play. A demo that isn't found, is cut short or is for a map the WAD lacks is refused with a message.
+
 ## Licence
 
 IsoDoom is free software under the GNU General Public License, version 2 or (at your option) any later version: see [COPYING](COPYING). The third-party code it includes and its licences are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Doom is a trademark of id Software; IsoDoom is not affiliated with id Software.
