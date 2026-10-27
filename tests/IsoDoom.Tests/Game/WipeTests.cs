@@ -147,7 +147,10 @@ public class WipeTests
                 route.File.RunEvents(flow.World, tic);
             int wipes = flow.Wipe.count;
             flow.Wipes = tic > 0; // vanilla's D_DoomLoop runs its first tic before the first D_Display
-            flow.G_Ticker(cmds[tic]);
+            if (route.File.Netgame && tic < route.Cmds.Count)
+                flow.G_Ticker(route.NetCmds[tic]); // T11.2: every player's (the tail's player 1's, the others idle: routes.py's)
+            else
+                flow.G_Ticker(cmds[tic]);
             if (tic == 0)
                 flow.wipegamestate = gamestate_t.GS_DEMOSCREEN;
             if (flow.Wipe.count != wipes)
