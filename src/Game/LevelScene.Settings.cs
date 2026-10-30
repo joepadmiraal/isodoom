@@ -433,6 +433,12 @@ public partial class LevelScene : ISetupHost
 
     // ---- the window and the audio ----
 
+    // Frames a switch out of fullscreen gets to settle before the window size
+    // is applied: the compositor answers the mode change later (Wayland), and
+    // a size set before then, or a size seen meanwhile, is the fullscreen one.
+    private const int WindowSettleFrames = 10;
+    private int _windowSettle;
+
     private void ApplyWindow()
     {
         if (!CanApplyVideo)
@@ -444,21 +450,48 @@ public partial class LevelScene : ISetupHost
             _ => DisplayServer.WindowMode.Windowed,
         };
         DisplayServer.WindowMode now = DisplayServer.WindowGetMode();
+        _windowSettle = 0;
         if (mode == DisplayServer.WindowMode.Windowed)
         {
             if (now is DisplayServer.WindowMode.Fullscreen or DisplayServer.WindowMode.ExclusiveFullscreen)
-                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
-            Vector2I size = ParseSize(_windowSize);
-            if (DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Windowed && DisplayServer.WindowGetSize() != size)
             {
-                DisplayServer.WindowSetSize(size);
-                int screen = DisplayServer.WindowGetCurrentScreen();
-                Rect2I usable = DisplayServer.ScreenGetUsableRect(screen);
-                DisplayServer.WindowSetPosition(usable.Position + (usable.Size - size) / 2);
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+                _windowSettle = WindowSettleFrames; // TickWindow sizes it
             }
+            else
+                ApplyWindowSize();
         }
         else if (now != mode)
             DisplayServer.WindowSetMode(mode);
+    }
+
+    /// <summary>Applies the window size once a switch out of fullscreen has settled (each frame).</summary>
+    private void TickWindow()
+    {
+        if (_windowSettle == 0 || DisplayServer.WindowGetMode() != DisplayServer.WindowMode.Windowed)
+            return;
+        if (--_windowSettle == 0)
+            ApplyWindowSize(force: true); // even at the size Godot believes it has: it may be the fullscreen one's
+    }
+
+    /// <summary>
+    /// The screen's scale (2 on a Wayland or macOS screen at 200%): the
+    /// window's size in pixels is the setting's times this, so the setting is
+    /// the window's size on the desktop whatever the scaling.
+    /// </summary>
+    private static float WindowScale => Math.Max(1f, DisplayServer.ScreenGetScale(DisplayServer.WindowGetCurrentScreen()));
+
+    private void ApplyWindowSize(bool force = false)
+    {
+        if (DisplayServer.WindowGetMode() != DisplayServer.WindowMode.Windowed)
+            return;
+        Vector2I size = (Vector2I)((Vector2)ParseSize(_windowSize) * WindowScale).Round();
+        if (DisplayServer.WindowGetSize() == size && !force)
+            return;
+        DisplayServer.WindowSetSize(size);
+        int screen = DisplayServer.WindowGetCurrentScreen();
+        Rect2I usable = DisplayServer.ScreenGetUsableRect(screen);
+        DisplayServer.WindowSetPosition(usable.Position + (usable.Size - size) / 2);
     }
 
     private void ApplyVsync()
@@ -476,10 +509,11 @@ public partial class LevelScene : ISetupHost
     // A window resized by hand keeps its size for the next start.
     private void WindowResized()
     {
-        if (!CanApplyVideo || _fullscreen != "off" || DisplayServer.WindowGetMode() != DisplayServer.WindowMode.Windowed)
+        if (!CanApplyVideo || _fullscreen != "off" || _windowSettle > 0 || DisplayServer.WindowGetMode() != DisplayServer.WindowMode.Windowed)
             return;
-        Vector2I size = DisplayServer.WindowGetSize();
-        _windowSize = $"{size.X}x{size.Y}";
+        var size = (Vector2I)((Vector2)DisplayServer.WindowGetSize() / WindowScale).Round();
+        if (size.X >= 320 && size.Y >= 200)
+            _windowSize = $"{size.X}x{size.Y}";
     }
 
     private static Vector2I ParseSize(string s)
